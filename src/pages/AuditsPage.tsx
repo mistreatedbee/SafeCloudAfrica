@@ -6,14 +6,17 @@ import {
   PlusIcon,
   CalendarIcon,
   ClipboardCheckIcon,
-  AlertCircleIcon } from
+  AlertCircleIcon,
+  CheckCircle,
+  Clock } from
 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import { useTenant } from '../tenant/TenantContext';
+import { useTenantContext } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../api/hooks/useAsync';
-import { countInspections, listInspections } from '../api/services/inspectionsService';
+import { listAudits } from '../api/services/auditsService';
+import { listInspections } from '../api/services/inspectionsService';
 import type { Inspection } from '../api/models/entities';
 import { AuditScheduleModal } from '../components/audits/AuditScheduleModal';
 
@@ -51,8 +54,10 @@ export function AuditsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
+  const [auditTypeFilter, setAuditTypeFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const { user } = useUser();
-  const { activeCompanyId, activeRole } = useTenant();
+  const { activeCompanyId, activeRole } = useTenantContext();
 
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
@@ -60,7 +65,17 @@ export function AuditsPage() {
 
   const canSchedule = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
 
-  const { data: inspections, loading, error } = useAsync<Inspection[]>(
+  // Load audits from new audits module
+  const { data: audits, loading: auditsLoading, error: auditsError } = useAsync(
+    async () => {
+      if (!activeCompanyId) return [];
+      return await listAudits({ companyId: activeCompanyId, limit: 500 });
+    },
+    [activeCompanyId]
+  );
+
+  // Load inspections (for separate display if needed)
+  const { data: inspections, loading: inspectionsLoading } = useAsync<Inspection[]>(
     async () => {
       if (!activeCompanyId) return [];
       return await listInspections({ companyId: activeCompanyId, limit: 500 });
@@ -68,48 +83,53 @@ export function AuditsPage() {
     [activeCompanyId]
   );
 
-  const { data: counts } = useAsync(async () => {
-    if (!activeCompanyId) return null;
-    const [scheduled, inProgress, overdue] = await Promise.all([
-      countInspections(activeCompanyId, { status: 'scheduled' }),
-      countInspections(activeCompanyId, { status: 'in-progress' }),
-      countInspections(activeCompanyId, { status: 'overdue' })
-    ]);
-    return { scheduled, inProgress, overdue };
-  }, [activeCompanyId]);
-
-  const openFindings = useMemo(() => (inspections ?? []).reduce((sum, i) => sum + (i.findings_count ?? 0), 0), [inspections]);
-  const thisYearCount = useMemo(() => {
-    const y = new Date().getFullYear();
-    return (inspections ?? []).filter((i) => new Date(i.created_at).getFullYear() === y).length;
-  }, [inspections]);
-
-  const rows = (inspections ?? []).map((i) => {
-    const isAudit = i.title.startsWith('[') && (i.title.includes('INTERNAL') || i.title.includes('EXTERNAL') || i.title.includes('CLIENT') || i.title.includes('SUPPLIER') || i.title.includes('CERTIFICATION'));
-    const isInspection = i.title.startsWith('[INSPECTION]');
-    let auditType: 'internal' | 'external' | 'client' | 'supplier' | 'certification' | 'inspection' | 'unknown' = 'unknown';
-    if (isAudit) {
-      if (i.title.includes('INTERNAL')) auditType = 'internal';
-      else if (i.title.includes('EXTERNAL')) auditType = 'external';
-      else if (i.title.includes('CLIENT')) auditType = 'client';
-      else if (i.title.includes('SUPPLIER')) auditType = 'supplier';
-      else if (i.title.includes('CERTIFICATION')) auditType = 'certification';
-    } else if (isInspection) {
-      auditType = 'inspection';
-    }
+  const stats = useMemo(() => {
+    if (!audits) return { scheduled: 0, inProgress: 0, completed: 0, total: 0 };
     return {
-      id: isAudit ? `AUD-${String(i.id).slice(0, 8)}` : `INS-${String(i.id).slice(0, 8)}`,
-      title: i.title,
-      type: auditType,
-      module: i.module,
-      scheduledDate: i.scheduled_at ? new Date(i.scheduled_at).toLocaleDateString('en-ZA') : new Date(i.created_at).toLocaleDateString('en-ZA'),
-      status: i.status,
-      findings: i.findings_count ?? 0,
-      nonConformances: i.nonconformances_count ?? 0
+      scheduled: audits.filter(a => a.status === 'scheduled').length,
+      inProgress: audits.filter(a => a.status === 'in-progress').length,
+      completed: audits.filter(a => a.status === 'completed').length,
+      total: audits.length
     };
-  });
+  }, [audits]);
 
-  const filteredAudits = rows.filter((audit) => audit.title.toLowerCase().includes(searchQuery.toLowerCase()) || audit.id.toLowerCase().includes(searchQuery.toLowerCase()));
+  const openFindings = useMemo(() => {
+    return (audits ?? []).reduce((sum, a) => sum + (a.findings_count ?? 0), 0);
+  }, [audits]);
+
+  const nonconformances = useMemo(() => {
+    return (audits ?? []).reduce((sum, a) => sum + (a.nonconformances_count ?? 0), 0);
+  }, [audits]);
+
+  // Filter audits
+  let filtered = audits ?? [];
+  if (auditTypeFilter !== 'all') {
+    filtered = filtered.filter(a => a.audit_type === auditTypeFilter);
+  }
+  if (statusFilter !== 'all') {
+    filtered = filtered.filter(a => a.status === statusFilter);
+  }
+  if (searchQuery) {
+    filtered = filtered.filter(a => 
+      a.audit_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      a.objectives.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }
+
+  const auditTypeColors: Record<string, string> = {
+    'internal': 'bg-teal-50 text-teal-700 border-teal-200',
+    'external': 'bg-navy-50 text-navy-700 border-navy-200',
+    'client': 'bg-blue-50 text-blue-700 border-blue-200',
+    'supplier': 'bg-purple-50 text-purple-700 border-purple-200',
+    'certification': 'bg-green-50 text-green-700 border-green-200'
+  };
+
+  const statusIcons: Record<string, JSX.Element> = {
+    'planned': <Clock className="w-4 h-4" />,
+    'scheduled': <CalendarIcon className="w-4 h-4" />,
+    'in-progress': <Clock className="w-4 h-4" />,
+    'completed': <CheckCircle className="w-4 h-4" />
+  };
 
   return (
     <Layout title="Audits & Inspections">
@@ -138,19 +158,19 @@ export function AuditsPage() {
 
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Scheduled</p>
-            <p className="text-2xl font-bold text-teal mt-1">{counts?.scheduled ?? 0}</p>
+            <p className="text-2xl font-bold text-teal mt-1">{stats.scheduled}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">In Progress</p>
-            <p className="text-2xl font-bold text-warning mt-1">{counts?.inProgress ?? 0}</p>
+            <p className="text-2xl font-bold text-warning mt-1">{stats.inProgress}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Open Findings</p>
             <p className="text-2xl font-bold text-critical mt-1">{openFindings}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-            <p className="text-sm text-charcoal-500">This Year</p>
-            <p className="text-2xl font-bold text-charcoal mt-1">{thisYearCount}</p>
+            <p className="text-sm text-charcoal-500">Non-Conformances</p>
+            <p className="text-2xl font-bold text-charcoal mt-1">{nonconformances}</p>
           </div>
         </motion.div>
 
@@ -159,15 +179,41 @@ export function AuditsPage() {
           variants={itemVariants}
           className="flex flex-col sm:flex-row gap-4 justify-between">
 
-          <div className="relative flex-1 max-w-md">
-            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
-            <input
-              type="search"
-              placeholder="Search audits..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
-
+          <div className="flex-1 max-w-md space-y-3">
+            <div className="relative">
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
+              <input
+                type="search"
+                placeholder="Search audits..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
+            </div>
+            <div className="flex gap-2">
+              <select
+                value={auditTypeFilter}
+                onChange={(e) => setAuditTypeFilter(e.target.value)}
+                className="px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              >
+                <option value="all">All Types</option>
+                <option value="internal">Internal</option>
+                <option value="external">External</option>
+                <option value="client">Client</option>
+                <option value="supplier">Supplier</option>
+                <option value="certification">Certification</option>
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              >
+                <option value="all">All Status</option>
+                <option value="planned">Planned</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="in-progress">In Progress</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
           </div>
           <button
             type="button"
@@ -182,27 +228,26 @@ export function AuditsPage() {
 
         {/* Audits List */}
         <motion.div variants={itemVariants} className="space-y-3">
-          {error && (
+          {auditsError && (
             <div className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">
               <p className="text-sm font-semibold text-critical">Unable to load audits</p>
-              <p className="text-sm text-charcoal-500 mt-1">{error.message}</p>
+              <p className="text-sm text-charcoal-500 mt-1">{(auditsError as any)?.message || 'Unknown error'}</p>
             </div>
           )}
-          {loading && (
+          {auditsLoading && (
             <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
               <p className="text-sm text-charcoal-500">Loading audits…</p>
             </div>
           )}
-          {!loading && !error && filteredAudits.length === 0 && (
+          {!auditsLoading && !auditsError && filtered.length === 0 && (
             <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-              <p className="text-sm text-charcoal-500">No audits yet.</p>
+              <p className="text-sm text-charcoal-500">No audits found.</p>
             </div>
           )}
-          {filteredAudits.map((audit) =>
-          <div
-            key={audit.id}
-            className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer">
-
+          {filtered.map((audit) =>
+            <div
+              key={audit.id}
+              className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer">
               <div className="flex items-start gap-4">
                 <div className="p-2 bg-surface-100 rounded-lg">
                   <ClipboardCheckIcon className="w-5 h-5 text-charcoal-500" />
@@ -210,36 +255,41 @@ export function AuditsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-medium text-charcoal">{audit.title}</p>
-                      <p className="text-sm text-teal mt-0.5">{audit.id}</p>
+                      <p className="font-medium text-charcoal">{audit.objectives}</p>
+                      <p className="text-sm text-teal mt-0.5">{audit.audit_number}</p>
                     </div>
                     <StatusBadge status={audit.status as any} size="sm" />
                   </div>
                   <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">
-                    <span className="flex items-center gap-1.5">
-                      <CalendarIcon className="w-4 h-4" />
-                      {audit.scheduledDate}
-                    </span>
-                    <span
-                    className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${auditTypeColors[audit.type as keyof typeof auditTypeColors]}`}>
-
-                      {audit.type}
+                    {audit.selected_date ? (
+                      <span className="flex items-center gap-1.5">
+                        <CalendarIcon className="w-4 h-4" />
+                        {new Date(audit.selected_date).toLocaleDateString('en-ZA')}
+                      </span>
+                    ) : audit.proposed_dates?.length ? (
+                      <span className="flex items-center gap-1.5">
+                        <CalendarIcon className="w-4 h-4" />
+                        {new Date(audit.proposed_dates[0]).toLocaleDateString('en-ZA')}
+                      </span>
+                    ) : null}
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize border ${auditTypeColors[audit.audit_type] || 'bg-gray-50 text-gray-700'}`}>
+                      {audit.audit_type}
                     </span>
                     <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
-                      {audit.module}
+                      {audit.scope_of_audit}
                     </span>
-                    {audit.findings > 0 &&
-                  <span className="flex items-center gap-1 text-warning">
+                    {audit.findings_count > 0 &&
+                      <span className="flex items-center gap-1 text-warning">
                         <AlertCircleIcon className="w-4 h-4" />
-                        {audit.findings} findings
+                        {audit.findings_count} findings
                       </span>
-                  }
-                    {audit.nonConformances > 0 &&
-                  <span className="flex items-center gap-1 text-critical">
+                    }
+                    {audit.nonconformances_count > 0 &&
+                      <span className="flex items-center gap-1 text-critical">
                         <AlertCircleIcon className="w-4 h-4" />
-                        {audit.nonConformances} NC
+                        {audit.nonconformances_count} NC
                       </span>
-                  }
+                    }
                   </div>
                 </div>
               </div>
@@ -248,5 +298,4 @@ export function AuditsPage() {
         </motion.div>
       </motion.div>
     </Layout>);
-
 }
