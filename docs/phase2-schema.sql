@@ -241,16 +241,196 @@ create table if not exists public.quality_ncrs (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   module text not null default 'quality' check (module in ('quality')),
+  
+  -- NCR Identification
+  nc_number text unique not null, -- Auto-generated
   title text not null,
   description text null,
+  
+  -- NCR Details
+  occurrence_date timestamptz not null default now(),
+  location text null,
+  department_id uuid null,
+  process_involved text null,
+  
+  -- Non-Conformance Information
+  activity_involved text null,
+  responsible_role text null, -- Not blame, but role responsible
+  linked_requirement text null, -- ISO/legal/internal
+  risk_classification text null, -- 'critical', 'high', 'medium', 'low'
+  
+  -- Root Cause & Corrective Actions
+  root_cause text null,
+  corrective_action text null,
+  corrective_action_owner_user_id uuid null,
+  corrective_action_due_date timestamptz null,
+  corrective_action_completed_date timestamptz null,
+  
+  -- Severity & Status
   severity text not null check (severity in ('critical','high','medium','low')) default 'medium',
   status text not null check (status in ('open','in-progress','closed')) default 'open',
-  occurred_at timestamptz not null default now(),
+  
+  -- Evidence & Signatures
+  evidence_document_url text null,
+  raised_by_user_id uuid not null,
+  approved_by_user_id uuid null,
+  approved_at timestamptz null,
+  signed_by_user_id uuid null,
+  signed_at timestamptz null,
+  
+  -- Linking to source entities
+  source_entity_type text null, -- 'incident', 'audit', 'inspection', 'complaint', 'risk_assessment'
+  source_entity_id uuid null,
+  
   created_by_user_id uuid not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index if not exists idx_quality_ncrs_company on public.quality_ncrs(company_id, occurred_at desc);
+create index if not exists idx_quality_ncrs_company on public.quality_ncrs(company_id, occurrence_date desc);
+create index if not exists idx_quality_ncrs_number on public.quality_ncrs(nc_number);
+create index if not exists idx_quality_ncrs_source on public.quality_ncrs(source_entity_type, source_entity_id);
+
+-- =========================
+-- Audits (Phase 2 - Separate from Inspections)
+-- =========================
+
+create table if not exists public.audits (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  module text not null check (module in ('safety','quality','environment','health','legal','hr','general','security')) default 'safety',
+  
+  -- Audit Identification
+  audit_number text unique not null, -- Auto-generated
+  title text not null,
+  description text null,
+  
+  -- Audit Types
+  audit_type text not null check (audit_type in ('internal', 'external', 'client', 'supplier', 'certification')),
+  
+  -- Audit Objectives
+  objectives text null, -- compliance, performance, risk control, legal, certification readiness
+  
+  -- Scheduling
+  proposed_dates text[] null, -- JSON array of proposed dates
+  selected_date timestamptz null,
+  approved_by_user_id uuid null,
+  approved_at timestamptz null,
+  
+  -- Audit Criteria
+  audit_criteria text null, -- ISO, legal, client, company procedures
+  
+  -- Audit Team & Scope
+  auditor_user_ids text[] null, -- JSON array
+  scope_of_audit text null,
+  location text null,
+  
+  -- Planning Inputs
+  organogram_document_url text null,
+  process_maps_document_url text null,
+  procedures_policies_document_url text null,
+  risk_assessments_document_url text null,
+  legal_register_document_url text null,
+  previous_audit_reports_document_url text null,
+  incident_reports_document_url text null,
+  training_records_document_url text null,
+  permits_registers_document_url text null,
+  client_requirements_document_url text null,
+  
+  -- Status
+  status text not null check (status in ('planned', 'scheduled', 'in-progress', 'completed', 'reported')) default 'planned',
+  
+  -- Results & Findings
+  findings_count integer not null default 0,
+  nonconformances_count integer not null default 0,
+  observations_count integer not null default 0,
+  
+  -- Report
+  report_document_url text null,
+  report_submitted_at timestamptz null,
+  
+  -- Linking
+  related_ncr_ids text[] null, -- JSON array of NCR IDs
+  
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_audits_company on public.audits(company_id, selected_date desc);
+create index if not exists idx_audits_number on public.audits(audit_number);
+create index if not exists idx_audits_status on public.audits(company_id, status);
+
+alter table public.audits enable row level security;
+
+drop policy if exists audits_select_member on public.audits;
+create policy audits_select_member
+on public.audits for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists audits_write_management on public.audits;
+create policy audits_write_management
+on public.audits for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- Audit questions (checklist items for audit)
+create table if not exists public.audit_questions (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  audit_id uuid not null references public.audits(id) on delete cascade,
+  
+  question text not null,
+  expected_evidence text null,
+  question_order integer not null,
+  
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_audit_questions_audit on public.audit_questions(audit_id);
+
+alter table public.audit_questions enable row level security;
+
+drop policy if exists audit_questions_select_member on public.audit_questions;
+create policy audit_questions_select_member
+on public.audit_questions for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists audit_questions_write_management on public.audit_questions;
+create policy audit_questions_write_management
+on public.audit_questions for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- Audit responses (answers to audit questions)
+create table if not exists public.audit_responses (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  audit_question_id uuid not null references public.audit_questions(id) on delete cascade,
+  
+  is_compliant boolean not null default false,
+  finding text null,
+  evidence_document_url text null,
+  risk_rating text check (risk_rating in ('low', 'medium', 'high')),
+  
+  answered_by_user_id uuid not null,
+  answered_at timestamptz not null default now()
+);
+
+create index if not exists idx_audit_responses_question on public.audit_responses(audit_question_id);
+
+alter table public.audit_responses enable row level security;
+
+drop policy if exists audit_responses_select_member on public.audit_responses;
+create policy audit_responses_select_member
+on public.audit_responses for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists audit_responses_write_management on public.audit_responses;
+create policy audit_responses_write_management
+on public.audit_responses for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
 -- Safety/General: Inspections (safety inspections, site checks, etc.)
 create table if not exists public.inspections (
@@ -526,6 +706,34 @@ create table if not exists public.incidents (
   status text not null check (status in ('open','investigating','closed')) default 'open',
   occurred_at timestamptz not null default now(),
   location text null,
+  
+  -- Full incident form fields (Phase 2 enhancement)
+  project_client text null,
+  nature_of_incident text null,
+  cause_of_incident text null,
+  affected_person text null,
+  loss_type text null, -- 'Production', 'Financial', 'Reputational'
+  risk_level text null, -- 'critical', 'high', 'medium', 'low'
+  reported_by_user_id uuid null,
+  reported_to_user_id uuid null,
+  copy_to_user_ids text[] null, -- JSON array of user IDs
+  investigation_required boolean not null default false,
+  
+  -- Investigation fields (expanded when investigation_required = true)
+  risk text null,
+  risk_profile text null,
+  incident_timeline text null,
+  unsafe_acts text null,
+  unsafe_conditions text null,
+  root_cause_human text null,
+  root_cause_workplace text null,
+  system_failure text null,
+  corrective_actions text null,
+  lessons_learnt text null,
+  investigation_team_user_ids text[] null, -- JSON array
+  conclusion text null,
+  investigation_document_url text null,
+  
   assignee_user_id uuid null,
   created_by_user_id uuid not null,
   created_at timestamptz not null default now(),
