@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -15,7 +15,8 @@ import { useAsync } from '../api/hooks/useAsync';
 import { listIncidents } from '../api/services/incidentsService';
 import type { Incident } from '../api/models/entities';
 import { useUser } from '@insforge/react';
-import { IncidentCreateModal } from '../components/incidents/IncidentCreateModal';
+
+const IncidentCreateModal = lazy(() => import('../components/incidents/IncidentCreateModal').then(m => ({ default: m.IncidentCreateModal })));
 
 function formatDateZA(iso: string): string {
   const d = new Date(iso);
@@ -105,17 +106,19 @@ export function IncidentsPage() {
   return (
     <Layout title="Incidents & Near Misses">
       {activeCompanyId && user?.id && (
-        <IncidentCreateModal
-          open={createOpen}
-          onClose={() => {
-            setCreateOpen(false);
-            if (isNew) navigate('/incidents', { replace: true });
-          }}
-          companyId={activeCompanyId}
-          createdByUserId={user.id}
-          defaultModule="safety"
-          onCreated={() => navigate('/incidents', { replace: true })}
-        />
+        <Suspense fallback={null}>
+          <IncidentCreateModal
+            open={createOpen}
+            onClose={() => {
+              setCreateOpen(false);
+              if (isNew) navigate('/incidents', { replace: true });
+            }}
+            companyId={activeCompanyId}
+            createdByUserId={user.id}
+            defaultModule="safety"
+            onCreated={() => navigate('/incidents', { replace: true })}
+          />
+        </Suspense>
       )}
       <motion.div
         variants={containerVariants}
