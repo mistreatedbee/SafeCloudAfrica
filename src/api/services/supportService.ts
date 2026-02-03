@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { getErrorMessage } from '../insforge/errors';
 
 export interface SupportTicket {
   id?: string;
@@ -18,21 +19,24 @@ export interface SupportTicket {
  */
 export async function createSupportTicket(ticket: SupportTicket): Promise<SupportTicket> {
   try {
-    const response = await insforge.post('/support_tickets', {
-      company_id: ticket.company_id,
-      user_id: ticket.user_id,
-      user_email: ticket.user_email,
-      category: ticket.category,
-      subject: ticket.subject,
-      description: ticket.description,
-      status: 'open'
-    });
+    const { data, error } = await insforge.database
+      .from('support_tickets')
+      .insert([{
+        company_id: ticket.company_id,
+        user_id: ticket.user_id,
+        user_email: ticket.user_email,
+        category: ticket.category,
+        subject: ticket.subject,
+        description: ticket.description,
+        status: 'open'
+      }])
+      .select('*')
+      .single();
 
-    if (!response.ok) {
-      throw new Error(`Failed to create support ticket: ${response.statusText}`);
-    }
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to create support ticket');
 
-    return response.data as SupportTicket;
+    return data as SupportTicket;
   } catch (error) {
     console.error('Error creating support ticket:', error);
     throw error;
@@ -47,19 +51,15 @@ export async function listSupportTickets(
   limit = 50
 ): Promise<SupportTicket[]> {
   try {
-    const response = await insforge.get('/support_tickets', {
-      params: {
-        company_id: `eq.${companyId}`,
-        limit,
-        order: 'created_at.desc'
-      }
-    });
+    const { data, error } = await insforge.database
+      .from('support_tickets')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-    if (!response.ok) {
-      throw new Error(`Failed to list support tickets: ${response.statusText}`);
-    }
-
-    return (response.data as SupportTicket[]) || [];
+    if (error) throw new Error(getErrorMessage(error));
+    return (data as SupportTicket[]) || [];
   } catch (error) {
     console.error('Error listing support tickets:', error);
     return [];
@@ -71,13 +71,17 @@ export async function listSupportTickets(
  */
 export async function getSupportTicket(ticketId: string): Promise<SupportTicket | null> {
   try {
-    const response = await insforge.get(`/support_tickets/${ticketId}`);
+    const { data, error } = await insforge.database
+      .from('support_tickets')
+      .select('*')
+      .eq('id', ticketId)
+      .single();
 
-    if (!response.ok) {
-      throw new Error(`Failed to get support ticket: ${response.statusText}`);
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(getErrorMessage(error));
     }
 
-    return (response.data as SupportTicket) || null;
+    return (data as SupportTicket) || null;
   } catch (error) {
     console.error('Error getting support ticket:', error);
     return null;
@@ -92,15 +96,17 @@ export async function updateSupportTicketStatus(
   status: 'open' | 'in-progress' | 'closed'
 ): Promise<SupportTicket | null> {
   try {
-    const response = await insforge.patch(`/support_tickets/${ticketId}`, {
-      status
-    });
+    const { data, error } = await insforge.database
+      .from('support_tickets')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', ticketId)
+      .select('*')
+      .single();
 
-    if (!response.ok) {
-      throw new Error(`Failed to update support ticket: ${response.statusText}`);
-    }
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to update support ticket');
 
-    return (response.data as SupportTicket) || null;
+    return data as SupportTicket;
   } catch (error) {
     console.error('Error updating support ticket:', error);
     return null;

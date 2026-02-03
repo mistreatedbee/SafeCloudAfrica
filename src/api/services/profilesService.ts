@@ -85,3 +85,65 @@ export async function upsertUserProfileAsManager(input: {
   return data as UserProfile;
 }
 
+/**
+ * Get user profile by company_id and user_id
+ */
+export async function getUserProfile(
+  companyId: UUID,
+  userId: UUID
+): Promise<UserProfile | null> {
+  const { data, error } = await insforge.database
+    .from('user_profiles')
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    // PGRST116 is "no rows found"
+    throw new Error(getErrorMessage(error));
+  }
+
+  return (data as UserProfile) || null;
+}
+
+/**
+ * Update user profile
+ */
+export async function updateUserProfile(
+  companyId: UUID,
+  userId: UUID,
+  updates: {
+    full_name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    department?: string | null;
+    site?: string | null;
+  }
+): Promise<UserProfile> {
+  const { data, error } = await insforge.database
+    .from('user_profiles')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString()
+    })
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .select('*')
+    .single();
+
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update profile.');
+
+  await createActivityLog({
+    companyId,
+    actorUserId: userId,
+    action: 'user_profiles.update',
+    entityType: 'user_profile',
+    entityId: (data as any).id as UUID
+  });
+
+  return data as UserProfile;
+}
+
+

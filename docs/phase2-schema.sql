@@ -1434,3 +1434,94 @@ create trigger trg_audit_findings_recalc
 after insert or update or delete on public.audit_findings
 for each row execute function public.trg_recalc_inspection_counts();
 
+-- =========================
+-- Support & User Settings (Phase 2)
+-- =========================
+
+-- Support tickets for help & support feature
+create table if not exists public.support_tickets (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  user_id uuid not null,
+  user_email text not null,
+  category text not null check (category in ('bug', 'access', 'billing', 'feature-request', 'other')),
+  subject text not null,
+  description text not null,
+  status text not null check (status in ('open', 'in-progress', 'closed')) default 'open',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_support_tickets_company on public.support_tickets(company_id, created_at desc);
+create index if not exists idx_support_tickets_user on public.support_tickets(company_id, user_id);
+
+alter table public.support_tickets enable row level security;
+
+drop policy if exists support_tickets_select_user on public.support_tickets;
+create policy support_tickets_select_user
+on public.support_tickets for select
+using (
+  user_id = public.request_user_id()
+  or public.is_company_consultant_or_admin(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists support_tickets_insert_member on public.support_tickets;
+create policy support_tickets_insert_member
+on public.support_tickets for insert
+with check (public.is_company_member(company_id));
+
+drop policy if exists support_tickets_update_management on public.support_tickets;
+create policy support_tickets_update_management
+on public.support_tickets for update
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- User settings (notifications, security, etc.)
+create table if not exists public.user_settings (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  user_id uuid not null,
+  email_notifications_enabled boolean not null default true,
+  inapp_notifications_enabled boolean not null default true,
+  notification_frequency text check (notification_frequency in ('immediate', 'daily', 'weekly')) default 'immediate',
+  password_min_length integer not null default 8,
+  password_require_uppercase boolean not null default true,
+  password_require_numbers boolean not null default true,
+  password_require_special boolean not null default false,
+  session_timeout_minutes integer not null default 60,
+  max_concurrent_sessions integer not null default 5,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (company_id, user_id)
+);
+create index if not exists idx_user_settings_company on public.user_settings(company_id);
+
+alter table public.user_settings enable row level security;
+
+drop policy if exists user_settings_select_self on public.user_settings;
+create policy user_settings_select_self
+on public.user_settings for select
+using (
+  user_id = public.request_user_id()
+  or public.is_company_consultant_or_admin(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists user_settings_insert_self on public.user_settings;
+create policy user_settings_insert_self
+on public.user_settings for insert
+with check (user_id = public.request_user_id() or public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists user_settings_update_self on public.user_settings;
+create policy user_settings_update_self
+on public.user_settings for update
+using (
+  user_id = public.request_user_id()
+  or public.is_company_consultant_or_admin(company_id)
+  or public.is_platform_admin()
+)
+with check (
+  user_id = public.request_user_id()
+  or public.is_company_consultant_or_admin(company_id)
+  or public.is_platform_admin()
+);
