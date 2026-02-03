@@ -472,6 +472,123 @@ create table if not exists public.risks (
 );
 create index if not exists idx_risks_company on public.risks(company_id, created_at desc);
 
+-- Risk Assessments: Baseline and Task-based
+create table if not exists public.risk_assessments (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  assessment_type text not null check (assessment_type in ('baseline', 'task-based')),
+  assessment_number text not null unique,
+  title text not null,
+  description text null,
+  process_involved text null,
+  department_id uuid null,
+  location text null,
+  scope text null,
+  objective text null,
+  task_id uuid null,
+  task_name text null,
+  task_steps text null,
+  status text not null check (status in ('draft', 'in-progress', 'reviewed', 'approved', 'closed')) default 'draft',
+  assessment_date date null,
+  reviewed_by_user_id uuid null,
+  reviewed_at timestamptz null,
+  approved_by_user_id uuid null,
+  approved_at timestamptz null,
+  total_risks integer not null default 0,
+  high_risks integer not null default 0,
+  medium_risks integer not null default 0,
+  low_risks integer not null default 0,
+  assessment_document_url text null,
+  evidence_document_url text null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_risk_assessments_company on public.risk_assessments(company_id, assessment_date desc);
+create index if not exists idx_risk_assessments_number on public.risk_assessments(assessment_number);
+
+-- Risk Assessment Items (Hazards + Controls)
+create table if not exists public.risk_assessment_items (
+  id uuid primary key default gen_random_uuid(),
+  risk_assessment_id uuid not null references public.risk_assessments(id) on delete cascade,
+  hazard_description text not null,
+  hazard_source text null,
+  likelihood integer not null check (likelihood between 1 and 5),
+  consequence integer not null check (consequence between 1 and 5),
+  risk_rating integer not null,
+  risk_level text not null check (risk_level in ('low', 'medium', 'high', 'critical')),
+  affected_personnel text null,
+  exposure_frequency text null,
+  exposure_duration text null,
+  existing_controls text null,
+  control_effectiveness text null,
+  residual_risk_rating integer null,
+  residual_risk_level text null,
+  improvement_actions text null,
+  responsible_user_id uuid null,
+  action_due_date date null,
+  action_status text not null check (action_status in ('pending', 'in-progress', 'completed')) default 'pending',
+  supporting_evidence_url text null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_risk_assessment_items_assessment on public.risk_assessment_items(risk_assessment_id);
+create index if not exists idx_risk_assessment_items_level on public.risk_assessment_items(risk_assessment_id, risk_level);
+
+-- RLS Policies for Risk Assessments
+alter table risk_assessments enable row level security;
+create policy "risk_assessments_tenant_isolation" on public.risk_assessments
+  for all using (company_id = current_setting('tenant.company_id')::uuid);
+alter table risk_assessment_items enable row level security;
+create policy "risk_assessment_items_isolation" on public.risk_assessment_items
+  for all using (
+    risk_assessment_id in (
+      select id from risk_assessments where company_id = current_setting('tenant.company_id')::uuid
+    )
+  );
+
+-- Corrective Actions: Link NCRs, Risk Assessments, and Incidents to corrective/preventive tasks
+create table if not exists public.corrective_actions (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  action_number text not null unique,
+  title text not null,
+  description text null,
+  action_type text not null check (action_type in ('corrective', 'preventive')) default 'corrective',
+  source_type text not null check (source_type in ('ncr', 'risk_assessment', 'incident', 'audit', 'observation')),
+  source_id uuid not null,
+  status text not null check (status in ('open', 'assigned', 'in-progress', 'completed', 'verified', 'closed')) default 'open',
+  priority text not null check (priority in ('low', 'medium', 'high', 'urgent')) default 'medium',
+  assigned_to_user_id uuid null,
+  created_date date null,
+  due_date date not null,
+  completed_date date null,
+  verified_date date null,
+  verified_by_user_id uuid null,
+  root_cause text null,
+  proposed_solution text null,
+  effectiveness_check text null,
+  evidence_url text null,
+  linked_task_id uuid null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_corrective_actions_company on public.corrective_actions(company_id, status);
+create index if not exists idx_corrective_actions_number on public.corrective_actions(action_number);
+create index if not exists idx_corrective_actions_source on public.corrective_actions(source_type, source_id);
+create index if not exists idx_corrective_actions_assigned on public.corrective_actions(assigned_to_user_id, status);
+create index if not exists idx_corrective_actions_due on public.corrective_actions(due_date, status);
+
+-- RLS for Corrective Actions
+alter table corrective_actions enable row level security;
+create policy "corrective_actions_tenant_isolation" on public.corrective_actions
+  for all using (company_id = current_setting('tenant.company_id')::uuid);
+
 -- PPE: simple register + issue/return tracking
 create table if not exists public.ppe_items (
   id uuid primary key default gen_random_uuid(),
