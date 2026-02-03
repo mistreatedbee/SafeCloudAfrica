@@ -1,0 +1,100 @@
+
+/* URL IMPORTS (SUCH AS FONT IMPORTS) SHOULD BE KEPT ABOVE TAILWIND IMPORTS - DO NOT DELETE THIS COMMENT */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* PLEASE NOTE: THESE TAILWIND IMPORTS SHOULD NEVER BE DELETED - DO NOT DELETE THIS COMMENT */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+/* DO NOT DELETE THESE TAILWIND IMPORTS, OTHERWISE THE STYLING WILL NOT RENDER AT ALL - DO NOT DELETE THIS COMMENT */
+
+:root {
+  /* Primary Colors */
+  --color-navy: #0A2540;
+  --color-teal: #0FB9B1;
+  
+  /* Secondary Colors */
+  --color-success: #2ECC71;
+  --color-warning: #F5A623;
+  --color-critical: #E74C3C;
+  
+  /* Neutral Colors */
+  --color-charcoal: #2E2E2E;
+  --color-surface: #F4F6F8;
+  --color-white: #FFFFFF;
+  
+  /* Spacing */
+  --sidebar-width: 280px;
+  --sidebar-collapsed-width: 80px;
+  --header-height: 64px;
+
+  /* InsForge UI theme overrides (auth components) */
+  --if-color-primary: var(--color-teal);
+  --if-color-primary-hover: #0ea5a0;
+  --if-color-border-focus: var(--color-teal);
+  --if-color-text: var(--color-charcoal);
+  --if-color-text-secondary: #5b6773;
+  --if-color-text-muted: #8a96a3;
+  --if-color-border: #d1d9e0;
+  --if-color-bg-white: var(--color-white);
+  --if-color-bg-light: #f7fafb;
+  --if-color-bg-hover: #eef3f6;
+  --if-radius-sm: 0.5rem;
+  --if-radius-xl: 1rem;
+  --if-shadow-lg: 0 16px 40px -24px rgba(10, 37, 64, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--color-surface);
+  color: var(--color-charcoal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #C5D1DE;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9FB3C7;
+}
+
+/* Focus styles for accessibility */
+:focus-visible {
+  outline: 2px solid var(--color-teal);
+  outline-offset: 2px;
+}
+
+/* Smooth transitions for interactive elements */
+button, a, [role="button"] {
+  transition: all 0.15s ease;
+}
+
+/* Risk heat map cell colors */
+.risk-cell-critical { background-color: #E74C3C; }
+.risk-cell-high { background-color: #F39C12; }
+.risk-cell-medium { background-color: #F5A623; }
+.risk-cell-low { background-color: #2ECC71; }
+.risk-cell-minimal { background-color: #27AE60; }

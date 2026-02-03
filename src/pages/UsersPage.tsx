@@ -1,0 +1,219 @@
+import React, { useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { UsersIcon, ShieldIcon, PlusIcon, PencilIcon } from 'lucide-react';
+import { Layout } from '../components/layout/Layout';
+import { useTenant } from '../tenant/TenantContext';
+import { useAsync } from '../api/hooks/useAsync';
+import { listCompanyInvites, listCompanyMemberships } from '../api/services/tenantService';
+import type { CompanyInvite, CompanyMembership, UserProfile } from '../api/models/entities';
+import { useUser } from '@insforge/react';
+import type { CompanyRole } from '../api/models/core';
+import { InviteUserModal } from '../components/users/InviteUserModal';
+import { listUserProfiles } from '../api/services/profilesService';
+import { UserProfileEditModal } from '../components/users/UserProfileEditModal';
+
+function shortId(id: string): string {
+  return id.length > 8 ? id.slice(0, 8) : id;
+}
+
+function formatRole(role: string): string {
+  if (role === 'admin') return 'Admin';
+  if (role === 'manager') return 'Manager';
+  if (role === 'supervisor') return 'Supervisor';
+  if (role === 'consultant') return 'Consultant';
+  if (role === 'employee') return 'Employee';
+  if (role === 'auditor') return 'Auditor';
+  return role;
+}
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
+};
+const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
+
+export function UsersPage() {
+  const { user } = useUser();
+  const { activeCompanyId, activeRole, activeCompany } = useTenant();
+
+  const { data: members, loading: membersLoading, error: membersError } = useAsync<CompanyMembership[]>(
+    async () => {
+      if (!activeCompanyId) return [];
+      return await listCompanyMemberships(activeCompanyId);
+    },
+    [activeCompanyId]
+  );
+
+  const { data: invites, loading: invitesLoading, error: invitesError } = useAsync<CompanyInvite[]>(
+    async () => {
+      if (!activeCompanyId) return [];
+      return await listCompanyInvites(activeCompanyId);
+    },
+    [activeCompanyId]
+  );
+
+  const roles = ['admin', 'manager', 'supervisor', 'consultant', 'employee', 'auditor'] as const;
+  const canInvite = activeRole === 'admin' || activeRole === 'manager';
+  const canEditProfiles = activeRole === 'admin' || activeRole === 'manager';
+  const allowedInviteRoles: CompanyRole[] = ['manager', 'supervisor', 'consultant', 'employee', 'auditor'];
+  const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [editUserId, setEditUserId] = React.useState<string | null>(null);
+
+  const { data: profiles } = useAsync<UserProfile[]>(
+    async () => {
+      if (!activeCompanyId) return [];
+      return await listUserProfiles(activeCompanyId);
+    },
+    [activeCompanyId]
+  );
+  const profileByUserId = useMemo(() => new Map((profiles ?? []).map((p) => [p.user_id, p])), [profiles]);
+  const selectedProfile = editUserId ? profileByUserId.get(editUserId as any) ?? null : null;
+
+  const combinedUsers = [
+    ...(members ?? []).map((m) => ({
+      id: `USR-${shortId(m.user_id)}`,
+      name: profileByUserId.get(m.user_id as any)?.full_name ?? `User ${shortId(m.user_id)}`,
+      role: formatRole(m.role),
+      email: profileByUserId.get(m.user_id as any)?.email ?? '—',
+      status: 'Active',
+      userId: m.user_id
+    })),
+    ...(invites ?? []).filter((i) => !i.accepted_at).map((i) => ({
+      id: `INV-${shortId(i.id)}`,
+      name: 'Invited user',
+      role: formatRole(i.role),
+      email: i.email,
+      status: 'Invited',
+      userId: null
+    }))
+  ];
+
+  return (
+    <Layout title="User, Role & Access Control">
+      <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+        {activeCompany && user?.id && (
+          <InviteUserModal
+            open={inviteOpen}
+            onClose={() => setInviteOpen(false)}
+            company={activeCompany}
+            actorUserId={user.id}
+            allowedRoles={allowedInviteRoles}
+          />
+        )}
+        {activeCompanyId && editUserId && (
+          <UserProfileEditModal
+            open={editOpen}
+            onClose={() => setEditOpen(false)}
+            companyId={activeCompanyId}
+            userId={editUserId as any}
+            initial={selectedProfile}
+            onSaved={() => setEditOpen(false)}
+          />
+        )}
+        <motion.div variants={itemVariants} className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-surface-100 rounded-xl">
+              <UsersIcon className="w-6 h-6 text-charcoal-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-charcoal">Roles, departments, sites, and permissions</h2>
+              <p className="text-sm text-charcoal-400">Company users, roles, and workforce structure (department/site)</p>
+            </div>
+          </div>
+          <button
+            disabled={!canInvite}
+            onClick={() => setInviteOpen(true)}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <PlusIcon className="w-4 h-4" />
+            Invite User
+          </button>
+        </motion.div>
+
+        {(membersError || invitesError) && (
+          <motion.div variants={itemVariants} className="bg-white rounded-xl border border-critical/30 shadow-card p-5">
+            <p className="text-sm font-semibold text-critical">Unable to load users</p>
+            <p className="text-sm text-charcoal-500 mt-1">{(membersError ?? invitesError)?.message}</p>
+          </motion.div>
+        )}
+
+        <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
+            <h3 className="font-semibold text-charcoal mb-2 flex items-center gap-2">
+              <ShieldIcon className="w-5 h-5 text-teal" />
+              Roles
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {roles.map((r) => (
+                <span key={r} className="px-2 py-1 bg-surface-100 rounded text-xs font-medium text-charcoal-600">
+                  {formatRole(r)}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5 lg:col-span-2">
+            <h3 className="font-semibold text-charcoal mb-3">Users</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-surface-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">ID</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Name</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Role</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Email</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-100">
+                  {(membersLoading || invitesLoading) && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-3 text-sm text-charcoal-500">
+                        Loading…
+                      </td>
+                    </tr>
+                  )}
+                  {!membersLoading && !invitesLoading && combinedUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-3 text-sm text-charcoal-500">
+                        No users found.
+                      </td>
+                    </tr>
+                  )}
+                  {combinedUsers.map((u) => (
+                    <tr key={u.id} className="hover:bg-surface-50 transition-colors">
+                      <td className="px-4 py-3 text-sm font-medium text-teal">{u.id}</td>
+                      <td className="px-4 py-3 text-sm text-charcoal">{u.name}</td>
+                      <td className="px-4 py-3 text-sm text-charcoal-500">{u.role}</td>
+                      <td className="px-4 py-3 text-sm text-charcoal-500">{u.email}</td>
+                      <td className="px-4 py-3 text-sm text-charcoal-500">{u.status}</td>
+                      <td className="px-4 py-3 text-right">
+                        {u.userId && (
+                          <button
+                            type="button"
+                            disabled={!canEditProfiles}
+                            onClick={() => {
+                              setEditUserId(String(u.userId));
+                              setEditOpen(true);
+                            }}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            <PencilIcon className="w-4 h-4" />
+                            Edit
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </Layout>
+  );
+}
+

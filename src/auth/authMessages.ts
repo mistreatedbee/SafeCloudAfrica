@@ -1,0 +1,39 @@
+import type { InsForgeError } from '@insforge/sdk';
+
+export function formatAuthError(err: unknown): string {
+  if (!err) return 'Something went wrong. Please try again.';
+  if (typeof err === 'string') return err;
+
+  const anyErr = err as any;
+  const msg: string | undefined = anyErr?.message;
+
+  // InsForgeError has `statusCode` and `error`.
+  const statusCode: number | undefined = anyErr?.statusCode;
+  const code: string | undefined = anyErr?.error;
+
+  const lowered = (msg ?? '').toLowerCase();
+  if (lowered.includes('already') && (lowered.includes('registered') || lowered.includes('exists'))) {
+    return 'This email is already registered. Please sign in instead.';
+  }
+  if (lowered.includes('user') && lowered.includes('exists')) {
+    return 'This email is already registered. Please sign in instead.';
+  }
+  if (lowered.includes('invalid') && (lowered.includes('password') || lowered.includes('credentials'))) {
+    return 'Incorrect email or password. Please check and try again.';
+  }
+  if (statusCode === 401) return 'You are not authorised. Please sign in again.';
+  if (statusCode === 429) return 'Too many attempts. Please wait a moment and try again.';
+  if (statusCode === 400 && lowered.includes('email')) return 'Please enter a valid email address.';
+
+  if (code === 'auth_failed') return 'Sign-in failed. Please double-check your details.';
+
+  if (msg) return msg;
+  if (typeof anyErr?.error_description === 'string') return anyErr.error_description;
+  if (code) return `Request failed (${code}). Please try again.`;
+  return 'Something went wrong. Please try again.';
+}
+
+export function isInsForgeError(err: unknown): err is InsForgeError {
+  return !!err && typeof err === 'object' && 'statusCode' in (err as any) && 'error' in (err as any);
+}
+
