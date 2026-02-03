@@ -17,6 +17,8 @@ import { AuditsPage } from './pages/AuditsPage';
 import { InspectionsPage } from './pages/InspectionsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { HelpSupportPage } from './pages/HelpSupportPage';
 import { RisksPage } from './pages/RisksPage';
 import { PPEPage } from './pages/PPEPage';
 import { LegalRegisterPage } from './pages/LegalRegisterPage';
@@ -448,7 +450,6 @@ export function App() {
             }
           />
 
-          {/* Settings */}
           <Route
             path="/settings"
             element={
@@ -457,6 +458,26 @@ export function App() {
                   <RequireCompanyRole allowed={['admin', 'manager']}>
                     <SettingsPage />
                   </RequireCompanyRole>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ProfilePage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/help-support"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HelpSupportPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

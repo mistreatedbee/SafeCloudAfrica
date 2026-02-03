@@ -101,11 +101,21 @@ export function UserMenu() {
             </div>
 
             <div className="py-2">
-              <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-charcoal hover:bg-surface-50 transition-colors">
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  navigate('/profile');
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-charcoal hover:bg-surface-50 transition-colors">
                 <UserIcon className="w-4 h-4 text-charcoal-400" />
                 My Profile
               </button>
-              <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-charcoal hover:bg-surface-50 transition-colors">
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  navigate('/settings');
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-charcoal hover:bg-surface-50 transition-colors">
                 <SettingsIcon className="w-4 h-4 text-charcoal-400" />
                 Settings
               </button>
@@ -121,7 +131,12 @@ export function UserMenu() {
                   Super Admin
                 </button>
               )}
-              <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-charcoal hover:bg-surface-50 transition-colors">
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  navigate('/help-support');
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-charcoal hover:bg-surface-50 transition-colors">
                 <HelpCircleIcon className="w-4 h-4 text-charcoal-400" />
                 Help & Support
               </button>
