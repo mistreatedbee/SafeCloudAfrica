@@ -1801,6 +1801,57 @@ on public.support_tickets for update
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
+-- Module Content Library: Knowledge base for 6 modules (Safety, Quality, Environment, Health, Legal, HR)
+create table if not exists public.module_content (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  module_key text not null check (module_key in ('safety', 'quality', 'environment', 'health', 'legal', 'hr')),
+  content_type text not null check (content_type in ('procedure', 'policy', 'template', 'checklist', 'guideline', 'training_material')),
+  title text not null,
+  description text null,
+  content_url text not null,
+  file_size_kb integer null,
+  file_type text null,
+  version text not null default '1.0',
+  is_published boolean not null default false,
+  published_date date null,
+  published_by_user_id uuid null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_module_content_company on public.module_content(company_id, module_key);
+create index if not exists idx_module_content_type on public.module_content(module_key, content_type);
+create index if not exists idx_module_content_published on public.module_content(company_id, is_published);
+
+-- RLS for Module Content
+alter table module_content enable row level security;
+create policy "module_content_tenant_isolation" on public.module_content
+  for all using (company_id = current_setting('tenant.company_id')::uuid);
+
+-- Compliance Scoring: Real-time compliance score per organization (Phase 3)
+create table if not exists public.compliance_scores (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null unique references public.companies(id) on delete cascade,
+  module text not null check (module in ('safety', 'quality', 'environment', 'health', 'legal', 'hr', 'overall')),
+  score numeric not null check (score >= 0 and score <= 100),
+  percentage_complete numeric not null check (percentage_complete >= 0 and percentage_complete <= 100),
+  total_items integer not null default 0,
+  completed_items integer not null default 0,
+  overdue_items integer not null default 0,
+  high_priority_items integer not null default 0,
+  last_calculated_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_compliance_scores_company on public.compliance_scores(company_id, module);
+
+-- RLS for Compliance Scores
+alter table compliance_scores enable row level security;
+create policy "compliance_scores_tenant_isolation" on public.compliance_scores
+  for all using (company_id = current_setting('tenant.company_id')::uuid);
+
 -- User settings (notifications, security, etc.)
 create table if not exists public.user_settings (
   id uuid primary key default gen_random_uuid(),
