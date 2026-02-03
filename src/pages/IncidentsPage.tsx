@@ -219,7 +219,7 @@ export function IncidentsPage() {
         {error && (
           <motion.div variants={itemVariants} className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">
             <p className="text-sm font-semibold text-critical">Unable to load incidents</p>
-            <p className="text-sm text-charcoal-500 mt-1">{error.message}</p>
+            <p className="text-sm text-charcoal-500 mt-1">{error instanceof Error ? error.message : String(error)}</p>
           </motion.div>
         )}
 
@@ -243,7 +243,7 @@ export function IncidentsPage() {
             </div>
           )}
 
-          {list.map((incident) =>
+          {list.map((incident) => (
           <div
             key={incident.id}
             className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer">
@@ -288,9 +288,9 @@ export function IncidentsPage() {
                 </div>
               </div>
             </div>
-          )}
+          ))}
         </motion.div>
       </motion.div>
-    </Layout>);
-
+    </Layout>
+  );
 }
