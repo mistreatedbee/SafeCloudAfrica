@@ -2,7 +2,6 @@ import { insforge } from '../insforge/client';
 import type { Incident, UUID } from '../models/entities';
 import type { IncidentCategory, IncidentStatus, ModuleKey, Severity } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
-import { createActivityLog } from './activityLogService';
 
 export type ListIncidentsInput = {
   companyId: UUID;
@@ -110,6 +109,8 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create incident.');
 
+  // Lazy import to avoid circular dependency
+  const { createActivityLog } = await import('./activityLogService');
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,
