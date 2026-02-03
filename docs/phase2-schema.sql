@@ -286,6 +286,38 @@ create table if not exists public.quality_ncrs (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Ensure columns exist if table was created before
+alter table if exists public.quality_ncrs
+  add column if not exists nc_number text unique,
+  add column if not exists title text,
+  add column if not exists description text,
+  add column if not exists occurrence_date timestamptz default now(),
+  add column if not exists location text,
+  add column if not exists department_id uuid,
+  add column if not exists process_involved text,
+  add column if not exists activity_involved text,
+  add column if not exists responsible_role text,
+  add column if not exists linked_requirement text,
+  add column if not exists risk_classification text,
+  add column if not exists root_cause text,
+  add column if not exists corrective_action text,
+  add column if not exists corrective_action_owner_user_id uuid,
+  add column if not exists corrective_action_due_date timestamptz,
+  add column if not exists corrective_action_completed_date timestamptz,
+  add column if not exists severity text default 'medium',
+  add column if not exists status text default 'open',
+  add column if not exists evidence_document_url text,
+  add column if not exists raised_by_user_id uuid,
+  add column if not exists approved_by_user_id uuid,
+  add column if not exists approved_at timestamptz,
+  add column if not exists signed_by_user_id uuid,
+  add column if not exists signed_at timestamptz,
+  add column if not exists source_entity_type text,
+  add column if not exists source_entity_id uuid,
+  add column if not exists created_by_user_id uuid,
+  add column if not exists updated_at timestamptz default now();
+
 create index if not exists idx_quality_ncrs_company on public.quality_ncrs(company_id, occurrence_date desc);
 create index if not exists idx_quality_ncrs_number on public.quality_ncrs(nc_number);
 create index if not exists idx_quality_ncrs_source on public.quality_ncrs(source_entity_type, source_entity_id);
@@ -577,6 +609,30 @@ create table if not exists public.corrective_actions (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Ensure all columns exist if table was created before
+alter table if exists public.corrective_actions
+  add column if not exists action_number text unique,
+  add column if not exists title text,
+  add column if not exists description text,
+  add column if not exists action_type text default 'corrective',
+  add column if not exists source_type text,
+  add column if not exists source_id uuid,
+  add column if not exists status text default 'open',
+  add column if not exists priority text default 'medium',
+  add column if not exists assigned_to_user_id uuid,
+  add column if not exists created_date date,
+  add column if not exists due_date date,
+  add column if not exists completed_date date,
+  add column if not exists verified_date date,
+  add column if not exists verified_by_user_id uuid,
+  add column if not exists root_cause text,
+  add column if not exists proposed_solution text,
+  add column if not exists effectiveness_check text,
+  add column if not exists evidence_url text,
+  add column if not exists linked_task_id uuid,
+  add column if not exists created_by_user_id uuid,
+  add column if not exists updated_at timestamptz default now();
 
 create index if not exists idx_corrective_actions_company on public.corrective_actions(company_id, status);
 create index if not exists idx_corrective_actions_number on public.corrective_actions(action_number);

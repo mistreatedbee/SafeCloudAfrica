@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, AlertTriangle, CheckCircle, Clock, Filter } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTenantContext } from '../tenant/TenantContext';
+import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { listQualityNcrs, createQualityNcr, closeQualityNcr } from '../api/services/qualityNcrsService';
 import type { QualityNcr, UUID } from '../api/models/entities';
@@ -23,7 +23,7 @@ const itemVariants = {
 };
 
 export default function NCRsPage() {
-  const { activeCompanyId } = useTenantContext();
+  const { activeCompanyId } = useTenant();
   const { user } = useUser();
   const [ncrs, setNcrs] = useState<QualityNcr[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>('all');

@@ -12,7 +12,7 @@ import {
 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import { useTenantContext } from '../tenant/TenantContext';
+import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../api/hooks/useAsync';
 import { listAudits } from '../api/services/auditsService';
@@ -57,7 +57,7 @@ export function AuditsPage() {
   const [auditTypeFilter, setAuditTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const { user } = useUser();
-  const { activeCompanyId, activeRole } = useTenantContext();
+  const { activeCompanyId, activeRole } = useTenant();
 
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
