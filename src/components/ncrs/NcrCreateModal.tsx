@@ -111,7 +111,18 @@ export function NcrCreateModal(props: {
         title: title.trim(),
         description: fullDescription,
         severity,
-        createdByUserId: props.createdByUserId
+        createdByUserId: props.createdByUserId,
+        location: location.trim(),
+        process_involved: department.trim(),
+        activity_involved: activity.trim(),
+        responsible_role: responsibleRole.trim(),
+        linked_requirement: linkedRequirement.trim(),
+        risk_classification: riskClassification.toLowerCase(),
+        root_cause: rootCause.trim(),
+        corrective_action: correctiveActions.trim(),
+        corrective_action_due_date: new Date(ncrDate).toISOString().split('T')[0],
+        source_entity_type: source,
+        source_entity_id: props.linkedSource?.id ? props.linkedSource.id as UUID : undefined
       });
       
       props.onCreated?.();

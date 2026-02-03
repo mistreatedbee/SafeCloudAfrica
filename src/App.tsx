@@ -19,6 +19,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { HelpSupportPage } from './pages/HelpSupportPage';
+import NCRsPage from './pages/NCRsPage';
 import { RisksPage } from './pages/RisksPage';
 import { PPEPage } from './pages/PPEPage';
 import { LegalRegisterPage } from './pages/LegalRegisterPage';
@@ -273,6 +274,16 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <IncidentsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/ncrs"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <NCRsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
