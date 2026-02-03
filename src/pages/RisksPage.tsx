@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Plus, Search, Filter, Loader2 } from 'lucide-react';
+import { useUser } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
 import { listRiskAssessments, createRiskAssessment, listRiskAssessmentItems, type RiskAssessment, type RiskAssessmentItem } from '../api/services/risksService';
-import { getUser } from '../api/services/profilesService';
 import type { UUID } from '../api/models/entities';
 
 export function RisksPage() {
-  const { companyId } = useTenant();
+  const { activeCompanyId } = useTenant();
+  const { user } = useUser();
   const [assessments, setAssessments] = useState<RiskAssessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,28 +17,18 @@ export function RisksPage() {
   const [filterType, setFilterType] = useState<'all' | 'baseline' | 'task-based'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | RiskAssessment['status']>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
     loadAssessments();
-    loadCurrentUser();
-  }, [companyId]);
+  }, [activeCompanyId]);
 
-  const loadCurrentUser = async () => {
-    try {
-      const user = await getUser();
-      setCurrentUser(user);
-    } catch (e) {
-      console.error('Failed to load current user:', e);
-    }
-  };
 
   const loadAssessments = async () => {
-    if (!companyId) return;
+    if (!activeCompanyId) return;
     try {
       setLoading(true);
       setError(null);
-      const data = await listRiskAssessments({ companyId, limit: 500 });
+      const data = await listRiskAssessments({ companyId: activeCompanyId, limit: 500 });
       setAssessments(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load risk assessments');
@@ -61,13 +52,13 @@ export function RisksPage() {
   };
 
   const handleCreateAssessment = async (type: 'baseline' | 'task-based') => {
-    if (!currentUser) return;
+    if (!user?.id) return;
     try {
       const assessment = await createRiskAssessment({
-        companyId,
+        companyId: activeCompanyId,
         assessmentType: type,
         title: `${type.charAt(0).toUpperCase() + type.slice(1)} Risk Assessment - ${new Date().toLocaleDateString()}`,
-        createdByUserId: currentUser.id
+        createdByUserId: user.id as UUID
       });
       setAssessments([assessment, ...assessments]);
       setShowCreate(false);
