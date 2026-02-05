@@ -31,6 +31,8 @@ export function IncidentCreateModal(props: {
   const [lossType, setLossType] = useState<'Production' | 'Financial' | 'Reputational' | ''>('');
   const [likelihood, setLikelihood] = useState<1 | 2 | 3 | 4 | 5>(3);
   const [correctiveActions, setCorrectiveActions] = useState('');
+  const [location, setLocation] = useState('');
+  const [severity, setSeverity] = useState<Severity>('medium');
   
   // Auto-calculate risk level from severity and likelihood
   const calculatedRiskLevel = useMemo(() => {
@@ -60,8 +62,6 @@ export function IncidentCreateModal(props: {
   const [investigationFiles, setInvestigationFiles] = useState<File[]>([]);
   const [uploadInvestigationFirst, setUploadInvestigationFirst] = useState(false);
   
-  const [location, setLocation] = useState('');
-  const [severity, setSeverity] = useState<Severity>('medium');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -213,7 +213,7 @@ export function IncidentCreateModal(props: {
     setCauseOfIncident('');
     setAffectedPerson('');
     setLossType('');
-    setRiskCategory('Medium');
+    setSeverity('medium');
     setCorrectiveActions('');
     setReportedBy('');
     setReportedTo('');
@@ -235,7 +235,6 @@ export function IncidentCreateModal(props: {
     setInvestigationFiles([]);
     setUploadInvestigationFirst(false);
     setLocation('');
-    setSeverity('medium');
     setModule(props.defaultModule ?? 'safety');
   }
 
