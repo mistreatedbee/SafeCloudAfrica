@@ -13,6 +13,7 @@ export interface ExportOptions {
   includeSignatures?: boolean;
   fontSize?: number;
   orientation?: 'portrait' | 'landscape';
+  companyName?: string;
 }
 
 export type ExportFormat = 'pdf' | 'csv' | 'xlsx';
@@ -24,13 +25,14 @@ export async function exportIncidentPDF(
   incident: Incident,
   options: ExportOptions = {}
 ): Promise<Blob> {
-  const { includeEvidence = true, includeSignatures = true, fontSize = 11 } = options;
+  const { includeEvidence = true, includeSignatures = true, fontSize = 11, companyName = '' } = options;
 
   // Generate HTML content
   const html = generateIncidentHTML(incident, {
     includeEvidence,
     includeSignatures,
     fontSize,
+    companyName,
   });
 
   // Convert to PDF (using simple approach - can upgrade to pdfkit)
@@ -47,11 +49,12 @@ export async function exportNCRPDF(
   ncr: QualityNcr,
   options: ExportOptions = {}
 ): Promise<Blob> {
-  const { includeEvidence = true, fontSize = 11 } = options;
+  const { includeEvidence = true, fontSize = 11, companyName = '' } = options;
 
   const html = generateNCRHTML(ncr, {
     includeEvidence,
     fontSize,
+    companyName,
   });
 
   return htmlToPDF(html, {
@@ -67,11 +70,12 @@ export async function exportAuditPDF(
   audit: Audit,
   options: ExportOptions = {}
 ): Promise<Blob> {
-  const { includeEvidence = true, fontSize = 11 } = options;
+  const { includeEvidence = true, fontSize = 11, companyName = '' } = options;
 
   const html = generateAuditHTML(audit, {
     includeEvidence,
     fontSize,
+    companyName,
   });
 
   return htmlToPDF(html, {
@@ -152,7 +156,7 @@ export function exportAuditChecklistCSV(
  */
 function generateIncidentHTML(
   incident: Incident,
-  options: { includeEvidence: boolean; includeSignatures: boolean; fontSize: number }
+  options: { includeEvidence: boolean; includeSignatures: boolean; fontSize: number; companyName?: string }
 ): string {
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString();
 
@@ -177,7 +181,9 @@ function generateIncidentHTML(
         .severity-high { color: #ea580c; font-weight: bold; }
         .severity-medium { color: #f59e0b; font-weight: bold; }
         .severity-low { color: #10b981; font-weight: bold; }
-        .footer { margin-top: 30px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9pt; color: #666; }
+        .footer { margin-top: 40px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 9pt; color: #666; display: flex; justify-content: space-between; align-items: center; }
+        .footer-left { text-align: left; }
+        .footer-right { text-align: right; }
       </style>
     </head>
     <body>
@@ -232,8 +238,8 @@ function generateIncidentHTML(
       ` : ''}
 
       <div class="footer">
-        <p>Report ID: ${incident.id}</p>
-        <p>Created: ${formatDate(incident.created_at)}</p>
+        <div class="footer-left">SafeCloud Africa</div>
+        <div class="footer-right">${options.companyName || 'Company Name'}</div>
       </div>
     </body>
     </html>
@@ -243,7 +249,7 @@ function generateIncidentHTML(
 /**
  * Generate NCR HTML for PDF
  */
-function generateNCRHTML(ncr: QualityNcr, options: { includeEvidence: boolean; fontSize: number }): string {
+function generateNCRHTML(ncr: QualityNcr, options: { includeEvidence: boolean; fontSize: number; companyName?: string }): string {
   const formatDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : '—');
 
   return `
@@ -260,7 +266,9 @@ function generateNCRHTML(ncr: QualityNcr, options: { includeEvidence: boolean; f
         .field { margin: 10px 0; display: flex; }
         .field-label { width: 180px; font-weight: bold; }
         .field-value { flex: 1; }
-        .footer { margin-top: 30px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9pt; color: #666; }
+        .footer { margin-top: 40px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 9pt; color: #666; display: flex; justify-content: space-between; align-items: center; }
+        .footer-left { text-align: left; }
+        .footer-right { text-align: right; }
       </style>
     </head>
     <body>
@@ -331,8 +339,8 @@ function generateNCRHTML(ncr: QualityNcr, options: { includeEvidence: boolean; f
       </div>
 
       <div class="footer">
-        <p>NCR ID: ${ncr.id}</p>
-        <p>Created: ${formatDate(ncr.created_at)}</p>
+        <div class="footer-left">SafeCloud Africa</div>
+        <div class="footer-right">${options.companyName || 'Company Name'}</div>
       </div>
     </body>
     </html>
@@ -342,7 +350,7 @@ function generateNCRHTML(ncr: QualityNcr, options: { includeEvidence: boolean; f
 /**
  * Generate audit HTML for PDF
  */
-function generateAuditHTML(audit: Audit, options: { includeEvidence: boolean; fontSize: number }): string {
+function generateAuditHTML(audit: Audit, options: { includeEvidence: boolean; fontSize: number; companyName?: string }): string {
   const formatDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : '—');
 
   return `
@@ -359,7 +367,9 @@ function generateAuditHTML(audit: Audit, options: { includeEvidence: boolean; fo
         .field { margin: 10px 0; display: flex; }
         .field-label { width: 180px; font-weight: bold; }
         .field-value { flex: 1; }
-        .footer { margin-top: 30px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9pt; color: #666; }
+        .footer { margin-top: 40px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 9pt; color: #666; display: flex; justify-content: space-between; align-items: center; }
+        .footer-left { text-align: left; }
+        .footer-right { text-align: right; }
       </style>
     </head>
     <body>
@@ -391,12 +401,13 @@ function generateAuditHTML(audit: Audit, options: { includeEvidence: boolean; fo
       </div>
 
       <div class="footer">
-        <p>Audit ID: ${audit.id}</p>
-        <p>Created: ${formatDate(audit.created_at)}</p>
+        <div class="footer-left">SafeCloud Africa</div>
+        <div class="footer-right">${options.companyName || 'Company Name'}</div>
       </div>
     </body>
     </html>
   `;
+}
 }
 
 /**
