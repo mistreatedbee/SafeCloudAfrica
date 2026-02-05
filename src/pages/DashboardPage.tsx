@@ -106,33 +106,32 @@ export function DashboardPage() {
 
       try {
         const [openIncidents, investigatingIncidents, nearMissesThisMonth] = await Promise.all([
-          countIncidentsByStatus(activeCompanyId, 'open'),
-          countIncidentsByStatus(activeCompanyId, 'investigating'),
-          countNearMissesThisMonth(activeCompanyId)
+          countIncidentsByStatus(activeCompanyId, 'open').catch(() => 0),
+          countIncidentsByStatus(activeCompanyId, 'investigating').catch(() => 0),
+          countNearMissesThisMonth(activeCompanyId).catch(() => 0)
         ]);
 
         const [pendingTasks, myPendingTasks, myIncidents] = await Promise.all([
-          countCompanyPendingTasks(activeCompanyId),
-          countMyPendingTasks(activeCompanyId, user.id),
-          countMyIncidents(activeCompanyId, user.id)
+          countCompanyPendingTasks(activeCompanyId).catch(() => 0),
+          countMyPendingTasks(activeCompanyId, user.id).catch(() => 0),
+          countMyIncidents(activeCompanyId, user.id).catch(() => 0)
         ]);
 
         const [overdueActions, expiringTraining] = await Promise.all([
-          countOverdueCorrectiveActions(activeCompanyId),
-          activeRole === 'employee' ? countExpiringTrainingForUser(activeCompanyId, user.id, 30) : countExpiringTraining(activeCompanyId, 30)
+          countOverdueCorrectiveActions(activeCompanyId).catch(() => 0),
+          (activeRole === 'employee' ? countExpiringTrainingForUser(activeCompanyId, user.id, 30) : countExpiringTraining(activeCompanyId, 30)).catch(() => 0)
         ]);
 
         const tasks = await listTasks({
           companyId: activeCompanyId,
           assigneeUserId: activeRole === 'employee' ? user.id : undefined,
           limit: 4
-        });
-        const incidents = await listIncidents({ companyId: activeCompanyId, limit: 500 });
+        }).catch(() => []);
+        
+        const incidents = await listIncidents({ companyId: activeCompanyId, limit: 500 }).catch(() => []);
 
-        const [risks, moduleTargets] = await Promise.all([
-          listRisks({ companyId: activeCompanyId, limit: 2000 }),
-          listModuleTargets({ companyId: activeCompanyId, limit: 2000 })
-        ]);
+        const risks = await listRisks({ companyId: activeCompanyId, limit: 2000 }).catch(() => []);
+        const moduleTargets = await listModuleTargets({ companyId: activeCompanyId, limit: 2000 }).catch(() => []);
 
         const moduleScoreByKey: Record<string, number> = {};
         const byModule = new Map<string, { total: number; achieved: number }>();
