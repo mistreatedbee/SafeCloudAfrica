@@ -104,112 +104,117 @@ export function DashboardPage() {
     async () => {
       if (!activeCompanyId || !user?.id) return null;
 
-      const [openIncidents, investigatingIncidents, nearMissesThisMonth] = await Promise.all([
-        countIncidentsByStatus(activeCompanyId, 'open'),
-        countIncidentsByStatus(activeCompanyId, 'investigating'),
-        countNearMissesThisMonth(activeCompanyId)
-      ]);
+      try {
+        const [openIncidents, investigatingIncidents, nearMissesThisMonth] = await Promise.all([
+          countIncidentsByStatus(activeCompanyId, 'open'),
+          countIncidentsByStatus(activeCompanyId, 'investigating'),
+          countNearMissesThisMonth(activeCompanyId)
+        ]);
 
-      const [pendingTasks, myPendingTasks, myIncidents] = await Promise.all([
-        countCompanyPendingTasks(activeCompanyId),
-        countMyPendingTasks(activeCompanyId, user.id),
-        countMyIncidents(activeCompanyId, user.id)
-      ]);
+        const [pendingTasks, myPendingTasks, myIncidents] = await Promise.all([
+          countCompanyPendingTasks(activeCompanyId),
+          countMyPendingTasks(activeCompanyId, user.id),
+          countMyIncidents(activeCompanyId, user.id)
+        ]);
 
-      const [overdueActions, expiringTraining] = await Promise.all([
-        countOverdueCorrectiveActions(activeCompanyId),
-        activeRole === 'employee' ? countExpiringTrainingForUser(activeCompanyId, user.id, 30) : countExpiringTraining(activeCompanyId, 30)
-      ]);
+        const [overdueActions, expiringTraining] = await Promise.all([
+          countOverdueCorrectiveActions(activeCompanyId),
+          activeRole === 'employee' ? countExpiringTrainingForUser(activeCompanyId, user.id, 30) : countExpiringTraining(activeCompanyId, 30)
+        ]);
 
-      const tasks = await listTasks({
-        companyId: activeCompanyId,
-        assigneeUserId: activeRole === 'employee' ? user.id : undefined,
-        limit: 4
-      });
-      const incidents = await listIncidents({ companyId: activeCompanyId, limit: 500 });
+        const tasks = await listTasks({
+          companyId: activeCompanyId,
+          assigneeUserId: activeRole === 'employee' ? user.id : undefined,
+          limit: 4
+        });
+        const incidents = await listIncidents({ companyId: activeCompanyId, limit: 500 });
 
-      const [risks, moduleTargets] = await Promise.all([
-        listRisks({ companyId: activeCompanyId, limit: 2000 }),
-        listModuleTargets({ companyId: activeCompanyId, limit: 2000 })
-      ]);
+        const [risks, moduleTargets] = await Promise.all([
+          listRisks({ companyId: activeCompanyId, limit: 2000 }),
+          listModuleTargets({ companyId: activeCompanyId, limit: 2000 })
+        ]);
 
-      const moduleScoreByKey: Record<string, number> = {};
-      const byModule = new Map<string, { total: number; achieved: number }>();
-      for (const t of moduleTargets) {
-        const key = String(t.module);
-        const entry = byModule.get(key) ?? { total: 0, achieved: 0 };
-        entry.total += 1;
-        if (t.achieved) entry.achieved += 1;
-        byModule.set(key, entry);
-      }
-      for (const [key, v] of byModule.entries()) {
-        moduleScoreByKey[key] = v.total === 0 ? 0 : Math.round((v.achieved / v.total) * 100);
-      }
-      const overallScore = (() => {
-        const totals = Array.from(byModule.values()).reduce((acc, v) => acc + v.total, 0);
-        const achieved = Array.from(byModule.values()).reduce((acc, v) => acc + v.achieved, 0);
-        return totals === 0 ? 0 : Math.round((achieved / totals) * 100);
-      })();
+        const moduleScoreByKey: Record<string, number> = {};
+        const byModule = new Map<string, { total: number; achieved: number }>();
+        for (const t of moduleTargets) {
+          const key = String(t.module);
+          const entry = byModule.get(key) ?? { total: 0, achieved: 0 };
+          entry.total += 1;
+          if (t.achieved) entry.achieved += 1;
+          byModule.set(key, entry);
+        }
+        for (const [key, v] of byModule.entries()) {
+          moduleScoreByKey[key] = v.total === 0 ? 0 : Math.round((v.achieved / v.total) * 100);
+        }
+        const overallScore = (() => {
+          const totals = Array.from(byModule.values()).reduce((acc, v) => acc + v.total, 0);
+          const achieved = Array.from(byModule.values()).reduce((acc, v) => acc + v.achieved, 0);
+          return totals === 0 ? 0 : Math.round((achieved / totals) * 100);
+        })();
 
-      const heatMapData = (() => {
-        const map = new Map<string, { likelihood: number; consequence: number; count: number; level: string }>();
-        const classify = (rating: number) => {
-          if (rating >= 17) return 'critical';
-          if (rating >= 10) return 'high';
-          if (rating >= 5) return 'medium';
-          if (rating >= 2) return 'low';
-          return 'minimal';
+        const heatMapData = (() => {
+          const map = new Map<string, { likelihood: number; consequence: number; count: number; level: string }>();
+          const classify = (rating: number) => {
+            if (rating >= 17) return 'critical';
+            if (rating >= 10) return 'high';
+            if (rating >= 5) return 'medium';
+            if (rating >= 2) return 'low';
+            return 'minimal';
+          };
+          for (const r of risks) {
+            const likelihood = Math.max(1, Math.min(5, Number((r as any).likelihood ?? 1)));
+            const consequence = Math.max(1, Math.min(5, Number((r as any).consequence ?? 1)));
+            const rating = Number((r as any).risk_rating ?? (likelihood * consequence));
+            const key = `${likelihood}:${consequence}`;
+            const prev = map.get(key) ?? { likelihood, consequence, count: 0, level: classify(rating) };
+            prev.count += 1;
+            // keep the worst level we have seen in that cell
+            const levels = ['minimal', 'low', 'medium', 'high', 'critical'];
+            const worst = levels[Math.max(levels.indexOf(prev.level), levels.indexOf(classify(rating)))];
+            prev.level = worst;
+            map.set(key, prev);
+          }
+          return Array.from(map.values());
+        })();
+
+        const trendData = (() => {
+          const byMonth = new Map<string, { incidents: number; nearMisses: number; lti: number }>();
+          for (const i of incidents) {
+            const d = new Date(i.occurred_at);
+            if (Number.isNaN(d.getTime())) continue;
+            const key = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+            const entry = byMonth.get(key) ?? { incidents: 0, nearMisses: 0, lti: 0 };
+            entry.incidents += 1;
+            if (i.category === 'Near Miss') entry.nearMisses += 1;
+            if (String(i.severity).toLowerCase() === 'critical') entry.lti += 1;
+            byMonth.set(key, entry);
+          }
+          return Array.from(byMonth.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .slice(-6)
+            .map(([month, v]) => ({ month, ...v }));
+        })();
+
+        return {
+          openIncidents,
+          investigatingIncidents,
+          nearMissesThisMonth,
+          pendingTasks,
+          myIncidents,
+          myPendingTasks,
+          tasks,
+          incidents: incidents.slice(0, 5),
+          overdueActions,
+          expiringTraining,
+          moduleScoreByKey,
+          overallScore,
+          heatMapData,
+          trendData
         };
-        for (const r of risks) {
-          const likelihood = Math.max(1, Math.min(5, Number((r as any).likelihood ?? 1)));
-          const consequence = Math.max(1, Math.min(5, Number((r as any).consequence ?? 1)));
-          const rating = Number((r as any).risk_rating ?? (likelihood * consequence));
-          const key = `${likelihood}:${consequence}`;
-          const prev = map.get(key) ?? { likelihood, consequence, count: 0, level: classify(rating) };
-          prev.count += 1;
-          // keep the worst level we have seen in that cell
-          const levels = ['minimal', 'low', 'medium', 'high', 'critical'];
-          const worst = levels[Math.max(levels.indexOf(prev.level), levels.indexOf(classify(rating)))];
-          prev.level = worst;
-          map.set(key, prev);
-        }
-        return Array.from(map.values());
-      })();
-
-      const trendData = (() => {
-        const byMonth = new Map<string, { incidents: number; nearMisses: number; lti: number }>();
-        for (const i of incidents) {
-          const d = new Date(i.occurred_at);
-          if (Number.isNaN(d.getTime())) continue;
-          const key = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-          const entry = byMonth.get(key) ?? { incidents: 0, nearMisses: 0, lti: 0 };
-          entry.incidents += 1;
-          if (i.category === 'Near Miss') entry.nearMisses += 1;
-          if (String(i.severity).toLowerCase() === 'critical') entry.lti += 1;
-          byMonth.set(key, entry);
-        }
-        return Array.from(byMonth.entries())
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .slice(-6)
-          .map(([month, v]) => ({ month, ...v }));
-      })();
-
-      return {
-        openIncidents,
-        investigatingIncidents,
-        nearMissesThisMonth,
-        pendingTasks,
-        myIncidents,
-        myPendingTasks,
-        tasks,
-        incidents: incidents.slice(0, 5),
-        overdueActions,
-        expiringTraining,
-        moduleScoreByKey,
-        overallScore,
-        heatMapData,
-        trendData
-      };
+      } catch (err) {
+        console.error('Dashboard data error:', err);
+        throw err;
+      }
     },
     [activeCompanyId, activeRole, user?.id, refreshKey]
   );
@@ -261,7 +266,13 @@ export function DashboardPage() {
         {error && (
           <motion.div variants={itemVariants} className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">
             <p className="text-sm font-semibold text-critical">Dashboard data unavailable</p>
-            <p className="text-sm text-charcoal-500 mt-1">{error.message}</p>
+            <p className="text-sm text-charcoal-500 mt-1">{error?.message || 'An error occurred while loading dashboard data'}</p>
+            <button
+              onClick={() => setRefreshKey(k => k + 1)}
+              className="mt-3 text-sm text-critical hover:text-critical-600 font-medium underline"
+            >
+              Try again
+            </button>
           </motion.div>
         )}
 
