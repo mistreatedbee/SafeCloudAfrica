@@ -408,7 +408,6 @@ function generateAuditHTML(audit: Audit, options: { includeEvidence: boolean; fo
     </html>
   `;
 }
-}
 
 /**
  * Convert HTML to PDF blob (simplified implementation)
