@@ -11,13 +11,9 @@ import { listDocuments } from '../../api/services/documentsService';
 import { listApprovals } from '../../api/services/approvalsService';
 import { listTasks } from '../../api/services/tasksService';
 import { listActivityLogs } from '../../api/services/activityLogService';
-import { listQualityNcrs, countOpenQualityNcrs } from '../../api/services/qualityNcrsService';
-import type { Approval, Document, ModuleTarget, Task, QualityNcr } from '../../api/models/entities';
+import type { Approval, Document, ModuleTarget, Task } from '../../api/models/entities';
 import { useNavigate } from 'react-router-dom';
 import { ModuleTargetCreateModal } from '../../components/general/ModuleTargetCreateModal';
-import { AlertCircleIcon, PlusIcon } from 'lucide-react';
-import { StatusBadge } from '../../components/ui/StatusBadge';
-import { NcrCreateModal } from '../../components/ncrs/NcrCreateModal';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -32,7 +28,6 @@ export function GeneralModulePage() {
   const canManage = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
 
   const [createKpiOpen, setCreateKpiOpen] = useState(false);
-  const [createNcrOpen, setCreateNcrOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const { data: kpis } = useAsync<ModuleTarget[]>(
@@ -67,20 +62,6 @@ export function GeneralModulePage() {
     async () => {
       if (!activeCompanyId) return [];
       return await listActivityLogs({ companyId: activeCompanyId, limit: 15 });
-    },
-    [activeCompanyId, refreshKey]
-  );
-  const { data: ncrs } = useAsync<QualityNcr[]>(
-    async () => {
-      if (!activeCompanyId) return [];
-      return await listQualityNcrs({ companyId: activeCompanyId, limit: 10 });
-    },
-    [activeCompanyId, refreshKey]
-  );
-  const { data: openNcrsCount } = useAsync(
-    async () => {
-      if (!activeCompanyId) return 0;
-      return await countOpenQualityNcrs(activeCompanyId);
     },
     [activeCompanyId, refreshKey]
   );
@@ -145,27 +126,17 @@ export function GeneralModulePage() {
         </motion.div>
 
         {activeCompanyId && user?.id && (
-          <>
-            <ModuleTargetCreateModal
-              open={createKpiOpen}
-              onClose={() => setCreateKpiOpen(false)}
-              companyId={activeCompanyId}
-              createdByUserId={user.id}
-              module="general"
-              onCreated={() => setRefreshKey((k) => k + 1)}
-            />
-            <NcrCreateModal
-              open={createNcrOpen}
-              onClose={() => setCreateNcrOpen(false)}
-              companyId={activeCompanyId}
-              createdByUserId={user.id}
-              defaultModule="general"
-              onCreated={() => setRefreshKey((k) => k + 1)}
-            />
-          </>
+          <ModuleTargetCreateModal
+            open={createKpiOpen}
+            onClose={() => setCreateKpiOpen(false)}
+            companyId={activeCompanyId}
+            createdByUserId={user.id}
+            module="general"
+            onCreated={() => setRefreshKey((k) => k + 1)}
+          />
         )}
 
-        <motion.div variants={itemVariants} className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <motion.div variants={itemVariants} className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Tasks</p>
             <p className="text-2xl font-bold text-charcoal mt-1">{taskCounts.total}</p>
@@ -180,11 +151,6 @@ export function GeneralModulePage() {
             <p className="text-sm text-charcoal-500">Approvals</p>
             <p className="text-2xl font-bold text-charcoal mt-1">{approvalCounts.pending}</p>
             <p className="text-xs text-charcoal-400 mt-1">{approvalCounts.mine} assigned to you</p>
-          </div>
-          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-            <p className="text-sm text-charcoal-500">Open NCRs</p>
-            <p className="text-2xl font-bold text-critical mt-1">{openNcrsCount ?? 0}</p>
-            <p className="text-xs text-charcoal-400 mt-1">Non-conformances</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Programme KPIs</p>
@@ -284,88 +250,29 @@ export function GeneralModulePage() {
           </div>
         </motion.div>
 
-        <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Recent NCRs */}
-          <div className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">
-            <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between">
-              <h3 className="font-semibold text-charcoal flex items-center gap-2">
-                <AlertCircleIcon className="w-5 h-5 text-critical" />
-                Recent Non-Conformance Reports
-              </h3>
-              <div className="flex items-center gap-2">
-                {canManage && (
-                  <button
-                    type="button"
-                    onClick={() => setCreateNcrOpen(true)}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-critical text-white rounded-lg text-xs font-medium hover:bg-critical-600 transition-colors"
-                  >
-                    <PlusIcon className="w-3 h-3" />
-                    New NCR
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => navigate('/reports')}
-                  className="text-sm font-medium text-teal hover:text-teal-700 transition-colors"
-                >
-                  View all →
-                </button>
-              </div>
-            </div>
-            <div className="divide-y divide-surface-100">
-              {(ncrs ?? []).length === 0 && (
-                <div className="px-5 py-3">
-                  <p className="text-sm text-charcoal-500">No NCRs yet.</p>
-                </div>
-              )}
-              {(ncrs ?? []).map((ncr) => (
-                <div
-                  key={ncr.id}
-                  className="px-5 py-3 hover:bg-surface-50 cursor-pointer transition-colors"
-                  onClick={() => navigate('/reports')}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-blue-500">
-                        NCR-{String(ncr.id).slice(0, 8)}
-                      </p>
-                      <p className="text-sm text-charcoal mt-0.5">{ncr.title}</p>
-                      <p className="text-xs text-charcoal-400 mt-0.5">
-                        {new Date(ncr.occurred_at).toLocaleDateString('en-ZA')}
-                      </p>
-                    </div>
-                    <StatusBadge status={ncr.status as any} size="sm" />
-                  </div>
-                </div>
-              ))}
-            </div>
+        <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">
+          <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between">
+            <h3 className="font-semibold text-charcoal">Recent programme activity</h3>
+            <button
+              type="button"
+              onClick={() => setRefreshKey((k) => k + 1)}
+              className="text-sm font-medium text-teal hover:text-teal-700 transition-colors"
+            >
+              Refresh
+            </button>
           </div>
-
-          {/* Recent Activity */}
-          <div className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">
-            <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between">
-              <h3 className="font-semibold text-charcoal">Recent programme activity</h3>
-              <button
-                type="button"
-                onClick={() => setRefreshKey((k) => k + 1)}
-                className="text-sm font-medium text-teal hover:text-teal-700 transition-colors"
-              >
-                Refresh
-              </button>
-            </div>
-            <div className="divide-y divide-surface-100">
-              {(activity ?? []).length === 0 && (
-                <div className="px-5 py-4">
-                  <p className="text-sm text-charcoal-500">No activity yet.</p>
-                </div>
-              )}
-              {(activity ?? []).map((a: any) => (
-                <div key={a.id} className="px-5 py-3">
-                  <p className="text-sm font-medium text-charcoal">{a.action}</p>
-                  <p className="text-xs text-charcoal-400 mt-0.5">{new Date(a.created_at).toLocaleString('en-ZA')}</p>
-                </div>
-              ))}
-            </div>
+          <div className="divide-y divide-surface-100">
+            {(activity ?? []).length === 0 && (
+              <div className="px-5 py-4">
+                <p className="text-sm text-charcoal-500">No activity yet.</p>
+              </div>
+            )}
+            {(activity ?? []).map((a: any) => (
+              <div key={a.id} className="px-5 py-3">
+                <p className="text-sm font-medium text-charcoal">{a.action}</p>
+                <p className="text-xs text-charcoal-400 mt-0.5">{new Date(a.created_at).toLocaleString('en-ZA')}</p>
+              </div>
+            ))}
           </div>
         </motion.div>
       </motion.div>

@@ -50,9 +50,13 @@ export function IncidentAnalyticsPage() {
       const incidentDate = new Date(incident.occurred_at);
       const inDateRange = incidentDate >= cutoffDate;
       const matchesCategory = selectedCategory === 'all' || incident.category === selectedCategory;
-      // Extract risk level from description (temporary until DB schema updated)
-      const riskLevelMatch = incident.description?.match(/Calculated Risk Level: (Low|Medium|High|Critical)/);
-      const riskLevel = riskLevelMatch ? riskLevelMatch[1] as RiskLevel : 'Medium';
+      // Prefer dedicated columns; fallback to metadata for older rows.
+      const riskLevelRaw = String((incident as any)?.risk_rating ?? (incident as any)?.metadata?.riskLevel ?? '').toLowerCase();
+      const riskLevel: RiskLevel =
+        riskLevelRaw === 'critical' ? 'Critical' :
+        riskLevelRaw === 'high' ? 'High' :
+        riskLevelRaw === 'low' ? 'Low' :
+        'Medium';
       const matchesRisk = selectedRiskLevel === 'all' || riskLevel === selectedRiskLevel;
       return inDateRange && matchesCategory && matchesRisk;
     });
@@ -78,8 +82,12 @@ export function IncidentAnalyticsPage() {
       trend.count++;
       trend.categories.set(incident.category, (trend.categories.get(incident.category) || 0) + 1);
       
-      const riskLevelMatch = incident.description?.match(/Calculated Risk Level: (Low|Medium|High|Critical)/);
-      const riskLevel = riskLevelMatch ? riskLevelMatch[1] as RiskLevel : 'Medium';
+      const riskLevelRaw = String((incident as any)?.risk_rating ?? (incident as any)?.metadata?.riskLevel ?? '').toLowerCase();
+      const riskLevel: RiskLevel =
+        riskLevelRaw === 'critical' ? 'Critical' :
+        riskLevelRaw === 'high' ? 'High' :
+        riskLevelRaw === 'low' ? 'Low' :
+        'Medium';
       trend.riskLevels.set(riskLevel, (trend.riskLevels.get(riskLevel) || 0) + 1);
     });
     
@@ -108,8 +116,12 @@ export function IncidentAnalyticsPage() {
   const riskLevelBreakdown = useMemo(() => {
     const breakdown = new Map<RiskLevel, number>();
     filteredIncidents.forEach(incident => {
-      const riskLevelMatch = incident.description?.match(/Calculated Risk Level: (Low|Medium|High|Critical)/);
-      const riskLevel = riskLevelMatch ? riskLevelMatch[1] as RiskLevel : 'Medium';
+      const riskLevelRaw = String((incident as any)?.risk_rating ?? (incident as any)?.metadata?.riskLevel ?? '').toLowerCase();
+      const riskLevel: RiskLevel =
+        riskLevelRaw === 'critical' ? 'Critical' :
+        riskLevelRaw === 'high' ? 'High' :
+        riskLevelRaw === 'low' ? 'Low' :
+        'Medium';
       breakdown.set(riskLevel, (breakdown.get(riskLevel) || 0) + 1);
     });
     return Array.from(breakdown.entries());

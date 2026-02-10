@@ -5,6 +5,14 @@ export type Company = {
   name: string;
   license_type: LicenseType;
   employee_limit: number;
+  industry?: string | null;
+  logo_bucket?: string | null;
+  logo_key?: string | null;
+  modules_enabled?: Record<string, boolean> | null;
+  license_user_limit?: number;
+  trial_start?: string | null;
+  trial_end?: string | null;
+  subscription_status?: 'trial' | 'active' | 'past_due' | 'cancelled';
   primary_admin_user_id: UUID;
   metadata?: Record<string, unknown> | null;
   created_at: string;
@@ -29,6 +37,28 @@ export type CompanyInvite = {
   accepted_user_id: UUID | null;
 };
 
+export type Site = {
+  id: UUID;
+  company_id: UUID;
+  name: string;
+  address: string | null;
+  is_active: boolean;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Department = {
+  id: UUID;
+  company_id: UUID;
+  site_id: UUID | null;
+  name: string;
+  is_active: boolean;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ActivityLog = {
   id: UUID;
   company_id: UUID;
@@ -44,15 +74,61 @@ export type Incident = {
   id: UUID;
   company_id: UUID;
   module: ModuleKey;
+  site_id?: UUID | null;
+  department_id?: UUID | null;
   category: IncidentCategory;
   subcategory: string;
   title: string;
+  incident_type?: string | null;
+  cause?: string | null;
+  affected_person?: string | null;
+  reported_by?: string | null;
+  reported_to?: string | null;
+  reported_by_user_id?: UUID | null;
+  reported_to_user_id?: UUID | null;
+  affected_user_id?: UUID | null;
+  affected_external_name?: string | null;
+  copy_to?: string[] | null;
+  loss_types?: string[] | null;
+  nature_of_incident?: string | null;
+  risk_likelihood?: number | null;
+  risk_consequence?: number | null;
+  risk_score?: number | null;
+  risk_rating?: string | null;
+  investigation_required?: boolean;
   description: string | null;
+  metadata?: Record<string, unknown> | null;
   severity: Severity;
   status: IncidentStatus;
   occurred_at: string;
   location: string | null;
   assignee_user_id: UUID | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type IncidentInvestigation = {
+  id: UUID;
+  company_id: UUID;
+  incident_id: UUID;
+  notes: string | null;
+  instruction_breakdown: string | null;
+  task_sequence: string | null;
+  risk: string | null;
+  risk_profile: string | null;
+  potential_consequence: string | null;
+  event_timeline: string | null;
+  immediate_causes: any | null;
+  root_causes_human: any | null;
+  root_causes_workplace: any | null;
+  system_failures: any | null;
+  contributing_factors: string | null;
+  lessons_learnt: string | null;
+  investigation_team: any | null;
+  conclusion: string | null;
+  prepared_by: string | null;
+  distributions: any | null;
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;
@@ -65,6 +141,8 @@ export type Task = {
   id: UUID;
   company_id: UUID;
   module: ModuleKey;
+  site_id?: UUID | null;
+  department_id?: UUID | null;
   title: string;
   description: string | null;
   priority: TaskPriority;
@@ -82,6 +160,8 @@ export type CorrectiveAction = {
   id: UUID;
   company_id: UUID;
   module: ModuleKey;
+  site_id?: UUID | null;
+  department_id?: UUID | null;
   title: string;
   description: string | null;
   status: CorrectiveActionStatus;
@@ -90,6 +170,16 @@ export type CorrectiveAction = {
   created_by_user_id: UUID;
   approved_by_user_id: UUID | null;
   approved_at: string | null;
+  source_entity_type?: string | null;
+  source_entity_id?: UUID | null;
+  reviewer_user_id?: UUID | null;
+  authoriser_user_id?: UUID | null;
+  effectiveness_verified_at?: string | null;
+  effectiveness_verified_by_user_id?: UUID | null;
+  closed_at?: string | null;
+  closed_by_user_id?: UUID | null;
+  escalation_level?: number | null;
+  escalation_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -128,18 +218,139 @@ export type FormTemplate = {
 // Phase 2 module tables
 // ---------------------------
 
-export type QualityNcrStatus = 'open' | 'in-progress' | 'closed';
+export type QualityNcrStatus =
+  | 'open'
+  | 'in-progress'
+  | 'awaiting-evidence'
+  | 'under-review'
+  | 'approved'
+  | 'overdue'
+  | 'closed';
 
 export type QualityNcr = {
   id: UUID;
   company_id: UUID;
-  module: 'quality';
+  module: ModuleKey;
+  site_id?: UUID | null;
+  department_id?: UUID | null;
+  nc_number: string | null;
+  date_identified?: string | null;
+  ncr_type?: string | null;
+  ncr_category?: string | null;
+  requirement_reference_type?: string | null;
+  requirement_reference_text?: string | null;
+  project_client?: string | null;
+  auditor_user_id?: UUID | null;
+  auditee_user_id?: UUID | null;
+  department_manager_user_id?: UUID | null;
   title: string;
   description: string | null;
+  location: string | null;
+  process_involved: string | null;
+  activity_involved: string | null;
+  responsible_role: string | null;
+  linked_requirement: string | null;
+  risk_classification: string | null;
+  risk_rating?: string | null;
+  root_cause: string | null;
+  corrective_action: string | null;
+  corrective_action_due_date: string | null;
+  source_entity_type: string | null;
+  source_entity_id: UUID | null;
+  manager_signoff_user_id?: UUID | null;
+  manager_signoff_at?: string | null;
+  auditor_verify_user_id?: UUID | null;
+  auditor_verify_at?: string | null;
+  date_closed?: string | null;
+  closed_at: string | null;
+  closed_by_user_id: UUID | null;
+  metadata?: Record<string, unknown> | null;
   severity: Severity;
   status: QualityNcrStatus;
   occurred_at: string;
   created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PjoStatus = 'open' | 'closed';
+
+export type PjoTemplateScope = 'global' | 'site' | 'department';
+
+export type PjoChecklistTemplate = {
+  id: UUID;
+  company_id: UUID;
+  module: ModuleKey;
+  name: string;
+  description: string | null;
+  scope: PjoTemplateScope;
+  site_id?: UUID | null;
+  department_id?: UUID | null;
+  is_active: boolean;
+  created_by_user_id: UUID;
+  updated_by_user_id?: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PjoChecklistItem = {
+  id: UUID;
+  company_id: UUID;
+  template_id: UUID;
+  question_no: number;
+  question_text: string;
+  category: string | null;
+  default_rating_weight: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PjoObservation = {
+  id: UUID;
+  company_id: UUID;
+  module: 'hr';
+  employee_user_id: UUID | null;
+  employee_name: string;
+  conducted_by_user_id: UUID;
+  reason: string;
+  department: string | null;
+  site: string | null;
+  job_observed: string;
+  observed_at: string; // date
+  next_observation_at: string | null; // date
+  status: PjoStatus;
+  closed_at: string | null;
+  closed_by_user_id: UUID | null;
+  metadata?: Record<string, unknown> | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PjoResponse = {
+  id: UUID;
+  company_id: UUID;
+  pjo_id: UUID;
+  question_no: number;
+  question_text: string;
+  yes_no: boolean | null;
+  rating: 1 | 2 | 3 | null;
+  deviation: string | null;
+  suggested_corrective_action: string | null;
+  responsible_person: string | null;
+  responsible_department: string | null;
+  corrective_action_implemented: boolean;
+  implemented_at: string | null; // date
+  manager_signoff_user_id: UUID | null;
+  manager_signoff_at: string | null;
+  closed: boolean;
+  closed_at: string | null;
+  closed_by_user_id: UUID | null;
+  ncr_id: UUID | null;
+   template_id?: UUID | null;
+   template_item_id?: UUID | null;
+   category?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -150,6 +361,8 @@ export type Inspection = {
   id: UUID;
   company_id: UUID;
   module: ModuleKey;
+  site_id?: UUID | null;
+  department_id?: UUID | null;
   title: string;
   checklist_name: string | null;
   status: InspectionStatus;
@@ -160,6 +373,86 @@ export type Inspection = {
   nonconformances_count: number;
   assignee_user_id: UUID | null;
   created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InspectionChecklistTemplateScope = 'global' | 'site' | 'department';
+
+export type InspectionChecklistTemplate = {
+  id: UUID;
+  company_id: UUID;
+  module: ModuleKey;
+  name: string;
+  description: string | null;
+  scope: InspectionChecklistTemplateScope;
+  site_id?: UUID | null;
+  department_id?: UUID | null;
+  is_active: boolean;
+  created_by_user_id: UUID;
+  updated_by_user_id?: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InspectionChecklistItem = {
+  id: UUID;
+  company_id: UUID;
+  template_id: UUID;
+  item_order: number;
+  section: string | null;
+  question: string;
+  expected_evidence: string | null;
+  risk_area: string | null;
+  default_risk_rating: string | null;
+  default_nc_severity: string | null;
+  is_mandatory: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InspectionRunStatus = 'in-progress' | 'completed' | 'cancelled';
+
+export type InspectionRun = {
+  id: UUID;
+  company_id: UUID;
+  inspection_id: UUID;
+  template_id: UUID;
+  module: ModuleKey;
+  site_id?: UUID | null;
+  department_id?: UUID | null;
+  run_number: number;
+  started_at: string | null;
+  completed_at: string | null;
+  status: InspectionRunStatus;
+  inspector_user_id?: UUID | null;
+  items_total: number;
+  items_nc: number;
+  ncrs_created_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InspectionRunComplianceStatus = 'C' | 'NC' | 'NA';
+
+export type InspectionRunItem = {
+  id: UUID;
+  company_id: UUID;
+  run_id: UUID;
+  template_item_id?: UUID | null;
+  item_order: number;
+  section: string | null;
+  question: string;
+  expected_evidence: string | null;
+  risk_area: string | null;
+  risk_rating: string | null;
+  nc_severity: string | null;
+  compliance_status: InspectionRunComplianceStatus;
+  comments: string | null;
+  evidence_document_url: string | null;
+  photo_url: string | null;
+  nonconformance_flag: boolean;
+  auto_ncr_id?: UUID | null;
   created_at: string;
   updated_at: string;
 };
@@ -204,6 +497,82 @@ export type PPEIssue = {
   return_due_at: string | null;
   returned_at: string | null;
   notes: string | null;
+};
+
+// PPE inventory: stock, movements & reorder requests
+export type PpeStock = {
+  id: UUID;
+  company_id: UUID;
+  site_id: UUID | null;
+  department_id: UUID | null;
+  ppe_item_id: UUID;
+  on_hand_qty: number;
+  reserved_qty: number;
+  reorder_level: number;
+  reorder_qty: number;
+  is_active: boolean;
+  created_by_user_id: UUID;
+  updated_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PpeStockMovementType = 'in' | 'out' | 'adjust' | 'return';
+
+export type PpeStockMovement = {
+  id: UUID;
+  company_id: UUID;
+  stock_id: UUID;
+  movement_type: PpeStockMovementType;
+  quantity: number;
+  reason: string | null;
+  reference_type: string | null;
+  reference_id: UUID | null;
+  ppe_issue_id: UUID | null;
+  old_on_hand_qty: number | null;
+  new_on_hand_qty: number | null;
+  created_by_user_id: UUID;
+  created_at: string;
+};
+
+export type PpeReorderRequestStatus =
+  | 'draft'
+  | 'requested'
+  | 'approved'
+  | 'rejected'
+  | 'ordered'
+  | 'received';
+
+export type PpeReorderRequest = {
+  id: UUID;
+  company_id: UUID;
+  stock_id: UUID;
+  requested_qty: number;
+  reason: string | null;
+  status: PpeReorderRequestStatus;
+  requested_by_user_id: UUID;
+  approved_by_user_id: UUID | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PpeIssueNcrLink = {
+  id: UUID;
+  company_id: UUID;
+  ppe_issue_id: UUID;
+  ncr_id: UUID;
+  created_by_user_id: UUID;
+  created_at: string;
+};
+
+export type PpeIssueCapaLink = {
+  id: UUID;
+  company_id: UUID;
+  ppe_issue_id: UUID;
+  corrective_action_id: UUID;
+  created_by_user_id: UUID;
+  created_at: string;
 };
 
 export type EnvironmentAspectStatus = 'active' | 'closed';
@@ -440,6 +809,8 @@ export type UserProfile = {
   full_name: string | null;
   email: string | null;
   phone: string | null;
+  site_id?: UUID | null;
+  department_id?: UUID | null;
   department: string | null;
   site: string | null;
   created_at: string;
@@ -456,6 +827,68 @@ export type EvidenceAttachment = {
   storage_key: string;
   created_by_user_id: UUID;
   created_at: string;
+};
+
+/**
+ * Program audit record
+ *
+ * This type mirrors the `audits` table in the Phase 2 schema and is used
+ * across services (auditsService) and exports (exportService).
+ */
+export type Audit = {
+  id: UUID;
+  company_id: UUID;
+  module: ModuleKey;
+
+  // Identification
+  audit_number: string;
+  title: string;
+  description: string | null;
+
+  // Type & objectives
+  audit_type: 'internal' | 'external' | 'client' | 'supplier' | 'certification';
+  objectives: string | null;
+
+  // Scheduling & approvals
+  proposed_dates: string[] | null;
+  selected_date: string | null;
+  approved_by_user_id: UUID | null;
+  approved_at: string | null;
+
+  // Criteria, team & scope
+  audit_criteria: string | null;
+  auditor_user_ids: UUID[] | null;
+  scope_of_audit: string | null;
+  location: string | null;
+
+  // Planning inputs (document URLs or references)
+  organogram_document_url: string | null;
+  process_maps_document_url: string | null;
+  procedures_policies_document_url: string | null;
+  risk_assessments_document_url: string | null;
+  legal_register_document_url: string | null;
+  previous_audit_reports_document_url: string | null;
+  incident_reports_document_url: string | null;
+  training_records_document_url: string | null;
+  permits_registers_document_url: string | null;
+  client_requirements_document_url: string | null;
+
+  // Status & results
+  status: 'planned' | 'scheduled' | 'in-progress' | 'completed' | 'reported';
+  findings_count: number;
+  nonconformances_count: number;
+  observations_count: number;
+
+  // Report
+  report_document_url: string | null;
+  report_submitted_at: string | null;
+
+  // Linking
+  related_ncr_ids: UUID[] | null;
+
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
 };
 
 export type AuditFindingStatus = 'open' | 'closed';

@@ -1,16 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
-import {
-  SearchIcon,
-  PlusIcon,
-  CalendarIcon,
-  ClipboardCheckIcon,
-  AlertCircleIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  UploadIcon
-} from 'lucide-react';
+import { SearchIcon, PlusIcon, CalendarIcon, ClipboardCheckIcon, AlertCircleIcon, XCircleIcon } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTenant } from '../tenant/TenantContext';
@@ -19,6 +10,7 @@ import { useAsync } from '../api/hooks/useAsync';
 import { countInspections, listInspections } from '../api/services/inspectionsService';
 import type { Inspection } from '../api/models/entities';
 import { InspectionCreateModal } from '../components/inspections/InspectionCreateModal';
+import { InspectionChecklistLibrary } from '../components/inspections/InspectionChecklistLibrary';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -33,6 +25,7 @@ export function InspectionsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'list' | 'library'>('list');
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
 
@@ -90,7 +83,7 @@ export function InspectionsPage() {
 
   return (
     <Layout title="Inspections">
-      {activeCompanyId && user?.id && (
+      {canSchedule && activeCompanyId && user?.id && (
         <InspectionCreateModal
           open={createOpen}
           onClose={() => {
@@ -109,10 +102,7 @@ export function InspectionsPage() {
         className="space-y-6"
       >
         {/* Stats */}
-        <motion.div
-          variants={itemVariants}
-          className="grid grid-cols-2 md:grid-cols-4 gap-4"
-        >
+        <motion.div variants={itemVariants} className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Scheduled</p>
             <p className="text-2xl font-bold text-teal mt-1">{counts?.scheduled ?? 0}</p>
@@ -131,97 +121,136 @@ export function InspectionsPage() {
           </div>
         </motion.div>
 
-        {/* Header Actions */}
-        <motion.div
-          variants={itemVariants}
-          className="flex flex-col sm:flex-row gap-4 justify-between"
-        >
-          <div className="relative flex-1 max-w-md">
-            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
-            <input
-              type="search"
-              placeholder="Search inspections..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-            />
+        {/* Tabs + Header Actions */}
+        <motion.div variants={itemVariants} className="space-y-4">
+          <div className="flex items-center justify-between border-b border-surface-200 pb-2">
+            <div className="flex items-center gap-4 text-sm">
+              <button
+                type="button"
+                onClick={() => setActiveTab('list')}
+                className={`pb-1 border-b-2 ${
+                  activeTab === 'list'
+                    ? 'border-teal text-teal font-semibold'
+                    : 'border-transparent text-charcoal-500'
+                }`}
+              >
+                Inspections
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('library')}
+                className={`pb-1 border-b-2 ${
+                  activeTab === 'library'
+                    ? 'border-teal text-teal font-semibold'
+                    : 'border-transparent text-charcoal-500'
+                }`}
+              >
+                Checklist Library
+              </button>
+            </div>
+            {activeTab === 'list' && (
+              <button
+                type="button"
+                disabled={!canSchedule}
+                onClick={() => navigate('/inspections/new')}
+                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <PlusIcon className="w-4 h-4" />
+                Create Inspection
+              </button>
+            )}
           </div>
-          <button
-            type="button"
-            disabled={!canSchedule}
-            onClick={() => navigate('/inspections/new')}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <PlusIcon className="w-4 h-4" />
-            Create Inspection
-          </button>
-        </motion.div>
 
-        {/* Inspections List */}
-        <motion.div variants={itemVariants} className="space-y-3">
-          {error && (
-            <div className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">
-              <p className="text-sm font-semibold text-critical">Unable to load inspections</p>
-              <p className="text-sm text-charcoal-500 mt-1">{error.message}</p>
-            </div>
-          )}
-          {loading && (
-            <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-              <p className="text-sm text-charcoal-500">Loading inspections…</p>
-            </div>
-          )}
-          {!loading && !error && filteredInspections.length === 0 && (
-            <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-              <p className="text-sm text-charcoal-500">No inspections yet.</p>
-            </div>
-          )}
-          {filteredInspections.map((inspection) => (
-            <div
-              key={inspection.id}
-              className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer"
-            >
-              <div className="flex items-start gap-4">
-                <div className="p-2 bg-surface-100 rounded-lg">
-                  <ClipboardCheckIcon className="w-5 h-5 text-charcoal-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-charcoal">{inspection.title}</p>
-                      <p className="text-sm text-teal mt-0.5">{inspection.id}</p>
-                    </div>
-                    <StatusBadge status={inspection.status as any} size="sm" />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">
-                    <span className="flex items-center gap-1.5">
-                      <CalendarIcon className="w-4 h-4" />
-                      {inspection.scheduledDate}
-                    </span>
-                    {inspection.location && (
-                      <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
-                        {inspection.location}
-                      </span>
-                    )}
-                    <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
-                      {inspection.module}
-                    </span>
-                    {inspection.findings > 0 && (
-                      <span className="flex items-center gap-1 text-warning">
-                        <AlertCircleIcon className="w-4 h-4" />
-                        {inspection.findings} findings
-                      </span>
-                    )}
-                    {inspection.nonConformances > 0 && (
-                      <span className="flex items-center gap-1 text-critical">
-                        <XCircleIcon className="w-4 h-4" />
-                        {inspection.nonConformances} NC
-                      </span>
-                    )}
-                  </div>
+          {activeTab === 'list' ? (
+            <>
+              <div className="flex flex-col sm:flex-row gap-4 justify-between">
+                <div className="relative flex-1 max-w-md">
+                  <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
+                  <input
+                    type="search"
+                    placeholder="Search inspections..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
                 </div>
               </div>
-            </div>
-          ))}
+
+              <motion.div variants={itemVariants} className="space-y-3">
+                {error && (
+                  <div className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">
+                    <p className="text-sm font-semibold text-critical">Unable to load inspections</p>
+                    <p className="text-sm text-charcoal-500 mt-1">{error.message}</p>
+                  </div>
+                )}
+                {loading && (
+                  <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                    <p className="text-sm text-charcoal-500">Loading inspections…</p>
+                  </div>
+                )}
+                {!loading && !error && filteredInspections.length === 0 && (
+                  <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                    <p className="text-sm text-charcoal-500">No inspections yet.</p>
+                  </div>
+                )}
+          {filteredInspections.map((inspection) => (
+                  <div
+                    key={inspection.id}
+                    className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer"
+              onClick={() => navigate(`/inspections/${inspection.id.replace('INS-', '')}`)}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 bg-surface-100 rounded-lg">
+                        <ClipboardCheckIcon className="w-5 h-5 text-charcoal-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-charcoal">{inspection.title}</p>
+                            <p className="text-sm text-teal mt-0.5">{inspection.id}</p>
+                          </div>
+                          <StatusBadge status={inspection.status as any} size="sm" />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">
+                          <span className="flex items-center gap-1.5">
+                            <CalendarIcon className="w-4 h-4" />
+                            {inspection.scheduledDate}
+                          </span>
+                          {inspection.location && (
+                            <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
+                              {inspection.location}
+                            </span>
+                          )}
+                          <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
+                            {inspection.module}
+                          </span>
+                          {inspection.findings > 0 && (
+                            <span className="flex items-center gap-1 text-warning">
+                              <AlertCircleIcon className="w-4 h-4" />
+                              {inspection.findings} findings
+                            </span>
+                          )}
+                          {inspection.nonConformances > 0 && (
+                            <span className="flex items-center gap-1 text-critical">
+                              <XCircleIcon className="w-4 h-4" />
+                              {inspection.nonConformances} NC
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </motion.div>
+            </>
+          ) : (
+            activeCompanyId && (
+              <InspectionChecklistLibrary
+                companyId={activeCompanyId}
+                canManage={canSchedule}
+              />
+            )
+          )}
         </motion.div>
       </motion.div>
     </Layout>

@@ -3,6 +3,7 @@ import type { Task, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import type { ModuleKey, Severity } from '../models/core';
+import { getMyProfile } from './profilesService';
 
 export type ListTasksInput = {
   companyId: UUID;
@@ -72,11 +73,14 @@ export type CreateTaskInput = {
 };
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {
+  const profile = await getMyProfile(input.companyId, input.createdByUserId);
   const { data, error } = await insforge.database
     .from('tasks')
     .insert({
       company_id: input.companyId,
       module: input.module,
+      site_id: (profile as any)?.site_id ?? null,
+      department_id: (profile as any)?.department_id ?? null,
       title: input.title,
       description: input.description ?? null,
       priority: input.priority,

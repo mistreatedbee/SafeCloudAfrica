@@ -1,9 +1,21 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SignIn } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
+import { useAuth } from '@insforge/react';
 
 export function LoginPage() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn) return;
+    const redirect = params.get('redirect');
+    navigate(redirect ? decodeURIComponent(redirect) : '/app', { replace: true });
+  }, [isLoaded, isSignedIn, navigate, params]);
+
   return (
     <AuthShell
       title="Sign in"

@@ -24,6 +24,7 @@ import { countRisks } from '../api/services/risksService';
 import { getPpeCompliance } from '../api/services/ppeService';
 import { listModuleTargets } from '../api/services/moduleTargetsService';
 import { listActivityLogs } from '../api/services/activityLogService';
+import { isNearMiss } from '../api/utils/incidents';
 
 const containerVariants = {
   hidden: {
@@ -105,7 +106,7 @@ export function SafetyPage() {
       const key = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
       const entry = byMonth.get(key) ?? { incidents: 0, nearMisses: 0, lti: 0 };
       entry.incidents += 1;
-      if (i.category === 'Near Miss') entry.nearMisses += 1;
+      if (isNearMiss(i as any)) entry.nearMisses += 1;
       if (String(i.severity).toLowerCase() === 'critical') entry.lti += 1;
       byMonth.set(key, entry);
     }

@@ -5,6 +5,7 @@ import { formatAuthError } from '../../auth/authMessages';
 import type { ModuleKey, UUID } from '../../api/models/core';
 import { createDocument } from '../../api/services/documentsService';
 import { uploadDocumentFile } from '../../api/services/documentsStorageService';
+import { DOCUMENT_CATEGORIES_BY_MODULE } from '../../constants/documentCategories';
 
 export function DocumentUploadModal(props: {
   open: boolean;
@@ -16,9 +17,17 @@ export function DocumentUploadModal(props: {
   const [file, setFile] = useState<File | null>(null);
   const [module, setModule] = useState<ModuleKey>('safety');
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('General');
+  const [categoryPreset, setCategoryPreset] = useState('Policies');
+  const [categoryCustom, setCategoryCustom] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const suggested = useMemo(() => DOCUMENT_CATEGORIES_BY_MODULE[module] ?? ['Other'], [module]);
+  const category = useMemo(() => {
+    const p = categoryPreset.trim();
+    if (p && p.toLowerCase() !== 'other') return p;
+    return categoryCustom.trim();
+  }, [categoryCustom, categoryPreset]);
 
   const canSubmit = useMemo(() => !!file && title.trim().length > 2 && category.trim().length > 1, [category, file, title]);
 
@@ -42,7 +51,8 @@ export function DocumentUploadModal(props: {
       props.onClose();
       setFile(null);
       setTitle('');
-      setCategory('General');
+      setCategoryPreset('Policies');
+      setCategoryCustom('');
       setModule('safety');
     } catch (err: any) {
       setError(formatAuthError(err));
@@ -80,7 +90,13 @@ export function DocumentUploadModal(props: {
               <label className="block text-sm font-medium text-charcoal mb-1.5">Module</label>
               <select
                 value={module}
-                onChange={(e) => setModule(e.target.value as ModuleKey)}
+                onChange={(e) => {
+                  const next = e.target.value as ModuleKey;
+                  setModule(next);
+                  const first = (DOCUMENT_CATEGORIES_BY_MODULE[next] ?? ['Other'])[0] ?? 'Other';
+                  setCategoryPreset(first);
+                  setCategoryCustom('');
+                }}
                 className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
               >
                 <option value="safety">Safety</option>
@@ -95,12 +111,25 @@ export function DocumentUploadModal(props: {
             </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Category</label>
-              <input
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="e.g. Policy, Procedure, Register"
+              <select
+                value={categoryPreset}
+                onChange={(e) => setCategoryPreset(e.target.value)}
                 className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
+              >
+                {suggested.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              {categoryPreset === 'Other' && (
+                <input
+                  value={categoryCustom}
+                  onChange={(e) => setCategoryCustom(e.target.value)}
+                  placeholder="Type category…"
+                  className="mt-2 w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              )}
             </div>
           </div>
 

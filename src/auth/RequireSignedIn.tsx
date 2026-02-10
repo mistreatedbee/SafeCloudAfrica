@@ -1,9 +1,10 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@insforge/react';
 
 export function RequireSignedIn({ children }: { children: React.ReactElement }) {
   const { isLoaded, isSignedIn } = useAuth();
+  const location = useLocation();
 
   if (!isLoaded) {
     return (
@@ -16,7 +17,10 @@ export function RequireSignedIn({ children }: { children: React.ReactElement }) 
     );
   }
 
-  if (!isSignedIn) return <Navigate to="/login" replace />;
+  if (!isSignedIn) {
+    const redirect = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?redirect=${redirect}`} replace />;
+  }
   return children;
 }
 

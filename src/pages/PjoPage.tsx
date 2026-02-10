@@ -1,0 +1,176 @@
+import React, { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import { ClipboardCheckIcon, PlusIcon, SearchIcon } from 'lucide-react';
+import { Layout } from '../components/layout/Layout';
+import { useTenant } from '../tenant/TenantContext';
+import { useUser } from '@insforge/react';
+import { useAsync } from '../api/hooks/useAsync';
+import type { PjoObservation } from '../api/models/entities';
+import { listPjos } from '../api/services/pjoService';
+import { PjoCreateModal } from '../components/pjo/PjoCreateModal';
+import { PjoDetailModal } from '../components/pjo/PjoDetailModal';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
+};
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0 }
+};
+
+export function PjoPage() {
+  const { activeCompanyId, activeRole } = useTenant();
+  const { user } = useUser();
+  const canManage = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selected, setSelected] = useState<PjoObservation | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const { data, loading, error } = useAsync<PjoObservation[]>(
+    async () => {
+      if (!activeCompanyId) return [];
+      return await listPjos({ companyId: activeCompanyId, limit: 200 });
+    },
+    [activeCompanyId, refreshKey]
+  );
+
+  const list = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const all = data ?? [];
+    if (!q) return all;
+    return all.filter((p) => {
+      return (
+        p.employee_name.toLowerCase().includes(q) ||
+        p.job_observed.toLowerCase().includes(q) ||
+        (p.department ?? '').toLowerCase().includes(q) ||
+        (p.site ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [data, searchQuery]);
+
+  const openCount = (data ?? []).filter((p) => p.status === 'open').length;
+
+  return (
+    <Layout title="Plan Job Observations (PJO)">
+      {activeCompanyId && user?.id && (
+        <>
+          <PjoCreateModal
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            companyId={activeCompanyId}
+            actorUserId={user.id}
+            onCreated={() => {
+              setCreateOpen(false);
+              setRefreshKey((k) => k + 1);
+            }}
+          />
+          <PjoDetailModal
+            open={detailOpen}
+            onClose={() => setDetailOpen(false)}
+            companyId={activeCompanyId}
+            actorUserId={user.id}
+            activeRole={activeRole}
+            pjo={selected}
+          />
+        </>
+      )}
+
+      <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+        <motion.div variants={itemVariants} className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <p className="text-sm text-charcoal-500">Open PJOs</p>
+            <p className="text-2xl font-bold text-warning mt-1">{openCount}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <p className="text-sm text-charcoal-500">Total PJOs</p>
+            <p className="text-2xl font-bold text-charcoal mt-1">{(data ?? []).length}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <p className="text-sm text-charcoal-500">Module</p>
+            <p className="text-2xl font-bold text-teal mt-1">HR / Training</p>
+          </div>
+          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <p className="text-sm text-charcoal-500">Automation</p>
+            <p className="text-sm font-semibold text-success mt-1">NCR auto-link</p>
+          </div>
+        </motion.div>
+
+        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-4 justify-between">
+          <div className="relative flex-1 max-w-md">
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
+            <input
+              type="search"
+              placeholder="Search PJOs…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={!canManage || !activeCompanyId || !user?.id}
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <PlusIcon className="w-4 h-4" />
+            New PJO
+          </button>
+        </motion.div>
+
+        {error && (
+          <motion.div variants={itemVariants} className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">
+            <p className="text-sm font-semibold text-critical">Unable to load PJOs</p>
+            <p className="text-sm text-charcoal-500 mt-1">{error.message}</p>
+          </motion.div>
+        )}
+
+        <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">
+          <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between">
+            <h3 className="font-semibold text-charcoal flex items-center gap-2">
+              <ClipboardCheckIcon className="w-5 h-5 text-teal" />
+              Observations
+            </h3>
+            <span className="text-sm text-charcoal-400">{list.length} records</span>
+          </div>
+
+          <div className="divide-y divide-surface-100">
+            {loading && <div className="px-5 py-4 text-sm text-charcoal-500">Loading PJOs…</div>}
+            {!loading && list.length === 0 && <div className="px-5 py-4 text-sm text-charcoal-500">No PJOs yet.</div>}
+            {list.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  setSelected(p);
+                  setDetailOpen(true);
+                }}
+                className="w-full text-left px-5 py-4 hover:bg-surface-50 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-charcoal">{p.employee_name}</p>
+                    <p className="text-sm text-charcoal-500 mt-0.5">
+                      {p.job_observed} • {p.department ?? '—'} / {p.site ?? '—'}
+                    </p>
+                    <p className="text-xs text-charcoal-400 mt-0.5">
+                      Observed: {p.observed_at} • Next: {p.next_observation_at ?? '—'}
+                    </p>
+                  </div>
+                  <span className={`text-xs px-2 py-1 rounded-lg border ${p.status === 'open' ? 'bg-warning/10 border-warning/30 text-warning' : 'bg-success/10 border-success/30 text-success'}`}>
+                    {p.status.toUpperCase()}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </motion.div>
+      </motion.div>
+    </Layout>
+  );
+}
+

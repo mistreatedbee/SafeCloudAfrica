@@ -14,6 +14,18 @@ export async function listUserProfiles(companyId: UUID): Promise<UserProfile[]> 
   return (data ?? []) as UserProfile[];
 }
 
+export async function getMyProfile(companyId: UUID, userId: UUID): Promise<UserProfile | null> {
+  const { data, error } = await insforge.database
+    .from('user_profiles')
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? null) as UserProfile | null;
+}
+
 export async function upsertMyProfile(input: {
   companyId: UUID;
   userId: UUID;
@@ -22,6 +34,8 @@ export async function upsertMyProfile(input: {
   phone?: string | null;
   department?: string | null;
   site?: string | null;
+  siteId?: UUID | null;
+  departmentId?: UUID | null;
 }): Promise<UserProfile> {
   const { data, error } = await insforge.database
     .from('user_profiles')
@@ -32,6 +46,8 @@ export async function upsertMyProfile(input: {
         full_name: input.fullName ?? null,
         email: input.email ?? null,
         phone: input.phone ?? null,
+        site_id: input.siteId ?? null,
+        department_id: input.departmentId ?? null,
         department: input.department ?? null,
         site: input.site ?? null,
         updated_at: new Date().toISOString()
@@ -62,6 +78,8 @@ export async function upsertUserProfileAsManager(input: {
   phone?: string | null;
   department?: string | null;
   site?: string | null;
+  siteId?: UUID | null;
+  departmentId?: UUID | null;
 }): Promise<UserProfile> {
   const { data, error } = await insforge.database
     .from('user_profiles')
@@ -72,6 +90,8 @@ export async function upsertUserProfileAsManager(input: {
         full_name: input.fullName ?? null,
         email: input.email ?? null,
         phone: input.phone ?? null,
+        site_id: input.siteId ?? null,
+        department_id: input.departmentId ?? null,
         department: input.department ?? null,
         site: input.site ?? null,
         updated_at: new Date().toISOString()
@@ -86,7 +106,7 @@ export async function upsertUserProfileAsManager(input: {
 }
 
 /**
- * Get user profile by company_id and user_id
+ * Get user profile by company_id and user_id (legacy helper)
  */
 export async function getUserProfile(
   companyId: UUID,
@@ -97,18 +117,14 @@ export async function getUserProfile(
     .select('*')
     .eq('company_id', companyId)
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
-  if (error && error.code !== 'PGRST116') {
-    // PGRST116 is "no rows found"
-    throw new Error(getErrorMessage(error));
-  }
-
-  return (data as UserProfile) || null;
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? null) as UserProfile | null;
 }
 
 /**
- * Update user profile
+ * Update user profile (name/email/phone + display site/department text)
  */
 export async function updateUserProfile(
   companyId: UUID,
@@ -145,5 +161,4 @@ export async function updateUserProfile(
 
   return data as UserProfile;
 }
-
 

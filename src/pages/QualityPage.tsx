@@ -237,13 +237,13 @@ export function QualityPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-blue-500">
-                        NCR-{String(ncr.id).slice(0, 8)}
+                        {String((ncr as any).nc_number ?? `NCR-${String(ncr.id).slice(0, 8)}`)}
                       </p>
                       <p className="text-sm text-charcoal mt-0.5">
                         {ncr.title}
                       </p>
                       <p className="text-xs text-charcoal-400 mt-0.5">
-                        {new Date(ncr.occurred_at).toLocaleDateString('en-ZA')}
+                        {new Date((((ncr as any).date_identified ?? ncr.occurred_at) as any)).toLocaleDateString('en-ZA')}
                       </p>
                     </div>
                     <StatusBadge status={ncr.status as any} size="sm" />
@@ -252,7 +252,7 @@ export function QualityPage() {
               )}
             </div>
             <div className="px-5 py-3 bg-surface-50 border-t border-surface-200">
-              <button type="button" onClick={() => navigate('/reports')} className="text-sm font-medium text-blue-500 hover:text-blue-700 transition-colors">
+              <button type="button" onClick={() => navigate('/ncrs')} className="text-sm font-medium text-blue-500 hover:text-blue-700 transition-colors">
                 View all NCRs →
               </button>
             </div>
@@ -291,7 +291,7 @@ export function QualityPage() {
               key={index}
               type="button"
               onClick={() => {
-                if (item.label === 'Raise NCR') navigate('/reports');
+                if (item.label === 'Raise NCR') navigate('/ncrs');
                 if (item.label === 'Quality Audit') navigate('/audits/new');
                 if (item.label === 'Document Control') navigate('/documents');
                 if (item.label === 'CAPA Management') navigate('/tasks');

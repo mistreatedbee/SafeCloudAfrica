@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
-import type { PPEItem, UUID } from '../../api/models/entities';
-import { createPpeIssue } from '../../api/services/ppeService';
+import type { PPEItem, QualityNcr, UUID } from '../../api/models/entities';
+import { createPpeIssue, setPpeIssueLinks } from '../../api/services/ppeService';
+import { listQualityNcrs } from '../../api/services/qualityNcrsService';
+import { listCorrectiveActions } from '../../api/services/correctiveActionsService';
 
 export function PpeIssueModal(props: {
   open: boolean;
@@ -18,8 +20,30 @@ export function PpeIssueModal(props: {
   const [nextIssueAt, setNextIssueAt] = useState('');
   const [returnDueAt, setReturnDueAt] = useState('');
   const [notes, setNotes] = useState('');
+  const [selectedNcrIds, setSelectedNcrIds] = useState<string[]>([]);
+  const [selectedCapaIds, setSelectedCapaIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [ncrOptions, setNcrOptions] = useState<QualityNcr[]>([]);
+  const [capaOptions, setCapaOptions] = useState<import('../../api/services/correctiveActionsService').CorrectiveAction[]>([]);
+
+  useEffect(() => {
+    async function loadLinkedOptions() {
+      if (!props.open) return;
+      try {
+        const [ncrs, capas] = await Promise.all([
+          listQualityNcrs({ companyId: props.companyId, limit: 100 }),
+          listCorrectiveActions({ companyId: props.companyId, limit: 100 })
+        ]);
+        setNcrOptions(ncrs);
+        setCapaOptions(capas);
+      } catch {
+        // Soft-fail; linking is optional.
+      }
+    }
+    loadLinkedOptions();
+  }, [props.companyId, props.open]);
 
   const canSubmit = useMemo(() => !!ppeItemId, [ppeItemId]);
 
@@ -29,7 +53,7 @@ export function PpeIssueModal(props: {
     setError(null);
     try {
       setLoading(true);
-      await createPpeIssue({
+      const issue = await createPpeIssue({
         companyId: props.companyId,
         ppeItemId: ppeItemId as any,
         issuedToUserId: issuedToUserId ? (issuedToUserId as any) : null,
@@ -38,6 +62,15 @@ export function PpeIssueModal(props: {
         returnDueAt: returnDueAt ? new Date(returnDueAt).toISOString() : null,
         notes: notes.trim() || null
       });
+      if (issue && (selectedNcrIds.length > 0 || selectedCapaIds.length > 0)) {
+        await setPpeIssueLinks({
+          companyId: props.companyId,
+          issueId: issue.id,
+          ncrIds: selectedNcrIds as any,
+          correctiveActionIds: selectedCapaIds as any,
+          actorUserId: props.issuedByUserId
+        });
+      }
       props.onIssued?.();
       props.onClose();
       setPpeItemId('');
@@ -45,6 +78,8 @@ export function PpeIssueModal(props: {
       setNextIssueAt('');
       setReturnDueAt('');
       setNotes('');
+      setSelectedNcrIds([]);
+      setSelectedCapaIds([]);
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {
@@ -127,6 +162,56 @@ export function PpeIssueModal(props: {
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
               />
+            </div>
+          </div>
+
+          <div className="border-t border-surface-200 pt-4 mt-2 space-y-4">
+            <p className="text-sm font-semibold text-charcoal">Link to NCR / CAPA (optional)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">
+                  Linked NCRs
+                </label>
+                <select
+                  multiple
+                  value={selectedNcrIds}
+                  onChange={(e) =>
+                    setSelectedNcrIds(Array.from(e.target.selectedOptions).map((o) => o.value))
+                  }
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent h-28"
+                >
+                  {ncrOptions.map((ncr) => (
+                    <option key={ncr.id} value={ncr.id}>
+                      {ncr.nc_number ?? String(ncr.id).slice(0, 8)} — {ncr.title}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-charcoal-400 mt-1">
+                  Hold Ctrl/Cmd to select multiple NCRs.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">
+                  Linked CAPA / Corrective Actions
+                </label>
+                <select
+                  multiple
+                  value={selectedCapaIds}
+                  onChange={(e) =>
+                    setSelectedCapaIds(Array.from(e.target.selectedOptions).map((o) => o.value))
+                  }
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent h-28"
+                >
+                  {capaOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {(c as any).action_number ?? String(c.id).slice(0, 8)} — {c.title}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-charcoal-400 mt-1">
+                  Link this PPE issue to one or more corrective actions.
+                </p>
+              </div>
             </div>
           </div>
 

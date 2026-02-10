@@ -85,6 +85,21 @@ const supportingSections: NavItem[] = [
   icon: FileTextIcon
 },
 {
+  name: 'Forms & Templates',
+  path: '/forms',
+  icon: FileTextIcon
+},
+{
+  name: 'Non-Conformances (NCR)',
+  path: '/ncrs',
+  icon: AlertTriangleIcon
+},
+{
+  name: 'Plan Job Observations (PJO)',
+  path: '/pjo',
+  icon: ClipboardCheckIcon
+},
+{
   name: 'Tasks & Time',
   path: '/tasks',
   icon: ClipboardCheckIcon
@@ -95,6 +110,11 @@ const supportingSections: NavItem[] = [
   icon: AlertTriangleIcon
 },
 {
+  name: 'Incident Analytics',
+  path: '/incident-analytics',
+  icon: BarChart3Icon
+},
+{
   name: 'Training',
   path: '/training',
   icon: GraduationCapIcon
@@ -103,6 +123,11 @@ const supportingSections: NavItem[] = [
   name: 'Audits',
   path: '/audits',
   icon: SearchIcon
+},
+{
+  name: 'Inspections',
+  path: '/inspections',
+  icon: ClipboardCheckIcon
 },
 {
   name: 'Risk Management',

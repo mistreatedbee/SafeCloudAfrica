@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ClipboardCheckIcon,
   PlusIcon,
@@ -16,7 +16,9 @@ import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
 import { listTasks } from '../api/services/tasksService';
 import type { Task } from '../api/models/entities';
+import type { CorrectiveAction } from '../api/services/correctiveActionsService';
 import { TaskCreateModal } from '../components/tasks/TaskCreateModal';
+import { listCorrectiveActions, completeCorrectiveAction } from '../api/services/correctiveActionsService';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -62,13 +64,17 @@ const itemVariants = {
 export function TasksPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [params] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [refreshKey, setRefreshKey] = useState(0);
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
   const canCreate = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
+  const view = (params.get('view') || 'tasks') as 'tasks' | 'capa';
+  const canManageCapa = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant' || activeRole === 'auditor';
 
   useEffect(() => {
     setCreateOpen(isNew);
@@ -100,9 +106,40 @@ export function TasksPage() {
     completed: allTasks.filter((t) => t.status === 'completed').length,
     overdue: allTasks.filter((t) => t.status === 'overdue').length
   } as const;
+
+  const { data: capaData, loading: capaLoading, error: capaError } = useAsync<CorrectiveAction[]>(
+    async () => {
+      if (!activeCompanyId) return [];
+      return await listCorrectiveActions({
+        companyId: activeCompanyId,
+        assignedToUserId: activeRole === 'employee' ? (user?.id as any) : undefined,
+        limit: 300
+      });
+    },
+    [activeCompanyId, activeRole, user?.id, view, refreshKey]
+  );
+
+  const allCapas = capaData ?? [];
+  const filteredCapas = allCapas.filter((c) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      !q ||
+      c.title.toLowerCase().includes(q) ||
+      String(c.description ?? '').toLowerCase().includes(q) ||
+      String((c as any).source_entity_type ?? '').toLowerCase().includes(q);
+    const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  async function onCloseCapa(id: string) {
+    if (!activeCompanyId || !user?.id) return;
+    await completeCorrectiveAction(id as any, activeCompanyId, 'Closed via CAPA view', user.id as any);
+    setRefreshKey((k) => k + 1);
+  }
+
   return (
     <Layout title="Tasks & Corrective Actions">
-      {activeCompanyId && user?.id && (
+      {canCreate && activeCompanyId && user?.id && (
         <TaskCreateModal
           open={createOpen}
           onClose={() => {
@@ -121,6 +158,23 @@ export function TasksPage() {
         animate="visible"
         className="space-y-6">
 
+        <motion.div variants={itemVariants} className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => navigate('/tasks')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'tasks' ? 'bg-navy text-white' : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'}`}
+          >
+            Tasks
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/tasks?view=capa')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'capa' ? 'bg-navy text-white' : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'}`}
+          >
+            CAPA
+          </button>
+        </motion.div>
+
         {/* Header */}
         <motion.div
           variants={itemVariants}
@@ -138,21 +192,30 @@ export function TasksPage() {
 
             </div>
           </div>
-          <button
-            type="button"
-            disabled={!canCreate}
-            onClick={() => navigate('/tasks/new')}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <PlusIcon className="w-4 h-4" />
-            Create Task
-          </button>
+          {view === 'tasks' && (
+            <button
+              type="button"
+              disabled={!canCreate}
+              onClick={() => navigate('/tasks/new')}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <PlusIcon className="w-4 h-4" />
+              Create Task
+            </button>
+          )}
         </motion.div>
 
-        {error && (
+        {view === 'tasks' && error && (
           <motion.div variants={itemVariants} className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">
             <p className="text-sm font-semibold text-critical">Unable to load tasks</p>
             <p className="text-sm text-charcoal-500 mt-1">{error.message}</p>
+          </motion.div>
+        )}
+
+        {view === 'capa' && capaError && (
+          <motion.div variants={itemVariants} className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">
+            <p className="text-sm font-semibold text-critical">Unable to load CAPA</p>
+            <p className="text-sm text-charcoal-500 mt-1">{capaError.message}</p>
           </motion.div>
         )}
 
@@ -161,41 +224,56 @@ export function TasksPage() {
           variants={itemVariants}
           className="flex gap-2 overflow-x-auto pb-2">
 
-          {(
-          ['all', 'pending', 'in-progress', 'completed', 'overdue'] as const).
-          map((status) =>
-          <button
-            key={status}
-            onClick={() => setStatusFilter(status)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${statusFilter === status ? 'bg-navy text-white' : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'}`}>
+          {view === 'tasks' && (
+            (['all', 'pending', 'in-progress', 'completed', 'overdue'] as const).map((status) =>
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${statusFilter === status ? 'bg-navy text-white' : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'}`}>
+                <span className="capitalize">
+                  {status === 'all' ? 'All Tasks' : status.replace('-', ' ')}
+                </span>
+                <span
+                  className={`px-1.5 py-0.5 rounded text-xs ${statusFilter === status ? 'bg-white/20' : 'bg-surface-200'}`}>
+                  {taskCounts[status]}
+                </span>
+              </button>
+            )
+          )}
 
-              <span className="capitalize">
-                {status === 'all' ? 'All Tasks' : status.replace('-', ' ')}
-              </span>
-              <span
-              className={`px-1.5 py-0.5 rounded text-xs ${statusFilter === status ? 'bg-white/20' : 'bg-surface-200'}`}>
-
-                {taskCounts[status]}
-              </span>
-            </button>
+          {view === 'capa' && (
+            (['all', 'open', 'assigned', 'in-progress', 'completed', 'verified', 'closed'] as const).map((status) =>
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${statusFilter === status ? 'bg-navy text-white' : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'}`}>
+                <span className="capitalize">
+                  {status === 'all' ? 'All CAPA' : status.replace('-', ' ')}
+                </span>
+                <span
+                  className={`px-1.5 py-0.5 rounded text-xs ${statusFilter === status ? 'bg-white/20' : 'bg-surface-200'}`}>
+                  {status === 'all' ? allCapas.length : allCapas.filter((c) => c.status === status).length}
+                </span>
+              </button>
+            )
           )}
         </motion.div>
 
         {/* Tasks List */}
         <motion.div variants={itemVariants} className="space-y-3">
-          {loading && (
+          {view === 'tasks' && loading && (
             <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
               <p className="text-sm text-charcoal-500">Loading tasks…</p>
             </div>
           )}
 
-          {!loading && filteredTasks.length === 0 && (
+          {view === 'tasks' && !loading && filteredTasks.length === 0 && (
             <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
               <p className="text-sm text-charcoal-500">No tasks found.</p>
             </div>
           )}
 
-          {filteredTasks.map((task) =>
+          {view === 'tasks' && filteredTasks.map((task) =>
           <div
             key={task.id}
             className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer">
@@ -238,6 +316,55 @@ export function TasksPage() {
               </div>
             </div>
           )}
+
+          {view === 'capa' && capaLoading && (
+            <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+              <p className="text-sm text-charcoal-500">Loading CAPA…</p>
+            </div>
+          )}
+
+          {view === 'capa' && !capaLoading && filteredCapas.length === 0 && (
+            <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+              <p className="text-sm text-charcoal-500">No corrective actions found.</p>
+            </div>
+          )}
+
+          {view === 'capa' && filteredCapas.map((capa) => (
+            <div key={capa.id} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-charcoal">{capa.title}</p>
+                  <p className="text-xs text-charcoal-400 mt-0.5">
+                    CAPA • Source: {capa.source_type}
+                  </p>
+                  <p className="text-sm text-charcoal-500 mt-2 whitespace-pre-wrap">{capa.description ?? ''}</p>
+                  <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">
+                    <span className="flex items-center gap-1.5">
+                      <CalendarIcon className="w-4 h-4" />
+                      {formatDateZA((capa as any).due_date as any)}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <UserIcon className="w-4 h-4" />
+                      {capa.assigned_to_user_id ? `User ${shortId(capa.assigned_to_user_id)}` : 'Unassigned'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <StatusBadge status={capa.status as any} size="sm" />
+                  {capa.status !== 'closed' && (
+                    <button
+                      type="button"
+                      disabled={!canManageCapa || !activeCompanyId || !user?.id}
+                      onClick={() => onCloseCapa(capa.id)}
+                      className="px-3 py-1.5 rounded-lg bg-success text-white text-xs font-semibold hover:bg-success-600 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      Close
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
         </motion.div>
       </motion.div>
     </Layout>);

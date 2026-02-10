@@ -4,7 +4,7 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { UUID } from '../../api/models/core';
 import type { ModuleKey, Severity, IncidentCategory, RiskLevel } from '../../api/models/core';
-import { INCIDENT_CATEGORIES, INCIDENT_SUBCATEGORIES, calculateRiskLevel } from '../../api/models/core';
+import { INCIDENT_CATEGORIES, INCIDENT_CATEGORY_SUBCATEGORIES, calculateRiskLevel } from '../../api/models/core';
 import { createIncident } from '../../api/services/incidentsService';
 
 export function IncidentCreateModal(props: {
@@ -66,7 +66,7 @@ export function IncidentCreateModal(props: {
   const [error, setError] = useState<string | null>(null);
 
   const availableSubcategories = useMemo(() => {
-    return INCIDENT_SUBCATEGORIES[category] || [];
+    return INCIDENT_CATEGORY_SUBCATEGORIES[category] || [];
   }, [category]);
 
   const finalSubcategory = useMemo(() => {

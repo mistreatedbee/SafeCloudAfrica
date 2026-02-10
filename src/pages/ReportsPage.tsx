@@ -20,10 +20,12 @@ import { listDocuments } from '../api/services/documentsService';
 import { createActivityLog, listActivityLogs } from '../api/services/activityLogService';
 import { listTrainingCourses, listTrainingRecords } from '../api/services/trainingService';
 import { listInspections } from '../api/services/inspectionsService';
+import { listPjos, listPjoResponses } from '../api/services/pjoService';
 import { listAuditFindings } from '../api/services/auditFindingsService';
+import { isNearMiss } from '../api/utils/incidents';
 
 type ReportTemplate = {
-  id: 'compliance' | 'incidents' | 'training' | 'audits';
+  id: 'compliance' | 'incidents' | 'training' | 'audits' | 'inspections' | 'pjo';
   name: string;
   description: string;
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
@@ -59,6 +61,20 @@ const reportTemplates: ReportTemplate[] = [
     description: 'Exports inspections and audit findings (live)',
     icon: PieChartIcon,
     color: '#3498DB'
+  },
+  {
+    id: 'inspections',
+    name: 'Inspections Export',
+    description: 'Exports inspections with findings and non-conformances (live)',
+    icon: PieChartIcon,
+    color: '#2ECC71'
+  },
+  {
+    id: 'pjo',
+    name: 'PJO Export',
+    description: 'Exports Planned Job Observations with checklist responses (live)',
+    icon: BarChart3Icon,
+    color: '#1ABC9C'
   }
 ];
 
@@ -98,7 +114,7 @@ export function ReportsPage() {
       const key = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
       const entry = byMonth.get(key) ?? { incidents: 0, nearMisses: 0, lti: 0 };
       entry.incidents += 1;
-      if (i.category === 'Near Miss') entry.nearMisses += 1;
+      if (isNearMiss(i)) entry.nearMisses += 1;
       if (String(i.severity).toLowerCase() === 'critical') entry.lti += 1;
       byMonth.set(key, entry);
     }
@@ -265,6 +281,130 @@ export function ReportsPage() {
         companyId: activeCompanyId,
         actorUserId: user.id,
         action: 'reports.generate.audits',
+        entityType: 'report',
+        metadata: { filename, format: 'CSV' }
+      });
+      return;
+    }
+
+    if (template.id === 'inspections') {
+      const inspections = await listInspections({ companyId: activeCompanyId, limit: 2000 });
+      const rows = inspections.map((i) => ({
+        id: i.id,
+        module: i.module,
+        title: i.title,
+        status: i.status,
+        scheduled_at: i.scheduled_at,
+        completed_at: i.completed_at,
+        location: i.location ?? '',
+        findings_count: i.findings_count ?? 0,
+        nonconformances_count: i.nonconformances_count ?? 0
+      }));
+      const csv = toCsv(rows);
+      const filename = `safecloudafrica-inspections-${dateStamp}.csv`;
+      downloadTextFile(filename, csv, 'text/csv;charset=utf-8');
+      await createActivityLog({
+        companyId: activeCompanyId,
+        actorUserId: user.id,
+        action: 'reports.generate.inspections',
+        entityType: 'report',
+        metadata: { filename, format: 'CSV' }
+      });
+      return;
+    }
+
+    if (template.id === 'pjo') {
+      const pjos = await listPjos({ companyId: activeCompanyId, limit: 1000 });
+      const pjoIds = pjos.map((p) => p.id);
+
+      // Fetch all responses for included PJOs
+      let responses: any[] = [];
+      if (pjoIds.length > 0) {
+        const batches: string[][] = [];
+        const batchSize = 100;
+        for (let i = 0; i < pjoIds.length; i += batchSize) {
+          batches.push(pjoIds.slice(i, i + batchSize));
+        }
+
+        for (const batch of batches) {
+          const { data, error } = await (await import('../api/insforge/client')).insforge.database
+            .from('pjo_responses')
+            .select('*')
+            .eq('company_id', activeCompanyId)
+            .in('pjo_id', batch);
+          if (error) {
+            throw new Error((await import('../api/insforge/errors')).getErrorMessage(error));
+          }
+          responses = responses.concat(data ?? []);
+        }
+      }
+
+      const responsesByPjo = new Map<string, any[]>();
+      for (const r of responses) {
+        const key = String(r.pjo_id);
+        const arr = responsesByPjo.get(key) ?? [];
+        arr.push(r);
+        responsesByPjo.set(key, arr);
+      }
+
+      const rows = pjos.flatMap((pjo) => {
+        const rList = responsesByPjo.get(pjo.id) ?? [];
+        if (rList.length === 0) {
+          return [
+            {
+              pjo_id: pjo.id,
+              employee_name: pjo.employee_name,
+              job_observed: pjo.job_observed,
+              department: pjo.department ?? '',
+              site: pjo.site ?? '',
+              observed_at: pjo.observed_at,
+              status: pjo.status,
+              question_no: '',
+              question_text: '',
+              yes_no: '',
+              rating: '',
+              deviation: '',
+              suggested_corrective_action: '',
+              responsible_person: '',
+              responsible_department: '',
+              corrective_action_implemented: '',
+              implemented_at: '',
+              category: '',
+              ncr_id: ''
+            }
+          ];
+        }
+
+        return rList.map((r) => ({
+          pjo_id: pjo.id,
+          employee_name: pjo.employee_name,
+          job_observed: pjo.job_observed,
+          department: pjo.department ?? '',
+          site: pjo.site ?? '',
+          observed_at: pjo.observed_at,
+          status: pjo.status,
+          question_no: r.question_no,
+          question_text: r.question_text,
+          yes_no: r.yes_no === null ? '' : r.yes_no ? 'Yes' : 'No',
+          rating: r.rating ?? '',
+          deviation: r.deviation ?? '',
+          suggested_corrective_action: r.suggested_corrective_action ?? '',
+          responsible_person: r.responsible_person ?? '',
+          responsible_department: r.responsible_department ?? '',
+          corrective_action_implemented: r.corrective_action_implemented ? 'Yes' : 'No',
+          implemented_at: r.implemented_at ?? '',
+          category: r.category ?? '',
+          ncr_id: r.ncr_id ?? ''
+        }));
+      });
+
+      const csv = toCsv(rows);
+      const filename = `safecloudafrica-pjo-${dateStamp}.csv`;
+      downloadTextFile(filename, csv, 'text/csv;charset=utf-8');
+      await createActivityLog({
+        companyId: activeCompanyId,
+        actorUserId: user.id,
+        action: 'reports.generate.pjo',
         entityType: 'report',
         metadata: { filename, format: 'CSV' }
       });

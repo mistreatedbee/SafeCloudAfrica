@@ -1,0 +1,90 @@
+import type { ModuleKey } from '../api/models/core';
+
+export const DOCUMENT_CATEGORIES_BY_MODULE: Record<ModuleKey, readonly string[]> = {
+  safety: [
+    'Policies',
+    'Procedures',
+    'Plans',
+    'Manuals',
+    'Communication & participation',
+    'Meeting minutes',
+    'Suppliers',
+    'Design & development',
+    'Customer satisfaction',
+    'Agreements',
+    'Non-conformity',
+    'Company documents',
+    'Method statement',
+    'Specifications',
+    'Roles & responsibilities',
+    'Other'
+  ],
+  environment: [
+    'Policies',
+    'EMS Scope',
+    'Environmental Aspects & Impacts Register (EAIR)',
+    'Objectives & Targets',
+    'Environmental Management Plans (EMP)',
+    'Operational Control Procedures',
+    'Environmental monitoring plan',
+    'Air quality monitoring',
+    'Sustainability & Climate Alignment',
+    'Water quality testing',
+    'Noise monitoring',
+    'Waste tracking',
+    'Energy usage monitoring',
+    'Fuel usage monitoring',
+    'Compliance inspections',
+    'Environmental inspections',
+    'Other'
+  ],
+  quality: [
+    'Quality Policy',
+    'Context of the Organisation',
+    'Process Architecture',
+    'Quality Objectives',
+    'Risk & Opportunity Register',
+    'Operational Control Procedures',
+    'Standard Operating Procedures (SOP)',
+    'Monitoring, Measurement, Analysis & Evaluation',
+    'Customer Satisfaction & Feedback',
+    'Compliance & Certification Records',
+    'Other'
+  ],
+  legal: [
+    'Corporate & Company Registration Documents',
+    'Tax & Financial Compliance Documents',
+    'Labour & Employment Law Documents',
+    'Industry / Sector-Specific Legal Documents',
+    'Contracts & Agreements',
+    'Insurance & Risk Documents',
+    'Compliance & Governance Documents',
+    'Other'
+  ],
+  health: [
+    'Medical Surveillance Records',
+    'Policies',
+    'Plans',
+    'Occupational Health Risk Assessments',
+    'Exposure Monitoring Records',
+    'IOD & Health Incident Records',
+    'Mental Health & Psychosocial Support',
+    'Biological & Hazardous Health Records',
+    'Other'
+  ],
+  hr: [
+    'Policies',
+    'Employee Contractual Documents',
+    'Employee documents',
+    'Recruitment & Selection Records',
+    'Labour Relations & Compliance',
+    'Performance Management',
+    'HR Risk, Ethics & Governance',
+    'Hours worked',
+    'Leave',
+    'Other'
+  ],
+  general: ['Policies', 'Procedures', 'Registers', 'Templates', 'Reports', 'Other'],
+  security: ['Policies', 'Access control', 'Audit logs', 'Incident response', 'Other']
+} as const;
+

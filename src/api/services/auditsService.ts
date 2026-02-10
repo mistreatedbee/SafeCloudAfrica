@@ -1,45 +1,8 @@
 import { insforge } from '../insforge/client';
-import type { UUID } from '../models/entities';
+import type { Audit, UUID } from '../models/entities';
+import type { ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
-
-export interface Audit {
-  id: UUID;
-  company_id: UUID;
-  audit_number: string;
-  audit_type: 'internal' | 'external' | 'client' | 'supplier' | 'certification';
-  objectives: string;
-  audit_criteria: string;
-  scope_of_audit: string;
-  location: string;
-  auditor_user_ids: UUID[];
-  proposed_dates: string[];
-  selected_date: string | null;
-  approved_by_user_id: UUID | null;
-  approved_at: string | null;
-  status: 'planned' | 'scheduled' | 'in-progress' | 'completed' | 'reported';
-  planning_inputs?: {
-    organogram_document_url?: string;
-    process_maps_document_url?: string;
-    procedures_policies_document_url?: string;
-    risk_assessments_document_url?: string;
-    legal_register_document_url?: string;
-    previous_audit_reports_document_url?: string;
-    incident_reports_document_url?: string;
-    training_records_document_url?: string;
-    permits_registers_document_url?: string;
-    client_requirements_document_url?: string;
-  };
-  findings_count: number;
-  nonconformances_count: number;
-  observations_count: number;
-  report_document_url: string | null;
-  report_submitted_at: string | null;
-  related_ncr_ids: UUID[];
-  created_by_user_id: UUID;
-  created_at: string;
-  updated_at: string;
-}
 
 export interface AuditQuestion {
   id: UUID;
@@ -112,6 +75,7 @@ export async function getAudit(auditId: UUID): Promise<Audit | null> {
 
 export async function createAudit(input: {
   companyId: UUID;
+  module?: ModuleKey;
   auditType: 'internal' | 'external' | 'client' | 'supplier' | 'certification';
   objectives: string;
   auditCriteria: string;
@@ -120,7 +84,6 @@ export async function createAudit(input: {
   auditorUserIds: UUID[];
   proposedDates: string[];
   createdByUserId: UUID;
-  planningInputs?: Record<string, any>;
 }): Promise<Audit> {
   const auditNumber = generateAuditNumber();
 
@@ -128,6 +91,7 @@ export async function createAudit(input: {
     .from('audits')
     .insert({
       company_id: input.companyId,
+      module: input.module ?? 'safety',
       audit_number: auditNumber,
       audit_type: input.auditType,
       objectives: input.objectives,
@@ -141,7 +105,6 @@ export async function createAudit(input: {
       nonconformances_count: 0,
       observations_count: 0,
       related_ncr_ids: [],
-      planning_inputs: input.planningInputs || {},
       created_by_user_id: input.createdByUserId
     })
     .select('*')
@@ -415,19 +378,26 @@ export async function calculateAuditFindings(auditId: UUID): Promise<{
   observations_count: number;
 }> {
   const responses = await listAuditResponses(auditId);
-  
+
   let findings = 0;
   let nonconformances = 0;
   let observations = 0;
 
   responses.forEach(r => {
-    if (!r.is_compliant && r.finding) {
+    // Count any recorded finding text
+    if (r.finding && r.finding.trim().length > 0) {
       findings++;
-      if (r.risk_rating === 'high') {
-        nonconformances++;
-      } else {
-        observations++;
-      }
+    }
+
+    // Nonconformances: any non-compliant response OR high-risk rating
+    if (!r.is_compliant || r.risk_rating === 'high') {
+      nonconformances++;
+      return;
+    }
+
+    // Observations: remaining findings with compliant response
+    if (r.finding && r.finding.trim().length > 0 && r.is_compliant) {
+      observations++;
     }
   });
 

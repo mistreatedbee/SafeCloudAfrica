@@ -12,9 +12,12 @@ import { DocumentsPage } from './pages/DocumentsPage';
 import { FormsPage } from './pages/FormsPage';
 import { TasksPage } from './pages/TasksPage';
 import { IncidentsPage } from './pages/IncidentsPage';
+import { PjoPage } from './pages/PjoPage';
 import { TrainingPage } from './pages/TrainingPage';
 import { AuditsPage } from './pages/AuditsPage';
+import { AuditDetailPage } from './pages/AuditDetailPage';
 import { InspectionsPage } from './pages/InspectionsPage';
+import { InspectionDetailPage } from './pages/InspectionDetailPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ProfilePage } from './pages/ProfilePage';
@@ -35,6 +38,8 @@ import { HRModulePage } from './pages/modules/HRModulePage';
 import { SecurityModulePage } from './pages/modules/SecurityModulePage';
 import { SafetyManagementPage } from './pages/modules/SafetyManagementPage';
 import { IncidentAnalyticsPage } from './pages/IncidentAnalyticsPage';
+import { InspectionAnalyticsPage } from './pages/InspectionAnalyticsPage';
+import { PjoAnalyticsPage } from './pages/PjoAnalyticsPage';
 import { HCSModulePage } from './pages/modules/HCSModulePage';
 import { BBSPage } from './pages/features/BBSPage';
 import { ContractorsVisitorsPage } from './pages/features/ContractorsVisitorsPage';
@@ -142,6 +147,26 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <IncidentAnalyticsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/inspections/analytics"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <InspectionAnalyticsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/pjo/analytics"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <PjoAnalyticsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -269,6 +294,16 @@ export function App() {
             }
           />
           <Route
+            path="/pjo"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <PjoPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/incidents/new"
             element={
               <RequireSignedIn>
@@ -319,6 +354,16 @@ export function App() {
             }
           />
           <Route
+            path="/audits/:auditId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <AuditDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/inspections"
             element={
               <RequireSignedIn>
@@ -334,6 +379,16 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <InspectionsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/inspections/:inspectionId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <InspectionDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

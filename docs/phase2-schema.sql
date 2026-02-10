@@ -464,7 +464,6 @@ on public.audit_responses for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
--- Safety/General: Inspections (safety inspections, site checks, etc.)
 create table if not exists public.inspections (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
@@ -483,6 +482,94 @@ create table if not exists public.inspections (
   updated_at timestamptz not null default now()
 );
 create index if not exists idx_inspections_company on public.inspections(company_id, scheduled_at desc);
+
+-- Inspection checklist templates (reusable checklists for inspections)
+create table if not exists public.inspection_checklist_templates (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  module text not null check (module in ('safety','quality','environment','health','legal','hr','general','security')) default 'safety',
+  name text not null,
+  description text null,
+  scope text not null check (scope in ('global','site','department')) default 'global',
+  site_id uuid null,
+  department_id uuid null,
+  is_active boolean not null default true,
+  created_by_user_id uuid not null,
+  updated_by_user_id uuid null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_inspection_checklist_templates_company on public.inspection_checklist_templates(company_id, module, is_active);
+
+-- Individual items/questions within a checklist template
+create table if not exists public.inspection_checklist_items (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  template_id uuid not null references public.inspection_checklist_templates(id) on delete cascade,
+  item_order integer not null default 0,
+  section text null,
+  question text not null,
+  expected_evidence text null,
+  risk_area text null,
+  default_risk_rating text null,
+  default_nc_severity text null,
+  is_mandatory boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_inspection_checklist_items_template on public.inspection_checklist_items(template_id, item_order);
+
+-- Individual inspection runs (each execution of a checklist for an inspection)
+create table if not exists public.inspection_runs (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  inspection_id uuid not null references public.inspections(id) on delete cascade,
+  template_id uuid not null references public.inspection_checklist_templates(id) on delete cascade,
+  module text not null check (module in ('safety','quality','environment','health','legal','hr','general','security')) default 'safety',
+  site_id uuid null,
+  department_id uuid null,
+  run_number integer not null default 1,
+  started_at timestamptz null,
+  completed_at timestamptz null,
+  status text not null check (status in ('in-progress','completed','cancelled')) default 'in-progress',
+  inspector_user_id uuid null,
+  items_total integer not null default 0,
+  items_nc integer not null default 0,
+  ncrs_created_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_inspection_runs_inspection on public.inspection_runs(inspection_id, run_number);
+create index if not exists idx_inspection_runs_company on public.inspection_runs(company_id, started_at desc);
+
+-- Individual checklist items for a specific inspection run
+create table if not exists public.inspection_run_items (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  run_id uuid not null references public.inspection_runs(id) on delete cascade,
+  template_item_id uuid null references public.inspection_checklist_items(id) on delete set null,
+  item_order integer not null default 0,
+  section text null,
+  question text not null,
+  expected_evidence text null,
+  risk_area text null,
+  risk_rating text null,
+  nc_severity text null,
+  compliance_status text not null check (compliance_status in ('C','NC','NA')) default 'C',
+  comments text null,
+  evidence_document_url text null,
+  photo_url text null,
+  nonconformance_flag boolean not null default false,
+  auto_ncr_id uuid null references public.quality_ncrs(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_inspection_run_items_run on public.inspection_run_items(run_id, item_order);
+create index if not exists idx_inspection_run_items_auto_ncr on public.inspection_run_items(auto_ncr_id);
 
 -- Risks: risk register / assessments
 create table if not exists public.risks (
@@ -669,6 +756,94 @@ create table if not exists public.ppe_issues (
   notes text null
 );
 create index if not exists idx_ppe_issues_company on public.ppe_issues(company_id, issued_at desc);
+
+-- PPE stock inventory per site + department
+create table if not exists public.ppe_stock (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  site_id uuid null,
+  department_id uuid null,
+  ppe_item_id uuid not null references public.ppe_items(id) on delete cascade,
+  on_hand_qty integer not null default 0,
+  reserved_qty integer not null default 0,
+  reorder_level integer not null default 0,
+  reorder_qty integer not null default 0,
+  is_active boolean not null default true,
+  created_by_user_id uuid not null,
+  updated_by_user_id uuid null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (company_id, site_id, department_id, ppe_item_id)
+);
+
+create index if not exists idx_ppe_stock_company_item on public.ppe_stock(company_id, ppe_item_id);
+create index if not exists idx_ppe_stock_location on public.ppe_stock(company_id, site_id, department_id);
+
+-- PPE stock movements (in/out/adjust/return)
+create table if not exists public.ppe_stock_movements (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  stock_id uuid not null references public.ppe_stock(id) on delete cascade,
+  movement_type text not null check (movement_type in ('in','out','adjust','return')),
+  quantity integer not null check (quantity > 0),
+  reason text null,
+  reference_type text null,
+  reference_id uuid null,
+  ppe_issue_id uuid null references public.ppe_issues(id) on delete set null,
+  old_on_hand_qty integer null,
+  new_on_hand_qty integer null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ppe_stock_movements_stock on public.ppe_stock_movements(stock_id, created_at desc);
+create index if not exists idx_ppe_stock_movements_company on public.ppe_stock_movements(company_id, created_at desc);
+
+-- PPE reorder requests for stock below reorder levels
+create table if not exists public.ppe_reorder_requests (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  stock_id uuid not null references public.ppe_stock(id) on delete cascade,
+  requested_qty integer not null check (requested_qty > 0),
+  reason text null,
+  status text not null check (status in ('draft','requested','approved','rejected','ordered','received')) default 'requested',
+  requested_by_user_id uuid not null,
+  approved_by_user_id uuid null,
+  approved_at timestamptz null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_ppe_reorder_requests_company on public.ppe_reorder_requests(company_id, status, created_at desc);
+create index if not exists idx_ppe_reorder_requests_stock on public.ppe_reorder_requests(stock_id, created_at desc);
+
+-- Link PPE issues to multiple NCRs (quality_ncrs)
+create table if not exists public.ppe_issue_ncr_links (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  ppe_issue_id uuid not null references public.ppe_issues(id) on delete cascade,
+  ncr_id uuid not null references public.quality_ncrs(id) on delete cascade,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  unique (company_id, ppe_issue_id, ncr_id)
+);
+
+create index if not exists idx_ppe_issue_ncr_links_issue on public.ppe_issue_ncr_links(company_id, ppe_issue_id);
+create index if not exists idx_ppe_issue_ncr_links_ncr on public.ppe_issue_ncr_links(company_id, ncr_id);
+
+-- Link PPE issues to multiple CAPA / corrective actions
+create table if not exists public.ppe_issue_capa_links (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  ppe_issue_id uuid not null references public.ppe_issues(id) on delete cascade,
+  corrective_action_id uuid not null references public.corrective_actions(id) on delete cascade,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  unique (company_id, ppe_issue_id, corrective_action_id)
+);
+
+create index if not exists idx_ppe_issue_capa_links_issue on public.ppe_issue_capa_links(company_id, ppe_issue_id);
+create index if not exists idx_ppe_issue_capa_links_capa on public.ppe_issue_capa_links(company_id, corrective_action_id);
 
 -- Environment: aspects register
 create table if not exists public.environment_aspects (
@@ -1067,9 +1242,22 @@ alter table public.documents enable row level security;
 alter table public.form_templates enable row level security;
 alter table public.quality_ncrs enable row level security;
 alter table public.inspections enable row level security;
+alter table public.inspection_checklist_templates enable row level security;
+alter table public.inspection_checklist_items enable row level security;
+alter table public.inspection_runs enable row level security;
+alter table public.inspection_run_items enable row level security;
+alter table public.pjo_observations enable row level security;
+alter table public.pjo_responses enable row level security;
+alter table public.pjo_checklist_templates enable row level security;
+alter table public.pjo_checklist_items enable row level security;
 alter table public.risks enable row level security;
 alter table public.ppe_items enable row level security;
 alter table public.ppe_issues enable row level security;
+alter table public.ppe_stock enable row level security;
+alter table public.ppe_stock_movements enable row level security;
+alter table public.ppe_reorder_requests enable row level security;
+alter table public.ppe_issue_ncr_links enable row level security;
+alter table public.ppe_issue_capa_links enable row level security;
 alter table public.environment_aspects enable row level security;
 alter table public.environment_monitoring enable row level security;
 alter table public.legal_requirements enable row level security;
@@ -1312,6 +1500,123 @@ on public.inspections for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
+-- Inspection checklist templates
+drop policy if exists inspection_checklist_templates_select_role on public.inspection_checklist_templates;
+create policy inspection_checklist_templates_select_role
+on public.inspection_checklist_templates for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists inspection_checklist_templates_write_management on public.inspection_checklist_templates;
+create policy inspection_checklist_templates_write_management
+on public.inspection_checklist_templates for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- Inspection checklist items
+drop policy if exists inspection_checklist_items_select_role on public.inspection_checklist_items;
+create policy inspection_checklist_items_select_role
+on public.inspection_checklist_items for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists inspection_checklist_items_write_management on public.inspection_checklist_items;
+create policy inspection_checklist_items_write_management
+on public.inspection_checklist_items for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- Inspection runs
+drop policy if exists inspection_runs_select_role on public.inspection_runs;
+create policy inspection_runs_select_role
+on public.inspection_runs for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists inspection_runs_write_management on public.inspection_runs;
+create policy inspection_runs_write_management
+on public.inspection_runs for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- Inspection run items
+drop policy if exists inspection_run_items_select_role on public.inspection_run_items;
+create policy inspection_run_items_select_role
+on public.inspection_run_items for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists inspection_run_items_write_management on public.inspection_run_items;
+create policy inspection_run_items_write_management
+on public.inspection_run_items for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- Planned Job Observations (PJO)
+drop policy if exists pjo_observations_select_role on public.pjo_observations;
+create policy pjo_observations_select_role
+on public.pjo_observations for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists pjo_observations_write_management on public.pjo_observations;
+create policy pjo_observations_write_management
+on public.pjo_observations for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists pjo_responses_select_role on public.pjo_responses;
+create policy pjo_responses_select_role
+on public.pjo_responses for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists pjo_responses_write_management on public.pjo_responses;
+create policy pjo_responses_write_management
+on public.pjo_responses for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists pjo_checklist_templates_select_role on public.pjo_checklist_templates;
+create policy pjo_checklist_templates_select_role
+on public.pjo_checklist_templates for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists pjo_checklist_templates_write_management on public.pjo_checklist_templates;
+create policy pjo_checklist_templates_write_management
+on public.pjo_checklist_templates for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists pjo_checklist_items_select_role on public.pjo_checklist_items;
+create policy pjo_checklist_items_select_role
+on public.pjo_checklist_items for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists pjo_checklist_items_write_management on public.pjo_checklist_items;
+create policy pjo_checklist_items_write_management
+on public.pjo_checklist_items for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
 -- Risks
 drop policy if exists risks_select_member on public.risks;
 create policy risks_select_member
@@ -1344,6 +1649,61 @@ using (public.is_company_member(company_id) or public.is_platform_admin());
 drop policy if exists ppe_issues_write_management on public.ppe_issues;
 create policy ppe_issues_write_management
 on public.ppe_issues for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_stock_select_member on public.ppe_stock;
+create policy ppe_stock_select_member
+on public.ppe_stock for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_stock_write_management on public.ppe_stock;
+create policy ppe_stock_write_management
+on public.ppe_stock for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_stock_movements_select_member on public.ppe_stock_movements;
+create policy ppe_stock_movements_select_member
+on public.ppe_stock_movements for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_stock_movements_write_management on public.ppe_stock_movements;
+create policy ppe_stock_movements_write_management
+on public.ppe_stock_movements for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_reorder_requests_select_member on public.ppe_reorder_requests;
+create policy ppe_reorder_requests_select_member
+on public.ppe_reorder_requests for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_reorder_requests_write_management on public.ppe_reorder_requests;
+create policy ppe_reorder_requests_write_management
+on public.ppe_reorder_requests for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_issue_ncr_links_select_member on public.ppe_issue_ncr_links;
+create policy ppe_issue_ncr_links_select_member
+on public.ppe_issue_ncr_links for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_issue_ncr_links_write_management on public.ppe_issue_ncr_links;
+create policy ppe_issue_ncr_links_write_management
+on public.ppe_issue_ncr_links for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_issue_capa_links_select_member on public.ppe_issue_capa_links;
+create policy ppe_issue_capa_links_select_member
+on public.ppe_issue_capa_links for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_issue_capa_links_write_management on public.ppe_issue_capa_links;
+create policy ppe_issue_capa_links_write_management
+on public.ppe_issue_capa_links for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
@@ -1515,8 +1875,112 @@ using (public.is_company_consultant_or_admin(company_id) or public.is_platform_a
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
 -- =========================
--- Phase 2 Feature Modules (BBS, Contractors/Visitors, Emergency, Templates)
+-- Phase 2 Feature Modules (PJO, BBS, Contractors/Visitors, Emergency, Templates)
 -- =========================
+
+-- Planned Job Observations (PJO) - HR / Behavioural safety
+create table if not exists public.pjo_observations (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  module text not null check (module in ('hr')) default 'hr',
+
+  -- Observation header
+  employee_user_id uuid null,
+  employee_name text not null,
+  conducted_by_user_id uuid not null,
+  reason text not null,
+  department text null,
+  site text null,
+  job_observed text not null,
+  observed_at date not null,
+  next_observation_at date null,
+
+  -- Status
+  status text not null check (status in ('open','closed')) default 'open',
+  closed_at timestamptz null,
+  closed_by_user_id uuid null,
+
+  metadata jsonb null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_pjo_observations_company on public.pjo_observations(company_id, observed_at desc);
+
+-- Individual checklist responses per PJO
+create table if not exists public.pjo_responses (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  pjo_id uuid not null references public.pjo_observations(id) on delete cascade,
+
+  question_no integer not null,
+  question_text text not null,
+
+  yes_no boolean null,
+  rating integer null check (rating between 1 and 3),
+  deviation text null,
+  suggested_corrective_action text null,
+  responsible_person text null,
+  responsible_department text null,
+
+  corrective_action_implemented boolean not null default false,
+  implemented_at date null,
+
+  manager_signoff_user_id uuid null,
+  manager_signoff_at timestamptz null,
+
+  closed boolean not null default false,
+  closed_at timestamptz null,
+  closed_by_user_id uuid null,
+
+  -- Links to NCR / CAPA
+  ncr_id uuid null references public.quality_ncrs(id) on delete set null,
+
+  -- Template metadata (optional; allows configurable checklists)
+  template_id uuid null,
+  template_item_id uuid null,
+  category text null,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_pjo_responses_pjo on public.pjo_responses(pjo_id, question_no);
+
+-- Optional: company-specific PJO checklist templates
+create table if not exists public.pjo_checklist_templates (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  module text not null check (module in ('hr')) default 'hr',
+  name text not null,
+  description text null,
+  scope text not null check (scope in ('global','site','department')) default 'global',
+  site_id uuid null,
+  department_id uuid null,
+  is_active boolean not null default true,
+  created_by_user_id uuid not null,
+  updated_by_user_id uuid null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_pjo_checklist_templates_company on public.pjo_checklist_templates(company_id, module, is_active);
+
+create table if not exists public.pjo_checklist_items (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  template_id uuid not null references public.pjo_checklist_templates(id) on delete cascade,
+  question_no integer not null default 0,
+  question_text text not null,
+  category text null,
+  default_rating_weight integer null,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_pjo_checklist_items_template on public.pjo_checklist_items(template_id, question_no);
 
 -- Behaviour-Based Safety (BBS) observations
 create table if not exists public.bbs_observations (

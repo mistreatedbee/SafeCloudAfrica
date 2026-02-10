@@ -2,8 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
-import type { UserProfile, UUID } from '../../api/models/entities';
+import type { Department, Site, UserProfile, UUID } from '../../api/models/entities';
 import { upsertUserProfileAsManager } from '../../api/services/profilesService';
+import { useAsync } from '../../api/hooks/useAsync';
+import { listSites } from '../../api/services/sitesService';
+import { listDepartments } from '../../api/services/departmentsService';
 
 export function UserProfileEditModal(props: {
   open: boolean;
@@ -18,8 +21,13 @@ export function UserProfileEditModal(props: {
   const [phone, setPhone] = useState(props.initial?.phone ?? '');
   const [department, setDepartment] = useState(props.initial?.department ?? '');
   const [site, setSite] = useState(props.initial?.site ?? '');
+  const [siteId, setSiteId] = useState<string>(String(props.initial?.site_id ?? ''));
+  const [departmentId, setDepartmentId] = useState<string>(String(props.initial?.department_id ?? ''));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { data: sites } = useAsync<Site[]>(async () => listSites(props.companyId), [props.companyId]);
+  const { data: departments } = useAsync<Department[]>(async () => listDepartments(props.companyId), [props.companyId]);
 
   const canSubmit = useMemo(() => fullName.trim().length > 1 || email.trim().length > 3, [email, fullName]);
 
@@ -35,6 +43,8 @@ export function UserProfileEditModal(props: {
         fullName: fullName.trim() || null,
         email: email.trim() || null,
         phone: phone.trim() || null,
+        siteId: siteId ? (siteId as any) : null,
+        departmentId: departmentId ? (departmentId as any) : null,
         department: department.trim() || null,
         site: site.trim() || null
       });
@@ -101,21 +111,50 @@ export function UserProfileEditModal(props: {
             </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Department</label>
-              <input
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
+              <select
+                value={departmentId}
+                onChange={(e) => {
+                  setDepartmentId(e.target.value);
+                  const selected = (departments ?? []).find((d) => String(d.id) === e.target.value);
+                  if (selected) setDepartment(selected.name);
+                }}
                 className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
+              >
+                <option value="">Select department (optional)</option>
+                {(departments ?? [])
+                  .filter((d) => d.is_active)
+                  .map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+              </select>
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-charcoal mb-1.5">Site</label>
-            <input
-              value={site}
-              onChange={(e) => setSite(e.target.value)}
+            <select
+              value={siteId}
+              onChange={(e) => {
+                setSiteId(e.target.value);
+                const selected = (sites ?? []).find((s) => String(s.id) === e.target.value);
+                if (selected) setSite(selected.name);
+              }}
               className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-            />
+            >
+              <option value="">Select site (optional)</option>
+              {(sites ?? [])
+                .filter((s) => s.is_active)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+            </select>
+            <p className="text-xs text-charcoal-400 mt-1">
+              If your company hasn’t set up sites/departments yet, add them in Settings → Sites & Departments.
+            </p>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">

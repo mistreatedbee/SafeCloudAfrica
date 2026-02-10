@@ -247,6 +247,7 @@ export function AuditsPage() {
           {filtered.map((audit) =>
             <div
               key={audit.id}
+              onClick={() => navigate(`/audits/${audit.id}`)}
               className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer">
               <div className="flex items-start gap-4">
                 <div className="p-2 bg-surface-100 rounded-lg">

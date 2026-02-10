@@ -1,17 +1,15 @@
-import React, { useMemo, useState } from 'react';
-import { XIcon, PlusIcon, TrashIcon, FileIcon, UploadIcon } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { ModuleKey, UUID } from '../../api/models/core';
-import { createInspection } from '../../api/services/inspectionsService';
+import { createInspection, listInspectionChecklistTemplates } from '../../api/services/inspectionsService';
 
-type ChecklistQuestion = {
+type ChecklistTemplateOption = {
   id: string;
-  description: string;
-  dateCompleted: string;
-  riskRating: 'Low' | 'Medium' | 'High';
-  evidenceFiles: File[];
-  complianceStatus: 'C' | 'NC';
+  name: string;
+  module: ModuleKey;
+  scope: 'global' | 'site' | 'department';
 };
 
 export function InspectionCreateModal(props: {
@@ -22,69 +20,45 @@ export function InspectionCreateModal(props: {
   onCreated?: () => void;
 }) {
   const [module, setModule] = useState<ModuleKey>('safety');
-  const [checklistName, setChecklistName] = useState('');
-  const [frequency, setFrequency] = useState<'Daily' | 'Monthly' | 'Quarterly' | 'Other'>('Monthly');
+  const [templateId, setTemplateId] = useState<string>('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [location, setLocation] = useState('');
-  const [questions, setQuestions] = useState<ChecklistQuestion[]>([
-    {
-      id: '1',
-      description: '',
-      dateCompleted: '',
-      riskRating: 'Low',
-      evidenceFiles: [],
-      complianceStatus: 'C'
-    }
-  ]);
+  const [templates, setTemplates] = useState<ChecklistTemplateOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
 
-  const canSubmit = useMemo(() => {
-    return checklistName.trim().length > 2 &&
-           questions.length > 0 &&
-           questions.every(q => q.description.trim().length > 0);
-  }, [checklistName, questions]);
-
-  const addQuestion = () => {
-    setQuestions(prev => [...prev, {
-      id: Date.now().toString(),
-      description: '',
-      dateCompleted: '',
-      riskRating: 'Low',
-      evidenceFiles: [],
-      complianceStatus: 'C'
-    }]);
-  };
-
-  const removeQuestion = (id: string) => {
-    if (questions.length > 1) {
-      setQuestions(prev => prev.filter(q => q.id !== id));
+  useEffect(() => {
+    async function loadTemplates() {
+      if (!props.companyId) return;
+      try {
+        setLoadingTemplates(true);
+        const data = await listInspectionChecklistTemplates({
+          companyId: props.companyId,
+          module,
+          includeInactive: false
+        });
+        setTemplates(
+          data.map((t) => ({
+            id: t.id,
+            name: t.name,
+            module: t.module,
+            scope: t.scope
+          }))
+        );
+        if (data.length > 0) {
+          setTemplateId((prev) => prev || data[0].id);
+        }
+      } catch (err) {
+        console.error('Failed to load inspection templates', err);
+      } finally {
+        setLoadingTemplates(false);
+      }
     }
-  };
+    loadTemplates();
+  }, [props.companyId, module]);
 
-  const updateQuestion = (id: string, field: keyof ChecklistQuestion, value: any) => {
-    setQuestions(prev => prev.map(q => 
-      q.id === id ? { ...q, [field]: value } : q
-    ));
-  };
-
-  const handleFileUpload = (questionId: string, files: FileList | null) => {
-    if (!files) return;
-    const fileArray = Array.from(files);
-    setQuestions(prev => prev.map(q => 
-      q.id === questionId 
-        ? { ...q, evidenceFiles: [...q.evidenceFiles, ...fileArray] }
-        : q
-    ));
-  };
-
-  const removeFile = (questionId: string, fileIndex: number) => {
-    setQuestions(prev => prev.map(q => 
-      q.id === questionId 
-        ? { ...q, evidenceFiles: q.evidenceFiles.filter((_, i) => i !== fileIndex) }
-        : q
-    ));
-  };
+  const canSubmit = useMemo(() => !!templateId && !loading, [templateId, loading]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -92,28 +66,8 @@ export function InspectionCreateModal(props: {
     setError(null);
     try {
       setLoading(true);
-      
-      // Build description with checklist details
-      const descriptionParts: string[] = [];
-      descriptionParts.push(`Checklist Name: ${checklistName}`);
-      descriptionParts.push(`Frequency: ${frequency}`);
-      descriptionParts.push(`\n--- CHECKLIST QUESTIONS ---`);
-      
-      questions.forEach((q, index) => {
-        descriptionParts.push(`\nQuestion ${index + 1}: ${q.description}`);
-        descriptionParts.push(`Date Completed: ${q.dateCompleted || 'Not completed'}`);
-        descriptionParts.push(`Risk Rating: ${q.riskRating}`);
-        descriptionParts.push(`Compliance Status: ${q.complianceStatus} ${q.complianceStatus === 'NC' ? '(Non-Compliant - will escalate to NCR)' : ''}`);
-        if (q.evidenceFiles.length > 0) {
-          descriptionParts.push(`Evidence Files: ${q.evidenceFiles.length} file(s)`);
-          q.evidenceFiles.forEach((f, i) => {
-            descriptionParts.push(`  - File ${i + 1}: ${f.name} (${(f.size / 1024).toFixed(2)} KB)`);
-          });
-        }
-      });
-      
-      const fullDescription = descriptionParts.join('\n');
-      const title = `[INSPECTION] ${checklistName}${frequency ? ` (${frequency})` : ''}`;
+      const selectedTemplate = templates.find((t) => t.id === templateId);
+      const title = selectedTemplate ? `[INSPECTION] ${selectedTemplate.name}` : '[INSPECTION] Inspection';
       
       await createInspection({
         companyId: props.companyId,
@@ -121,7 +75,8 @@ export function InspectionCreateModal(props: {
         title,
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
         location: location.trim() || undefined,
-        createdByUserId: props.createdByUserId
+        createdByUserId: props.createdByUserId,
+        templateId: templateId as UUID
       });
       
       props.onCreated?.();
@@ -135,18 +90,9 @@ export function InspectionCreateModal(props: {
   }
 
   function resetForm() {
-    setChecklistName('');
-    setFrequency('Monthly');
+    setTemplateId('');
     setScheduledAt('');
     setLocation('');
-    setQuestions([{
-      id: '1',
-      description: '',
-      dateCompleted: '',
-      riskRating: 'Low',
-      evidenceFiles: [],
-      complianceStatus: 'C'
-    }]);
     setModule('safety');
   }
 
@@ -196,28 +142,24 @@ export function InspectionCreateModal(props: {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Checklist Name *</label>
-                <input
-                  value={checklistName}
-                  onChange={(e) => setChecklistName(e.target.value)}
-                  placeholder="e.g. Daily Safety Inspection, Monthly Fire Equipment Check"
-                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Frequency *</label>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Checklist Template *</label>
                 <select
-                  value={frequency}
-                  onChange={(e) => setFrequency(e.target.value as typeof frequency)}
+                  value={templateId}
+                  onChange={(e) => setTemplateId(e.target.value)}
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                   required
+                  disabled={loadingTemplates}
                 >
-                  <option value="Daily">Daily</option>
-                  <option value="Monthly">Monthly</option>
-                  <option value="Quarterly">Quarterly</option>
-                  <option value="Other">Other</option>
+                  <option value="">{loadingTemplates ? 'Loading templates…' : 'Select a template'}</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
                 </select>
+                <p className="mt-1 text-xs text-charcoal-500">
+                  Templates are managed in the Inspections &quot;Checklist Library&quot;.
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Scheduled Date</label>
@@ -240,117 +182,6 @@ export function InspectionCreateModal(props: {
             </div>
           </div>
 
-          {/* Checklist Questions */}
-          <div className="border-b border-surface-200 pb-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-charcoal">Checklist Questions</h3>
-              <button
-                type="button"
-                onClick={addQuestion}
-                className="flex items-center gap-2 px-3 py-1.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors"
-              >
-                <PlusIcon className="w-4 h-4" />
-                Add Question
-              </button>
-            </div>
-            <div className="space-y-4">
-              {questions.map((question, index) => (
-                <div key={question.id} className="border border-surface-200 rounded-lg p-4 bg-surface-50">
-                  <div className="flex items-start justify-between mb-3">
-                    <span className="text-sm font-medium text-charcoal">Question {index + 1}</span>
-                    {questions.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeQuestion(question.id)}
-                        className="text-critical hover:text-critical-600"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Description *</label>
-                      <textarea
-                        value={question.description}
-                        onChange={(e) => updateQuestion(question.id, 'description', e.target.value)}
-                        rows={2}
-                        placeholder="Question description..."
-                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                        required
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Date Completed</label>
-                        <input
-                          type="date"
-                          value={question.dateCompleted}
-                          onChange={(e) => updateQuestion(question.id, 'dateCompleted', e.target.value)}
-                          className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Risk Rating</label>
-                        <select
-                          value={question.riskRating}
-                          onChange={(e) => updateQuestion(question.id, 'riskRating', e.target.value)}
-                          className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                        >
-                          <option value="Low">Low</option>
-                          <option value="Medium">Medium</option>
-                          <option value="High">High</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Compliance Status</label>
-                        <select
-                          value={question.complianceStatus}
-                          onChange={(e) => updateQuestion(question.id, 'complianceStatus', e.target.value)}
-                          className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                        >
-                          <option value="C">C (Compliant)</option>
-                          <option value="NC">NC (Non-Compliant)</option>
-                        </select>
-                        {question.complianceStatus === 'NC' && (
-                          <p className="text-xs text-critical mt-1">⚠️ Will auto-escalate to NCR</p>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Evidence Upload</label>
-                      <input
-                        type="file"
-                        multiple
-                        onChange={(e) => handleFileUpload(question.id, e.target.files)}
-                        className="w-full text-sm"
-                      />
-                      {question.evidenceFiles.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          {question.evidenceFiles.map((file, fileIndex) => (
-                            <div key={fileIndex} className="flex items-center justify-between p-2 bg-white rounded-lg border border-surface-200">
-                              <div className="flex items-center gap-2">
-                                <FileIcon className="w-4 h-4 text-charcoal-400" />
-                                <span className="text-sm text-charcoal-600">{file.name}</span>
-                                <span className="text-xs text-charcoal-400">({(file.size / 1024).toFixed(2)} KB)</span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => removeFile(question.id, fileIndex)}
-                                className="text-xs text-critical hover:text-critical-600"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-surface-200">
             <button

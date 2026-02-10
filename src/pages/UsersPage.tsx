@@ -56,6 +56,9 @@ export function UsersPage() {
   const canInvite = activeRole === 'admin' || activeRole === 'manager';
   const canEditProfiles = activeRole === 'admin' || activeRole === 'manager';
   const allowedInviteRoles: CompanyRole[] = ['manager', 'supervisor', 'consultant', 'employee', 'auditor'];
+  const seatsAllowed = (activeCompany?.license_user_limit ?? activeCompany?.employee_limit ?? 0) as number;
+  const seatsUsed = (members ?? []).length;
+  const seatsFull = seatsAllowed > 0 && seatsUsed >= seatsAllowed;
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [editOpen, setEditOpen] = React.useState(false);
   const [editUserId, setEditUserId] = React.useState<string | null>(null);
@@ -119,10 +122,16 @@ export function UsersPage() {
             <div>
               <h2 className="text-lg font-semibold text-charcoal">Roles, departments, sites, and permissions</h2>
               <p className="text-sm text-charcoal-400">Company users, roles, and workforce structure (department/site)</p>
+              {!!seatsAllowed && (
+                <p className="text-xs text-charcoal-500 mt-1">
+                  Seats: <span className="font-semibold">{seatsUsed}</span> / {seatsAllowed}{' '}
+                  {seatsFull ? <span className="text-critical font-semibold">(limit reached)</span> : null}
+                </p>
+              )}
             </div>
           </div>
           <button
-            disabled={!canInvite}
+            disabled={!canInvite || seatsFull}
             onClick={() => setInviteOpen(true)}
             className="flex items-center justify-center gap-2 px-5 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
