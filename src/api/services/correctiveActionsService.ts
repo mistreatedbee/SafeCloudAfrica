@@ -324,9 +324,7 @@ export async function countOverdueCorrectiveActions(companyId: UUID, input?: { m
   const { count, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
-}
-
-export async function deleteCorrectiveAction(
+}export async function deleteCorrectiveAction(
   actionId: UUID,
   companyId: UUID,
   deletedByUserId: UUID

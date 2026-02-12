@@ -4,6 +4,7 @@ import { RequireWorkspace } from './auth/RequireWorkspace';
 import { RequireSignedIn } from './auth/RequireSignedIn';
 import { RequireCompanyRole } from './auth/RequireCompanyRole';
 import { TenantProvider } from './tenant/TenantContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { DashboardPage } from './pages/DashboardPage';
 import { SafetyPage } from './pages/SafetyPage';
 import { QualityPage } from './pages/QualityPage';
@@ -24,6 +25,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { HelpSupportPage } from './pages/HelpSupportPage';
 import NCRsPage from './pages/NCRsPage';
 import { RisksPage } from './pages/RisksPage';
+import { RiskReviewsPage } from './pages/RiskReviewsPage';
 import { PPEPage } from './pages/PPEPage';
 import { LegalRegisterPage } from './pages/LegalRegisterPage';
 import { UsersPage } from './pages/UsersPage';
@@ -59,7 +61,8 @@ export function App() {
   return (
     <BrowserRouter>
       <TenantProvider>
-        <Routes>
+        <ErrorBoundary>
+          <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
 
@@ -404,6 +407,16 @@ export function App() {
             }
           />
           <Route
+            path="/risks/reviews"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RiskReviewsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/ppe"
             element={
               <RequireSignedIn>
@@ -563,7 +576,8 @@ export function App() {
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          </Routes>
+        </ErrorBoundary>
       </TenantProvider>
     </BrowserRouter>);
 

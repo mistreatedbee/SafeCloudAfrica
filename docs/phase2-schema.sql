@@ -607,6 +607,12 @@ create table if not exists public.risk_assessments (
   task_id uuid null,
   task_name text null,
   task_steps text null,
+  -- Critical/prework classification flags
+  is_critical boolean not null default false,
+  is_prework boolean not null default false,
+  -- Source linkage (incident / NCR / change)
+  source_entity_type text null,
+  source_entity_id uuid null,
   status text not null check (status in ('draft', 'in-progress', 'reviewed', 'approved', 'closed')) default 'draft',
   assessment_date date null,
   reviewed_by_user_id uuid null,
@@ -619,12 +625,24 @@ create table if not exists public.risk_assessments (
   low_risks integer not null default 0,
   assessment_document_url text null,
   evidence_document_url text null,
+  -- Review scheduling
+  review_due_at timestamptz null,
   created_by_user_id uuid not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+-- Ensure new risk assessment columns exist on existing databases
+alter table if exists public.risk_assessments
+  add column if not exists is_critical boolean not null default false,
+  add column if not exists is_prework boolean not null default false,
+  add column if not exists source_entity_type text null,
+  add column if not exists source_entity_id uuid null,
+  add column if not exists review_due_at timestamptz null;
+
 create index if not exists idx_risk_assessments_company on public.risk_assessments(company_id, assessment_date desc);
+create index if not exists idx_risk_assessments_source on public.risk_assessments(source_entity_type, source_entity_id);
+create index if not exists idx_risk_assessments_review_due on public.risk_assessments(review_due_at);
 create index if not exists idx_risk_assessments_number on public.risk_assessments(assessment_number);
 
 -- Risk Assessment Items (Hazards + Controls)
@@ -659,15 +677,37 @@ create index if not exists idx_risk_assessment_items_level on public.risk_assess
 
 -- RLS Policies for Risk Assessments
 alter table risk_assessments enable row level security;
-create policy "risk_assessments_tenant_isolation" on public.risk_assessments
-  for all using (company_id = current_setting('tenant.company_id')::uuid);
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policy
+    where polname = 'risk_assessments_tenant_isolation'
+      and polrelid = 'public.risk_assessments'::regclass
+  ) then
+    create policy "risk_assessments_tenant_isolation" on public.risk_assessments
+      for all using (company_id = current_setting('tenant.company_id')::uuid);
+  end if;
+end
+$$;
 alter table risk_assessment_items enable row level security;
-create policy "risk_assessment_items_isolation" on public.risk_assessment_items
-  for all using (
-    risk_assessment_id in (
-      select id from risk_assessments where company_id = current_setting('tenant.company_id')::uuid
-    )
-  );
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policy
+    where polname = 'risk_assessment_items_isolation'
+      and polrelid = 'public.risk_assessment_items'::regclass
+  ) then
+    create policy "risk_assessment_items_isolation" on public.risk_assessment_items
+      for all using (
+        risk_assessment_id in (
+          select id from risk_assessments where company_id = current_setting('tenant.company_id')::uuid
+        )
+      );
+  end if;
+end
+$$;
 
 -- Corrective Actions: Link NCRs, Risk Assessments, and Incidents to corrective/preventive tasks
 create table if not exists public.corrective_actions (
@@ -729,8 +769,19 @@ create index if not exists idx_corrective_actions_due on public.corrective_actio
 
 -- RLS for Corrective Actions
 alter table corrective_actions enable row level security;
-create policy "corrective_actions_tenant_isolation" on public.corrective_actions
-  for all using (company_id = current_setting('tenant.company_id')::uuid);
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policy
+    where polname = 'corrective_actions_tenant_isolation'
+      and polrelid = 'public.corrective_actions'::regclass
+  ) then
+    create policy "corrective_actions_tenant_isolation" on public.corrective_actions
+      for all using (company_id = current_setting('tenant.company_id')::uuid);
+  end if;
+end
+$$;
 
 -- PPE: simple register + issue/return tracking
 create table if not exists public.ppe_items (
@@ -1246,10 +1297,6 @@ alter table public.inspection_checklist_templates enable row level security;
 alter table public.inspection_checklist_items enable row level security;
 alter table public.inspection_runs enable row level security;
 alter table public.inspection_run_items enable row level security;
-alter table public.pjo_observations enable row level security;
-alter table public.pjo_responses enable row level security;
-alter table public.pjo_checklist_templates enable row level security;
-alter table public.pjo_checklist_items enable row level security;
 alter table public.risks enable row level security;
 alter table public.ppe_items enable row level security;
 alter table public.ppe_issues enable row level security;
@@ -1557,63 +1604,6 @@ using (
 drop policy if exists inspection_run_items_write_management on public.inspection_run_items;
 create policy inspection_run_items_write_management
 on public.inspection_run_items for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
--- Planned Job Observations (PJO)
-drop policy if exists pjo_observations_select_role on public.pjo_observations;
-create policy pjo_observations_select_role
-on public.pjo_observations for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists pjo_observations_write_management on public.pjo_observations;
-create policy pjo_observations_write_management
-on public.pjo_observations for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists pjo_responses_select_role on public.pjo_responses;
-create policy pjo_responses_select_role
-on public.pjo_responses for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists pjo_responses_write_management on public.pjo_responses;
-create policy pjo_responses_write_management
-on public.pjo_responses for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists pjo_checklist_templates_select_role on public.pjo_checklist_templates;
-create policy pjo_checklist_templates_select_role
-on public.pjo_checklist_templates for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists pjo_checklist_templates_write_management on public.pjo_checklist_templates;
-create policy pjo_checklist_templates_write_management
-on public.pjo_checklist_templates for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists pjo_checklist_items_select_role on public.pjo_checklist_items;
-create policy pjo_checklist_items_select_role
-on public.pjo_checklist_items for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists pjo_checklist_items_write_management on public.pjo_checklist_items;
-create policy pjo_checklist_items_write_management
-on public.pjo_checklist_items for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
@@ -1982,6 +1972,69 @@ create table if not exists public.pjo_checklist_items (
 
 create index if not exists idx_pjo_checklist_items_template on public.pjo_checklist_items(template_id, question_no);
 
+-- RLS and policies for PJO tables
+alter table public.pjo_observations enable row level security;
+alter table public.pjo_responses enable row level security;
+alter table public.pjo_checklist_templates enable row level security;
+alter table public.pjo_checklist_items enable row level security;
+
+-- Planned Job Observations (PJO) policies
+drop policy if exists pjo_observations_select_role on public.pjo_observations;
+create policy pjo_observations_select_role
+on public.pjo_observations for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists pjo_observations_write_management on public.pjo_observations;
+create policy pjo_observations_write_management
+on public.pjo_observations for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists pjo_responses_select_role on public.pjo_responses;
+create policy pjo_responses_select_role
+on public.pjo_responses for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists pjo_responses_write_management on public.pjo_responses;
+create policy pjo_responses_write_management
+on public.pjo_responses for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists pjo_checklist_templates_select_role on public.pjo_checklist_templates;
+create policy pjo_checklist_templates_select_role
+on public.pjo_checklist_templates for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists pjo_checklist_templates_write_management on public.pjo_checklist_templates;
+create policy pjo_checklist_templates_write_management
+on public.pjo_checklist_templates for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists pjo_checklist_items_select_role on public.pjo_checklist_items;
+create policy pjo_checklist_items_select_role
+on public.pjo_checklist_items for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists pjo_checklist_items_write_management on public.pjo_checklist_items;
+create policy pjo_checklist_items_write_management
+on public.pjo_checklist_items for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
 -- Behaviour-Based Safety (BBS) observations
 create table if not exists public.bbs_observations (
   id uuid primary key default gen_random_uuid(),
@@ -2347,8 +2400,19 @@ create index if not exists idx_module_content_published on public.module_content
 
 -- RLS for Module Content
 alter table module_content enable row level security;
-create policy "module_content_tenant_isolation" on public.module_content
-  for all using (company_id = current_setting('tenant.company_id')::uuid);
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policy
+    where polname = 'module_content_tenant_isolation'
+      and polrelid = 'public.module_content'::regclass
+  ) then
+    create policy "module_content_tenant_isolation" on public.module_content
+      for all using (company_id = current_setting('tenant.company_id')::uuid);
+  end if;
+end
+$$;
 
 -- Compliance Scoring: Real-time compliance score per organization (Phase 3)
 create table if not exists public.compliance_scores (
@@ -2369,8 +2433,19 @@ create index if not exists idx_compliance_scores_company on public.compliance_sc
 
 -- RLS for Compliance Scores
 alter table compliance_scores enable row level security;
-create policy "compliance_scores_tenant_isolation" on public.compliance_scores
-  for all using (company_id = current_setting('tenant.company_id')::uuid);
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policy
+    where polname = 'compliance_scores_tenant_isolation'
+      and polrelid = 'public.compliance_scores'::regclass
+  ) then
+    create policy "compliance_scores_tenant_isolation" on public.compliance_scores
+      for all using (company_id = current_setting('tenant.company_id')::uuid);
+  end if;
+end
+$$;
 
 -- User settings (notifications, security, etc.)
 create table if not exists public.user_settings (

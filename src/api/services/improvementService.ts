@@ -51,4 +51,3 @@ export async function createImprovement(input: {
 
   return data as ImprovementAction;
 }
-

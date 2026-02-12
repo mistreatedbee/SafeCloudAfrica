@@ -5,6 +5,8 @@ import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 
 // Risk Assessment Types
+export type RiskAssessmentSourceType = 'incident' | 'ncr' | 'change' | null;
+
 export interface RiskAssessment {
   id: UUID;
   company_id: UUID;
@@ -20,6 +22,12 @@ export interface RiskAssessment {
   task_id: UUID | null;
   task_name: string | null;
   task_steps: string | null;
+  // Critical/prework flags
+  is_critical: boolean;
+  is_prework: boolean;
+  // Optional linkage to source entities like incidents, NCRs, or change events
+  source_entity_type: RiskAssessmentSourceType;
+  source_entity_id: UUID | null;
   status: 'draft' | 'in-progress' | 'reviewed' | 'approved' | 'closed';
   assessment_date: string | null;
   reviewed_by_user_id: UUID | null;
@@ -32,6 +40,7 @@ export interface RiskAssessment {
   low_risks: number;
   assessment_document_url: string | null;
   evidence_document_url: string | null;
+  review_due_at: string | null;
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;
@@ -164,6 +173,14 @@ export type CreateRiskAssessmentInput = {
   taskId?: UUID;
   taskName?: string;
   taskSteps?: string;
+  // Critical/prework flags
+  isCritical?: boolean;
+  isPrework?: boolean;
+  // Optional source linkage (incident, NCR, change)
+  sourceEntityType?: Exclude<RiskAssessmentSourceType, null>;
+  sourceEntityId?: UUID;
+  // Optional review scheduling
+  reviewDueAt?: string;
   createdByUserId: UUID;
 };
 
@@ -186,7 +203,12 @@ export async function createRiskAssessment(input: CreateRiskAssessmentInput): Pr
       task_id: input.taskId ?? null,
       task_name: input.taskName ?? null,
       task_steps: input.taskSteps ?? null,
+      is_critical: !!input.isCritical,
+      is_prework: !!input.isPrework,
+      source_entity_type: input.sourceEntityType ?? null,
+      source_entity_id: input.sourceEntityId ?? null,
       status: 'draft',
+      review_due_at: input.reviewDueAt ?? null,
       total_risks: 0,
       high_risks: 0,
       medium_risks: 0,
@@ -206,8 +228,19 @@ export async function createRiskAssessment(input: CreateRiskAssessmentInput): Pr
     entityType: 'risk_assessment',
     entityId: (data as any).id as UUID
   });
-  
-  return data as RiskAssessment;
+
+  const created = data as RiskAssessment;
+
+  // Notify the creator that the assessment has been logged
+  const { notifyRiskAssessmentCreated } = await import('./notificationsService');
+  await notifyRiskAssessmentCreated(
+    input.companyId,
+    input.createdByUserId,
+    created.title,
+    !!input.isCritical
+  );
+
+  return created;
 }
 
 export type ListRiskAssessmentsInput = {
@@ -360,6 +393,8 @@ export type UpdateRiskAssessmentStatusInput = {
   status: RiskAssessment['status'];
   reviewedByUserId?: UUID;
   approvedByUserId?: UUID;
+  // Optional: when reviewing/approving, you can clear any outstanding review_due_at flag
+  clearReviewDueAt?: boolean;
   updatedByUserId: UUID;
 };
 
@@ -377,6 +412,10 @@ export async function updateRiskAssessmentStatus(input: UpdateRiskAssessmentStat
   if (input.status === 'approved' && input.approvedByUserId) {
     updateData.approved_by_user_id = input.approvedByUserId;
     updateData.approved_at = new Date().toISOString();
+  }
+
+  if (input.clearReviewDueAt) {
+    updateData.review_due_at = null;
   }
   
   const { data, error } = await insforge.database
@@ -482,5 +521,75 @@ export async function deleteRiskAssessmentItem(
     action: 'risk_assessment_items.delete',
     entityType: 'risk_assessment_item',
     entityId: itemId
+  });
+}
+
+// Helper: flag a risk assessment for review at a specific due date
+export async function flagRiskAssessmentForReview(
+  assessmentId: UUID,
+  reviewDueAt: string
+): Promise<void> {
+  const { error } = await insforge.database
+    .from('risk_assessments')
+    .update({
+      review_due_at: reviewDueAt,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', assessmentId);
+
+  if (error) throw new Error(getErrorMessage(error));
+}
+
+// Helper: generic function to flag all assessments linked to a source entity
+export async function flagAssessmentsForReviewFromEvent(params: {
+  sourceEntityType: Exclude<RiskAssessmentSourceType, null>;
+  sourceEntityId: UUID;
+  reviewDueAt: string;
+}): Promise<void> {
+  const { data, error } = await insforge.database
+    .from('risk_assessments')
+    .select('id')
+    .eq('source_entity_type', params.sourceEntityType)
+    .eq('source_entity_id', params.sourceEntityId);
+
+  if (error) throw new Error(getErrorMessage(error));
+
+  const assessments = (data ?? []) as { id: UUID }[];
+  await Promise.all(
+    assessments.map(a => flagRiskAssessmentForReview(a.id, params.reviewDueAt))
+  );
+}
+
+// Convenience helpers to create assessments from specific event types
+export async function createRiskAssessmentFromIncident(
+  incidentId: UUID,
+  input: Omit<CreateRiskAssessmentInput, 'sourceEntityType' | 'sourceEntityId'>
+): Promise<RiskAssessment> {
+  return createRiskAssessment({
+    ...input,
+    sourceEntityType: 'incident',
+    sourceEntityId: incidentId
+  });
+}
+
+export async function createRiskAssessmentFromNcr(
+  ncrId: UUID,
+  input: Omit<CreateRiskAssessmentInput, 'sourceEntityType' | 'sourceEntityId'>
+): Promise<RiskAssessment> {
+  return createRiskAssessment({
+    ...input,
+    sourceEntityType: 'ncr',
+    sourceEntityId: ncrId
+  });
+}
+
+export async function createRiskAssessmentFromChange(
+  changeId: UUID,
+  input: Omit<CreateRiskAssessmentInput, 'sourceEntityType' | 'sourceEntityId'>
+): Promise<RiskAssessment> {
+  return createRiskAssessment({
+    ...input,
+    sourceEntityType: 'change',
+    sourceEntityId: changeId
   });
 }

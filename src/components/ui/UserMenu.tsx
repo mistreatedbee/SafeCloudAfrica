@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '@insforge/react';
 import { useTenant } from '../../tenant/TenantContext';
+import { useIdentity } from '../../hooks/useIdentity';
 
 function getInitials(nameOrEmail: string): string {
   const raw = nameOrEmail.trim();
@@ -32,8 +33,7 @@ export function UserMenu() {
   const navigate = useNavigate();
   const { user } = useUser();
   const { activeCompany, activeRole, isPlatformAdmin } = useTenant();
-  const displayName = (user?.profile as any)?.name ?? user?.email ?? 'Account';
-  const email = user?.email ?? '';
+  const { fullName, email, organisationName, roleLabel } = useIdentity();
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -55,14 +55,14 @@ export function UserMenu() {
         aria-expanded={isOpen}>
 
         <div className="w-8 h-8 rounded-full border-2 border-surface-200 bg-navy text-white flex items-center justify-center text-xs font-bold">
-          {getInitials(displayName)}
+          {getInitials(fullName || email || 'Account')}
         </div>
 
         <div className="hidden md:block text-left">
           <p className="text-sm font-medium text-charcoal">
-            {displayName}
+            {fullName}
           </p>
-          <p className="text-xs text-charcoal-400">{formatRole(activeRole)}</p>
+          <p className="text-xs text-charcoal-400">{roleLabel}</p>
         </div>
         <ChevronDownIcon
           className={`w-4 h-4 text-charcoal-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -93,10 +93,10 @@ export function UserMenu() {
           className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-elevated border border-surface-300 overflow-hidden z-50">
 
             <div className="px-4 py-3 border-b border-surface-200">
-              <p className="font-medium text-charcoal">{displayName}</p>
+              <p className="font-medium text-charcoal">{fullName}</p>
               <p className="text-sm text-charcoal-500">{email}</p>
               <p className="text-xs text-charcoal-400 mt-1">
-                {activeCompany?.name ?? 'No company selected'}
+                {activeCompany?.name ?? organisationName ?? 'No company selected'}
               </p>
             </div>
 

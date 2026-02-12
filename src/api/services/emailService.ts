@@ -78,19 +78,18 @@ const emailTemplates: Record<string, EmailTemplate> = {
  * Send email using InsForge's edge function
  */
 export async function sendEmail(payload: EmailPayload): Promise<void> {
-  // Call InsForge edge function (you'll need to set this up in InsForge)
-  const response = await fetch('/api/send-email', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${(await insforge.auth.getSession()).data.session?.accessToken || ''}`
-    },
-    body: JSON.stringify(payload)
+  await ensureInsforgeSession();
+
+  const { data, error } = await insforge.functions.invoke('emailSend', {
+    body: payload
   });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to send email: ${error}`);
+  if (error) {
+    throw error;
+  }
+
+  if (!data || (data as any).ok === false) {
+    throw new Error(`Failed to send email: ${(data as any)?.error || (data as any)?.message || 'Unknown error'}`);
   }
 }
 

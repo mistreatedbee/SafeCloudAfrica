@@ -111,6 +111,7 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
 
   // Lazy import to avoid circular dependency
   const { createActivityLog } = await import('./activityLogService');
+  const { notifyIncidentCreated } = await import('./notificationsService');
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,
@@ -118,6 +119,16 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
     entityType: 'incident',
     entityId: (data as any).id as UUID
   });
+
+  const created = data as Incident;
+  if (created.assignee_user_id) {
+    await notifyIncidentCreated(
+      input.companyId,
+      created.assignee_user_id,
+      created.title,
+      created.severity as Severity
+    );
+  }
 
   return data as Incident;
 }

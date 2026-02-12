@@ -61,4 +61,3 @@ export async function updateModuleTarget(input: {
   if (!data) throw new Error('Failed to update module target.');
   return data as ModuleTarget;
 }
-

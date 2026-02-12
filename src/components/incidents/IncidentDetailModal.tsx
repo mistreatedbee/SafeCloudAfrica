@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { XIcon, SaveIcon, ExternalLinkIcon } from 'lucide-react';
+import { XIcon, SaveIcon, ExternalLinkIcon, FileTextIcon } from 'lucide-react';
 import type { EvidenceAttachment, Incident, IncidentInvestigation, UUID } from '../../api/models/entities';
 import { listEvidence } from '../../api/services/evidenceService';
 import { getPublicUrl } from '../../api/services/storageService';
 import { formatAuthError } from '../../auth/authMessages';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { getIncidentInvestigation, upsertIncidentInvestigation } from '../../api/services/incidentInvestigationsService';
+import { exportIncidentPDF, downloadFile } from '../../api/services/exportService';
+import { useIdentity } from '../../hooks/useIdentity';
 
 export function IncidentDetailModal(props: {
   open: boolean;
@@ -39,6 +41,7 @@ export function IncidentDetailModal(props: {
   const [preparedBy, setPreparedBy] = useState('');
   const [investigationTeam, setInvestigationTeam] = useState('');
   const [distributions, setDistributions] = useState('');
+  const { fullName, organisationName } = useIdentity();
 
   useEffect(() => {
     if (!props.open || !incident) return;
@@ -108,6 +111,15 @@ export function IncidentDetailModal(props: {
     return [score ? `Score ${score}` : null, rating ? String(rating).toUpperCase() : null].filter(Boolean).join(' • ');
   }, [incident]);
 
+  async function handleExportPdf() {
+    if (!incident) return;
+    const blob = await exportIncidentPDF(incident, {
+      companyName: organisationName,
+      generatedBy: fullName,
+    });
+    downloadFile(blob, `incident-${incident.id.slice(0, 8)}.pdf`);
+  }
+
   async function saveInvestigation() {
     if (!incident) return;
     setError(null);
@@ -176,9 +188,23 @@ export function IncidentDetailModal(props: {
               {incident.category} • {incident.subcategory} • {riskSummary}
             </p>
           </div>
-          <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
-            <XIcon className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleExportPdf()}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"
+            >
+              <FileTextIcon className="w-4 h-4" />
+              Export PDF
+            </button>
+            <button
+              type="button"
+              onClick={props.onClose}
+              className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500"
+            >
+              <XIcon className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 px-5 py-3 border-b border-surface-200 bg-surface-50">

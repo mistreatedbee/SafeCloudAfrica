@@ -1,7 +1,27 @@
 import { insforge } from '../insforge/client';
 import { ensureInsforgeSession } from '../insforge/ensureSession';
 import type { Notification, UUID } from '../models/entities';
+import type { Severity } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
+
+async function isInAppNotificationsEnabled(companyId: UUID, userId: UUID): Promise<boolean> {
+  const { data, error } = await insforge.database
+    .from('user_settings')
+    .select('inapp_notifications_enabled')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    // Fail open: do not block notifications if preferences lookup fails
+    console.warn?.('Failed to load user_settings for notifications', error);
+    return true;
+  }
+
+  if (!data) return true;
+  // Default to true when column is null/undefined to match schema default
+  return (data as any).inapp_notifications_enabled !== false;
+}
 
 export async function listMyNotifications(companyId: UUID, userId: UUID, limit = 20): Promise<Notification[]> {
   const { data, error } = await insforge.database
@@ -16,28 +36,32 @@ export async function listMyNotifications(companyId: UUID, userId: UUID, limit =
 }
 
 /**
- * Create a notification
+ * Create an in-app notification, respecting user_settings.inapp_notifications_enabled.
+ * Returns the created notification, or null if suppressed by preferences.
  */
 export async function createNotification(
   companyId: UUID,
   userId: UUID,
-  type: 'info' | 'warning' | 'success' | 'error',
+  severity: Severity,
   title: string,
-  message: string,
-  metadata?: Record<string, any>
-): Promise<Notification> {
+  message: string
+): Promise<Notification | null> {
   await ensureInsforgeSession();
+
+  const enabled = await isInAppNotificationsEnabled(companyId, userId);
+  if (!enabled) {
+    return null;
+  }
 
   const { data, error } = await insforge.database
     .from('notifications')
     .insert({
       company_id: companyId,
       user_id: userId,
-      type,
       title,
       message,
-      metadata: metadata || {},
-      read: false
+      severity,
+      read_at: null
     })
     .select('*')
     .single();
@@ -54,9 +78,10 @@ export async function createNotification(
 export async function markNotificationRead(notificationId: UUID): Promise<void> {
   await ensureInsforgeSession();
 
+  const nowIso = new Date().toISOString();
   const { error } = await insforge.database
     .from('notifications')
-    .update({ read: true })
+    .update({ read_at: nowIso })
     .eq('id', notificationId);
 
   if (error) throw new Error(getErrorMessage(error));
@@ -71,7 +96,7 @@ export async function getUnreadCount(companyId: UUID, userId: UUID): Promise<num
     .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('user_id', userId)
-    .eq('read', false);
+    .is('read_at', null);
 
   if (error) throw new Error(getErrorMessage(error));
   return count || 0;
@@ -90,10 +115,9 @@ export async function notifyApprovalRequest(
   await createNotification(
     companyId,
     approverId,
-    'info',
+    'medium',
     'Approval Required',
-    `${requesterName} has submitted a ${itemType} that requires your approval.`,
-    { itemType, itemId, action: 'approve' }
+    `${requesterName} has submitted a ${itemType} that requires your approval.`
   );
 }
 
@@ -109,29 +133,81 @@ export async function notifyOverdueTask(
   await createNotification(
     companyId,
     userId,
-    'warning',
+    'high',
     'Overdue Task',
-    `Task "${taskTitle}" is overdue and requires attention.`,
-    { taskId, action: 'view_task' }
+    `Task "${taskTitle}" is overdue and requires attention.`
   );
 }
 
 /**
- * Send incident notification
+ * Send incident notification to an assignee or owner
  */
 export async function notifyIncidentCreated(
   companyId: UUID,
   userId: UUID,
   incidentTitle: string,
-  incidentId: UUID
+  severity: Severity
 ): Promise<void> {
   await createNotification(
     companyId,
     userId,
-    'error',
+    severity,
     'New Incident Reported',
-    `Incident "${incidentTitle}" has been reported and requires investigation.`,
-    { incidentId, action: 'investigate' }
+    `Incident "${incidentTitle}" has been reported and requires investigation.`
+  );
+}
+
+/**
+ * Send NCR created notification to key stakeholders
+ */
+export async function notifyNcrCreated(
+  companyId: UUID,
+  userId: UUID,
+  ncrTitle: string,
+  severity: Severity
+): Promise<void> {
+  await createNotification(
+    companyId,
+    userId,
+    severity,
+    'New NCR Raised',
+    `NCR "${ncrTitle}" has been raised and requires your attention.`
+  );
+}
+
+/**
+ * Notify a user that they have been assigned a task
+ */
+export async function notifyTaskAssigned(
+  companyId: UUID,
+  assigneeUserId: UUID,
+  taskTitle: string,
+  priority: Severity
+): Promise<void> {
+  await createNotification(
+    companyId,
+    assigneeUserId,
+    priority,
+    'New Task Assigned',
+    `You have been assigned the task "${taskTitle}".`
+  );
+}
+
+/**
+ * Notify a user that a risk assessment has been created
+ */
+export async function notifyRiskAssessmentCreated(
+  companyId: UUID,
+  userId: UUID,
+  assessmentTitle: string,
+  isCritical: boolean
+): Promise<void> {
+  await createNotification(
+    companyId,
+    userId,
+    isCritical ? 'high' : 'medium',
+    'New Risk Assessment Created',
+    `Risk assessment "${assessmentTitle}" has been created.`
   );
 }
 

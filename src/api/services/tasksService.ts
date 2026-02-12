@@ -103,6 +103,18 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
     entityId: (data as any).id as UUID
   });
 
-  return data as Task;
+  const created = data as Task;
+
+  if (created.assignee_user_id) {
+    const { notifyTaskAssigned } = await import('./notificationsService');
+    await notifyTaskAssigned(
+      input.companyId,
+      created.assignee_user_id as UUID,
+      created.title,
+      created.priority as Severity
+    );
+  }
+
+  return created;
 }
 

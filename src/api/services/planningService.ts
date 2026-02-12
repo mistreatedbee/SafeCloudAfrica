@@ -105,4 +105,3 @@ export async function createKpi(input: {
 
   return data as PlanningKpi;
 }
-

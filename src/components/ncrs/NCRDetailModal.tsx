@@ -1,16 +1,28 @@
 import { X, CheckCircle, AlertTriangle, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { QualityNcr, UUID } from '../../api/models/entities';
+import { exportNCRPDF, downloadFile } from '../../api/services/exportService';
 
 interface NCRDetailModalProps {
   ncr: QualityNcr;
   onClose: () => void;
   onCloseNCR: (ncrId: UUID) => Promise<void>;
+  companyName?: string;
+  generatedBy?: string;
 }
 
-export default function NCRDetailModal({ ncr, onClose, onCloseNCR }: NCRDetailModalProps) {
+export default function NCRDetailModal({ ncr, onClose, onCloseNCR, companyName, generatedBy }: NCRDetailModalProps) {
   const handleCloseClick = async () => {
     await onCloseNCR(ncr.id);
+  };
+
+  const handleExportPdf = async () => {
+    const blob = await exportNCRPDF(ncr, {
+      companyName: companyName ?? '',
+      generatedBy: generatedBy ?? '',
+    });
+    const baseName = (ncr as any).nc_number ?? ncr.id;
+    downloadFile(blob, `ncr-${String(baseName)}.pdf`);
   };
 
   const getSeverityColor = (severity: string) => {
@@ -52,12 +64,22 @@ export default function NCRDetailModal({ ncr, onClose, onCloseNCR }: NCRDetailMo
             <h2 className="text-xl font-bold text-gray-900">{ncr.nc_number}</h2>
             <p className="text-sm text-gray-600 mt-1">{ncr.title}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleExportPdf()}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-medium text-gray-800 hover:bg-gray-50"
+            >
+              <FileText className="w-4 h-4" />
+              Export PDF
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">

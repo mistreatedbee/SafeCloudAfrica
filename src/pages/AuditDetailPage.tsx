@@ -24,6 +24,7 @@ import {
 import { listQualityNcrs } from '../api/services/qualityNcrsService';
 import { listCorrectiveActions, createCorrectiveAction, type CorrectiveAction } from '../api/services/correctiveActionsService';
 import { useUser } from '@insforge/react';
+import { useIdentity } from '../hooks/useIdentity';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -37,6 +38,7 @@ export function AuditDetailPage() {
   const navigate = useNavigate();
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
+  const { fullName, organisationName } = useIdentity();
 
   const canEdit =
     activeRole === 'admin' ||
@@ -493,7 +495,10 @@ export function AuditDetailPage() {
                     <button
                       type="button"
                       onClick={async () => {
-                        const blob = await exportAuditPDF(audit, { companyName: '' });
+                        const blob = await exportAuditPDF(audit, {
+                          companyName: organisationName,
+                          generatedBy: fullName,
+                        });
                         downloadFile(blob, `audit-${audit.audit_number}.pdf`);
                       }}
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"

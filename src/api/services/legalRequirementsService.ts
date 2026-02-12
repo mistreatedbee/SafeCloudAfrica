@@ -73,4 +73,3 @@ export async function updateLegalRequirement(input: {
 
   return data as LegalRequirement;
 }
-

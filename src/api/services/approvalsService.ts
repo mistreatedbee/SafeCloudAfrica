@@ -74,4 +74,3 @@ export async function decideApproval(input: {
 
   return data as Approval;
 }
-

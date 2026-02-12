@@ -62,4 +62,3 @@ export async function createMedicalCertificate(input: {
 
   return data as MedicalCertificate;
 }
-

@@ -326,14 +326,9 @@ export async function createPpeStockMovement(input: {
     await createNotification(
       input.companyId,
       input.actorUserId,
-      'warning',
+      'high',
       'PPE stock below reorder level',
-      'PPE stock has fallen below the configured reorder level.',
-      {
-        stockId: input.stockId,
-        onHandQty: updatedStock.on_hand_qty,
-        reorderLevel: updatedStock.reorder_level
-      }
+      'PPE stock has fallen below the configured reorder level.'
     );
   }
 
@@ -412,13 +407,9 @@ export async function createPpeReorderRequest(input: {
   await createNotification(
     input.companyId,
     input.requestedByUserId,
-    'info',
+    'medium',
     'PPE reorder request created',
-    'Your PPE reorder request has been created.',
-    {
-      stockId: input.stockId,
-      reorderRequestId: (data as any).id
-    }
+    'Your PPE reorder request has been created.'
   );
 
   return data as PpeReorderRequest;

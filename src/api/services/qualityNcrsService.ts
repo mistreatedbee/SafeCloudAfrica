@@ -1,5 +1,5 @@
 import { insforge } from '../insforge/client';
-import type { QualityNcr, UUID } from '../models/entities';
+import type { QualityNcr, UUID } from '../models.entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { getMyProfile } from './profilesService';
@@ -151,6 +151,24 @@ export async function createQualityNcr(input: {
     entityType: 'quality_ncr',
     entityId: (data as any).id as UUID
   });
+
+  // Notify key participants (auditee and department manager) if present
+  const { notifyNcrCreated } = await import('./notificationsService');
+  const created = data as QualityNcr;
+
+  const notifyTargets: UUID[] = [];
+  if (created.auditee_user_id) {
+    notifyTargets.push(created.auditee_user_id as UUID);
+  }
+  if (created.department_manager_user_id) {
+    notifyTargets.push(created.department_manager_user_id as UUID);
+  }
+
+  await Promise.all(
+    notifyTargets.map((userId) =>
+      notifyNcrCreated(input.companyId, userId, created.title, created.severity)
+    )
+  );
 
   return data as QualityNcr;
 }

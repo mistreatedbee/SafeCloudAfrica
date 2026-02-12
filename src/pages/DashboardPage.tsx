@@ -19,6 +19,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { ModuleCard } from '../components/ui/ModuleCard';
 import { useUser } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
+import { useIdentity } from '../hooks/useIdentity';
 import { useAsync } from '../api/hooks/useAsync';
 import type { Incident, Task } from '../api/models/entities';
 import { listIncidents, countIncidentsByStatus, countNearMissesThisMonth, countMyIncidents } from '../api/services/incidentsService';
@@ -75,8 +76,8 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
-  const displayName = (user?.profile as any)?.name ?? user?.email ?? 'there';
-  const firstName = String(displayName).split(' ')[0];
+  const { fullName, organisationName } = useIdentity();
+  const firstName = String(fullName).split(' ')[0];
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Lightweight real-time refresh (poll)
@@ -247,7 +248,9 @@ export function DashboardPage() {
                 Good morning, {firstName}
               </h1>
               <p className="text-navy-200">
-                Here's your safety management overview for today
+                {organisationName
+                  ? `Here’s today’s overview for ${organisationName}`
+                  : "Here's your safety management overview for today"}
               </p>
             </div>
             <div className="flex items-center gap-3 bg-white/10 rounded-xl px-4 py-3">
