@@ -350,13 +350,17 @@ create table if not exists public.audits (
   
   -- Audit Criteria
   audit_criteria text null, -- ISO, legal, client, company procedures
+  criteria_standards text[] null, -- e.g. ['ISO 9001', 'ISO 45001', 'Legal', 'Client', 'Other']
   
   -- Audit Team & Scope
   auditor_user_ids text[] null, -- JSON array
   scope_of_audit text null,
   location text null,
+  departments_auditee_ids uuid[] null,
+  company_representative_user_ids uuid[] null,
   
   -- Planning Inputs
+  required_document_list jsonb null, -- required docs (types + custom)
   organogram_document_url text null,
   process_maps_document_url text null,
   procedures_policies_document_url text null,
@@ -369,7 +373,21 @@ create table if not exists public.audits (
   client_requirements_document_url text null,
   
   -- Status
-  status text not null check (status in ('planned', 'scheduled', 'in-progress', 'completed', 'reported')) default 'planned',
+  status text not null check (
+    status in (
+      'draft',
+      'scheduled',
+      'awaiting-documents',
+      'ready-for-audit',
+      'in-progress',
+      'report-pending',
+      'corrective-actions-open',
+      'under-closure-review',
+      'completed',
+      'archived',
+      'reported' -- kept for backward compatibility
+    )
+  ) default 'draft',
   
   -- Results & Findings
   findings_count integer not null default 0,
@@ -410,10 +428,12 @@ create table if not exists public.audit_questions (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   audit_id uuid not null references public.audits(id) on delete cascade,
-  
+  section text null,
   question text not null,
   expected_evidence text null,
   question_order integer not null,
+  allocated_score numeric null,
+  achieved_score numeric null,
   
   created_by_user_id uuid not null,
   created_at timestamptz not null default now()
@@ -439,11 +459,13 @@ create table if not exists public.audit_responses (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   audit_question_id uuid not null references public.audit_questions(id) on delete cascade,
-  
   is_compliant boolean not null default false,
   finding text null,
   evidence_document_url text null,
   risk_rating text check (risk_rating in ('low', 'medium', 'high')),
+  deviation_type text null check (
+    deviation_type in ('observation','finding','non_conformance','opportunity_for_improvement')
+  ),
   
   answered_by_user_id uuid not null,
   answered_at timestamptz not null default now()
@@ -675,39 +697,20 @@ create table if not exists public.risk_assessment_items (
 create index if not exists idx_risk_assessment_items_assessment on public.risk_assessment_items(risk_assessment_id);
 create index if not exists idx_risk_assessment_items_level on public.risk_assessment_items(risk_assessment_id, risk_level);
 
--- RLS Policies for Risk Assessments
+-- RLS Policies for Risk Assessments (use is_company_member so no session variable is required)
 alter table risk_assessments enable row level security;
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_policy
-    where polname = 'risk_assessments_tenant_isolation'
-      and polrelid = 'public.risk_assessments'::regclass
-  ) then
-    create policy "risk_assessments_tenant_isolation" on public.risk_assessments
-      for all using (company_id = current_setting('tenant.company_id')::uuid);
-  end if;
-end
-$$;
+drop policy if exists "risk_assessments_tenant_isolation" on public.risk_assessments;
+create policy "risk_assessments_tenant_isolation" on public.risk_assessments
+  for all using (public.is_company_member(company_id) or public.is_platform_admin());
 alter table risk_assessment_items enable row level security;
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_policy
-    where polname = 'risk_assessment_items_isolation'
-      and polrelid = 'public.risk_assessment_items'::regclass
-  ) then
-    create policy "risk_assessment_items_isolation" on public.risk_assessment_items
-      for all using (
-        risk_assessment_id in (
-          select id from risk_assessments where company_id = current_setting('tenant.company_id')::uuid
-        )
-      );
-  end if;
-end
-$$;
+drop policy if exists "risk_assessment_items_isolation" on public.risk_assessment_items;
+create policy "risk_assessment_items_isolation" on public.risk_assessment_items
+  for all using (
+    risk_assessment_id in (
+      select id from public.risk_assessments ra
+      where public.is_company_member(ra.company_id) or public.is_platform_admin()
+    )
+  );
 
 -- Corrective Actions: Link NCRs, Risk Assessments, and Incidents to corrective/preventive tasks
 create table if not exists public.corrective_actions (
@@ -767,21 +770,11 @@ create index if not exists idx_corrective_actions_source on public.corrective_ac
 create index if not exists idx_corrective_actions_assigned on public.corrective_actions(assigned_to_user_id, status);
 create index if not exists idx_corrective_actions_due on public.corrective_actions(due_date, status);
 
--- RLS for Corrective Actions
+-- RLS for Corrective Actions (use is_company_member so no session variable is required)
 alter table corrective_actions enable row level security;
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_policy
-    where polname = 'corrective_actions_tenant_isolation'
-      and polrelid = 'public.corrective_actions'::regclass
-  ) then
-    create policy "corrective_actions_tenant_isolation" on public.corrective_actions
-      for all using (company_id = current_setting('tenant.company_id')::uuid);
-  end if;
-end
-$$;
+drop policy if exists "corrective_actions_tenant_isolation" on public.corrective_actions;
+create policy "corrective_actions_tenant_isolation" on public.corrective_actions
+  for all using (public.is_company_member(company_id) or public.is_platform_admin());
 
 -- PPE: simple register + issue/return tracking
 create table if not exists public.ppe_items (
@@ -1036,6 +1029,38 @@ create table if not exists public.planning_kpis (
 );
 create index if not exists idx_planning_kpis_company on public.planning_kpis(company_id, plan_id);
 
+-- HR KPIs (employee/project performance with close-out)
+create table if not exists public.hr_kpis (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  kpi_title text not null,
+  assessment_type text not null check (assessment_type in ('employee','project')),
+  employee_user_id uuid null,
+  project_ref text null,
+  manager_user_id uuid not null,
+  importance text not null check (importance in ('low','medium','high')) default 'medium',
+  target_value_numeric numeric null,
+  target_value_text text null,
+  actual_value_numeric numeric null,
+  actual_value_text text null,
+  achieved boolean null,
+  employee_self_rating integer null check (employee_self_rating between 1 and 5),
+  manager_rating integer null check (manager_rating between 1 and 5),
+  manager_remarks text null,
+  employee_comments text null,
+  period_start date null,
+  period_end date null,
+  linked_task_id uuid null references public.tasks(id) on delete set null,
+  closure_evidence_url text null,
+  closed_out_at timestamptz null,
+  closed_out_by_user_id uuid null,
+  performance_bonus_score numeric null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_hr_kpis_company on public.hr_kpis(company_id, assessment_type, created_at desc);
+
 -- Approvals & signatures (Phase 2 baseline)
 create table if not exists public.approvals (
   id uuid primary key default gen_random_uuid(),
@@ -1153,11 +1178,60 @@ create table if not exists public.tasks (
   module text not null check (module in ('safety','hr','legal','quality','health','environment','general','security')),
   title text not null,
   description text null,
+  category text null check (
+    category in (
+      'audit_action',
+      'capa',
+      'inspection',
+      'ppe_issue',
+      'safety_action',
+      'env_action',
+      'quality_action',
+      'project_task',
+      'maintenance',
+      'training',
+      'kpi_follow_up'
+    )
+  ),
+  risk_level text null check (risk_level in ('low','medium','high','critical')),
   priority text not null check (priority in ('critical','high','medium','low')) default 'medium',
-  status text not null check (status in ('pending','in-progress','completed','overdue')) default 'pending',
+  status text not null check (
+    status in (
+      'draft',
+      'assigned',
+      'accepted',
+      'in-progress',
+      'awaiting-evidence',
+      'under-review',
+      'approved',
+      'closed',
+      'reopened',
+      'overdue'
+    )
+  ) default 'draft',
+  site_id uuid null,
+  department_id uuid null,
+  project_ref text null,
+  task_owner_user_id uuid null,
+  allocated_by_user_id uuid null,
+  supporting_team_user_ids uuid[] null,
+  source_entity_type text null, -- e.g. 'audit','ncr','incident','inspection','ppe_issue','kpi','risk_assessment'
+  source_entity_id uuid null,
+  planned_start_date date null,
+  planned_completion_date date null,
+  estimated_hours numeric null,
+  actual_start_at timestamptz null,
+  actual_completion_at timestamptz null,
+  time_spent_minutes integer null,
+  delay_reason text null,
+  extension_approved_by_user_id uuid null,
+  extension_approved_at timestamptz null,
   due_at timestamptz null,
   assignee_user_id uuid null,
   created_by_user_id uuid not null,
+  closure_date timestamptz null,
+  final_status text null,
+  lessons_learned text null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -2251,6 +2325,49 @@ on public.evidence_attachments for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
+-- Program Audit Findings (linked to audits, distinct from inspection findings)
+create table if not exists public.program_audit_findings (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  audit_id uuid not null references public.audits(id) on delete cascade,
+  audit_question_id uuid null references public.audit_questions(id) on delete set null,
+  title text not null,
+  deviation_type text not null check (
+    deviation_type in ('observation','finding','non_conformance','opportunity_for_improvement')
+  ),
+  risk_level text not null check (risk_level in ('low','medium','high','critical')) default 'medium',
+  required_action text null,
+  responsible_user_id uuid null,
+  due_date date null,
+  evidence_requirements text null,
+  status text not null check (
+    status in ('open','in-progress','awaiting-evidence','under-review','approved','closed')
+  ) default 'open',
+  closure_evidence_url text null,
+  manager_signoff_user_id uuid null,
+  manager_signoff_at timestamptz null,
+  auditor_verify_user_id uuid null,
+  auditor_verify_at timestamptz null,
+  closed_at timestamptz null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_program_audit_findings_company on public.program_audit_findings(company_id, created_at desc);
+create index if not exists idx_program_audit_findings_audit on public.program_audit_findings(audit_id, status);
+alter table public.program_audit_findings enable row level security;
+
+drop policy if exists program_audit_findings_select_member on public.program_audit_findings;
+create policy program_audit_findings_select_member
+on public.program_audit_findings for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists program_audit_findings_write_management on public.program_audit_findings;
+create policy program_audit_findings_write_management
+on public.program_audit_findings for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
 -- Audit findings (linked to inspections)
 create table if not exists public.audit_findings (
   id uuid primary key default gen_random_uuid(),
@@ -2398,21 +2515,11 @@ create index if not exists idx_module_content_company on public.module_content(c
 create index if not exists idx_module_content_type on public.module_content(module_key, content_type);
 create index if not exists idx_module_content_published on public.module_content(company_id, is_published);
 
--- RLS for Module Content
+-- RLS for Module Content (use is_company_member so no session variable is required)
 alter table module_content enable row level security;
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_policy
-    where polname = 'module_content_tenant_isolation'
-      and polrelid = 'public.module_content'::regclass
-  ) then
-    create policy "module_content_tenant_isolation" on public.module_content
-      for all using (company_id = current_setting('tenant.company_id')::uuid);
-  end if;
-end
-$$;
+drop policy if exists "module_content_tenant_isolation" on public.module_content;
+create policy "module_content_tenant_isolation" on public.module_content
+  for all using (public.is_company_member(company_id) or public.is_platform_admin());
 
 -- Compliance Scoring: Real-time compliance score per organization (Phase 3)
 create table if not exists public.compliance_scores (
@@ -2431,21 +2538,11 @@ create table if not exists public.compliance_scores (
 
 create index if not exists idx_compliance_scores_company on public.compliance_scores(company_id, module);
 
--- RLS for Compliance Scores
+-- RLS for Compliance Scores (use is_company_member so no session variable is required)
 alter table compliance_scores enable row level security;
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_policy
-    where polname = 'compliance_scores_tenant_isolation'
-      and polrelid = 'public.compliance_scores'::regclass
-  ) then
-    create policy "compliance_scores_tenant_isolation" on public.compliance_scores
-      for all using (company_id = current_setting('tenant.company_id')::uuid);
-  end if;
-end
-$$;
+drop policy if exists "compliance_scores_tenant_isolation" on public.compliance_scores;
+create policy "compliance_scores_tenant_isolation" on public.compliance_scores
+  for all using (public.is_company_member(company_id) or public.is_platform_admin());
 
 -- User settings (notifications, security, etc.)
 create table if not exists public.user_settings (

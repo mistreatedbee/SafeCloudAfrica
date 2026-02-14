@@ -23,6 +23,8 @@ import {
 } from '../api/services/auditsService';
 import { listQualityNcrs } from '../api/services/qualityNcrsService';
 import { listCorrectiveActions, createCorrectiveAction, type CorrectiveAction } from '../api/services/correctiveActionsService';
+import { listProgramAuditFindings, createProgramAuditFinding } from '../api/services/programAuditFindingsService';
+import { createTask } from '../api/services/tasksService';
 import { useUser } from '@insforge/react';
 import { useIdentity } from '../hooks/useIdentity';
 
@@ -91,6 +93,8 @@ export function AuditDetailPage() {
   const [isNcrModalOpen, setIsNcrModalOpen] = useState(false);
   const [ncrLinkedQuestionId, setNcrLinkedQuestionId] = useState<UUID | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [raisingFindingForQuestionId, setRaisingFindingForQuestionId] = useState<UUID | null>(null);
+  const [creatingTaskForFindingId, setCreatingTaskForFindingId] = useState<UUID | null>(null);
 
   const {
     data: ncrs,
@@ -119,6 +123,17 @@ export function AuditDetailPage() {
         sourceType: 'audit',
         sourceId: auditId as UUID,
         limit: 200
+      });
+    },
+    [activeCompanyId, auditId]
+  );
+
+  const { data: findings, refresh: refreshFindings } = useAsync(
+    async () => {
+      if (!activeCompanyId || !auditId) return [];
+      return await listProgramAuditFindings({
+        companyId: activeCompanyId,
+        auditId: auditId as UUID
       });
     },
     [activeCompanyId, auditId]
@@ -174,11 +189,13 @@ export function AuditDetailPage() {
         finding: partial.finding ?? existing?.finding ?? '',
         evidenceDocumentUrl: partial.evidence_document_url ?? existing?.evidence_document_url ?? null,
         riskRating: partial.risk_rating ?? existing?.risk_rating ?? 'low',
+        deviationType: (partial as any).deviation_type ?? existing?.deviation_type ?? null,
         answeredByUserId: user.id as any
       });
       await refreshResponses();
       await updateAuditFindingsCounts(audit.id as UUID, activeCompanyId, user.id as any);
       await refreshAudit();
+      await refreshFindings();
       await refreshNcrs();
       await refreshCapas();
     } finally {
@@ -411,25 +428,67 @@ export function AuditDetailPage() {
                               </select>
                             </td>
                             <td className="py-2 pr-3">
-                              <button
-                                type="button"
-                                disabled={
-                                  !canEdit ||
-                                  !activeCompanyId ||
-                                  !user?.id ||
-                                  !audit ||
-                                  audit.status === 'planned'
-                                }
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setNcrLinkedQuestionId(q.id);
-                                  setIsNcrModalOpen(true);
-                                }}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-critical/30 text-xs font-semibold text-critical hover:bg-critical/5 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                <AlertCircleIcon className="w-3 h-3" />
-                                Raise NCR
-                              </button>
+                              <div className="flex flex-col gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={
+                                    !canEdit ||
+                                    !activeCompanyId ||
+                                    !user?.id ||
+                                    !audit ||
+                                    audit.status === 'planned'
+                                  }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setNcrLinkedQuestionId(q.id);
+                                    setIsNcrModalOpen(true);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-critical/30 text-xs font-semibold text-critical hover:bg-critical/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <AlertCircleIcon className="w-3 h-3" />
+                                  Raise NCR
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={
+                                    !canEdit ||
+                                    !activeCompanyId ||
+                                    !user?.id ||
+                                    !audit ||
+                                    !resp ||
+                                    !resp.finding ||
+                                    resp.finding.trim().length === 0
+                                  }
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!activeCompanyId || !user?.id || !audit || !resp) return;
+                                    setRaisingFindingForQuestionId(q.id);
+                                    try {
+                                      const deviationType =
+                                        (resp as any).deviation_type ??
+                                        (!resp.is_compliant || resp.risk_rating === 'high'
+                                          ? 'non_conformance'
+                                          : 'finding');
+                                      await createProgramAuditFinding({
+                                        companyId: activeCompanyId,
+                                        auditId: audit.id as UUID,
+                                        auditQuestionId: q.id,
+                                        title: resp.finding || q.question,
+                                        deviationType: deviationType as any,
+                                        riskLevel: resp.risk_rating as any,
+                                        requiredAction: '',
+                                        createdByUserId: user.id as any
+                                      });
+                                      await refreshFindings();
+                                    } finally {
+                                      setRaisingFindingForQuestionId(null);
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-surface-300 text-xs font-semibold text-charcoal hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {raisingFindingForQuestionId === q.id ? 'Saving…' : 'Raise finding'}
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -474,6 +533,71 @@ export function AuditDetailPage() {
                           </span>
                           <span className="font-medium">{ca.title}</span>
                           <span className="text-charcoal-400">• {ca.status}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-charcoal mb-2">Program audit findings</p>
+                  {(!findings || findings.length === 0) && (
+                    <p className="text-xs text-charcoal-500">No findings captured yet.</p>
+                  )}
+                  {findings && findings.length > 0 && (
+                    <ul className="space-y-1">
+                      {findings.map((f: any) => (
+                        <li key={f.id} className="text-xs text-charcoal-600 flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-surface-200 text-[10px] font-semibold uppercase">
+                              {f.deviation_type === 'non_conformance'
+                                ? 'NC'
+                                : f.deviation_type === 'observation'
+                                  ? 'OB'
+                                  : 'FD'}
+                            </span>
+                            <div>
+                              <span className="font-medium">{f.title}</span>
+                              <span className="text-charcoal-400 ml-1">• {f.risk_level}</span>
+                              <span className="text-charcoal-400 ml-1">• {f.status}</span>
+                            </div>
+                          </div>
+                          {canEdit && activeCompanyId && user?.id && (
+                            <button
+                              type="button"
+                              disabled={creatingTaskForFindingId === f.id}
+                              onClick={async () => {
+                                if (!activeCompanyId || !user?.id || !audit) return;
+                                setCreatingTaskForFindingId(f.id);
+                                try {
+                                  await createTask({
+                                    companyId: activeCompanyId,
+                                    module: audit.module,
+                                    title: `Audit finding: ${f.title}`,
+                                    description: `Deviation: ${f.deviation_type ?? ''} • Risk: ${f.risk_level ?? ''}`,
+                                    category: 'audit_action',
+                                    riskLevel: f.risk_level as any,
+                                    priority:
+                                      f.risk_level === 'critical'
+                                        ? 'critical'
+                                        : f.risk_level === 'high'
+                                          ? 'high'
+                                          : f.risk_level === 'medium'
+                                            ? 'medium'
+                                            : 'low',
+                                    dueAt: f.due_date ? new Date(f.due_date).toISOString() : undefined,
+                                    sourceEntityType: 'audit_finding',
+                                    sourceEntityId: f.id as UUID,
+                                    createdByUserId: user.id as any
+                                  });
+                                } finally {
+                                  setCreatingTaskForFindingId(null);
+                                }
+                              }}
+                              className="px-2 py-1 rounded-lg border border-surface-300 text-[11px] font-semibold text-charcoal hover:bg-surface-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {creatingTaskForFindingId === f.id ? 'Creating…' : 'Create task'}
+                            </button>
+                          )}
                         </li>
                       ))}
                     </ul>

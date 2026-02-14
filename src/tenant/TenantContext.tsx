@@ -72,14 +72,13 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     setActiveCompanyIdState(next);
     storeActiveCompanyId(next);
 
-    // Ensure the signed-in user has a profile row for the active company (names/emails for HR views).
+    // Ensure the signed-in user has a profile row for the active company for HR views,
+    // but do not overwrite any user-managed profile fields (name, email, etc.).
     if (next) {
       try {
         await upsertMyProfile({
           companyId: next,
-          userId: user.id as UUID,
-          fullName: ((user.profile as any)?.name as string | undefined) ?? null,
-          email: (user.email as string | undefined) ?? null
+          userId: user.id as UUID
         });
       } catch {
         // ignore profile bootstrap errors (RLS/ordering); HR pages can still function with fallbacks

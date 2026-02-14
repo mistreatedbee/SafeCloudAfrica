@@ -17,6 +17,24 @@ export function TaskCreateModal(props: {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Severity>('medium');
+  const [category, setCategory] = useState<
+    | 'audit_action'
+    | 'capa'
+    | 'inspection'
+    | 'ppe_issue'
+    | 'safety_action'
+    | 'env_action'
+    | 'quality_action'
+    | 'project_task'
+    | 'maintenance'
+    | 'training'
+    | 'kpi_follow_up'
+    | ''
+  >('');
+  const [riskLevel, setRiskLevel] = useState<'low' | 'medium' | 'high' | 'critical' | ''>('');
+  const [plannedStartDate, setPlannedStartDate] = useState('');
+  const [plannedCompletionDate, setPlannedCompletionDate] = useState('');
+  const [estimatedHours, setEstimatedHours] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +52,12 @@ export function TaskCreateModal(props: {
         module,
         title: title.trim(),
         description: description.trim() || undefined,
+        category: (category || undefined) as any,
+        riskLevel: (riskLevel || undefined) as any,
         priority,
+        plannedStartDate: plannedStartDate || undefined,
+        plannedCompletionDate: plannedCompletionDate || undefined,
+        estimatedHours: estimatedHours ? Number(estimatedHours) || undefined : undefined,
         dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
         createdByUserId: props.createdByUserId
       });
@@ -43,6 +66,11 @@ export function TaskCreateModal(props: {
       setTitle('');
       setDescription('');
       setPriority('medium');
+      setCategory('');
+      setRiskLevel('');
+      setPlannedStartDate('');
+      setPlannedCompletionDate('');
+      setEstimatedHours('');
       setDueAt('');
       setModule(props.defaultModule ?? 'safety');
     } catch (err: any) {
@@ -106,6 +134,76 @@ export function TaskCreateModal(props: {
                 <option value="high">High</option>
                 <option value="critical">Critical</option>
               </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Category (optional)</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as any)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              >
+                <option value="">Not specified</option>
+                <option value="audit_action">Audit action</option>
+                <option value="capa">Corrective / preventive action</option>
+                <option value="inspection">Inspection</option>
+                <option value="ppe_issue">PPE issue</option>
+                <option value="safety_action">Safety action</option>
+                <option value="env_action">Environmental action</option>
+                <option value="quality_action">Quality action</option>
+                <option value="project_task">Project task</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="training">Training</option>
+                <option value="kpi_follow_up">KPI follow-up</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Risk level (optional)</label>
+              <select
+                value={riskLevel}
+                onChange={(e) => setRiskLevel(e.target.value as any)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              >
+                <option value="">Not specified</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Planned start (optional)</label>
+              <input
+                type="date"
+                value={plannedStartDate}
+                onChange={(e) => setPlannedStartDate(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Planned completion (optional)</label>
+              <input
+                type="date"
+                value={plannedCompletionDate}
+                onChange={(e) => setPlannedCompletionDate(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Estimated hours (optional)</label>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={estimatedHours}
+                onChange={(e) => setEstimatedHours(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              />
             </div>
           </div>
 

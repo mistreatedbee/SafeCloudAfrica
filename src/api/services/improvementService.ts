@@ -47,7 +47,5 @@ export async function createImprovement(input: {
     action: 'improvement_actions.create',
     entityType: 'improvement_action',
     entityId: (data as any).id as UUID
-  });
-
-  return data as ImprovementAction;
+  });  return data as ImprovementAction;
 }

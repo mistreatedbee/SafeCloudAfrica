@@ -66,9 +66,30 @@ export type CreateTaskInput = {
   module: ModuleKey;
   title: string;
   description?: string;
+  category?:
+    | 'audit_action'
+    | 'capa'
+    | 'inspection'
+    | 'ppe_issue'
+    | 'safety_action'
+    | 'env_action'
+    | 'quality_action'
+    | 'project_task'
+    | 'maintenance'
+    | 'training'
+    | 'kpi_follow_up';
+  riskLevel?: 'low' | 'medium' | 'high' | 'critical';
   priority: Severity;
+  plannedStartDate?: string;
+  plannedCompletionDate?: string;
+  estimatedHours?: number;
   dueAt?: string;
   assigneeUserId?: UUID;
+  taskOwnerUserId?: UUID;
+  allocatedByUserId?: UUID;
+  supportingTeamUserIds?: UUID[];
+  sourceEntityType?: string;
+  sourceEntityId?: UUID;
   createdByUserId: UUID;
 };
 
@@ -83,10 +104,20 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
       department_id: (profile as any)?.department_id ?? null,
       title: input.title,
       description: input.description ?? null,
+      category: input.category ?? null,
+      risk_level: input.riskLevel ?? null,
       priority: input.priority,
-      status: 'pending',
+      status: 'draft',
+      planned_start_date: input.plannedStartDate ?? null,
+      planned_completion_date: input.plannedCompletionDate ?? null,
+      estimated_hours: input.estimatedHours ?? null,
       due_at: input.dueAt ?? null,
       assignee_user_id: input.assigneeUserId ?? null,
+      task_owner_user_id: input.taskOwnerUserId ?? null,
+      allocated_by_user_id: input.allocatedByUserId ?? input.createdByUserId,
+      supporting_team_user_ids: input.supportingTeamUserIds ?? null,
+      source_entity_type: input.sourceEntityType ?? null,
+      source_entity_id: input.sourceEntityId ?? null,
       created_by_user_id: input.createdByUserId
     })
     .select('*')
@@ -116,5 +147,38 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   }
 
   return created;
+}
+
+export async function updateTaskStatus(input: {
+  companyId: UUID;
+  taskId: UUID;
+  status: Task['status'];
+  actorUserId: UUID;
+}): Promise<Task> {
+  const nowIso = new Date().toISOString();
+  const { data, error } = await insforge.database
+    .from('tasks')
+    .update({
+      status: input.status,
+      updated_at: nowIso
+    })
+    .eq('company_id', input.companyId)
+    .eq('id', input.taskId)
+    .select('*')
+    .single();
+
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update task status.');
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'tasks.update_status',
+    entityType: 'task',
+    entityId: input.taskId,
+    metadata: { status: input.status }
+  });
+
+  return data as Task;
 }
 

@@ -10,7 +10,8 @@ import { listUserProfiles } from '../../api/services/profilesService';
 import { listContractors } from '../../api/services/contractorsService';
 import { listVisitors } from '../../api/services/visitorsService';
 import { countExpiringTraining } from '../../api/services/trainingService';
-import type { CompanyMembership, Contractor, UserProfile, Visitor } from '../../api/models/entities';
+import { listHrKpis } from '../../api/services/hrKpisService';
+import type { CompanyMembership, Contractor, HrKpi, UserProfile, Visitor } from '../../api/models/entities';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -58,6 +59,14 @@ export function HRModulePage() {
     [activeCompanyId]
   );
 
+  const { data: hrKpis } = useAsync<HrKpi[]>(
+    async () => {
+      if (!activeCompanyId) return [];
+      return await listHrKpis({ companyId: activeCompanyId });
+    },
+    [activeCompanyId]
+  );
+
   const counts = useMemo(() => {
     const members = memberships ?? [];
     const byRole = new Map<string, number>();
@@ -70,9 +79,11 @@ export function HRModulePage() {
       departments: departments.size,
       sites: sites.size,
       contractors: (contractors ?? []).length,
-      visitors: (visitors ?? []).length
+      visitors: (visitors ?? []).length,
+      kpis: (hrKpis ?? []).length,
+      kpisAchieved: (hrKpis ?? []).filter((k) => k.achieved).length
     };
-  }, [contractors, memberships, profiles, visitors]);
+  }, [contractors, memberships, profiles, visitors, hrKpis]);
 
   return (
     <Layout title="HR Management">
@@ -109,6 +120,15 @@ export function HRModulePage() {
             <p className="text-sm text-charcoal-500">Training expiring (30d)</p>
             <p className="text-2xl font-bold text-warning mt-1">{expiringTraining ?? 0}</p>
           </div>
+          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card col-span-2 lg:col-span-1">
+            <p className="text-sm text-charcoal-500">HR KPIs (employee & project)</p>
+            <p className="text-2xl font-bold text-charcoal mt-1">
+              {counts.kpis}
+              <span className="ml-2 text-sm font-normal text-teal">
+                {counts.kpis > 0 ? `${Math.round((counts.kpisAchieved / counts.kpis) * 100)}% achieved` : '—'}
+              </span>
+            </p>
+          </div>
         </motion.div>
 
         <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -125,6 +145,21 @@ export function HRModulePage() {
               className="mt-4 text-sm font-medium text-teal hover:text-teal-700 transition-colors inline-flex items-center gap-1"
             >
               Open user management <ArrowRightIcon className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
+            <h3 className="font-semibold text-charcoal flex items-center gap-2">
+              <GraduationCapIcon className="w-5 h-5 text-teal" />
+              Performance & KPIs
+            </h3>
+            <p className="text-sm text-charcoal-500 mt-2">
+              Manage employee and project KPIs, ratings, and close-out actions with evidence for performance reviews.
+            </p>
+            <button
+              onClick={() => navigate('/hr/kpis')}
+              className="mt-4 text-sm font-medium text-teal hover:text-teal-700 transition-colors inline-flex items-center gap-1"
+            >
+              Open KPI performance <ArrowRightIcon className="w-4 h-4" />
             </button>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">

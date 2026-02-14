@@ -50,9 +50,7 @@ export async function createMedicalCertificate(input: {
     .select('*')
     .single();
   if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to create medical certificate.');
-
-  await createActivityLog({
+  if (!data) throw new Error('Failed to create medical certificate.');  await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,
     action: 'medical_certificates.create',

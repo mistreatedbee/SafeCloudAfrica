@@ -61,9 +61,7 @@ export async function updateLegalRequirement(input: {
 
   const { data, error } = await insforge.database.from('legal_requirements').update(patch).eq('id', input.id).select('*').single();
   if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to update legal requirement.');
-
-  await createActivityLog({
+  if (!data) throw new Error('Failed to update legal requirement.');  await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.actorUserId,
     action: 'legal_requirements.update',

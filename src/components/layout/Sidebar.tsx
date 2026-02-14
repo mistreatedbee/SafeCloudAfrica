@@ -111,7 +111,7 @@ const supportingSections: NavItem[] = [
 },
 {
   name: 'Incident Analytics',
-  path: '/incident-analytics',
+  path: '/incidents/analytics',
   icon: BarChart3Icon
 },
 {

@@ -7,9 +7,12 @@ import { createActivityLog } from './activityLogService';
 export interface AuditQuestion {
   id: UUID;
   audit_id: UUID;
+  section?: string | null;
   question: string;
   expected_evidence?: string;
   question_order: number;
+  allocated_score?: number | null;
+  achieved_score?: number | null;
   created_by_user_id: UUID;
   created_at: string;
 }
@@ -21,6 +24,7 @@ export interface AuditResponse {
   finding: string | null;
   evidence_document_url: string | null;
   risk_rating: 'low' | 'medium' | 'high';
+  deviation_type?: 'observation' | 'finding' | 'non_conformance' | 'opportunity_for_improvement' | null;
   answered_by_user_id: UUID;
   answered_at: string;
 }
@@ -100,7 +104,7 @@ export async function createAudit(input: {
       location: input.location,
       auditor_user_ids: input.auditorUserIds,
       proposed_dates: input.proposedDates,
-      status: 'planned',
+      status: 'draft',
       findings_count: 0,
       nonconformances_count: 0,
       observations_count: 0,
@@ -203,7 +207,7 @@ export async function completeAudit(
     auditId,
     companyId,
     {
-      status: 'completed',
+      status: 'report-pending',
       report_document_url: reportDocumentUrl
     },
     actorUserId
@@ -220,7 +224,7 @@ export async function submitAuditReport(
     auditId,
     companyId,
     {
-      status: 'reported',
+      status: 'completed',
       report_document_url: reportDocumentUrl,
       report_submitted_at: new Date().toISOString()
     },
@@ -243,18 +247,24 @@ export async function listAuditQuestions(auditId: UUID): Promise<AuditQuestion[]
 
 export async function createAuditQuestion(input: {
   auditId: UUID;
+  section?: string;
   question: string;
   expectedEvidence?: string;
   questionOrder: number;
+  allocatedScore?: number;
+  achievedScore?: number;
   createdByUserId: UUID;
 }): Promise<AuditQuestion> {
   const { data, error } = await insforge.database
     .from('audit_questions')
     .insert({
       audit_id: input.auditId,
+      section: input.section ?? null,
       question: input.question,
       expected_evidence: input.expectedEvidence || null,
       question_order: input.questionOrder,
+      allocated_score: input.allocatedScore ?? null,
+      achieved_score: input.achievedScore ?? null,
       created_by_user_id: input.createdByUserId
     })
     .select('*')
@@ -322,6 +332,7 @@ export async function submitAuditResponse(input: {
   finding?: string;
   evidenceDocumentUrl?: string;
   riskRating: 'low' | 'medium' | 'high';
+  deviationType?: 'observation' | 'finding' | 'non_conformance' | 'opportunity_for_improvement';
   answeredByUserId: UUID;
 }): Promise<AuditResponse> {
   // First try to get existing response
@@ -339,6 +350,7 @@ export async function submitAuditResponse(input: {
         finding: input.finding || null,
         evidence_document_url: input.evidenceDocumentUrl || null,
         risk_rating: input.riskRating,
+        deviation_type: input.deviationType ?? existing.deviation_type ?? null,
         answered_at: new Date().toISOString()
       })
       .eq('id', existing.id)
@@ -358,6 +370,7 @@ export async function submitAuditResponse(input: {
       finding: input.finding || null,
       evidence_document_url: input.evidenceDocumentUrl || null,
       risk_rating: input.riskRating,
+      deviation_type: input.deviationType ?? null,
       answered_by_user_id: input.answeredByUserId,
       answered_at: new Date().toISOString()
     })

@@ -134,22 +134,64 @@ export type IncidentInvestigation = {
   updated_at: string;
 };
 
-export type TaskStatus = 'pending' | 'in-progress' | 'completed' | 'overdue';
+export type TaskStatus =
+  | 'draft'
+  | 'assigned'
+  | 'accepted'
+  | 'in-progress'
+  | 'awaiting-evidence'
+  | 'under-review'
+  | 'approved'
+  | 'closed'
+  | 'reopened'
+  | 'overdue';
 export type TaskPriority = Severity;
 
 export type Task = {
   id: UUID;
   company_id: UUID;
   module: ModuleKey;
-  site_id?: UUID | null;
-  department_id?: UUID | null;
   title: string;
   description: string | null;
+  category?:
+    | 'audit_action'
+    | 'capa'
+    | 'inspection'
+    | 'ppe_issue'
+    | 'safety_action'
+    | 'env_action'
+    | 'quality_action'
+    | 'project_task'
+    | 'maintenance'
+    | 'training'
+    | 'kpi_follow_up'
+    | null;
+  risk_level?: 'low' | 'medium' | 'high' | 'critical' | null;
   priority: TaskPriority;
   status: TaskStatus;
+  site_id?: UUID | null;
+  department_id?: UUID | null;
+  project_ref?: string | null;
+  task_owner_user_id?: UUID | null;
+  allocated_by_user_id?: UUID | null;
+  supporting_team_user_ids?: UUID[] | null;
+  source_entity_type?: string | null;
+  source_entity_id?: UUID | null;
+  planned_start_date?: string | null;
+  planned_completion_date?: string | null;
+  estimated_hours?: number | null;
+  actual_start_at?: string | null;
+  actual_completion_at?: string | null;
+  time_spent_minutes?: number | null;
+  delay_reason?: string | null;
+  extension_approved_by_user_id?: UUID | null;
+  extension_approved_at?: string | null;
   due_at: string | null;
   assignee_user_id: UUID | null;
   created_by_user_id: UUID;
+  closure_date?: string | null;
+  final_status?: string | null;
+  lessons_learned?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -827,6 +869,71 @@ export type EvidenceAttachment = {
   storage_key: string;
   created_by_user_id: UUID;
   created_at: string;
+};
+
+export type ProgramAuditFindingStatus =
+  | 'open'
+  | 'in-progress'
+  | 'awaiting-evidence'
+  | 'under-review'
+  | 'approved'
+  | 'closed';
+
+export type ProgramAuditFinding = {
+  id: UUID;
+  company_id: UUID;
+  audit_id: UUID;
+  audit_question_id?: UUID | null;
+  title: string;
+  deviation_type: 'observation' | 'finding' | 'non_conformance' | 'opportunity_for_improvement';
+  risk_level: 'low' | 'medium' | 'high' | 'critical';
+  required_action: string | null;
+  responsible_user_id: UUID | null;
+  due_date: string | null;
+  evidence_requirements: string | null;
+  status: ProgramAuditFindingStatus;
+  closure_evidence_url: string | null;
+  manager_signoff_user_id: UUID | null;
+  manager_signoff_at: string | null;
+  auditor_verify_user_id: UUID | null;
+  auditor_verify_at: string | null;
+  closed_at: string | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HrKpiImportance = 'low' | 'medium' | 'high';
+export type HrKpiAssessmentType = 'employee' | 'project';
+
+export type HrKpi = {
+  id: UUID;
+  company_id: UUID;
+  kpi_title: string;
+  assessment_type: HrKpiAssessmentType;
+  employee_user_id: UUID | null;
+  project_ref: string | null;
+  manager_user_id: UUID;
+  importance: HrKpiImportance;
+  target_value_numeric: number | null;
+  target_value_text: string | null;
+  actual_value_numeric: number | null;
+  actual_value_text: string | null;
+  achieved: boolean | null;
+  employee_self_rating: number | null;
+  manager_rating: number | null;
+  manager_remarks: string | null;
+  employee_comments: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  linked_task_id: UUID | null;
+  closure_evidence_url: string | null;
+  closed_out_at: string | null;
+  closed_out_by_user_id: UUID | null;
+  performance_bonus_score: number | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
 };
 
 /**

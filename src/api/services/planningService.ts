@@ -55,9 +55,7 @@ export async function createPlan(input: {
     .select('*')
     .single();
   if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to create plan.');
-
-  await createActivityLog({
+  if (!data) throw new Error('Failed to create plan.');  await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,
     action: 'planning_plans.create',

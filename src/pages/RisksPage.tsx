@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Plus, Search, Filter, Loader2 } from 'lucide-react';
+import { Layout } from '../components/layout/Layout';
 import { useUser } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
 import { listRiskAssessments, createRiskAssessment, listRiskAssessmentItems, type RiskAssessment, type RiskAssessmentItem } from '../api/services/risksService';
@@ -138,7 +139,7 @@ export function RisksPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <Layout title="Risk Assessments">
       <div className="max-w-7xl mx-auto p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -448,7 +449,7 @@ export function RisksPage() {
           </div>
         </div>
       </div>
-    </div>
+    </Layout>
   );
 }
 

@@ -57,6 +57,7 @@ import { LandingPage } from './pages/marketing/LandingPage';
 import { SuperAdminPage } from './pages/admin/SuperAdminPage';
 import { SeedDemoPage } from './pages/admin/SeedDemoPage';
 import { WorkspaceOnboardingPage } from './pages/onboarding/WorkspaceOnboardingPage';
+import { HrKpisPage } from './pages/HrKpisPage';
 export function App() {
   return (
     <BrowserRouter>
@@ -332,6 +333,16 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <TrainingPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/hr/kpis"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HrKpisPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

@@ -14,7 +14,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { useUser } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { listTasks } from '../api/services/tasksService';
+import { listTasks, updateTaskStatus } from '../api/services/tasksService';
 import type { Task } from '../api/models/entities';
 import type { CorrectiveAction } from '../api/services/correctiveActionsService';
 import { TaskCreateModal } from '../components/tasks/TaskCreateModal';
@@ -102,13 +102,19 @@ export function TasksPage() {
     return matchesSearch && matchesStatus;
   });
 
-  const taskCounts = {
+  const taskCounts: Record<string, number> = {
     all: allTasks.length,
-    pending: allTasks.filter((t) => t.status === 'pending').length,
+    draft: allTasks.filter((t) => t.status === 'draft').length,
+    assigned: allTasks.filter((t) => t.status === 'assigned').length,
+    accepted: allTasks.filter((t) => t.status === 'accepted').length,
     'in-progress': allTasks.filter((t) => t.status === 'in-progress').length,
-    completed: allTasks.filter((t) => t.status === 'completed').length,
+    'awaiting-evidence': allTasks.filter((t) => t.status === 'awaiting-evidence').length,
+    'under-review': allTasks.filter((t) => t.status === 'under-review').length,
+    approved: allTasks.filter((t) => t.status === 'approved').length,
+    closed: allTasks.filter((t) => t.status === 'closed').length,
+    reopened: allTasks.filter((t) => t.status === 'reopened').length,
     overdue: allTasks.filter((t) => t.status === 'overdue').length
-  } as const;
+  };
 
   const { data: capaData, loading: capaLoading, error: capaError } = useAsync<CorrectiveAction[]>(
     async () => {
@@ -137,6 +143,17 @@ export function TasksPage() {
   async function onCloseCapa(id: string) {
     if (!activeCompanyId || !user?.id) return;
     await completeCorrectiveAction(id as any, activeCompanyId, 'Closed via CAPA view', user.id as any);
+    setRefreshKey((k) => k + 1);
+  }
+
+  async function handleTaskStatusChange(task: Task, nextStatus: Task['status']) {
+    if (!activeCompanyId || !user?.id) return;
+    await updateTaskStatus({
+      companyId: activeCompanyId,
+      taskId: task.id as any,
+      status: nextStatus,
+      actorUserId: user.id as any
+    });
     setRefreshKey((k) => k + 1);
   }
 
@@ -288,20 +305,40 @@ export function TasksPage() {
           className="flex gap-2 overflow-x-auto pb-2">
 
           {view === 'tasks' && (
-            (['all', 'pending', 'in-progress', 'completed', 'overdue'] as const).map((status) =>
+            ([
+              'all',
+              'draft',
+              'assigned',
+              'accepted',
+              'in-progress',
+              'awaiting-evidence',
+              'under-review',
+              'approved',
+              'closed',
+              'reopened',
+              'overdue'
+            ] as const).map((status) => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${statusFilter === status ? 'bg-navy text-white' : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'}`}>
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                  statusFilter === status
+                    ? 'bg-navy text-white'
+                    : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'
+                }`}
+              >
                 <span className="capitalize">
                   {status === 'all' ? 'All Tasks' : status.replace('-', ' ')}
                 </span>
                 <span
-                  className={`px-1.5 py-0.5 rounded text-xs ${statusFilter === status ? 'bg-white/20' : 'bg-surface-200'}`}>
-                  {taskCounts[status]}
+                  className={`px-1.5 py-0.5 rounded text-xs ${
+                    statusFilter === status ? 'bg-white/20' : 'bg-surface-200'
+                  }`}
+                >
+                  {taskCounts[status] ?? 0}
                 </span>
               </button>
-            )
+            ))
           )}
 
           {view === 'capa' && (
@@ -336,49 +373,131 @@ export function TasksPage() {
             </div>
           )}
 
-          {view === 'tasks' && filteredTasks.map((task) =>
-          <div
-            key={task.id}
-            className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer">
-
-              <div className="flex items-start gap-4">
-                <div
-                className={`p-2 rounded-lg ${task.status === 'completed' ? 'bg-success-50' : task.status === 'overdue' ? 'bg-critical-50' : 'bg-surface-100'}`}>
-
-                  <ClipboardCheckIcon
-                  className={`w-5 h-5 ${task.status === 'completed' ? 'text-success' : task.status === 'overdue' ? 'text-critical' : 'text-charcoal-400'}`} />
-
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-charcoal">{task.title}</p>
-                      <p className="text-sm text-charcoal-400 mt-0.5">
-                        TSK-{shortId(task.id)} • {task.module}
-                      </p>
-                    </div>
-                    <StatusBadge status={task.status as any} size="sm" />
+          {view === 'tasks' &&
+            filteredTasks.map((task) => (
+              <div
+                key={task.id}
+                className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all"
+              >
+                <div className="flex items-start gap-4">
+                  <div
+                    className={`p-2 rounded-lg ${
+                      task.status === 'closed'
+                        ? 'bg-success-50'
+                        : task.status === 'overdue'
+                          ? 'bg-critical-50'
+                          : 'bg-surface-100'
+                    }`}
+                  >
+                    <ClipboardCheckIcon
+                      className={`w-5 h-5 ${
+                        task.status === 'closed'
+                          ? 'text-success'
+                          : task.status === 'overdue'
+                            ? 'text-critical'
+                            : 'text-charcoal-400'
+                      }`}
+                    />
                   </div>
-                  <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">
-                    <span className="flex items-center gap-1.5">
-                      <CalendarIcon className="w-4 h-4" />
-                      {formatDateZA(task.due_at)}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <UserIcon className="w-4 h-4" />
-                      {task.assignee_user_id ? `User ${shortId(task.assignee_user_id)}` : 'Unassigned'}
-                    </span>
-                    <span
-                    className={`flex items-center gap-1.5 ${priorityColors[task.priority as keyof typeof priorityColors]}`}>
-
-                      <FlagIcon className="w-4 h-4" />
-                      <span className="capitalize">{task.priority}</span>
-                    </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-charcoal">{task.title}</p>
+                        <p className="text-sm text-charcoal-400 mt-0.5">
+                          TSK-{shortId(task.id)} • {task.module}
+                        </p>
+                      </div>
+                      <StatusBadge status={task.status as any} size="sm" />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">
+                      <span className="flex items-center gap-1.5">
+                        <CalendarIcon className="w-4 h-4" />
+                        {formatDateZA(task.due_at)}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <UserIcon className="w-4 h-4" />
+                        {task.assignee_user_id ? `User ${shortId(task.assignee_user_id)}` : 'Unassigned'}
+                      </span>
+                      <span
+                        className={`flex items-center gap-1.5 ${
+                          priorityColors[task.priority as keyof typeof priorityColors]
+                        }`}
+                      >
+                        <FlagIcon className="w-4 h-4" />
+                        <span className="capitalize">{task.priority}</span>
+                      </span>
+                    </div>
+                    {activeCompanyId && user?.id && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {task.status === 'draft' && (
+                          <button
+                            type="button"
+                            onClick={() => handleTaskStatusChange(task, 'assigned')}
+                            className="px-3 py-1.5 rounded-lg bg-surface-100 text-xs font-medium text-charcoal hover:bg-surface-200"
+                          >
+                            Mark as assigned
+                          </button>
+                        )}
+                        {task.status === 'assigned' && task.assignee_user_id === user.id && (
+                          <button
+                            type="button"
+                            onClick={() => handleTaskStatusChange(task, 'accepted')}
+                            className="px-3 py-1.5 rounded-lg bg-teal text-white text-xs font-medium hover:bg-teal-600"
+                          >
+                            Accept task
+                          </button>
+                        )}
+                        {['accepted', 'reopened'].includes(task.status) && (
+                          <button
+                            type="button"
+                            onClick={() => handleTaskStatusChange(task, 'in-progress')}
+                            className="px-3 py-1.5 rounded-lg bg-surface-100 text-xs font-medium text-charcoal hover:bg-surface-200"
+                          >
+                            Mark in progress
+                          </button>
+                        )}
+                        {task.status === 'in-progress' && (
+                          <button
+                            type="button"
+                            onClick={() => handleTaskStatusChange(task, 'awaiting-evidence')}
+                            className="px-3 py-1.5 rounded-lg bg-surface-100 text-xs font-medium text-charcoal hover:bg-surface-200"
+                          >
+                            Awaiting evidence
+                          </button>
+                        )}
+                        {task.status === 'awaiting-evidence' && (
+                          <button
+                            type="button"
+                            onClick={() => handleTaskStatusChange(task, 'under-review')}
+                            className="px-3 py-1.5 rounded-lg bg-surface-100 text-xs font-medium text-charcoal hover:bg-surface-200"
+                          >
+                            Send for review
+                          </button>
+                        )}
+                        {task.status === 'under-review' && (
+                          <button
+                            type="button"
+                            onClick={() => handleTaskStatusChange(task, 'approved')}
+                            className="px-3 py-1.5 rounded-lg bg-surface-100 text-xs font-medium text-charcoal hover:bg-surface-200"
+                          >
+                            Approve
+                          </button>
+                        )}
+                        {['approved', 'in-progress'].includes(task.status) && (
+                          <button
+                            type="button"
+                            onClick={() => handleTaskStatusChange(task, 'closed')}
+                            className="px-3 py-1.5 rounded-lg bg-success text-white text-xs font-medium hover:bg-success-600"
+                          >
+                            Close task
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            ))}
 
           {view === 'capa' && capaLoading && (
             <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
