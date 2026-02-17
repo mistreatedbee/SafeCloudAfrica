@@ -216,7 +216,7 @@ export async function createPpeIssueTracker(
       training_required: !!input.trainingRequired,
       disciplinary_action: input.disciplinaryAction ?? null,
       status: 'open',
-      progress_updates: '[]'::any,
+      progress_updates: [],
       follow_up_inspection_date: null,
       department_manager_user_id: null,
       department_manager_signed_at: null,
