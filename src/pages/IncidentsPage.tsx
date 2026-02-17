@@ -12,7 +12,7 @@ import { Layout } from '../components/layout/Layout';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { listIncidents, listIncidentsWithFilters } from '../api/services/incidentsService';
+import { listIncidents, listIncidentsWithFilters, raiseNcrFromIncident } from '../api/services/incidentsService';
 import {
   createRiskAssessmentFromIncident,
   flagAssessmentsForReviewFromEvent
@@ -482,6 +482,20 @@ export function IncidentsPage() {
                       className="text-xs font-medium text-teal hover:text-teal-700 underline-offset-2 hover:underline"
                     >
                       Create risk assessment
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!activeCompanyId || !user?.id) return;
+                        await raiseNcrFromIncident({
+                          companyId: activeCompanyId,
+                          incidentId: incident.id as UUID,
+                          actorUserId: user.id as UUID
+                        });
+                      }}
+                      className="text-xs font-medium text-critical hover:text-critical-700 underline-offset-2 hover:underline"
+                    >
+                      Raise NCR
                     </button>
                     <button
                       type="button"

@@ -100,7 +100,12 @@ export default function NCRsPage() {
         toDate: toDate || undefined,
         siteId: selectedSiteId === 'all' ? undefined : (selectedSiteId as any),
         departmentId: selectedDepartmentId === 'all' ? undefined : (selectedDepartmentId as any),
-        personUserId: selectedPersonUserId === 'all' ? undefined : (selectedPersonUserId as any),
+        personUserId:
+          activeRole === 'employee'
+            ? (user.id as any)
+            : selectedPersonUserId === 'all'
+              ? undefined
+              : (selectedPersonUserId as any),
         limit: 500
       });
       setNcrs(data);
@@ -136,7 +141,18 @@ export default function NCRsPage() {
   async function handleManagerApprove(ncrId: UUID) {
     if (!activeCompanyId || !user?.id) return;
     try {
-      const updated = await managerApproveQualityNcr({ companyId: activeCompanyId, ncrId, actorUserId: user.id as any });
+      // Simple confirmation prompt to simulate password re-entry
+      // (actual password validation is handled by the auth layer outside this scope)
+      const confirmText = window.prompt('Type APPROVE to confirm manager sign-off of this NCR:');
+      if (confirmText !== 'APPROVE') return;
+
+      const updated = await managerApproveQualityNcr({
+        companyId: activeCompanyId,
+        ncrId,
+        actorUserId: user.id as any,
+        signatureMethod: 'password-reprompt',
+        comment: null
+      });
       setNcrs((prev) => prev.map((ncr) => (ncr.id === ncrId ? updated : ncr)));
       setSelectedNCR((prev) => (prev?.id === ncrId ? updated : prev));
     } catch (err) {
@@ -147,7 +163,16 @@ export default function NCRsPage() {
   async function handleAuditorVerify(ncrId: UUID) {
     if (!activeCompanyId || !user?.id) return;
     try {
-      const updated = await auditorVerifyQualityNcr({ companyId: activeCompanyId, ncrId, actorUserId: user.id as any });
+      const effective = window.confirm('Mark corrective actions as effective? Click Cancel to mark as ineffective and reopen.');
+      const comment = window.prompt('Add an optional verification comment (or leave blank):') ?? null;
+
+      const updated = await auditorVerifyQualityNcr({
+        companyId: activeCompanyId,
+        ncrId,
+        actorUserId: user.id as any,
+        effectivenessVerified: effective,
+        comment: comment && comment.trim().length > 0 ? comment.trim() : null
+      });
       setNcrs((prev) => prev.map((ncr) => (ncr.id === ncrId ? updated : ncr)));
       setSelectedNCR((prev) => (prev?.id === ncrId ? updated : prev));
     } catch (err) {
@@ -340,8 +365,8 @@ export default function NCRsPage() {
           </motion.div>
         )}
 
-        {/* Filters */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6 flex gap-2 flex-wrap">
+        {/* Status Filters */}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 flex gap-2 flex-wrap">
           <button
             onClick={() => setSelectedStatus('all')}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
@@ -369,6 +394,37 @@ export default function NCRsPage() {
               </button>
             );
           })}
+        </motion.div>
+
+        {/* Source & field filters */}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 flex gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setSelectedSource('all')}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border ${
+              selectedSource === 'all' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-700 border-gray-300'
+            }`}
+          >
+            All NCRs
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedSource('audit')}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border ${
+              selectedSource === 'audit' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-700 border-gray-300'
+            }`}
+          >
+            Audit NCRs
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedSource('inspection')}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border ${
+              selectedSource === 'inspection' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-700 border-gray-300'
+            }`}
+          >
+            Inspection NCRs
+          </button>
         </motion.div>
 
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6 grid grid-cols-1 md:grid-cols-6 gap-3">
@@ -460,7 +516,7 @@ export default function NCRsPage() {
                       {(ncr as any).project_client ? <span>🏷️ {String((ncr as any).project_client)}</span> : null}
                       {ncr.location ? <span>📍 {ncr.location}</span> : null}
                       {ncr.process_involved ? <span>⚙️ {ncr.process_involved}</span> : null}
-                      <span>📅 {new Date((((ncr as any).date_identified ?? ncr.occurred_at) as any)).toLocaleDateString('en-ZA')}</span>
+                      <span>📅 {new Date((((ncr as any).date_identified ?? (ncr as any).occurrence_date ?? ncr.created_at) as any)).toLocaleDateString('en-ZA')}</span>
                     </div>
                   </div>
                   <div className="text-right">

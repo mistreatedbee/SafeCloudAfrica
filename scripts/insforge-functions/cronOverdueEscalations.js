@@ -51,6 +51,17 @@ module.exports = async function (request) {
       console.error('cronOverdueEscalations: failed to load quality_ncrs', ncrError);
     } else {
       for (const ncr of ncrs || []) {
+        // Mark status as overdue if not already
+        if (ncr.status !== 'overdue') {
+          await client.database
+            .from('quality_ncrs')
+            .update({
+              status: 'overdue',
+              updated_at: nowIso
+            })
+            .eq('id', ncr.id);
+        }
+
         await handleNcrEscalation(client, ncr);
         summary.quality_ncrs += 1;
       }

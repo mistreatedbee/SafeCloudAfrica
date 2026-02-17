@@ -7,11 +7,23 @@ interface NCRDetailModalProps {
   ncr: QualityNcr;
   onClose: () => void;
   onCloseNCR: (ncrId: UUID) => Promise<void>;
+  onManagerApprove?: (ncrId: UUID) => Promise<void>;
+  onAuditorVerify?: (ncrId: UUID) => Promise<void>;
+  canManageWorkflow?: boolean;
   companyName?: string;
   generatedBy?: string;
 }
 
-export default function NCRDetailModal({ ncr, onClose, onCloseNCR, companyName, generatedBy }: NCRDetailModalProps) {
+export default function NCRDetailModal({
+  ncr,
+  onClose,
+  onCloseNCR,
+  onManagerApprove,
+  onAuditorVerify,
+  canManageWorkflow,
+  companyName,
+  generatedBy
+}: NCRDetailModalProps) {
   const handleCloseClick = async () => {
     await onCloseNCR(ncr.id);
   };
@@ -204,7 +216,11 @@ export default function NCRDetailModal({ ncr, onClose, onCloseNCR, companyName, 
           )}
 
           {/* Approval Workflow */}
-          {(ncr.raised_by_user_id || ncr.approved_by_user_id || ncr.signed_by_user_id) && (
+          {(ncr.raised_by_user_id ||
+            ncr.approved_by_user_id ||
+            ncr.signed_by_user_id ||
+            ncr.manager_signoff_user_id ||
+            ncr.auditor_verify_user_id) && (
             <div className="border-t pt-4">
               <h3 className="font-semibold text-gray-900 mb-3">Approval Workflow</h3>
               <div className="space-y-2 text-sm">
@@ -226,6 +242,23 @@ export default function NCRDetailModal({ ncr, onClose, onCloseNCR, companyName, 
                     <span className="text-gray-900 font-medium">{ncr.signed_by_user_id}</span>
                   </div>
                 )}
+                {ncr.manager_signoff_user_id && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Manager Sign-off:</span>
+                    <span className="text-gray-900 font-medium">
+                      {ncr.manager_signoff_user_id} {ncr.manager_signoff_at ? `at ${new Date(ncr.manager_signoff_at).toLocaleString()}` : ''}
+                    </span>
+                  </div>
+                )}
+                {ncr.auditor_verify_user_id && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Auditor Verification:</span>
+                    <span className="text-gray-900 font-medium">
+                      {ncr.auditor_verify_user_id}{' '}
+                      {ncr.auditor_verify_at ? `at ${new Date(ncr.auditor_verify_at).toLocaleString()}` : ''}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -244,31 +277,46 @@ export default function NCRDetailModal({ ncr, onClose, onCloseNCR, companyName, 
           </div>
 
           {/* Actions */}
-          {ncr.status !== 'closed' && (
-            <div className="border-t pt-4 flex gap-3">
-              <button
-                onClick={handleCloseClick}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-              >
-                <CheckCircle className="w-4 h-4 inline-block mr-2" />
-                Close NCR
-              </button>
-              <button
-                onClick={onClose}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-              >
-                Close
-              </button>
-            </div>
-          )}
-          {ncr.status === 'closed' && (
+          <div className="border-t pt-4 space-y-3">
+            {canManageWorkflow && ncr.status !== 'closed' && (
+              <div className="flex flex-wrap gap-2">
+                {onManagerApprove && !ncr.manager_signoff_user_id && (
+                  <button
+                    type="button"
+                    onClick={() => void onManagerApprove(ncr.id)}
+                    className="px-3 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 transition-colors"
+                  >
+                    Manager sign-off
+                  </button>
+                )}
+                {onAuditorVerify && !!ncr.manager_signoff_user_id && (
+                  <button
+                    type="button"
+                    onClick={() => void onAuditorVerify(ncr.id)}
+                    className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+                  >
+                    Auditor verification
+                  </button>
+                )}
+                {ncr.status !== 'closed' && (
+                  <button
+                    type="button"
+                    onClick={handleCloseClick}
+                    className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                  >
+                    <CheckCircle className="w-4 h-4 inline-block mr-1" />
+                    Close NCR
+                  </button>
+                )}
+              </div>
+            )}
             <button
               onClick={onClose}
               className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium"
             >
               Close
             </button>
-          )}
+          </div>
         </div>
       </motion.div>
     </motion.div>

@@ -355,3 +355,31 @@ export async function submitIncidentInvestigation(incidentId: UUID, investigatio
   return updateIncident(incidentId, updateData);
 }
 
+// Optionally raise an NCR from an incident (non-conformance from investigation)
+export async function raiseNcrFromIncident(input: {
+  companyId: UUID;
+  incidentId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const incident = await getIncident(input.incidentId);
+  if (!incident) throw new Error('Incident not found.');
+
+  const { createQualityNcrFromIncident } = await import('./qualityNcrsService');
+
+  const severity = (incident.severity as any) ?? 'medium';
+  const riskRating = (incident as any).risk_category ?? null;
+
+  await createQualityNcrFromIncident({
+    companyId: input.companyId,
+    incidentId: incident.id,
+    siteId: (incident as any).site_id ?? null,
+    departmentId: (incident as any).department_id ?? null,
+    severity,
+    riskRating,
+    title: incident.title,
+    description: incident.description ?? null,
+    location: incident.location ?? null,
+    detectedByUserId: input.actorUserId
+  });
+}
+

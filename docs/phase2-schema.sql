@@ -241,46 +241,93 @@ create table if not exists public.quality_ncrs (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   module text not null default 'quality' check (module in ('quality')),
+  site_id uuid null,
   
   -- NCR Identification
   nc_number text unique not null, -- Auto-generated
   title text not null,
   description text null,
+  date_identified date null,
   
   -- NCR Details
   occurrence_date timestamptz not null default now(),
   location text null,
   department_id uuid null,
   process_involved text null,
+  project_client text null,
   
   -- Non-Conformance Information
   activity_involved text null,
   responsible_role text null, -- Not blame, but role responsible
   linked_requirement text null, -- ISO/legal/internal
   risk_classification text null, -- 'critical', 'high', 'medium', 'low'
+  risk_rating text null,
+  ncr_type text null,
+  ncr_category text null,
+  requirement_reference_type text null,
+  requirement_reference_text text null,
+  
+  -- Evidence (structured)
+  evidence_document_url text null,
+  evidence_documents jsonb null,
+  evidence_photos jsonb null,
+  evidence_interviews jsonb null,
+  evidence_observations jsonb null,
   
   -- Root Cause & Corrective Actions
   root_cause text null,
+  root_cause_categories jsonb null,
   corrective_action text null,
   corrective_action_owner_user_id uuid null,
   corrective_action_due_date timestamptz null,
   corrective_action_completed_date timestamptz null,
+  progress_updates jsonb null,
+  evidence_uploads jsonb null,
   
   -- Severity & Status
   severity text not null check (severity in ('critical','high','medium','low')) default 'medium',
-  status text not null check (status in ('open','in-progress','closed')) default 'open',
+  status text not null default 'open',
   
-  -- Evidence & Signatures
-  evidence_document_url text null,
-  raised_by_user_id uuid not null,
+  -- Participants
+  auditor_user_id uuid null,
+  auditee_user_id uuid null,
+  department_manager_user_id uuid null,
+  
+  -- Evidence & Signatures / Verification & Closure
+  raised_by_user_id uuid null,
   approved_by_user_id uuid null,
   approved_at timestamptz null,
   signed_by_user_id uuid null,
   signed_at timestamptz null,
+  manager_signoff_user_id uuid null,
+  manager_signoff_at timestamptz null,
+  manager_signoff_comment text null,
+  manager_signature_method text null,
+  auditor_verify_user_id uuid null,
+  auditor_verify_at timestamptz null,
+  effectiveness_verified boolean null,
+  auditor_comment text null,
+  effectiveness_check_date date null,
+  closure_comments text null,
+  date_closed date null,
+  closed_at timestamptz null,
+  closed_by_user_id uuid null,
   
   -- Linking to source entities
   source_entity_type text null, -- 'incident', 'audit', 'inspection', 'complaint', 'risk_assessment'
   source_entity_id uuid null,
+  
+  -- Reporting / computed fields
+  linked_audit_score numeric null,
+  previous_similar_ncr_ids text[] null,
+  repeat_finding boolean null,
+  risk_trend jsonb null,
+  closure_time_days numeric null,
+  auditor_name text null,
+  company_representative_ack text null,
+  reopen_reason text null,
+  reopen_at timestamptz null,
+  metadata jsonb null,
   
   created_by_user_id uuid not null,
   created_at timestamptz not null default now(),
@@ -289,38 +336,97 @@ create table if not exists public.quality_ncrs (
 
 -- Ensure columns exist if table was created before
 alter table if exists public.quality_ncrs
+  add column if not exists site_id uuid,
   add column if not exists nc_number text unique,
   add column if not exists title text,
   add column if not exists description text,
+  add column if not exists date_identified date,
   add column if not exists occurrence_date timestamptz default now(),
   add column if not exists location text,
   add column if not exists department_id uuid,
   add column if not exists process_involved text,
+  add column if not exists project_client text,
   add column if not exists activity_involved text,
   add column if not exists responsible_role text,
   add column if not exists linked_requirement text,
   add column if not exists risk_classification text,
+  add column if not exists risk_rating text,
+  add column if not exists ncr_type text,
+  add column if not exists ncr_category text,
+  add column if not exists requirement_reference_type text,
+  add column if not exists requirement_reference_text text,
+  add column if not exists evidence_document_url text,
+  add column if not exists evidence_documents jsonb,
+  add column if not exists evidence_photos jsonb,
+  add column if not exists evidence_interviews jsonb,
+  add column if not exists evidence_observations jsonb,
   add column if not exists root_cause text,
+  add column if not exists root_cause_categories jsonb,
   add column if not exists corrective_action text,
   add column if not exists corrective_action_owner_user_id uuid,
   add column if not exists corrective_action_due_date timestamptz,
   add column if not exists corrective_action_completed_date timestamptz,
+  add column if not exists progress_updates jsonb,
+  add column if not exists evidence_uploads jsonb,
   add column if not exists severity text default 'medium',
   add column if not exists status text default 'open',
-  add column if not exists evidence_document_url text,
+  add column if not exists auditor_user_id uuid,
+  add column if not exists auditee_user_id uuid,
+  add column if not exists department_manager_user_id uuid,
   add column if not exists raised_by_user_id uuid,
   add column if not exists approved_by_user_id uuid,
   add column if not exists approved_at timestamptz,
   add column if not exists signed_by_user_id uuid,
   add column if not exists signed_at timestamptz,
+  add column if not exists manager_signoff_user_id uuid,
+  add column if not exists manager_signoff_at timestamptz,
+  add column if not exists manager_signoff_comment text,
+  add column if not exists manager_signature_method text,
+  add column if not exists auditor_verify_user_id uuid,
+  add column if not exists auditor_verify_at timestamptz,
+  add column if not exists effectiveness_verified boolean,
+  add column if not exists auditor_comment text,
+  add column if not exists effectiveness_check_date date,
+  add column if not exists closure_comments text,
+  add column if not exists date_closed date,
+  add column if not exists closed_at timestamptz,
+  add column if not exists closed_by_user_id uuid,
   add column if not exists source_entity_type text,
   add column if not exists source_entity_id uuid,
+  add column if not exists linked_audit_score numeric,
+  add column if not exists previous_similar_ncr_ids text[],
+  add column if not exists repeat_finding boolean,
+  add column if not exists risk_trend jsonb,
+  add column if not exists closure_time_days numeric,
+  add column if not exists auditor_name text,
+  add column if not exists company_representative_ack text,
+  add column if not exists reopen_reason text,
+  add column if not exists reopen_at timestamptz,
+  add column if not exists metadata jsonb,
   add column if not exists created_by_user_id uuid,
+  add column if not exists created_at timestamptz default now(),
   add column if not exists updated_at timestamptz default now();
 
 create index if not exists idx_quality_ncrs_company on public.quality_ncrs(company_id, occurrence_date desc);
 create index if not exists idx_quality_ncrs_number on public.quality_ncrs(nc_number);
 create index if not exists idx_quality_ncrs_source on public.quality_ncrs(source_entity_type, source_entity_id);
+
+-- Ensure expanded status lifecycle matches application workflow
+alter table if exists public.quality_ncrs
+  drop constraint if exists quality_ncrs_status_check;
+alter table if exists public.quality_ncrs
+  add constraint quality_ncrs_status_check
+  check (
+    status in (
+      'open',
+      'in-progress',
+      'awaiting-evidence',
+      'under-review',
+      'approved',
+      'overdue',
+      'closed'
+    )
+  );
 
 -- =========================
 -- Audits (Phase 2 - Separate from Inspections)
@@ -1999,6 +2105,9 @@ using (
   public.is_company_consultant_or_admin(company_id)
   or public.is_company_auditor(company_id)
   or created_by_user_id = public.request_user_id()
+  or auditee_user_id = public.request_user_id()
+  or auditor_user_id = public.request_user_id()
+  or department_manager_user_id = public.request_user_id()
   or public.is_platform_admin()
 );
 

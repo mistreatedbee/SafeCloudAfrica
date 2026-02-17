@@ -51,16 +51,27 @@ export function QualityPage() {
 
   const { data: summary } = useAsync(async () => {
     if (!activeCompanyId) return null;
-    const [openNcrs, pendingCapas, openQualityIncidents, totalTasks, completedTasks] = await Promise.all([
+    const [openNcrs, pendingCapas, openQualityIncidents, totalTasks, completedTasks, allNcrs] = await Promise.all([
       countOpenQualityNcrs(activeCompanyId),
       countOpenCorrectiveActions(activeCompanyId, { module: 'quality' }),
       countIncidentsByStatusForModule(activeCompanyId, 'quality', 'open'),
       countTasksByStatus(activeCompanyId, { module: 'quality' }),
-      countTasksByStatus(activeCompanyId, { module: 'quality', status: 'completed' })
+      countTasksByStatus(activeCompanyId, { module: 'quality', status: 'completed' }),
+      listQualityNcrs({ companyId: activeCompanyId, limit: 500 })
     ]);
 
     const efficiency = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
     const compliance = Math.max(0, Math.min(100, 100 - openNcrs * 4 - pendingCapas * 2 - openQualityIncidents * 2));
+
+    const totalNcrs = allNcrs.length;
+    const highRiskNcrs = allNcrs.filter((n: any) =>
+      ['high', 'critical'].includes(String(n.severity).toLowerCase()) ||
+      ['high', 'critical'].includes(String((n as any).risk_rating ?? '').toLowerCase())
+    ).length;
+    const repeatNcrs = allNcrs.filter((n: any) => (n as any).repeat_finding).length;
+    const overdueNcrs = allNcrs.filter((n: any) => String(n.status) === 'overdue').length;
+    const closedNcrs = allNcrs.filter((n: any) => String(n.status) === 'closed').length;
+    const closureRate = totalNcrs > 0 ? Math.round((closedNcrs / totalNcrs) * 100) : 0;
 
     return {
       compliance,
@@ -69,7 +80,12 @@ export function QualityPage() {
       customerComplaints: openQualityIncidents,
       processEfficiency: efficiency,
       totalTasks,
-      completedTasks
+      completedTasks,
+      totalNcrs,
+      highRiskNcrs,
+      repeatNcrs,
+      overdueNcrs,
+      closureRate
     };
   }, [activeCompanyId]);
 
@@ -85,7 +101,12 @@ export function QualityPage() {
     customerComplaints: 0,
     processEfficiency: 0,
     totalTasks: 0,
-    completedTasks: 0
+    completedTasks: 0,
+    totalNcrs: 0,
+    highRiskNcrs: 0,
+    repeatNcrs: 0,
+    overdueNcrs: 0,
+    closureRate: 0
   };
 
   const qualityMetrics = useMemo(() => {
@@ -94,9 +115,23 @@ export function QualityPage() {
       { name: 'Task completion rate', value: completionRate, target: 90 },
       { name: 'Open NCRs (lower is better)', value: qualityStats.openNcrs, target: 0, unit: '', inverse: true },
       { name: 'Open quality incidents (lower is better)', value: qualityStats.customerComplaints, target: 0, unit: '', inverse: true },
-      { name: 'Process efficiency', value: qualityStats.processEfficiency, target: 90, unit: '%'}
+      { name: 'Process efficiency', value: qualityStats.processEfficiency, target: 90, unit: '%' },
+      { name: 'NCR closure rate', value: qualityStats.closureRate, target: 95, unit: '%' },
+      { name: 'High-risk NCRs (lower is better)', value: qualityStats.highRiskNcrs, target: 0, unit: '', inverse: true },
+      { name: 'Repeat findings (lower is better)', value: qualityStats.repeatNcrs, target: 0, unit: '', inverse: true },
+      { name: 'Overdue NCRs (lower is better)', value: qualityStats.overdueNcrs, target: 0, unit: '', inverse: true }
     ] as Array<{ name: string; value: number; target: number; unit?: string; inverse?: boolean }>;
-  }, [qualityStats.completedTasks, qualityStats.customerComplaints, qualityStats.openNcrs, qualityStats.processEfficiency, qualityStats.totalTasks]);
+  }, [
+    qualityStats.completedTasks,
+    qualityStats.customerComplaints,
+    qualityStats.openNcrs,
+    qualityStats.processEfficiency,
+    qualityStats.totalTasks,
+    qualityStats.closureRate,
+    qualityStats.highRiskNcrs,
+    qualityStats.repeatNcrs,
+    qualityStats.overdueNcrs
+  ]);
 
   return (
     <Layout title="Quality Management">
@@ -243,7 +278,7 @@ export function QualityPage() {
                         {ncr.title}
                       </p>
                       <p className="text-xs text-charcoal-400 mt-0.5">
-                        {new Date((((ncr as any).date_identified ?? ncr.occurred_at) as any)).toLocaleDateString('en-ZA')}
+                        {new Date((((ncr as any).date_identified ?? (ncr as any).occurrence_date ?? ncr.created_at) as any)).toLocaleDateString('en-ZA')}
                       </p>
                     </div>
                     <StatusBadge status={ncr.status as any} size="sm" />

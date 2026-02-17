@@ -140,6 +140,59 @@ async function seedIncidentsAndTasks(input: { adminClient: any; companyId: strin
       created_by_user_id: input.adminUserId
     }
   ]);
+
+  // Seed a few NCRs for demo: high-risk, overdue, and repeat finding
+  const today = new Date();
+  const pastDate = new Date(today.getTime() - 10 * 24 * 3600 * 1000);
+  const futureDate = new Date(today.getTime() + 10 * 24 * 3600 * 1000);
+
+  await input.adminClient.database.from('quality_ncrs').insert([
+    {
+      company_id: input.companyId,
+      module: 'quality',
+      nc_number: `NCR-${today.getFullYear()}-${String(Date.now()).slice(-6)}`,
+      title: 'High-risk non-conformance: missing critical guard on machine',
+      description: 'Guard removed from moving parts on production line. Immediate risk of serious injury.',
+      occurrence_date: today.toISOString(),
+      location: 'Production Line 1',
+      severity: 'critical',
+      status: 'open',
+      risk_classification: 'Critical',
+      risk_rating: 'critical',
+      corrective_action_due_date: futureDate.toISOString(),
+      created_by_user_id: input.adminUserId
+    },
+    {
+      company_id: input.companyId,
+      module: 'quality',
+      nc_number: `NCR-${today.getFullYear()}-${String(Date.now() + 1).slice(-6)}`,
+      title: 'Overdue NCR: calibration records not maintained',
+      description: 'Equipment calibration records are missing for the past 6 months.',
+      occurrence_date: pastDate.toISOString(),
+      location: 'Maintenance Workshop',
+      severity: 'high',
+      status: 'overdue',
+      risk_classification: 'High',
+      risk_rating: 'high',
+      corrective_action_due_date: pastDate.toISOString(),
+      created_by_user_id: input.adminUserId
+    },
+    {
+      company_id: input.companyId,
+      module: 'quality',
+      nc_number: `NCR-${today.getFullYear()}-${String(Date.now() + 2).slice(-6)}`,
+      title: 'Repeat finding: incomplete document control',
+      description: 'Procedures not updated after process change. Similar NCR was raised last quarter.',
+      occurrence_date: today.toISOString(),
+      location: 'Head Office',
+      severity: 'medium',
+      status: 'open',
+      risk_classification: 'Medium',
+      risk_rating: 'medium',
+      repeat_finding: true,
+      created_by_user_id: input.adminUserId
+    }
+  ]);
 }
 
 async function seedAuditDemo(input: { adminClient: any; companyId: string; adminUserId: string; consultantUserId: string; employeeUserId: string }) {
