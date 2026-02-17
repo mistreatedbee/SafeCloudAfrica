@@ -231,7 +231,7 @@ export function InspectionChecklistLibrary(props: Props) {
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setEditing(null)} />
-          <div className="relative w-full max-w-lg mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 p-5 space-y-4">
+          <div className="relative w-full max-w-lg mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-charcoal">
                 {editing.id ? 'Edit Checklist Template' : 'New Checklist Template'}
