@@ -13,6 +13,7 @@ import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { getMyProfile } from './profilesService';
 import { createQualityNcrFromInspectionItem } from './qualityNcrsService';
+import { createCorrectiveAction } from './correctiveActionsService';
 
 export type ListInspectionsInput = {
   companyId: UUID;
@@ -67,6 +68,11 @@ export type CreateInspectionInput = {
   assigneeUserId?: UUID;
   createdByUserId: UUID;
   templateId?: UUID;
+  inspectorUserId?: UUID | null;
+  auditorUserId?: UUID | null;
+  auditeeUserId?: UUID | null;
+  inspectionMethod?: 'physical-observation' | 'record-review' | 'interview' | 'other';
+  inspectionDate?: string;
 };
 
 export async function createInspection(input: CreateInspectionInput): Promise<Inspection> {
@@ -83,6 +89,11 @@ export async function createInspection(input: CreateInspectionInput): Promise<In
       scheduled_at: input.scheduledAt ?? null,
       location: input.location ?? null,
       assignee_user_id: input.assigneeUserId ?? null,
+      inspector_user_id: input.inspectorUserId ?? input.assigneeUserId ?? input.createdByUserId,
+      auditor_user_id: input.auditorUserId ?? null,
+      auditee_user_id: input.auditeeUserId ?? null,
+      inspection_method: input.inspectionMethod ?? 'physical-observation',
+      inspection_date: input.inspectionDate ?? null,
       created_by_user_id: input.createdByUserId
     })
     .select('*')
@@ -106,7 +117,8 @@ export async function createInspection(input: CreateInspectionInput): Promise<In
       companyId: input.companyId,
       inspectionId: inspection.id,
       templateId: input.templateId,
-      inspectorUserId: input.assigneeUserId ?? input.createdByUserId
+      inspectorUserId: input.inspectorUserId ?? input.assigneeUserId ?? input.createdByUserId,
+      auditeeUserId: input.auditeeUserId ?? null
     });
   }
 
@@ -171,6 +183,10 @@ export async function createInspectionChecklistTemplate(input: {
   departmentId?: UUID | null;
   isActive?: boolean;
   createdByUserId: UUID;
+  googleDocId?: string | null;
+  googleDocUrl?: string | null;
+  defaultSector?: string | null;
+  frequency?: 'ad-hoc' | 'daily' | 'monthly' | 'quarterly';
 }): Promise<InspectionChecklistTemplate> {
   const { data, error } = await insforge.database
     .from('inspection_checklist_templates')
@@ -183,6 +199,10 @@ export async function createInspectionChecklistTemplate(input: {
       site_id: input.siteId ?? null,
       department_id: input.departmentId ?? null,
       is_active: input.isActive ?? true,
+      google_doc_id: input.googleDocId ?? null,
+      google_doc_url: input.googleDocUrl ?? null,
+      default_sector: input.defaultSector ?? null,
+      frequency: input.frequency ?? 'ad-hoc',
       created_by_user_id: input.createdByUserId,
       updated_by_user_id: input.createdByUserId
     })
@@ -202,6 +222,10 @@ export async function updateInspectionChecklistTemplate(input: {
   departmentId?: UUID | null;
   isActive?: boolean;
   updatedByUserId: UUID;
+  googleDocId?: string | null;
+  googleDocUrl?: string | null;
+  defaultSector?: string | null;
+  frequency?: 'ad-hoc' | 'daily' | 'monthly' | 'quarterly';
 }): Promise<InspectionChecklistTemplate> {
   const patch: Record<string, unknown> = {
     updated_by_user_id: input.updatedByUserId,
@@ -213,6 +237,10 @@ export async function updateInspectionChecklistTemplate(input: {
   if (typeof input.siteId !== 'undefined') patch.site_id = input.siteId;
   if (typeof input.departmentId !== 'undefined') patch.department_id = input.departmentId;
   if (typeof input.isActive !== 'undefined') patch.is_active = input.isActive;
+   if (typeof input.googleDocId !== 'undefined') patch.google_doc_id = input.googleDocId;
+   if (typeof input.googleDocUrl !== 'undefined') patch.google_doc_url = input.googleDocUrl;
+   if (typeof input.defaultSector !== 'undefined') patch.default_sector = input.defaultSector;
+   if (typeof input.frequency !== 'undefined') patch.frequency = input.frequency;
 
   const { data, error } = await insforge.database
     .from('inspection_checklist_templates')
@@ -310,6 +338,7 @@ export async function createInspectionRunFromTemplate(input: {
   inspectionId: UUID;
   templateId: UUID;
   inspectorUserId?: UUID | null;
+  auditeeUserId?: UUID | null;
 }): Promise<{ run: InspectionRun; items: InspectionRunItem[] }> {
   // Determine next run number
   const { data: existingRuns, error: runsError } = await insforge.database
@@ -345,6 +374,7 @@ export async function createInspectionRunFromTemplate(input: {
       started_at: nowIso,
       status: 'in-progress',
       inspector_user_id: input.inspectorUserId ?? null,
+      auditee_user_id: input.auditeeUserId ?? null,
       items_total: templateItems.length,
       items_nc: 0,
       ncrs_created_count: 0
@@ -361,16 +391,26 @@ export async function createInspectionRunFromTemplate(input: {
     template_item_id: item.id,
     item_order: item.item_order,
     section: item.section,
+    audit_section_or_category: (item as any).audit_section_or_category ?? item.section,
     question: item.question,
     expected_evidence: item.expected_evidence,
     risk_area: item.risk_area,
     risk_rating: item.default_risk_rating,
     nc_severity: item.default_nc_severity,
+    inspection_method: (item as any).inspection_method_default ?? template.default_inspection_method ?? 'physical-observation',
+    evidence_required: (item as any).evidence_required_default ?? false,
+    risk_level: (item as any).risk_level_default ?? null,
+    question_fingerprint: (item as any).question_fingerprint ?? null,
     compliance_status: 'C' as InspectionRunComplianceStatus,
+    inspection_rating: 'C',
+    score: 2,
+    max_score: 2,
     comments: null,
+    auditor_comments: null,
     evidence_document_url: null,
     photo_url: null,
     nonconformance_flag: false,
+    corrective_action_required: false,
     auto_ncr_id: null
   }));
 
@@ -419,7 +459,19 @@ export async function updateInspectionRunItem(
   runItemId: UUID,
   patch: Partial<{
     compliance_status: InspectionRunComplianceStatus;
+    inspection_rating: 'C' | 'PC' | 'NC';
+    risk_level: 'low' | 'medium' | 'high';
+    evidence_required: boolean;
+    evidence_notes: string | null;
     comments: string | null;
+    auditor_comments: string | null;
+    inspection_method: 'physical-observation' | 'record-review' | 'interview' | 'other';
+    nonconformance_flag: boolean;
+    corrective_action_required: boolean;
+    responsible_person_id: UUID | null;
+    responsible_person_name: string | null;
+    due_date: string | null;
+    status: InspectionRunItem['status'];
     evidence_document_url: string | null;
     photo_url: string | null;
   }>
@@ -429,7 +481,27 @@ export async function updateInspectionRunItem(
     updatePatch.compliance_status = patch.compliance_status;
     updatePatch.nonconformance_flag = patch.compliance_status === 'NC';
   }
+  if (typeof patch.inspection_rating !== 'undefined') {
+    updatePatch.inspection_rating = patch.inspection_rating;
+    // Map rating to numeric score: C=2, PC=1, NC=0
+    const rating = patch.inspection_rating;
+    const score = rating === 'C' ? 2 : rating === 'PC' ? 1 : 0;
+    updatePatch.score = score;
+    updatePatch.max_score = 2;
+  }
+  if (typeof patch.risk_level !== 'undefined') updatePatch.risk_level = patch.risk_level;
+  if (typeof patch.evidence_required !== 'undefined') updatePatch.evidence_required = patch.evidence_required;
+  if ('evidence_notes' in patch) updatePatch.evidence_notes = patch.evidence_notes;
   if ('comments' in patch) updatePatch.comments = patch.comments;
+  if ('auditor_comments' in patch) updatePatch.auditor_comments = patch.auditor_comments;
+  if (typeof patch.inspection_method !== 'undefined') updatePatch.inspection_method = patch.inspection_method;
+  if (typeof patch.nonconformance_flag !== 'undefined') updatePatch.nonconformance_flag = patch.nonconformance_flag;
+  if (typeof patch.corrective_action_required !== 'undefined')
+    updatePatch.corrective_action_required = patch.corrective_action_required;
+  if ('responsible_person_id' in patch) updatePatch.responsible_person_id = patch.responsible_person_id;
+  if ('responsible_person_name' in patch) updatePatch.responsible_person_name = patch.responsible_person_name;
+  if ('due_date' in patch) updatePatch.due_date = patch.due_date;
+  if ('status' in patch) updatePatch.status = patch.status;
   if ('evidence_document_url' in patch) updatePatch.evidence_document_url = patch.evidence_document_url;
   if ('photo_url' in patch) updatePatch.photo_url = patch.photo_url;
 
@@ -454,36 +526,74 @@ export async function completeInspectionRun(input: {
 
   const { run, items } = runWithItems;
 
-  const ncItems = items.filter((i) => i.compliance_status === 'NC');
+  const ncItems = items.filter((i) => i.compliance_status === 'NC' || i.inspection_rating === 'NC');
 
-  // Auto-create NCRs for NC items that don't yet have one
+  // Auto-create NCRs and CAPAs for NC items that don't yet have them
   let ncrsCreatedCount = 0;
   for (const item of ncItems) {
-    if (item.auto_ncr_id) continue;
+    let autoNcrId = item.auto_ncr_id as UUID | null | undefined;
 
-    const ncr = await createQualityNcrFromInspectionItem({
-      companyId: input.companyId,
-      inspectionId: run.inspection_id,
-      runId: run.id,
-      runItemId: item.id,
-      siteId: run.site_id ?? null,
-      departmentId: run.department_id ?? null,
-      severity: (item.nc_severity as any) ?? 'medium',
-      riskRating: item.risk_rating ?? null,
-      description: item.comments ?? item.question,
-      detectedByUserId: input.actorUserId
-    });
+    if (!autoNcrId) {
+      const ncr = await createQualityNcrFromInspectionItem({
+        companyId: input.companyId,
+        inspectionId: run.inspection_id,
+        runId: run.id,
+        runItemId: item.id,
+        siteId: run.site_id ?? null,
+        departmentId: run.department_id ?? null,
+        severity: (item.nc_severity as any) ?? 'medium',
+        riskRating: item.risk_rating ?? null,
+        description: item.comments ?? item.question,
+        detectedByUserId: input.actorUserId
+      });
 
-    ncrsCreatedCount += 1;
+      ncrsCreatedCount += 1;
+      autoNcrId = ncr.id as UUID;
 
-    await insforge.database
-      .from('inspection_run_items')
-      .update({
-        auto_ncr_id: ncr.id,
-        updated_at: new Date().toISOString()
-      })
-      .eq('company_id', input.companyId)
-      .eq('id', item.id);
+      await insforge.database
+        .from('inspection_run_items')
+        .update({
+          auto_ncr_id: autoNcrId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('company_id', input.companyId)
+        .eq('id', item.id);
+    }
+
+    // Auto-generate CAPA when NC or corrective action explicitly required
+    const needsCapa = item.corrective_action_required || item.compliance_status === 'NC' || item.inspection_rating === 'NC';
+    if (needsCapa && !item.corrective_action_id) {
+      const dueDate =
+        (item.due_date as string | null | undefined) ??
+        new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const priority: 'low' | 'medium' | 'high' | 'urgent' =
+        item.risk_level === 'high' ? 'high' : item.risk_level === 'low' ? 'low' : 'medium';
+
+      const capa = await createCorrectiveAction({
+        companyId: input.companyId,
+        title: item.question,
+        description: item.comments ?? item.auditor_comments ?? null ?? undefined,
+        actionType: 'corrective',
+        sourceType: 'inspection',
+        sourceId: item.id as UUID,
+        priority,
+        dueDate,
+        assignedToUserId: (item.responsible_person_id as UUID | null | undefined) ?? undefined,
+        rootCause: undefined,
+        proposedSolution: undefined,
+        createdByUserId: input.actorUserId
+      });
+
+      await insforge.database
+        .from('inspection_run_items')
+        .update({
+          corrective_action_id: capa.id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('company_id', input.companyId)
+        .eq('id', item.id);
+    }
   }
 
   const nowIso = new Date().toISOString();

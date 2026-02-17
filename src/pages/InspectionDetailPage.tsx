@@ -30,6 +30,10 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useUser } from '@insforge/react';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
+import { EVIDENCE_BUCKET } from '../components/evidence/EvidenceModal';
+import { InspectionRunItem as RunItemModel } from '../api/models/entities';
+import { listInspectionItemEvidence, createInspectionItemEvidence } from '../api/services/inspectionEvidenceService';
+import { insforge } from '../api/insforge/client';
 
 type RunWithItems = { run: InspectionRun; items: InspectionRunItem[] };
 
@@ -132,6 +136,7 @@ export function InspectionDetailPage() {
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
   const [completingRun, setCompletingRun] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [evidenceItemId, setEvidenceItemId] = useState<string | null>(null);
 
   const checklistStats = useMemo(() => {
     if (!latestRun) return { total: 0, nc: 0, completed: 0 };
@@ -143,15 +148,22 @@ export function InspectionDetailPage() {
 
   async function handleUpdateItem(
     item: InspectionRunItem,
-    patch: Partial<Pick<InspectionRunItem, 'compliance_status' | 'comments'>>
+    patch: Partial<Pick<InspectionRunItem, 'compliance_status' | 'comments' | 'inspection_rating' | 'risk_level'>>
   ) {
     if (!activeCompanyId) return;
     setSavingItemId(item.id as string);
     try {
       await updateInspectionRunItem(activeCompanyId as UUID, item.id as UUID, {
         compliance_status: patch.compliance_status as InspectionRunComplianceStatus | undefined,
+        inspection_rating: patch.inspection_rating as any,
+        risk_level: patch.risk_level as any,
         comments: patch.comments ?? item.comments
       });
+  async function handleOpenItemEvidence(item: RunItemModel) {
+    if (!activeCompanyId || !user?.id) return;
+    setEvidenceItemId(item.id as string);
+    setEvidenceOpen(true);
+  }
       await refreshRun();
     } finally {
       setSavingItemId(null);
@@ -347,8 +359,10 @@ export function InspectionDetailPage() {
                             <th className="py-2 pr-3 text-left font-medium">Section</th>
                             <th className="py-2 pr-3 text-left font-medium">Question</th>
                             <th className="py-2 pr-3 text-left font-medium">Expected evidence</th>
-                            <th className="py-2 pr-3 text-left font-medium">Status</th>
+                            <th className="py-2 pr-3 text-left font-medium">Rating</th>
+                            <th className="py-2 pr-3 text-left font-medium">Risk</th>
                             <th className="py-2 pr-3 text-left font-medium">Comments</th>
+                            <th className="py-2 pr-3 text-left font-medium">Evidence</th>
                             <th className="py-2 pr-3 text-left font-medium">NC / NCR</th>
                           </tr>
                         </thead>
@@ -370,18 +384,34 @@ export function InspectionDetailPage() {
                               <td className="py-2 pr-3">
                                 <select
                                   disabled={!canEdit || latestRun.run.status === 'completed'}
-                                  value={item.compliance_status}
+                                  value={item.inspection_rating ?? 'C'}
                                   onChange={(e) =>
                                     void handleUpdateItem(item, {
-                                      compliance_status: e.target
-                                        .value as InspectionRunComplianceStatus
+                                      inspection_rating: e.target.value as any
                                     })
                                   }
                                   className="px-2 py-1 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal focus:border-transparent"
                                 >
-                                  <option value="C">C (Compliant)</option>
-                                  <option value="NC">NC (Non-conformant)</option>
-                                  <option value="NA">N/A</option>
+                                  <option value="C">Compliant (C)</option>
+                                  <option value="PC">Partially Compliant (PC)</option>
+                                  <option value="NC">Non-Compliant (NC)</option>
+                                </select>
+                              </td>
+                              <td className="py-2 pr-3">
+                                <select
+                                  disabled={!canEdit || latestRun.run.status === 'completed'}
+                                  value={item.risk_level ?? ''}
+                                  onChange={(e) =>
+                                    void handleUpdateItem(item, {
+                                      risk_level: (e.target.value || null) as any
+                                    })
+                                  }
+                                  className="px-2 py-1 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal focus:border-transparent"
+                                >
+                                  <option value="">Risk level</option>
+                                  <option value="low">Low</option>
+                                  <option value="medium">Medium</option>
+                                  <option value="high">High</option>
                                 </select>
                               </td>
                               <td className="py-2 pr-3">
@@ -396,6 +426,15 @@ export function InspectionDetailPage() {
                                   rows={2}
                                   className="w-full px-2 py-1 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal focus:border-transparent resize-y"
                                 />
+                              </td>
+                              <td className="py-2 pr-3 text-xs">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleOpenItemEvidence(item as any as RunItemModel)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-surface-300 text-xs text-charcoal-600 hover:bg-surface-50"
+                                >
+                                  Evidence
+                                </button>
                               </td>
                               <td className="py-2 pr-3 text-xs">
                                 {item.compliance_status === 'NC' ? (
@@ -476,12 +515,15 @@ export function InspectionDetailPage() {
             {inspection && activeCompanyId && user?.id && (
               <EvidenceModal
                 open={evidenceOpen}
-                onClose={() => setEvidenceOpen(false)}
+                onClose={() => {
+                  setEvidenceOpen(false);
+                  setEvidenceItemId(null);
+                }}
                 companyId={activeCompanyId as UUID}
                 actorUserId={user.id as UUID}
-                entityType="inspection"
-                entityId={inspection.id as UUID}
-                title="Inspection evidence"
+                entityType={evidenceItemId ? 'inspection-item' : 'inspection'}
+                entityId={(evidenceItemId as unknown as UUID) || (inspection.id as UUID)}
+                title={evidenceItemId ? 'Checklist item evidence' : 'Inspection evidence'}
               />
             )}
           </>

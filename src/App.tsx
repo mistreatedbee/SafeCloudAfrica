@@ -41,6 +41,7 @@ import { SecurityModulePage } from './pages/modules/SecurityModulePage';
 import { SafetyManagementPage } from './pages/modules/SafetyManagementPage';
 import { IncidentAnalyticsPage } from './pages/IncidentAnalyticsPage';
 import { InspectionAnalyticsPage } from './pages/InspectionAnalyticsPage';
+import { InspectionRunReportPage } from './pages/InspectionRunReportPage';
 import { PjoAnalyticsPage } from './pages/PjoAnalyticsPage';
 import { HCSModulePage } from './pages/modules/HCSModulePage';
 import { BBSPage } from './pages/features/BBSPage';
@@ -403,6 +404,16 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <InspectionDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/inspections/runs/:runId/report"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <InspectionRunReportPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

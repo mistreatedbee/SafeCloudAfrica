@@ -11,7 +11,7 @@ export interface CorrectiveAction {
   title: string;
   description: string | null;
   action_type: 'corrective' | 'preventive';
-  source_type: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation';
+  source_type: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation' | 'inspection';
   source_id: UUID;
   status: 'open' | 'assigned' | 'in-progress' | 'completed' | 'verified' | 'closed';
   priority: 'low' | 'medium' | 'high' | 'urgent';
@@ -43,7 +43,7 @@ export type CreateCorrectiveActionInput = {
   title: string;
   description?: string;
   actionType: 'corrective' | 'preventive';
-  sourceType: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation';
+  sourceType: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation' | 'inspection';
   sourceId: UUID;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   dueDate: string;

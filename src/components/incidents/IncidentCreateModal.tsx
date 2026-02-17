@@ -15,6 +15,7 @@ import { insforge } from '../../api/insforge/client';
 import { useUser } from '@insforge/react';
 import {
   IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS,
+  IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS,
   ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES,
   ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES,
   SYSTEM_FAILURE_OPTIONS

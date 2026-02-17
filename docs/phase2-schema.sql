@@ -580,7 +580,17 @@ create table if not exists public.inspections (
   status text not null check (status in ('scheduled','in-progress','completed','overdue')) default 'scheduled',
   scheduled_at timestamptz null,
   completed_at timestamptz null,
+  -- Location & hierarchy
   location text null,
+  site_id uuid null,
+  department_id uuid null,
+  -- Roles & participants
+  inspector_user_id uuid null,
+  auditor_user_id uuid null,
+  auditee_user_id uuid null,
+  -- Inspection method metadata
+  inspection_method text null check (inspection_method in ('physical-observation','record-review','interview','other')) default 'physical-observation',
+  inspection_date date null,
   findings_count integer not null default 0,
   nonconformances_count integer not null default 0,
   assignee_user_id uuid null,
@@ -589,6 +599,16 @@ create table if not exists public.inspections (
   updated_at timestamptz not null default now()
 );
 create index if not exists idx_inspections_company on public.inspections(company_id, scheduled_at desc);
+
+-- Ensure newer metadata columns exist if table was created before
+alter table if exists public.inspections
+  add column if not exists site_id uuid,
+  add column if not exists department_id uuid,
+  add column if not exists inspector_user_id uuid,
+  add column if not exists auditor_user_id uuid,
+  add column if not exists auditee_user_id uuid,
+  add column if not exists inspection_method text,
+  add column if not exists inspection_date date;
 
 -- Inspection checklist templates (reusable checklists for inspections)
 create table if not exists public.inspection_checklist_templates (
@@ -601,6 +621,11 @@ create table if not exists public.inspection_checklist_templates (
   site_id uuid null,
   department_id uuid null,
   is_active boolean not null default true,
+  -- Google Docs source & defaults
+  google_doc_id text null,
+  google_doc_url text null,
+  default_sector text null,
+  frequency text not null check (frequency in ('ad-hoc','daily','monthly','quarterly')) default 'ad-hoc',
   created_by_user_id uuid not null,
   updated_by_user_id uuid null,
   created_at timestamptz not null default now(),
@@ -609,6 +634,12 @@ create table if not exists public.inspection_checklist_templates (
 
 create index if not exists idx_inspection_checklist_templates_company on public.inspection_checklist_templates(company_id, module, is_active);
 
+alter table if exists public.inspection_checklist_templates
+  add column if not exists google_doc_id text,
+  add column if not exists google_doc_url text,
+  add column if not exists default_sector text,
+  add column if not exists frequency text default 'ad-hoc';
+
 -- Individual items/questions within a checklist template
 create table if not exists public.inspection_checklist_items (
   id uuid primary key default gen_random_uuid(),
@@ -616,17 +647,32 @@ create table if not exists public.inspection_checklist_items (
   template_id uuid not null references public.inspection_checklist_templates(id) on delete cascade,
   item_order integer not null default 0,
   section text null,
+  -- Specification alignment
+  audit_section_or_category text null,
   question text not null,
   expected_evidence text null,
+  requirement_reference text null,
   risk_area text null,
   default_risk_rating text null,
   default_nc_severity text null,
+  inspection_method_default text null check (inspection_method_default in ('physical-observation','record-review','interview','other')),
+  evidence_required_default boolean not null default false,
+  risk_level_default text null check (risk_level_default in ('low','medium','high')),
+  question_fingerprint text null,
   is_mandatory boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists idx_inspection_checklist_items_template on public.inspection_checklist_items(template_id, item_order);
+
+alter table if exists public.inspection_checklist_items
+  add column if not exists audit_section_or_category text,
+  add column if not exists requirement_reference text,
+  add column if not exists inspection_method_default text,
+  add column if not exists evidence_required_default boolean default false,
+  add column if not exists risk_level_default text,
+  add column if not exists question_fingerprint text;
 
 -- Individual inspection runs (each execution of a checklist for an inspection)
 create table if not exists public.inspection_runs (
@@ -642,6 +688,10 @@ create table if not exists public.inspection_runs (
   completed_at timestamptz null,
   status text not null check (status in ('in-progress','completed','cancelled')) default 'in-progress',
   inspector_user_id uuid null,
+   -- Auditee/self-assessment tracking
+  auditee_user_id uuid null,
+  auditee_submission_status text null check (auditee_submission_status in ('draft','submitted')),
+  auditee_submitted_at timestamptz null,
   items_total integer not null default 0,
   items_nc integer not null default 0,
   ncrs_created_count integer not null default 0,
@@ -665,18 +715,136 @@ create table if not exists public.inspection_run_items (
   risk_area text null,
   risk_rating text null,
   nc_severity text null,
+  -- Rating & scoring
   compliance_status text not null check (compliance_status in ('C','NC','NA')) default 'C',
+  inspection_rating text null check (inspection_rating in ('C','PC','NC')),
+  score integer null,
+  max_score integer null,
+  -- Evidence & comments
+  evidence_required boolean not null default false,
+  evidence_notes text null,
   comments text null,
+  auditor_comments text null,
+  inspection_method text null check (inspection_method in ('physical-observation','record-review','interview','other')),
   evidence_document_url text null,
   photo_url text null,
+  -- Risk and NC flags
+  risk_level text null check (risk_level in ('low','medium','high')),
   nonconformance_flag boolean not null default false,
+  corrective_action_required boolean not null default false,
+  -- Responsibility & dates
+  responsible_person_id uuid null,
+  responsible_person_name text null,
+  due_date date null,
+  status text not null check (status in ('open','in-progress','awaiting-evidence','under-review','approved','closed','overdue')) default 'open',
+  -- Linking & fingerprints
+  question_fingerprint text null,
   auto_ncr_id uuid null references public.quality_ncrs(id) on delete set null,
+  corrective_action_id uuid null references public.corrective_actions(id) on delete set null,
+  -- Closure workflow
+  closure_requested_at timestamptz null,
+  closure_evidence_submitted_at timestamptz null,
+  manager_approved_by_user_id uuid null,
+  manager_approved_at timestamptz null,
+  auditor_verified_by_user_id uuid null,
+  auditor_verified_at timestamptz null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists idx_inspection_run_items_run on public.inspection_run_items(run_id, item_order);
 create index if not exists idx_inspection_run_items_auto_ncr on public.inspection_run_items(auto_ncr_id);
+
+alter table if exists public.inspection_run_items
+  add column if not exists inspection_rating text,
+  add column if not exists score integer,
+  add column if not exists max_score integer,
+  add column if not exists evidence_required boolean default false,
+  add column if not exists evidence_notes text,
+  add column if not exists auditor_comments text,
+  add column if not exists inspection_method text,
+  add column if not exists risk_level text,
+  add column if not exists corrective_action_required boolean default false,
+  add column if not exists responsible_person_id uuid,
+  add column if not exists responsible_person_name text,
+  add column if not exists due_date date,
+  add column if not exists status text default 'open',
+  add column if not exists question_fingerprint text,
+  add column if not exists corrective_action_id uuid,
+  add column if not exists closure_requested_at timestamptz,
+  add column if not exists closure_evidence_submitted_at timestamptz,
+  add column if not exists manager_approved_by_user_id uuid,
+  add column if not exists manager_approved_at timestamptz,
+  add column if not exists auditor_verified_by_user_id uuid,
+  add column if not exists auditor_verified_at timestamptz;
+
+-- Evidence uploads linked to individual checklist items
+create table if not exists public.inspection_item_evidence (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  run_item_id uuid not null references public.inspection_run_items(id) on delete cascade,
+  evidence_type text not null check (evidence_type in ('initial','closure')),
+  file_url text not null,
+  original_filename text null,
+  mime_type text null,
+  size_bytes bigint null,
+  uploaded_by_user_id uuid not null,
+  uploaded_at timestamptz not null default now(),
+  description text null,
+  metadata jsonb null
+);
+
+create index if not exists idx_inspection_item_evidence_item on public.inspection_item_evidence(run_item_id, uploaded_at desc);
+
+-- Audit trail for checklist item changes
+create table if not exists public.inspection_item_audit_trail (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  run_item_id uuid not null references public.inspection_run_items(id) on delete cascade,
+  changed_by_user_id uuid not null,
+  changed_at timestamptz not null default now(),
+  change_type text null,
+  from_values jsonb null,
+  to_values jsonb null,
+  change_reason text null
+);
+
+create index if not exists idx_inspection_item_audit_trail_item on public.inspection_item_audit_trail(run_item_id, changed_at desc);
+
+-- Auditee submissions for self-assessments and uploads
+create table if not exists public.inspection_auditee_submissions (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  run_id uuid not null references public.inspection_runs(id) on delete cascade,
+  submitted_by_user_id uuid not null,
+  submission_type text not null check (submission_type in ('self-assessment','document-upload','inspection-record')),
+  status text not null check (status in ('draft','submitted')) default 'draft',
+  created_at timestamptz not null default now(),
+  submitted_at timestamptz null,
+  updated_at timestamptz not null default now(),
+  metadata jsonb null
+);
+
+create index if not exists idx_inspection_auditee_submissions_run on public.inspection_auditee_submissions(run_id, status);
+
+-- Summaries for reporting/analytics
+create table if not exists public.inspection_run_summaries (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  run_id uuid not null references public.inspection_runs(id) on delete cascade,
+  department_id uuid null,
+  site_id uuid null,
+  total_score integer not null default 0,
+  max_score integer not null default 0,
+  compliance_percent numeric(5,2) not null default 0,
+  high_risk_count integer not null default 0,
+  nc_count integer not null default 0,
+  pc_count integer not null default 0,
+  run_completed_at timestamptz null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_inspection_run_summaries_company_dept on public.inspection_run_summaries(company_id, department_id, run_completed_at desc);
 
 -- Risks: risk register / assessments
 create table if not exists public.risks (
@@ -805,7 +973,7 @@ create table if not exists public.corrective_actions (
   title text not null,
   description text null,
   action_type text not null check (action_type in ('corrective', 'preventive')) default 'corrective',
-  source_type text not null check (source_type in ('ncr', 'risk_assessment', 'incident', 'audit', 'observation')),
+  source_type text not null check (source_type in ('ncr', 'risk_assessment', 'incident', 'audit', 'observation','inspection')),
   source_id uuid not null,
   status text not null check (status in ('open', 'assigned', 'in-progress', 'completed', 'verified', 'closed')) default 'open',
   priority text not null check (priority in ('low', 'medium', 'high', 'urgent')) default 'medium',
@@ -848,6 +1016,12 @@ alter table if exists public.corrective_actions
   add column if not exists linked_task_id uuid,
   add column if not exists created_by_user_id uuid,
   add column if not exists updated_at timestamptz default now();
+
+-- Ensure source_type constraint allows inspection linkage
+alter table if exists public.corrective_actions
+  drop constraint if exists corrective_actions_source_type_check,
+  add constraint corrective_actions_source_type_check
+    check (source_type in ('ncr', 'risk_assessment', 'incident', 'audit', 'observation','inspection'));
 
 create index if not exists idx_corrective_actions_company on public.corrective_actions(company_id, status);
 create index if not exists idx_corrective_actions_number on public.corrective_actions(action_number);
@@ -1534,6 +1708,10 @@ alter table public.inspection_checklist_templates enable row level security;
 alter table public.inspection_checklist_items enable row level security;
 alter table public.inspection_runs enable row level security;
 alter table public.inspection_run_items enable row level security;
+alter table public.inspection_item_evidence enable row level security;
+alter table public.inspection_item_audit_trail enable row level security;
+alter table public.inspection_auditee_submissions enable row level security;
+alter table public.inspection_run_summaries enable row level security;
 alter table public.risks enable row level security;
 alter table public.ppe_items enable row level security;
 alter table public.ppe_issues enable row level security;
@@ -1902,6 +2080,66 @@ using (
 drop policy if exists inspection_run_items_write_management on public.inspection_run_items;
 create policy inspection_run_items_write_management
 on public.inspection_run_items for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- Inspection item evidence
+drop policy if exists inspection_item_evidence_select_role on public.inspection_item_evidence;
+create policy inspection_item_evidence_select_role
+on public.inspection_item_evidence for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists inspection_item_evidence_write_management on public.inspection_item_evidence;
+create policy inspection_item_evidence_write_management
+on public.inspection_item_evidence for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- Inspection item audit trail
+drop policy if exists inspection_item_audit_trail_select_role on public.inspection_item_audit_trail;
+create policy inspection_item_audit_trail_select_role
+on public.inspection_item_audit_trail for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists inspection_item_audit_trail_write_management on public.inspection_item_audit_trail;
+create policy inspection_item_audit_trail_write_management
+on public.inspection_item_audit_trail for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- Inspection auditee submissions
+drop policy if exists inspection_auditee_submissions_select_role on public.inspection_auditee_submissions;
+create policy inspection_auditee_submissions_select_role
+on public.inspection_auditee_submissions for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists inspection_auditee_submissions_write_role on public.inspection_auditee_submissions;
+create policy inspection_auditee_submissions_write_role
+on public.inspection_auditee_submissions for all
+using (public.is_company_member(company_id) or public.is_platform_admin())
+with check (public.is_company_member(company_id) or public.is_platform_admin());
+
+-- Inspection run summaries
+drop policy if exists inspection_run_summaries_select_role on public.inspection_run_summaries;
+create policy inspection_run_summaries_select_role
+on public.inspection_run_summaries for select
+using (
+  public.is_company_member(company_id)
+  or public.is_platform_admin()
+);
+
+drop policy if exists inspection_run_summaries_write_management on public.inspection_run_summaries;
+create policy inspection_run_summaries_write_management
+on public.inspection_run_summaries for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
