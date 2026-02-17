@@ -142,6 +142,80 @@ async function seedIncidentsAndTasks(input: { adminClient: any; companyId: strin
   ]);
 }
 
+async function seedAuditDemo(input: { adminClient: any; companyId: string; adminUserId: string; consultantUserId: string; employeeUserId: string }) {
+  const proposedDates = [
+    new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+    new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString(),
+    new Date(Date.now() + 21 * 24 * 3600 * 1000).toISOString()
+  ];
+  const auditNumber = `AUDIT-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
+  const { data: audit, error: auditErr } = await input.adminClient.database
+    .from('audits')
+    .insert({
+      company_id: input.companyId,
+      module: 'safety',
+      audit_number: auditNumber,
+      title: 'Q1 2026 Safety Management System Internal Audit',
+      objectives: 'Verify ISO 45001 implementation and legal compliance.',
+      audit_type: 'internal',
+      audit_criteria: 'ISO 45001:2018, OHS Act, internal procedures',
+      scope_of_audit: 'Operations at Site A, maintenance workshop',
+      location: 'Site A',
+      status: 'draft',
+      date_approval_status: 'pending',
+      proposed_dates: proposedDates,
+      required_document_list: [
+        { key: 'doc-0', label: 'Training records' },
+        { key: 'doc-1', label: 'Risk assessments' }
+      ],
+      document_submission_deadline: new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString(),
+      auditor_user_ids: [input.adminUserId, input.consultantUserId],
+      departments_auditee_ids: [input.employeeUserId],
+      findings_count: 0,
+      nonconformances_count: 0,
+      observations_count: 0,
+      related_ncr_ids: [],
+      created_by_user_id: input.adminUserId
+    })
+    .select('*')
+    .single();
+  if (auditErr) throw auditErr;
+  if (!audit) throw new Error('Failed to create seed audit.');
+
+  await input.adminClient.database.from('audit_questions').insert([
+    {
+      company_id: input.companyId,
+      audit_id: audit.id,
+      section: 'Safety leadership',
+      question: 'Is there evidence of management commitment to safety?',
+      expected_evidence: 'Minutes, policy statements, resource allocation',
+      question_order: 1,
+      allocated_score: 10,
+      created_by_user_id: input.adminUserId
+    },
+    {
+      company_id: input.companyId,
+      audit_id: audit.id,
+      section: 'Risk assessment',
+      question: 'Are risk assessments up to date and reviewed?',
+      expected_evidence: 'Risk register, review dates',
+      question_order: 2,
+      allocated_score: 10,
+      created_by_user_id: input.adminUserId
+    },
+    {
+      company_id: input.companyId,
+      audit_id: audit.id,
+      section: 'Training',
+      question: 'Are training records maintained and current?',
+      expected_evidence: 'Training matrix, certificates',
+      question_order: 3,
+      allocated_score: 10,
+      created_by_user_id: input.adminUserId
+    }
+  ]);
+}
+
 export function SeedDemoPage() {
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
@@ -246,6 +320,16 @@ export function SeedDemoPage() {
         adminUserId: created['Company B Admin'].userId
       });
       setLog((l) => [...l, '- OK seeded records']);
+
+      setLog((l) => [...l, 'Seeding audit demo…']);
+      await seedAuditDemo({
+        adminClient: created['Company A Admin'].client,
+        companyId: companyA.id,
+        adminUserId: created['Company A Admin'].userId,
+        consultantUserId: created['Company A Consultant'].userId,
+        employeeUserId: created['Company A Employee'].userId
+      });
+      setLog((l) => [...l, '- OK sample audit with checklist']);
 
       setLog((l) => [
         ...l,

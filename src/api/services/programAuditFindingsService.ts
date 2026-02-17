@@ -142,3 +142,68 @@ export async function updateProgramAuditFindingStatus(input: {
   return data as ProgramAuditFinding;
 }
 
+export async function updateProgramAuditFinding(input: {
+  companyId: UUID;
+  id: UUID;
+  actorUserId: UUID;
+  status?: ProgramAuditFindingStatus;
+  actionPlan?: string | null;
+  progressUpdates?: unknown;
+  evidenceUploads?: unknown;
+  closureEvidenceUrl?: string | null;
+}): Promise<ProgramAuditFinding> {
+  const patch: any = { updated_at: new Date().toISOString() };
+  if (input.status !== undefined) patch.status = input.status;
+  if (input.actionPlan !== undefined) patch.action_plan = input.actionPlan;
+  if (input.progressUpdates !== undefined) patch.progress_updates = input.progressUpdates;
+  if (input.evidenceUploads !== undefined) patch.evidence_uploads = input.evidenceUploads;
+  if (input.closureEvidenceUrl !== undefined) patch.closure_evidence_url = input.closureEvidenceUrl;
+
+  const { data, error } = await insforge.database
+    .from('program_audit_findings')
+    .update(patch)
+    .eq('company_id', input.companyId)
+    .eq('id', input.id)
+    .select('*')
+    .single();
+
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update program audit finding.');
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'program_audit_findings.update',
+    entityType: 'program_audit_finding',
+    entityId: input.id,
+    metadata: {}
+  });
+  return data as ProgramAuditFinding;
+}
+
+export async function managerSignOffProgramAuditFinding(
+  companyId: UUID,
+  findingId: UUID,
+  managerUserId: UUID
+): Promise<ProgramAuditFinding> {
+  return updateProgramAuditFindingStatus({
+    companyId,
+    id: findingId,
+    status: 'under-review',
+    actorUserId: managerUserId,
+    managerSignoffUserId: managerUserId
+  });
+}
+
+export async function auditorVerifyAndCloseProgramAuditFinding(
+  companyId: UUID,
+  findingId: UUID,
+  auditorUserId: UUID
+): Promise<ProgramAuditFinding> {
+  return updateProgramAuditFindingStatus({
+    companyId,
+    id: findingId,
+    status: 'closed',
+    actorUserId: auditorUserId,
+    auditorVerifyUserId: auditorUserId
+  });
+}

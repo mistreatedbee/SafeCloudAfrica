@@ -68,7 +68,5 @@ export async function decideApproval(input: {
     action: `approvals.${input.decision}`,
     entityType: 'approval',
     entityId: input.approvalId
-  });
-
-  return data as Approval;
+  });  return data as Approval;
 }

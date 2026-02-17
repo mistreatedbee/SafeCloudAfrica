@@ -898,6 +898,10 @@ export type ProgramAuditFinding = {
   auditor_verify_user_id: UUID | null;
   auditor_verify_at: string | null;
   closed_at: string | null;
+  action_plan: string | null;
+  progress_updates: unknown;
+  evidence_uploads: unknown;
+  reopen_reason: string | null;
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;
@@ -967,6 +971,14 @@ export type Audit = {
   auditor_user_ids: UUID[] | null;
   scope_of_audit: string | null;
   location: string | null;
+  departments_auditee_ids: UUID[] | null;
+  company_representative_user_ids: UUID[] | null;
+  lead_auditor_user_id: UUID | null;
+  required_document_list: { key: string; label: string }[] | null;
+  document_submission_deadline: string | null;
+  date_approval_status: 'pending' | 'approved' | 'declined' | null;
+  date_decline_reason: string | null;
+  checklist_template_id: UUID | null;
 
   // Planning inputs (document URLs or references)
   organogram_document_url: string | null;
@@ -980,8 +992,18 @@ export type Audit = {
   permits_registers_document_url: string | null;
   client_requirements_document_url: string | null;
 
-  // Status & results
-  status: 'planned' | 'scheduled' | 'in-progress' | 'completed' | 'reported';
+  // Status & results (lifecycle)
+  status:
+    | 'draft'
+    | 'scheduled'
+    | 'awaiting-documents'
+    | 'ready-for-audit'
+    | 'in-progress'
+    | 'report-pending'
+    | 'corrective-actions-open'
+    | 'under-closure-review'
+    | 'completed'
+    | 'archived';
   findings_count: number;
   nonconformances_count: number;
   observations_count: number;
@@ -996,6 +1018,46 @@ export type Audit = {
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;
+};
+
+export type AuditChecklistTemplate = {
+  id: UUID;
+  company_id: UUID;
+  source_type: 'googleDoc' | 'manual';
+  google_doc_id: string | null;
+  google_doc_url: string | null;
+  name: string;
+  sections: unknown;
+  questions: unknown;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PreAuditSubmissionStatus = 'pending' | 'submitted' | 'late' | 'approved_for_audit';
+
+export type PreAuditSubmission = {
+  id: UUID;
+  audit_id: UUID;
+  company_id: UUID;
+  status: PreAuditSubmissionStatus;
+  uploaded_docs: { documentId?: string; requirementKey: string; uploadedAt: string; storageKey: string }[] | null;
+  missing_docs: string[] | null;
+  submitted_at: string | null;
+  approved_for_audit_at: string | null;
+  approved_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AuditReport = {
+  id: UUID;
+  audit_id: UUID;
+  company_id: UUID;
+  generated_report_data: Record<string, unknown>;
+  pdf_url: string | null;
+  created_by_user_id: UUID;
+  created_at: string;
 };
 
 export type AuditFindingStatus = 'open' | 'closed';

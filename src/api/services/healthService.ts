@@ -56,7 +56,5 @@ export async function createMedicalCertificate(input: {
     action: 'medical_certificates.create',
     entityType: 'medical_certificate',
     entityId: (data as any).id as UUID
-  });
-
-  return data as MedicalCertificate;
+  });  return data as MedicalCertificate;
 }

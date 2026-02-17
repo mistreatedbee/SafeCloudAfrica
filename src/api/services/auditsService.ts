@@ -8,11 +8,14 @@ export interface AuditQuestion {
   id: UUID;
   audit_id: UUID;
   section?: string | null;
+  section_id?: string | null;
+  subheading_id?: string | null;
   question: string;
   expected_evidence?: string;
   question_order: number;
   allocated_score?: number | null;
   achieved_score?: number | null;
+  checklist_template_id?: UUID | null;
   created_by_user_id: UUID;
   created_at: string;
 }
@@ -25,6 +28,9 @@ export interface AuditResponse {
   evidence_document_url: string | null;
   risk_rating: 'low' | 'medium' | 'high';
   deviation_type?: 'observation' | 'finding' | 'non_conformance' | 'opportunity_for_improvement' | null;
+  allocated_score?: number | null;
+  achieved_score?: number | null;
+  evidence_files?: { storageBucket: string; storageKey: string; fileName: string }[] | null;
   answered_by_user_id: UUID;
   answered_at: string;
 }
@@ -81,6 +87,7 @@ export async function createAudit(input: {
   companyId: UUID;
   module?: ModuleKey;
   auditType: 'internal' | 'external' | 'client' | 'supplier' | 'certification';
+  title?: string;
   objectives: string;
   auditCriteria: string;
   scopeOfAudit: string;
@@ -88,6 +95,12 @@ export async function createAudit(input: {
   auditorUserIds: UUID[];
   proposedDates: string[];
   createdByUserId: UUID;
+  requiredDocumentList?: { key: string; label: string }[];
+  documentSubmissionDeadline?: string | null;
+  departmentsAuditeeIds?: UUID[];
+  companyRepresentativeUserIds?: UUID[];
+  leadAuditorUserId?: UUID | null;
+  checklistTemplateId?: UUID | null;
 }): Promise<Audit> {
   const auditNumber = generateAuditNumber();
 
@@ -97,6 +110,7 @@ export async function createAudit(input: {
       company_id: input.companyId,
       module: input.module ?? 'safety',
       audit_number: auditNumber,
+      title: input.title ?? input.objectives?.slice(0, 255) ?? 'Audit',
       audit_type: input.auditType,
       objectives: input.objectives,
       audit_criteria: input.auditCriteria,
@@ -105,6 +119,13 @@ export async function createAudit(input: {
       auditor_user_ids: input.auditorUserIds,
       proposed_dates: input.proposedDates,
       status: 'draft',
+      date_approval_status: 'pending',
+      required_document_list: input.requiredDocumentList ?? null,
+      document_submission_deadline: input.documentSubmissionDeadline ?? null,
+      departments_auditee_ids: input.departmentsAuditeeIds ?? null,
+      company_representative_user_ids: input.companyRepresentativeUserIds ?? null,
+      lead_auditor_user_id: input.leadAuditorUserId ?? null,
+      checklist_template_id: input.checklistTemplateId ?? null,
       findings_count: 0,
       nonconformances_count: 0,
       observations_count: 0,
@@ -182,6 +203,72 @@ export async function scheduleAudit(
     },
     actorUserId
   );
+}
+
+export async function approveAuditDate(
+  auditId: UUID,
+  companyId: UUID,
+  chosenDate: string,
+  userId: UUID
+): Promise<Audit | null> {
+  const audit = await getAudit(auditId);
+  if (!audit) throw new Error('Audit not found.');
+  const auditeeIds = (audit as any).departments_auditee_ids as UUID[] | null;
+  const isAuditee = auditeeIds?.includes(userId);
+  if (!isAuditee) throw new Error('Only an assigned auditee can approve the audit date.');
+  const updated = await updateAudit(
+    auditId,
+    companyId,
+    {
+      selected_date: chosenDate,
+      approved_by_user_id: userId,
+      approved_at: new Date().toISOString(),
+      date_approval_status: 'approved',
+      date_decline_reason: null,
+      status: 'scheduled'
+    },
+    userId
+  );
+  await createActivityLog({
+    companyId,
+    actorUserId: userId,
+    action: 'audits.date_approved',
+    entityType: 'audit',
+    entityId: auditId,
+    metadata: { chosen_date: chosenDate }
+  });
+  return updated;
+}
+
+export async function declineAuditDate(
+  auditId: UUID,
+  companyId: UUID,
+  reason: string,
+  userId: UUID
+): Promise<Audit | null> {
+  const audit = await getAudit(auditId);
+  if (!audit) throw new Error('Audit not found.');
+  const auditeeIds = (audit as any).departments_auditee_ids as UUID[] | null;
+  const isAuditee = auditeeIds?.includes(userId);
+  if (!isAuditee) throw new Error('Only an assigned auditee can decline the audit date.');
+  const updated = await updateAudit(
+    auditId,
+    companyId,
+    {
+      date_approval_status: 'declined',
+      date_decline_reason: reason || null
+    },
+    userId
+  );
+  await createActivityLog({
+    companyId,
+    actorUserId: userId,
+    action: 'audits.date_declined',
+    entityType: 'audit',
+    entityId: auditId,
+    metadata: { reason }
+  });
+  return updated;
 }
 
 export async function startAudit(
@@ -333,53 +420,50 @@ export async function submitAuditResponse(input: {
   evidenceDocumentUrl?: string;
   riskRating: 'low' | 'medium' | 'high';
   deviationType?: 'observation' | 'finding' | 'non_conformance' | 'opportunity_for_improvement';
+  allocatedScore?: number | null;
+  achievedScore?: number | null;
+  evidenceFiles?: { storageBucket: string; storageKey: string; fileName: string }[] | null;
   answeredByUserId: UUID;
 }): Promise<AuditResponse> {
-  // First try to get existing response
   const existing = await getOrCreateAuditResponse(
     input.auditQuestionId,
     input.answeredByUserId
   );
 
+  const payload = {
+    is_compliant: input.isCompliant,
+    finding: input.finding ?? existing?.finding ?? null,
+    evidence_document_url: input.evidenceDocumentUrl ?? existing?.evidence_document_url ?? null,
+    risk_rating: input.riskRating,
+    deviation_type: input.deviationType ?? existing?.deviation_type ?? null,
+    allocated_score: input.allocatedScore ?? (existing as any)?.allocated_score ?? null,
+    achieved_score: input.achievedScore ?? (existing as any)?.achieved_score ?? null,
+    evidence_files: input.evidenceFiles ?? (existing as any)?.evidence_files ?? null,
+    answered_at: new Date().toISOString()
+  };
+
   if (existing) {
-    // Update existing
     const { data, error } = await insforge.database
       .from('audit_responses')
-      .update({
-        is_compliant: input.isCompliant,
-        finding: input.finding || null,
-        evidence_document_url: input.evidenceDocumentUrl || null,
-        risk_rating: input.riskRating,
-        deviation_type: input.deviationType ?? existing.deviation_type ?? null,
-        answered_at: new Date().toISOString()
-      })
+      .update(payload)
       .eq('id', existing.id)
       .select('*')
       .single();
-
     if (error) throw new Error(getErrorMessage(error));
     return data as AuditResponse;
   }
 
-  // Create new
   const { data, error } = await insforge.database
     .from('audit_responses')
     .insert({
       audit_question_id: input.auditQuestionId,
-      is_compliant: input.isCompliant,
-      finding: input.finding || null,
-      evidence_document_url: input.evidenceDocumentUrl || null,
-      risk_rating: input.riskRating,
-      deviation_type: input.deviationType ?? null,
-      answered_by_user_id: input.answeredByUserId,
-      answered_at: new Date().toISOString()
+      ...payload,
+      answered_by_user_id: input.answeredByUserId
     })
     .select('*')
     .single();
-
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to submit audit response.');
-
   return data as AuditResponse;
 }
 

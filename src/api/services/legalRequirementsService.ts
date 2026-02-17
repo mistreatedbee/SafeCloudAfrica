@@ -57,9 +57,7 @@ export async function updateLegalRequirement(input: {
   const patch: any = {};
   if (typeof input.requirement === 'string') patch.requirement = input.requirement;
   if (typeof input.reference !== 'undefined') patch.reference = input.reference;
-  if (typeof input.status !== 'undefined') patch.status = input.status;
-
-  const { data, error } = await insforge.database.from('legal_requirements').update(patch).eq('id', input.id).select('*').single();
+  if (typeof input.status !== 'undefined') patch.status = input.status;  const { data, error } = await insforge.database.from('legal_requirements').update(patch).eq('id', input.id).select('*').single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update legal requirement.');  await createActivityLog({
     companyId: input.companyId,

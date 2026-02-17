@@ -486,6 +486,91 @@ on public.audit_responses for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
+-- ---------- Audits module extensions (digital audit management) ----------
+alter table public.audits
+  add column if not exists document_submission_deadline timestamptz null,
+  add column if not exists date_approval_status text null check (date_approval_status is null or date_approval_status in ('pending','approved','declined')),
+  add column if not exists date_decline_reason text null,
+  add column if not exists lead_auditor_user_id uuid null;
+
+create table if not exists public.audit_checklist_templates (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  source_type text not null default 'googleDoc' check (source_type in ('googleDoc','manual')),
+  google_doc_id text null,
+  google_doc_url text null,
+  name text not null,
+  sections jsonb null,
+  questions jsonb null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_audit_checklist_templates_company on public.audit_checklist_templates(company_id);
+alter table public.audit_checklist_templates enable row level security;
+drop policy if exists audit_checklist_templates_select_member on public.audit_checklist_templates;
+create policy audit_checklist_templates_select_member on public.audit_checklist_templates for select
+  using (public.is_company_member(company_id) or public.is_platform_admin());
+drop policy if exists audit_checklist_templates_write_management on public.audit_checklist_templates;
+create policy audit_checklist_templates_write_management on public.audit_checklist_templates for all
+  using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+  with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+alter table public.audits add column if not exists checklist_template_id uuid null references public.audit_checklist_templates(id) on delete set null;
+
+create table if not exists public.audit_pre_submissions (
+  id uuid primary key default gen_random_uuid(),
+  audit_id uuid not null references public.audits(id) on delete cascade,
+  company_id uuid not null references public.companies(id) on delete cascade,
+  status text not null check (status in ('pending','submitted','late','approved_for_audit')) default 'pending',
+  uploaded_docs jsonb null,
+  missing_docs jsonb null,
+  submitted_at timestamptz null,
+  approved_for_audit_at timestamptz null,
+  approved_by_user_id uuid null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (audit_id)
+);
+create index if not exists idx_audit_pre_submissions_audit on public.audit_pre_submissions(audit_id);
+alter table public.audit_pre_submissions enable row level security;
+drop policy if exists audit_pre_submissions_select_member on public.audit_pre_submissions;
+create policy audit_pre_submissions_select_member on public.audit_pre_submissions for select
+  using (public.is_company_member(company_id) or public.is_platform_admin());
+drop policy if exists audit_pre_submissions_write_member on public.audit_pre_submissions;
+create policy audit_pre_submissions_write_member on public.audit_pre_submissions for all
+  using (public.is_company_member(company_id) or public.is_platform_admin())
+  with check (public.is_company_member(company_id) or public.is_platform_admin());
+
+alter table public.audit_questions
+  add column if not exists checklist_template_id uuid null references public.audit_checklist_templates(id) on delete set null,
+  add column if not exists section_id text null,
+  add column if not exists subheading_id text null;
+
+alter table public.audit_responses
+  add column if not exists allocated_score numeric null,
+  add column if not exists achieved_score numeric null,
+  add column if not exists evidence_files jsonb null;
+
+create table if not exists public.audit_reports (
+  id uuid primary key default gen_random_uuid(),
+  audit_id uuid not null references public.audits(id) on delete cascade,
+  company_id uuid not null references public.companies(id) on delete cascade,
+  generated_report_data jsonb not null,
+  pdf_url text null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_audit_reports_audit on public.audit_reports(audit_id);
+alter table public.audit_reports enable row level security;
+drop policy if exists audit_reports_select_member on public.audit_reports;
+create policy audit_reports_select_member on public.audit_reports for select
+  using (public.is_company_member(company_id) or public.is_platform_admin());
+drop policy if exists audit_reports_insert_management on public.audit_reports;
+create policy audit_reports_insert_management on public.audit_reports for insert
+  with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+-- ---------- end Audits module extensions ----------
+
 create table if not exists public.inspections (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
@@ -2355,6 +2440,11 @@ create table if not exists public.program_audit_findings (
 );
 create index if not exists idx_program_audit_findings_company on public.program_audit_findings(company_id, created_at desc);
 create index if not exists idx_program_audit_findings_audit on public.program_audit_findings(audit_id, status);
+alter table public.program_audit_findings
+  add column if not exists action_plan text null,
+  add column if not exists progress_updates jsonb null,
+  add column if not exists evidence_uploads jsonb null,
+  add column if not exists reopen_reason text null;
 alter table public.program_audit_findings enable row level security;
 
 drop policy if exists program_audit_findings_select_member on public.program_audit_findings;

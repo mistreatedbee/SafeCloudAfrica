@@ -38,9 +38,7 @@ export async function createModuleTarget(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create module target.');
   return data as ModuleTarget;
-}
-
-export async function updateModuleTarget(input: {
+}export async function updateModuleTarget(input: {
   id: UUID;
   name?: string;
   currentValue?: number;

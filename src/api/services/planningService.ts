@@ -64,9 +64,7 @@ export async function createPlan(input: {
   });
 
   return data as PlanningPlan;
-}
-
-export async function createKpi(input: {
+}export async function createKpi(input: {
   companyId: UUID;
   planId: UUID;
   name: string;

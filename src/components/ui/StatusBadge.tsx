@@ -1,18 +1,24 @@
 import React from 'react';
 type StatusBadgeProps = {
   status:
-  'completed' |
-  'in-progress' |
-  'pending' |
-  'overdue' |
-  'draft' |
-  'open' |
-  'closed' |
-  'investigating' |
-  'valid' |
-  'expiring' |
-  'expired' |
-  'scheduled';
+  | 'completed'
+  | 'in-progress'
+  | 'pending'
+  | 'overdue'
+  | 'draft'
+  | 'open'
+  | 'closed'
+  | 'investigating'
+  | 'valid'
+  | 'expiring'
+  | 'expired'
+  | 'scheduled'
+  | 'awaiting-documents'
+  | 'ready-for-audit'
+  | 'report-pending'
+  | 'corrective-actions-open'
+  | 'under-closure-review'
+  | 'archived';
   size?: 'sm' | 'md';
 };
 const statusConfig: Record<
@@ -82,6 +88,36 @@ const statusConfig: Record<
     bg: 'bg-teal-50',
     text: 'text-teal-700',
     label: 'Scheduled'
+  },
+  'awaiting-documents': {
+    bg: 'bg-warning-50',
+    text: 'text-warning-700',
+    label: 'Awaiting Documents'
+  },
+  'ready-for-audit': {
+    bg: 'bg-teal-50',
+    text: 'text-teal-700',
+    label: 'Ready for Audit'
+  },
+  'report-pending': {
+    bg: 'bg-warning-50',
+    text: 'text-warning-700',
+    label: 'Report Pending'
+  },
+  'corrective-actions-open': {
+    bg: 'bg-critical-50',
+    text: 'text-critical-700',
+    label: 'Corrective Actions Open'
+  },
+  'under-closure-review': {
+    bg: 'bg-warning-50',
+    text: 'text-warning-700',
+    label: 'Under Closure Review'
+  },
+  archived: {
+    bg: 'bg-charcoal-50',
+    text: 'text-charcoal-600',
+    label: 'Archived'
   }
 };
 export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {

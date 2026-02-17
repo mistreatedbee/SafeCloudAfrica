@@ -39,9 +39,7 @@ export async function createImprovement(input: {
     .select('*')
     .single();
   if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to create improvement action.');
-
-  await createActivityLog({
+  if (!data) throw new Error('Failed to create improvement action.');  await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,
     action: 'improvement_actions.create',
