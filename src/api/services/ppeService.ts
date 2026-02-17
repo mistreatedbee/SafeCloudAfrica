@@ -330,6 +330,43 @@ export async function createPpeStockMovement(input: {
       'PPE stock below reorder level',
       'PPE stock has fallen below the configured reorder level.'
     );
+
+    // Auto-create a reorder request when stock is low and no open request exists.
+    const { data: existingReorders, error: existingError } = await insforge.database
+      .from('ppe_reorder_requests')
+      .select('id,status')
+      .eq('company_id', input.companyId)
+      .eq('stock_id', input.stockId)
+      .in('status', ['draft', 'requested', 'approved', 'ordered']);
+
+    if (existingError) {
+      // Do not block stock movement on reorder lookup failures.
+      // eslint-disable-next-line no-console
+      console.warn?.('Failed to check existing PPE reorder requests', existingError);
+    }
+
+    const hasOpenReorder = !!existingReorders && existingReorders.length > 0;
+    if (!hasOpenReorder) {
+      try {
+        const suggestedQty =
+          (updatedStock.reorder_qty && updatedStock.reorder_qty > 0
+            ? updatedStock.reorder_qty
+            : Math.max(updatedStock.reorder_level * 2 - updatedStock.on_hand_qty, 1)) || 1;
+
+        await createPpeReorderRequest({
+          companyId: input.companyId,
+          stockId: input.stockId,
+          requestedQty: suggestedQty,
+          reason: 'Auto-generated due to low PPE stock level.',
+          status: 'requested',
+          requestedByUserId: input.actorUserId
+        });
+      } catch (err) {
+        // Best-effort: do not block the original stock movement if reorder creation fails.
+        // eslint-disable-next-line no-console
+        console.warn?.('Failed to auto-create PPE reorder request', err);
+      }
+    }
   }
 
   return {

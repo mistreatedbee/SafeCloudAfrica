@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
@@ -60,6 +60,18 @@ export function PpeStockDetailModal(props: {
 
   const relatedReorders =
     reorderRequests?.filter((r) => r.stock_id === props.stock.id) ?? [];
+
+  const availableStock = useMemo(
+    () => props.stock.on_hand_qty - (props.stock.reserved_qty ?? 0),
+    [props.stock.on_hand_qty, props.stock.reserved_qty]
+  );
+
+  const stockStatus =
+    availableStock <= 0
+      ? 'Out of stock'
+      : props.stock.reorder_level > 0 && availableStock <= props.stock.reorder_level
+      ? 'Low stock'
+      : 'Available';
 
   async function handleMovementSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -266,6 +278,24 @@ export function PpeStockDetailModal(props: {
                     </ul>
                   )}
               </div>
+            </div>
+          </div>
+
+          {/* Stock summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-surface-50 rounded-xl border border-surface-200 p-3">
+              <p className="text-xs text-charcoal-500">On hand</p>
+              <p className="text-lg font-semibold text-charcoal">{props.stock.on_hand_qty}</p>
+            </div>
+            <div className="bg-surface-50 rounded-xl border border-surface-200 p-3">
+              <p className="text-xs text-charcoal-500">Reserved</p>
+              <p className="text-lg font-semibold text-charcoal">{props.stock.reserved_qty}</p>
+            </div>
+            <div className="bg-surface-50 rounded-xl border border-surface-200 p-3">
+              <p className="text-xs text-charcoal-500">Available</p>
+              <p className="text-lg font-semibold text-charcoal">
+                {availableStock} ({stockStatus})
+              </p>
             </div>
           </div>
 

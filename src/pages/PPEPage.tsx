@@ -10,10 +10,15 @@ import {
   listPpeReorderRequests,
   listPpeStock
 } from '../api/services/ppeService';
+import {
+  listPpeIssueTracker,
+  type PpeIssueTrackerFilters
+} from '../api/services/ppeIssueTrackerService';
 import type {
   Department,
   PPEIssue,
   PPEItem,
+  PpeIssueTracker,
   PpeReorderRequest,
   PpeStock,
   Site
@@ -25,6 +30,8 @@ import { listSites } from '../api/services/sitesService';
 import { listDepartments } from '../api/services/departmentsService';
 import { PpeStockCreateModal } from '../components/ppe/PpeStockCreateModal';
 import { PpeStockDetailModal } from '../components/ppe/PpeStockDetailModal';
+import { PpeIssueTrackerCreateModal } from '../components/ppe/PpeIssueTrackerCreateModal';
+import { PpeIssueTrackerDetailModal } from '../components/ppe/PpeIssueTrackerDetailModal';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -35,14 +42,29 @@ const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 
 export function PPEPage() {
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
-  const canManage = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
-  const [activeTab, setActiveTab] = useState<'issues' | 'inventory'>('issues');
+  const canManage =
+    activeRole === 'admin' ||
+    activeRole === 'manager' ||
+    activeRole === 'supervisor' ||
+    activeRole === 'consultant';
+  const canManagerSignoff = activeRole === 'admin' || activeRole === 'manager';
+  const canSafetyVerify =
+    activeRole === 'admin' || activeRole === 'supervisor' || activeRole === 'consultant';
+  const canAuditorConfirm = activeRole === 'auditor';
+  const [activeTab, setActiveTab] = useState<'tracker' | 'register' | 'inventory'>('tracker');
   const [issueOpen, setIssueOpen] = useState(false);
   const [createItemOpen, setCreateItemOpen] = useState(false);
   const [stockCreateOpen, setStockCreateOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState<PpeStock | null>(null);
   const [stockDetailOpen, setStockDetailOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [trackerCreateOpen, setTrackerCreateOpen] = useState(false);
+  const [selectedTrackerIssue, setSelectedTrackerIssue] = useState<PpeIssueTracker | null>(null);
+  const [trackerDetailOpen, setTrackerDetailOpen] = useState(false);
+  const [trackerFilters, setTrackerFilters] = useState<Pick<PpeIssueTrackerFilters, 'status' | 'riskLevel'>>({
+    status: 'all',
+    riskLevel: undefined
+  });
 
   const { data: issues, loading, error } = useAsync<PPEIssue[]>(
     async () => {
@@ -65,6 +87,21 @@ export function PPEPage() {
       return await listPpeStock({ companyId: activeCompanyId });
     },
     [activeCompanyId, activeTab, refreshKey]
+  );
+
+  const { data: trackerIssues, loading: trackerLoading, error: trackerError } = useAsync<
+    PpeIssueTracker[]
+  >(
+    async () => {
+      if (!activeCompanyId || activeTab !== 'tracker') return [];
+      return await listPpeIssueTracker({
+        companyId: activeCompanyId,
+        status: trackerFilters.status ?? 'all',
+        riskLevel: trackerFilters.riskLevel,
+        limit: 200
+      });
+    },
+    [activeCompanyId, activeTab, refreshKey, trackerFilters.status, trackerFilters.riskLevel]
   );
 
   const { data: reorderRequests } = useAsync<PpeReorderRequest[]>(
@@ -146,6 +183,27 @@ export function PPEPage() {
     (r) => r.status !== 'received' && r.status !== 'rejected'
   ).length;
 
+  const trackerRows = (trackerIssues ?? []).map((i) => {
+    const site = i.site_id ? siteById.get(i.site_id) : null;
+    const dept = i.department_id ? departmentById.get(i.department_id) : null;
+    const isOverdue = i.status === 'overdue';
+    return {
+      raw: i,
+      id: `PPE-${String(i.id).slice(0, 8)}`,
+      siteName: i.site_name_text ?? site?.name ?? '—',
+      departmentName: i.department_name_text ?? dept?.name ?? '—',
+      person: i.contractor_or_employee_name || '—',
+      ppeType: i.ppe_type.replace(/_/g, ' '),
+      category: i.issue_category.replace(/_/g, ' '),
+      risk: i.risk_level,
+      status: i.status.replace(/_/g, ' '),
+      targetDate: i.target_completion_date
+        ? new Date(i.target_completion_date).toLocaleDateString('en-ZA')
+        : '—',
+      isOverdue
+    };
+  });
+
   return (
     <Layout title="PPE Management">
       {activeCompanyId && user?.id && (
@@ -194,6 +252,31 @@ export function PPEPage() {
               onChanged={() => setRefreshKey((k) => k + 1)}
             />
           )}
+          <PpeIssueTrackerCreateModal
+            open={trackerCreateOpen}
+            onClose={() => setTrackerCreateOpen(false)}
+            companyId={activeCompanyId}
+            actorUserId={user.id}
+            sites={sites ?? []}
+            departments={departments ?? []}
+            onCreated={() => setRefreshKey((k) => k + 1)}
+          />
+          {selectedTrackerIssue && (
+            <PpeIssueTrackerDetailModal
+              open={trackerDetailOpen}
+              onClose={() => {
+                setTrackerDetailOpen(false);
+                setSelectedTrackerIssue(null);
+              }}
+              companyId={activeCompanyId}
+              actorUserId={user.id}
+              issue={selectedTrackerIssue}
+              canManagerSignoff={canManagerSignoff}
+              canSafetyVerify={canSafetyVerify}
+              canAuditorConfirm={canAuditorConfirm}
+              onChanged={() => setRefreshKey((k) => k + 1)}
+            />
+          )}
         </>
       )}
       <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
@@ -203,11 +286,22 @@ export function PPEPage() {
               <HardHatIcon className="w-6 h-6 text-navy" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-charcoal">PPE issuing, returns, and cost tracking</h2>
-              <p className="text-sm text-charcoal-400">Company PPE register and issue history</p>
+              <h2 className="text-lg font-semibold text-charcoal">PPE issues, compliance, and stock</h2>
+              <p className="text-sm text-charcoal-400">
+                Track PPE non-compliance, corrective actions and real-time stock across sites.
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!activeCompanyId || !user?.id}
+              onClick={() => setTrackerCreateOpen(true)}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-navy text-white rounded-lg text-sm font-medium hover:bg-navy-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <PlusIcon className="w-4 h-4" />
+              Report PPE issue
+            </button>
             <button
               type="button"
               disabled={!canManage}
@@ -224,7 +318,7 @@ export function PPEPage() {
               className="flex items-center justify-center gap-2 px-5 py-2.5 bg-navy text-white rounded-lg text-sm font-medium hover:bg-navy-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <PlusIcon className="w-4 h-4" />
-              Issue PPE
+              Issue PPE (register)
             </button>
             <button
               type="button"
@@ -242,14 +336,25 @@ export function PPEPage() {
           <div className="flex items-center gap-4 text-sm">
             <button
               type="button"
-              onClick={() => setActiveTab('issues')}
+              onClick={() => setActiveTab('tracker')}
               className={`pb-1 border-b-2 ${
-                activeTab === 'issues'
+                activeTab === 'tracker'
                   ? 'border-teal text-teal font-semibold'
                   : 'border-transparent text-charcoal-500'
               }`}
             >
-              Issues
+              Issue Tracker
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('register')}
+              className={`pb-1 border-b-2 ${
+                activeTab === 'register'
+                  ? 'border-teal text-teal font-semibold'
+                  : 'border-transparent text-charcoal-500'
+              }`}
+            >
+              Issuing Register
             </button>
             <button
               type="button"
@@ -272,7 +377,162 @@ export function PPEPage() {
           )}
         </motion.div>
 
-        {activeTab === 'issues' && (
+        {activeTab === 'tracker' && (
+          <motion.div
+            variants={itemVariants}
+            className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden"
+          >
+            <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="font-semibold text-charcoal">PPE Issue Tracker</h3>
+                <p className="text-xs text-charcoal-400">
+                  Non-compliance, damaged/expired PPE, incorrect use and replacements.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-xs">
+                <select
+                  value={trackerFilters.status ?? 'all'}
+                  onChange={(e) =>
+                    setTrackerFilters((f) => ({ ...f, status: e.target.value as any }))
+                  }
+                  className="px-3 py-1.5 bg-white border border-surface-300 rounded-lg"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="open">Open</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="awaiting_ppe">Awaiting PPE</option>
+                  <option value="awaiting_training">Awaiting training</option>
+                  <option value="awaiting_evidence">Awaiting evidence</option>
+                  <option value="under_review">Under review</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="closed">Closed</option>
+                </select>
+                <select
+                  value={trackerFilters.riskLevel ?? ''}
+                  onChange={(e) =>
+                    setTrackerFilters((f) => ({
+                      ...f,
+                      riskLevel: (e.target.value || undefined) as any
+                    }))
+                  }
+                  className="px-3 py-1.5 bg-white border border-surface-300 rounded-lg"
+                >
+                  <option value="">All risks</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-surface-50">
+                  <tr>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
+                      ID
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
+                      Site / Department
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
+                      Person
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
+                      PPE Type
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
+                      Category
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
+                      Risk
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
+                      Target date
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-100">
+                  {trackerLoading && (
+                    <tr>
+                      <td colSpan={8} className="px-5 py-4 text-sm text-charcoal-500">
+                        Loading PPE issues…
+                      </td>
+                    </tr>
+                  )}
+                  {trackerError && (
+                    <tr>
+                      <td colSpan={8} className="px-5 py-4 text-sm text-critical">
+                        {trackerError.message}
+                      </td>
+                    </tr>
+                  )}
+                  {!trackerLoading && !trackerError && trackerRows.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-5 py-4 text-sm text-charcoal-500">
+                        No PPE issue tracker records yet. Use &quot;Report PPE issue&quot; to log one.
+                      </td>
+                    </tr>
+                  )}
+                  {trackerRows.map((row) => (
+                    <tr
+                      key={row.raw.id}
+                      className="hover:bg-surface-50 transition-colors cursor-pointer"
+                      onClick={() => {
+                        setSelectedTrackerIssue(row.raw);
+                        setTrackerDetailOpen(true);
+                      }}
+                    >
+                      <td className="px-5 py-4 text-sm font-medium text-teal">{row.id}</td>
+                      <td className="px-5 py-4 text-sm text-charcoal">
+                        {row.siteName} / {row.departmentName}
+                      </td>
+                      <td className="px-5 py-4 text-sm text-charcoal-500">{row.person}</td>
+                      <td className="px-5 py-4 text-sm text-charcoal-500 capitalize">
+                        {row.ppeType}
+                      </td>
+                      <td className="px-5 py-4 text-sm text-charcoal-500 capitalize">
+                        {row.category}
+                      </td>
+                      <td className="px-5 py-4 text-sm">
+                        <span
+                          className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                            row.risk === 'critical'
+                              ? 'bg-critical/10 text-critical'
+                              : row.risk === 'high'
+                              ? 'bg-warning/10 text-warning'
+                              : row.risk === 'medium'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-teal/10 text-teal'
+                          }`}
+                        >
+                          {row.risk}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-sm">
+                        <span
+                          className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                            row.isOverdue
+                              ? 'bg-critical/10 text-critical'
+                              : 'bg-surface-200 text-charcoal-700'
+                          }`}
+                        >
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-sm text-charcoal-500">{row.targetDate}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'register' && (
           <>
             {!loading && !error && (items ?? []).length === 0 && (
               <motion.div

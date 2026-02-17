@@ -1166,6 +1166,129 @@ create table if not exists public.ppe_issues (
 );
 create index if not exists idx_ppe_issues_company on public.ppe_issues(company_id, issued_at desc);
 
+-- PPE Issue Tracker (non-compliance, damaged/expired PPE, incorrect use, etc.)
+create table if not exists public.ppe_issue_tracker (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+
+  -- General Information
+  date_reported timestamptz not null default now(),
+  reported_by_user_id uuid not null,
+  reported_by_name text null,
+  department_id uuid null,
+  department_name_text text null,
+  site_id uuid null,
+  site_name_text text null,
+  contractor_or_employee_name text null,
+  employee_number text null,
+  job_role_or_task text null,
+  supervisor_user_id uuid null,
+  supervisor_name_text text null,
+
+  -- PPE Issue Details
+  ppe_type text not null check (
+    ppe_type in (
+      'helmet',
+      'gloves',
+      'safety_boots',
+      'eye_protection',
+      'hearing_protection',
+      'respirator_mask',
+      'reflective_vest',
+      'chainsaw_ppe',
+      'chemical_ppe',
+      'other'
+    )
+  ),
+  ppe_type_other text null,
+  issue_category text not null check (
+    issue_category in (
+      'missing_ppe',
+      'damaged_ppe',
+      'expired_ppe',
+      'incorrect_ppe',
+      'ppe_not_worn',
+      'poor_condition',
+      'insufficient_supply',
+      'non_approved_ppe'
+    )
+  ),
+  description_of_issue text not null,
+  risk_level text not null check (risk_level in ('low','medium','high','critical')),
+
+  -- Immediate Action Taken
+  immediate_work_stopped boolean not null default false,
+  immediate_ppe_issued boolean not null default false,
+  immediate_employee_removed boolean not null default false,
+  immediate_toolbox_talk boolean not null default false,
+  immediate_supervisor_notified boolean not null default false,
+  immediate_action_notes text null,
+
+  -- Evidence & Inspection Links
+  inspection_reference_text text null,
+  audit_id uuid null references public.audits(id) on delete set null,
+  pjo_id uuid null references public.pjo_observations(id) on delete set null,
+  checklist_instance_id uuid null,
+  checklist_item_id uuid null,
+  witness_interview_notes text null,
+
+  -- Corrective Action Management
+  corrective_action_required boolean not null default false,
+  responsible_user_id uuid null,
+  responsible_user_name text null,
+  corrective_department_id uuid null,
+  corrective_department_name text null,
+  target_completion_date date null,
+  replacement_ppe_issued boolean not null default false,
+  training_required boolean not null default false,
+  disciplinary_action text null,
+
+  -- Progress Tracking
+  status text not null check (
+    status in (
+      'open',
+      'in_progress',
+      'awaiting_ppe',
+      'awaiting_training',
+      'awaiting_evidence',
+      'under_review',
+      'closed',
+      'overdue'
+    )
+  ) default 'open',
+  progress_updates jsonb not null default '[]'::jsonb,
+  follow_up_inspection_date date null,
+
+  -- Closure & Verification
+  department_manager_user_id uuid null,
+  department_manager_signed_at timestamptz null,
+  department_manager_signature_method text null,
+  department_manager_comment text null,
+  safety_officer_user_id uuid null,
+  safety_officer_verified_at timestamptz null,
+  safety_officer_comment text null,
+  auditor_user_id uuid null,
+  auditor_confirmed_at timestamptz null,
+  auditor_comment text null,
+  closure_date timestamptz null,
+  effectiveness_verified boolean null,
+  repeat_issue_indicator boolean null,
+  source_requires_auditor_confirmation boolean null,
+
+  -- Optional links to PPE inventory / items
+  ppe_item_id uuid null references public.ppe_items(id) on delete set null,
+  stock_id uuid null references public.ppe_stock(id) on delete set null,
+
+  created_by_user_id uuid not null,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_ppe_issue_tracker_company_status
+on public.ppe_issue_tracker(company_id, status, date_reported desc);
+
+create index if not exists idx_ppe_issue_tracker_location
+on public.ppe_issue_tracker(company_id, site_id, department_id, risk_level);
+
 -- PPE stock inventory per site + department
 create table if not exists public.ppe_stock (
   id uuid primary key default gen_random_uuid(),
@@ -1821,6 +1944,7 @@ alter table public.inspection_run_summaries enable row level security;
 alter table public.risks enable row level security;
 alter table public.ppe_items enable row level security;
 alter table public.ppe_issues enable row level security;
+alter table public.ppe_issue_tracker enable row level security;
 alter table public.ppe_stock enable row level security;
 alter table public.ppe_stock_movements enable row level security;
 alter table public.ppe_reorder_requests enable row level security;
@@ -2284,6 +2408,17 @@ using (public.is_company_member(company_id) or public.is_platform_admin());
 drop policy if exists ppe_issues_write_management on public.ppe_issues;
 create policy ppe_issues_write_management
 on public.ppe_issues for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_issue_tracker_select_member on public.ppe_issue_tracker;
+create policy ppe_issue_tracker_select_member
+on public.ppe_issue_tracker for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists ppe_issue_tracker_write_management on public.ppe_issue_tracker;
+create policy ppe_issue_tracker_write_management
+on public.ppe_issue_tracker for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 

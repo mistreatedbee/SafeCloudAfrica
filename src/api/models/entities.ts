@@ -655,6 +655,117 @@ export type PPEIssue = {
   notes: string | null;
 };
 
+export type PpeIssueTrackerStatus =
+  | 'open'
+  | 'in_progress'
+  | 'awaiting_ppe'
+  | 'awaiting_training'
+  | 'awaiting_evidence'
+  | 'under_review'
+  | 'closed'
+  | 'overdue';
+
+export type PpeIssueTrackerRiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export type PpeIssueTracker = {
+  id: UUID;
+  company_id: UUID;
+
+  // General Information
+  date_reported: string;
+  reported_by_user_id: UUID;
+  reported_by_name: string | null;
+  department_id: UUID | null;
+  department_name_text: string | null;
+  site_id: UUID | null;
+  site_name_text: string | null;
+  contractor_or_employee_name: string | null;
+  employee_number: string | null;
+  job_role_or_task: string | null;
+  supervisor_user_id: UUID | null;
+  supervisor_name_text: string | null;
+
+  // PPE Issue Details
+  ppe_type:
+    | 'helmet'
+    | 'gloves'
+    | 'safety_boots'
+    | 'eye_protection'
+    | 'hearing_protection'
+    | 'respirator_mask'
+    | 'reflective_vest'
+    | 'chainsaw_ppe'
+    | 'chemical_ppe'
+    | 'other';
+  ppe_type_other: string | null;
+  issue_category:
+    | 'missing_ppe'
+    | 'damaged_ppe'
+    | 'expired_ppe'
+    | 'incorrect_ppe'
+    | 'ppe_not_worn'
+    | 'poor_condition'
+    | 'insufficient_supply'
+    | 'non_approved_ppe';
+  description_of_issue: string;
+  risk_level: PpeIssueTrackerRiskLevel;
+
+  // Immediate Action Taken
+  immediate_work_stopped: boolean;
+  immediate_ppe_issued: boolean;
+  immediate_employee_removed: boolean;
+  immediate_toolbox_talk: boolean;
+  immediate_supervisor_notified: boolean;
+  immediate_action_notes: string | null;
+
+  // Evidence & Inspection Links
+  inspection_reference_text: string | null;
+  audit_id: UUID | null;
+  pjo_id: UUID | null;
+  checklist_instance_id: UUID | null;
+  checklist_item_id: UUID | null;
+  witness_interview_notes: string | null;
+
+  // Corrective Action Management
+  corrective_action_required: boolean;
+  responsible_user_id: UUID | null;
+  responsible_user_name: string | null;
+  corrective_department_id: UUID | null;
+  corrective_department_name: string | null;
+  target_completion_date: string | null; // date
+  replacement_ppe_issued: boolean;
+  training_required: boolean;
+  disciplinary_action: string | null;
+
+  // Progress Tracking
+  status: PpeIssueTrackerStatus;
+  progress_updates: { timestamp: string; user_id: UUID; note: string }[];
+  follow_up_inspection_date: string | null; // date
+
+  // Closure & Verification
+  department_manager_user_id: UUID | null;
+  department_manager_signed_at: string | null;
+  department_manager_signature_method: string | null;
+  department_manager_comment: string | null;
+  safety_officer_user_id: UUID | null;
+  safety_officer_verified_at: string | null;
+  safety_officer_comment: string | null;
+  auditor_user_id: UUID | null;
+  auditor_confirmed_at: string | null;
+  auditor_comment: string | null;
+  closure_date: string | null;
+  effectiveness_verified: boolean | null;
+  repeat_issue_indicator: boolean | null;
+  source_requires_auditor_confirmation: boolean | null;
+
+  // Optional links to PPE inventory / items
+  ppe_item_id: UUID | null;
+  stock_id: UUID | null;
+
+  created_by_user_id: UUID;
+  updated_at: string;
+};
+
 // PPE inventory: stock, movements & reorder requests
 export type PpeStock = {
   id: UUID;

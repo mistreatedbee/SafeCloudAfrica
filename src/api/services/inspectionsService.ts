@@ -13,6 +13,7 @@ import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { getMyProfile } from './profilesService';
 import { createQualityNcrFromInspectionItem } from './qualityNcrsService';
+import { createPpeIssueTracker } from './ppeIssueTrackerService';
 import { createCorrectiveAction } from './correctiveActionsService';
 import { createNotification } from './notificationsService';
 import { sendTemplatedEmail } from './emailService';
@@ -610,6 +611,48 @@ export async function completeInspectionRun(input: {
         })
         .eq('company_id', input.companyId)
         .eq('id', item.id);
+    }
+
+    // Auto-create a linked PPE issue when checklist item clearly relates to PPE
+    const questionLower = (item.question ?? '').toLowerCase();
+    const riskAreaLower = (item.risk_area ?? '').toLowerCase();
+    const isPpeRelated =
+      questionLower.includes('ppe') ||
+      questionLower.includes('personal protective') ||
+      questionLower.includes('helmet') ||
+      questionLower.includes('glove') ||
+      questionLower.includes('boots') ||
+      questionLower.includes('respirator') ||
+      questionLower.includes('mask') ||
+      riskAreaLower.includes('ppe');
+
+    if (isPpeRelated) {
+      try {
+        await createPpeIssueTracker({
+          companyId: input.companyId,
+          createdByUserId: input.actorUserId,
+          reportedByUserId: input.actorUserId,
+          reportedByName: null,
+          siteId: run.site_id ?? null,
+          departmentId: run.department_id ?? null,
+          contractorOrEmployeeName: null,
+          employeeNumber: null,
+          jobRoleOrTask: item.question,
+          ppeType: 'other',
+          ppeTypeOther: (item.risk_area as string | null) ?? null,
+          issueCategory: 'ppe_not_worn',
+          descriptionOfIssue: item.comments || item.auditor_comments || item.question,
+          riskLevel: (item.risk_level as any) ?? 'medium',
+          checklistInstanceId: run.id,
+          checklistItemId: item.id,
+          correctiveActionRequired: item.corrective_action_required,
+          responsibleUserId: item.responsible_person_id ?? undefined,
+          responsibleUserName: item.responsible_person_name ?? undefined,
+          targetCompletionDate: item.due_date ?? undefined
+        });
+      } catch {
+        // Best effort; do not block inspection completion if PPE issue auto-creation fails.
+      }
     }
   }
 
