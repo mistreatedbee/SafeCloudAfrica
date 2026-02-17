@@ -63,7 +63,15 @@ import { LandingPage } from './pages/marketing/LandingPage';
 import { SuperAdminPage } from './pages/admin/SuperAdminPage';
 import { SeedDemoPage } from './pages/admin/SeedDemoPage';
 import { WorkspaceOnboardingPage } from './pages/onboarding/WorkspaceOnboardingPage';
-import { HrKpisPage } from './pages/HrKpisPage';
+import { KPIModuleLayout } from './pages/kpi/KPIModuleLayout';
+import { KPIDashboardPage } from './pages/kpi/KPIDashboardPage';
+import { KPIAssessmentsListPage } from './pages/kpi/KPIAssessmentsListPage';
+import { KPIAssessmentCreatePage } from './pages/kpi/KPIAssessmentCreatePage';
+import { KPIAssessmentDetailPage } from './pages/kpi/KPIAssessmentDetailPage';
+import { KPIFindingsListPage } from './pages/kpi/KPIFindingsListPage';
+import { KPIReportsPage } from './pages/kpi/KPIReportsPage';
+import { KPIAnalyticsPage } from './pages/kpi/KPIAnalyticsPage';
+import { KPILibraryPage } from './pages/kpi/KPILibraryPage';
 export function App() {
   return (
     <BrowserRouter>
@@ -353,16 +361,23 @@ export function App() {
               </RequireSignedIn>
             }
           />
-          <Route
-            path="/hr/kpis"
-            element={
+          <Route path="/hr/kpis" element={<Navigate to="/modules/hr/kpis" replace />} />
+          <Route path="/modules/hr/kpis" element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <HrKpisPage />
+                  <KPIModuleLayout />
                 </RequireWorkspace>
               </RequireSignedIn>
-            }
-          />
+            }>
+            <Route index element={<KPIDashboardPage />} />
+            <Route path="assessments" element={<KPIAssessmentsListPage />} />
+            <Route path="assessments/new" element={<KPIAssessmentCreatePage />} />
+            <Route path="assessments/:assessmentId" element={<KPIAssessmentDetailPage />} />
+            <Route path="library" element={<KPILibraryPage />} />
+            <Route path="findings" element={<KPIFindingsListPage />} />
+            <Route path="reports" element={<KPIReportsPage />} />
+            <Route path="trends" element={<KPIAnalyticsPage />} />
+          </Route>
           <Route
             path="/audits"
             element={

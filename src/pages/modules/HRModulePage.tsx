@@ -156,7 +156,7 @@ export function HRModulePage() {
               Manage employee and project KPIs, ratings, and close-out actions with evidence for performance reviews.
             </p>
             <button
-              onClick={() => navigate('/hr/kpis')}
+              onClick={() => navigate('/modules/hr/kpis')}
               className="mt-4 text-sm font-medium text-teal hover:text-teal-700 transition-colors inline-flex items-center gap-1"
             >
               Open KPI performance <ArrowRightIcon className="w-4 h-4" />

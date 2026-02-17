@@ -179,17 +179,21 @@ export async function listKPIAssessments(filters: ListKPIAssessmentsFilters): Pr
   if (filters.periodTo) query = query.lte('period_start_date', filters.periodTo);
   if (filters.scoreMin != null) query = query.gte('overall_score', filters.scoreMin);
   if (filters.scoreMax != null) query = query.lte('overall_score', filters.scoreMax);
-  if (filters.search?.trim()) {
-    const term = filters.search.trim();
-    query = query.or(
-      `employee_name_snapshot.ilike.%${term}%,manager_name_snapshot.ilike.%${term}%,project_name.ilike.%${term}%`
-    );
-  }
 
   const limit = filters.limit ?? 200;
   const { data, error } = await query.order('created_at', { ascending: false }).limit(limit);
   if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as KPIAssessment[];
+  let result = (data ?? []) as KPIAssessment[];
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().toLowerCase();
+    result = result.filter(
+      (a) =>
+        (a.employee_name_snapshot?.toLowerCase().includes(term)) ||
+        (a.manager_name_snapshot?.toLowerCase().includes(term)) ||
+        (a.project_name?.toLowerCase().includes(term))
+    );
+  }
+  return result;
 }
 
 export async function updateKPIAssessment(
