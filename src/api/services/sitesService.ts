@@ -4,12 +4,42 @@ import type { Site, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
 
 export async function listSites(companyId: UUID, limit = 500): Promise<Site[]> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/0b6fab05-6c3e-43f5-9c91-57b342f42891', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: `log_${Date.now()}_listSites`,
+      timestamp: Date.now(),
+      location: 'sitesService.ts:listSites:before',
+      message: 'sites list request',
+      hypothesisId: 'H2',
+      data: { companyId, limit }
+    })
+  }).catch(() => {});
+  // #endregion agent log
   const { data, error } = await insforge.database
     .from('sites')
     .select('*')
     .eq('company_id', companyId)
     .order('name', { ascending: true })
     .limit(limit);
+  // #region agent log
+  if (error) {
+    fetch('http://127.0.0.1:7242/ingest/0b6fab05-6c3e-43f5-9c91-57b342f42891', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: `log_${Date.now()}_listSitesErr`,
+        timestamp: Date.now(),
+        location: 'sitesService.ts:listSites:error',
+        message: 'sites list error',
+        hypothesisId: 'H2',
+        data: { errorMessage: getErrorMessage(error), errorRaw: typeof error === 'object' && error !== null ? JSON.stringify(error) : String(error) }
+      })
+    }).catch(() => {});
+  }
+  // #endregion agent log
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Site[];
 }

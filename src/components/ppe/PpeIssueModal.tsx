@@ -11,13 +11,15 @@ import type {
   UUID,
   UserProfile
 } from '../../api/models/entities';
-import { PPE_REASON_FOR_ISSUE_OPTIONS } from '../../api/models/entities';
 import {
   createPpeIssue,
   getPpeStockByLocation,
   setPpeIssueLinks,
   type CreatePpeIssueInput
 } from '../../api/services/ppeService';
+import { getMergedOptions, getBuiltInOptions } from '../../api/services/dynamicOptionsService';
+import type { OptionItem } from '../../api/services/dynamicOptionsService';
+import { SelectOrType } from '../ui/SelectOrType';
 import { listQualityNcrs } from '../../api/services/qualityNcrsService';
 import { listCorrectiveActions } from '../../api/services/correctiveActionsService';
 import { listUserProfiles } from '../../api/services/profilesService';
@@ -62,6 +64,7 @@ export function PpeIssueModal(props: {
     import('../../api/services/correctiveActionsService').CorrectiveAction[]
   >([]);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [reasonOptions, setReasonOptions] = useState<OptionItem[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -81,6 +84,15 @@ export function PpeIssueModal(props: {
     }
     load();
   }, [props.companyId, props.open]);
+
+  useEffect(() => {
+    if (!props.open || !props.companyId) return;
+    const builtIn = getBuiltInOptions('ppe', 'ppeIssueReason');
+    getMergedOptions(
+      { companyId: props.companyId, moduleKey: 'ppe', fieldKey: 'ppeIssueReason' },
+      builtIn
+    ).then(setReasonOptions).catch(() => setReasonOptions(builtIn.map((v) => ({ id: `builtin:${v}`, value: v, label: v }))));
+  }, [props.open, props.companyId]);
 
   const selectedItem = useMemo(
     () => props.items.find((i) => i.id === ppeItemId) ?? null,
@@ -160,7 +172,7 @@ export function PpeIssueModal(props: {
         departmentId: departmentId ? (departmentId as UUID) : null,
         size: size.trim() || sizeOther.trim() || null,
         quantityIssued: Math.max(1, quantityIssued),
-        reasonForIssue: reasonForIssue || reasonOther.trim() || null,
+        reasonForIssue: reasonForIssue === 'Other' ? (reasonOther.trim() || null) : (reasonForIssue || null),
         issuedToUserId: issuedToUserId ? (issuedToUserId as UUID) : null,
         issuedToEmployeeNumber: issuedToEmployeeNumber.trim() || null,
         jobRole: jobRole.trim() || null,
@@ -308,29 +320,28 @@ export function PpeIssueModal(props: {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Reason for issue *</label>
-            <select
-              value={reasonForIssue}
-              onChange={(e) => setReasonForIssue(e.target.value)}
-              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-            >
-              <option value="">Select reason</option>
-              {PPE_REASON_FOR_ISSUE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            {reasonForIssue === 'Other' && (
-              <input
-                value={reasonOther}
-                onChange={(e) => setReasonOther(e.target.value)}
-                placeholder="Specify reason"
-                className="mt-1 w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
-            )}
-          </div>
+          <SelectOrType
+            label="Reason for issue *"
+            value={reasonForIssue === 'Other' ? reasonOther : reasonForIssue}
+            onChange={(v, isCustom) => {
+              if (isCustom) {
+                setReasonForIssue('Other');
+                setReasonOther(v);
+              } else {
+                setReasonForIssue(v);
+                setReasonOther('');
+              }
+            }}
+            options={reasonOptions}
+            placeholder="Select reason"
+            otherLabel="Other / Type manually"
+            required
+            allowCreate
+            companyId={props.companyId}
+            moduleKey="ppe"
+            fieldKey="ppeIssueReason"
+            createdByUserId={props.issuedByUserId}
+          />
 
           <div>
             <label className="block text-sm font-medium text-charcoal mb-1.5">Issued by (auto-filled)</label>

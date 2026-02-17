@@ -1,9 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon, FileIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { ModuleKey, UUID, Severity } from '../../api/models/core';
 import { createQualityNcr } from '../../api/services/qualityNcrsService';
+import { getMergedOptions, getBuiltInOptions } from '../../api/services/dynamicOptionsService';
+import type { OptionItem } from '../../api/services/dynamicOptionsService';
+import { SelectOrType } from '../ui/SelectOrType';
 
 type NcrSource = 'audit' | 'incident' | 'complaint' | 'risk_assessment' | 'inspection' | 'management_review' | 'other';
 type LinkedRequirementType = 'iso' | 'legal' | 'internal';
@@ -34,11 +37,22 @@ export function NcrCreateModal(props: {
   const [correctiveActions, setCorrectiveActions] = useState('');
   const [responsiblePerson, setResponsiblePerson] = useState('');
   const [source, setSource] = useState<NcrSource>(props.linkedSource?.type || 'audit');
+  const [sourceCustom, setSourceCustom] = useState('');
+  const [sourceOptions, setSourceOptions] = useState<OptionItem[]>([]);
   const [title, setTitle] = useState('');
   const [severity, setSeverity] = useState<Severity>('medium');
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!props.open || !props.companyId) return;
+    const builtIn = getBuiltInOptions('ncrs', 'ncrSource').map((v) => ({ id: `builtin:${v}`, value: v, label: v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }));
+    getMergedOptions(
+      { companyId: props.companyId, moduleKey: 'ncrs', fieldKey: 'ncrSource' },
+      getBuiltInOptions('ncrs', 'ncrSource')
+    ).then(setSourceOptions).catch(() => setSourceOptions(builtIn));
+  }, [props.open, props.companyId]);
 
   // Auto-generate NCR number if not provided
   const finalNcrNumber = useMemo(() => {
@@ -92,7 +106,7 @@ export function NcrCreateModal(props: {
       descriptionParts.push(`Root Cause: ${rootCause}`);
       descriptionParts.push(`Corrective Actions: ${correctiveActions}`);
       descriptionParts.push(`Responsible Person: ${responsiblePerson}`);
-      descriptionParts.push(`Source: ${source}`);
+      descriptionParts.push(`Source: ${source === 'other' ? sourceCustom.trim() : source}`);
       if (props.linkedSource?.id) {
         descriptionParts.push(`Linked Source ID: ${props.linkedSource.id}`);
       }
@@ -121,7 +135,7 @@ export function NcrCreateModal(props: {
         root_cause: rootCause.trim(),
         corrective_action: correctiveActions.trim(),
         corrective_action_due_date: new Date(ncrDate).toISOString().split('T')[0],
-        source_entity_type: source,
+        source_entity_type: source === 'other' ? (sourceCustom.trim() || 'other') : source,
         source_entity_id: props.linkedSource?.id ? props.linkedSource.id as UUID : undefined
       });
       
@@ -151,6 +165,7 @@ export function NcrCreateModal(props: {
     setCorrectiveActions('');
     setResponsiblePerson('');
     setSource(props.linkedSource?.type || 'audit');
+    setSourceCustom('');
     setTitle('');
     setSeverity('medium');
     setEvidenceFiles([]);
@@ -408,21 +423,28 @@ export function NcrCreateModal(props: {
           <div className="border-b border-surface-200 pb-4">
             <h3 className="text-sm font-semibold text-charcoal mb-4">Source</h3>
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Source *</label>
-              <select
-                value={source}
-                onChange={(e) => setSource(e.target.value as NcrSource)}
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              <SelectOrType
+                label="Source *"
+                value={source === 'other' ? (sourceCustom.trim() || 'other') : source}
+                onChange={(v, isCustom) => {
+                  if (isCustom) {
+                    setSource('other');
+                    setSourceCustom(v);
+                  } else {
+                    setSource(v as NcrSource);
+                    setSourceCustom('');
+                  }
+                }}
+                options={sourceOptions.map((o) => ({ ...o, label: o.label.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }))}
+                placeholder="Select source"
+                otherLabel="Other / Type manually"
                 required
-              >
-                <option value="audit">Audit</option>
-                <option value="inspection">Inspection</option>
-                <option value="incident">Incident</option>
-                <option value="risk_assessment">Risk Assessment</option>
-                <option value="management_review">Management Review</option>
-                <option value="complaint">Complaint</option>
-                <option value="other">Other</option>
-              </select>
+                allowCreate
+                companyId={props.companyId}
+                moduleKey="ncrs"
+                fieldKey="ncrSource"
+                createdByUserId={props.createdByUserId}
+              />
               {props.linkedSource?.id && (
                 <p className="text-xs text-charcoal-500 mt-1">Linked to: {props.linkedSource.type} (ID: {props.linkedSource.id})</p>
               )}

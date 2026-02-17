@@ -1,12 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon, UploadIcon, FileIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { UUID } from '../../api/models/core';
 import type { ModuleKey, Severity, IncidentCategory, IncidentType, LossType } from '../../api/models/core';
-import { INCIDENT_CATEGORIES, INCIDENT_CATEGORY_SUBCATEGORIES, INCIDENT_TYPES, LOSS_TYPES } from '../../api/models/core';
+import { INCIDENT_CATEGORIES, INCIDENT_TYPES, LOSS_TYPES } from '../../api/models/core';
 import { createIncident } from '../../api/services/incidentsService';
+import { getMergedOptions, getBuiltInOptionsForIncidentSubcategory, getBuiltInOptions } from '../../api/services/dynamicOptionsService';
+import type { OptionItem } from '../../api/services/dynamicOptionsService';
 import { UserMultiSelect } from '../ui/UserMultiSelect';
+import { SelectOrType } from '../ui/SelectOrType';
 import { AffectedPersonSelector } from './AffectedPersonSelector';
 import { IncidentTimelineBuilder } from './IncidentTimelineBuilder';
 import { CauseMultiSelectGroups } from './CauseMultiSelectGroups';
@@ -47,7 +50,27 @@ export function IncidentCreateModal(props: {
   const [subcategory, setSubcategory] = useState('');
   const [subcategoryManual, setSubcategoryManual] = useState('');
   const [useManualSubcategory, setUseManualSubcategory] = useState(false);
-  
+  const [subcategoryOptions, setSubcategoryOptions] = useState<OptionItem[]>([]);
+
+  useEffect(() => {
+    if (!props.open || !props.companyId) return;
+    const builtIn = getBuiltInOptionsForIncidentSubcategory(category);
+    getMergedOptions(
+      { companyId: props.companyId, moduleKey: 'incidents', fieldKey: `incidentSubcategory_${category}` },
+      builtIn
+    ).then(setSubcategoryOptions).catch(() => setSubcategoryOptions(builtIn.map((v) => ({ id: `builtin:${v}`, value: v, label: v }))));
+  }, [props.open, props.companyId, category]);
+
+  const [incidentTypeOptions, setIncidentTypeOptions] = useState<OptionItem[]>([]);
+  useEffect(() => {
+    if (!props.open || !props.companyId) return;
+    const builtIn = getBuiltInOptions('incidents', 'incidentType');
+    getMergedOptions(
+      { companyId: props.companyId, moduleKey: 'incidents', fieldKey: 'incidentType' },
+      builtIn
+    ).then(setIncidentTypeOptions).catch(() => setIncidentTypeOptions(builtIn.map((v) => ({ id: `builtin:${v}`, value: v, label: v }))));
+  }, [props.open, props.companyId]);
+
   // MANDATORY FIELDS
   const [projectClient, setProjectClient] = useState('');
   const [incidentType, setIncidentType] = useState<string>(INCIDENT_TYPES[0]);
@@ -119,10 +142,6 @@ export function IncidentCreateModal(props: {
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const availableSubcategories = useMemo(() => {
-    return INCIDENT_CATEGORY_SUBCATEGORIES[category] || [];
-  }, [category]);
 
   const finalSubcategory = useMemo(() => {
     if (useManualSubcategory) {
@@ -449,30 +468,27 @@ export function IncidentCreateModal(props: {
                   required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Type of Incident</label>
-                <select
-                  value={incidentType}
-                  onChange={(e) => setIncidentType(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                >
-                  {INCIDENT_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                  <option value="Other">Other (type below)</option>
-                </select>
-                {incidentType === 'Other' && (
-                  <input
-                    type="text"
-                    value={incidentTypeOther}
-                    onChange={(e) => setIncidentTypeOther(e.target.value)}
-                    placeholder="Type incident type manually"
-                    className="mt-2 w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
-                  />
-                )}
-              </div>
+              <SelectOrType
+                label="Type of Incident"
+                value={finalIncidentType}
+                onChange={(v, isCustom) => {
+                  if (isCustom) {
+                    setIncidentType('Other');
+                    setIncidentTypeOther(v);
+                  } else {
+                    setIncidentType(v);
+                    setIncidentTypeOther('');
+                  }
+                }}
+                options={incidentTypeOptions}
+                placeholder="Select type"
+                otherLabel="Other / Type manually"
+                allowCreate
+                companyId={props.companyId}
+                moduleKey="incidents"
+                fieldKey="incidentType"
+                createdByUserId={props.createdByUserId}
+              />
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Incident Category *</label>
                 <select
@@ -492,46 +508,30 @@ export function IncidentCreateModal(props: {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Incident Subcategory *</label>
-                <div className="space-y-2">
-                  {availableSubcategories.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="useManual"
-                        checked={useManualSubcategory}
-                        onChange={(e) => setUseManualSubcategory(e.target.checked)}
-                        className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
-                      />
-                      <label htmlFor="useManual" className="text-xs text-charcoal-500">Type manually</label>
-                    </div>
-                  )}
-                  {!useManualSubcategory && availableSubcategories.length > 0 ? (
-                    <select
-                      value={subcategory}
-                      onChange={(e) => setSubcategory(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                      required
-                    >
-                      <option value="">Select subcategory</option>
-                      {availableSubcategories.map((sc) => (
-                        <option key={sc} value={sc}>
-                          {sc}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      value={subcategoryManual}
-                      onChange={(e) => setSubcategoryManual(e.target.value)}
-                      placeholder="Enter subcategory manually"
-                      className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                      required
-                    />
-                  )}
-                </div>
-              </div>
+              <SelectOrType
+                label="Incident Subcategory *"
+                value={finalSubcategory}
+                onChange={(v, isCustom) => {
+                  if (isCustom) {
+                    setUseManualSubcategory(true);
+                    setSubcategoryManual(v);
+                    setSubcategory('');
+                  } else {
+                    setUseManualSubcategory(false);
+                    setSubcategory(v);
+                    setSubcategoryManual('');
+                  }
+                }}
+                options={subcategoryOptions}
+                placeholder="Select subcategory"
+                otherLabel="Other / Type manually"
+                required
+                allowCreate
+                companyId={props.companyId}
+                moduleKey="incidents"
+                fieldKey={`incidentSubcategory_${category}`}
+                createdByUserId={props.createdByUserId}
+              />
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Date *</label>
                 <input

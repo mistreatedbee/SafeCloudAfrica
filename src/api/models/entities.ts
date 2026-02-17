@@ -1,5 +1,18 @@
 import type { CompanyRole, IncidentCategory, IncidentStatus, LicenseType, ModuleKey, Severity, UUID } from './core';
 
+/** DynamicOptions: user-typed dropdown values for Select OR Type (company-scoped). */
+export type DynamicOption = {
+  id: UUID;
+  company_id: UUID;
+  module_key: string;
+  field_key: string;
+  value: string;
+  status: 'pending' | 'approved';
+  created_by_user_id: UUID | null;
+  created_at: string;
+  usage_count: number;
+};
+
 export type Company = {
   id: UUID;
   name: string;

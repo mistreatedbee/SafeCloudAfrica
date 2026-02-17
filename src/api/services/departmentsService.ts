@@ -4,12 +4,42 @@ import type { Department, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
 
 export async function listDepartments(companyId: UUID, limit = 1000): Promise<Department[]> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/0b6fab05-6c3e-43f5-9c91-57b342f42891', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: `log_${Date.now()}_listDepts`,
+      timestamp: Date.now(),
+      location: 'departmentsService.ts:listDepartments:before',
+      message: 'departments list request',
+      hypothesisId: 'H3',
+      data: { companyId, limit }
+    })
+  }).catch(() => {});
+  // #endregion agent log
   const { data, error } = await insforge.database
     .from('departments')
     .select('*')
     .eq('company_id', companyId)
     .order('name', { ascending: true })
     .limit(limit);
+  // #region agent log
+  if (error) {
+    fetch('http://127.0.0.1:7242/ingest/0b6fab05-6c3e-43f5-9c91-57b342f42891', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: `log_${Date.now()}_listDeptsErr`,
+        timestamp: Date.now(),
+        location: 'departmentsService.ts:listDepartments:error',
+        message: 'departments list error',
+        hypothesisId: 'H3',
+        data: { errorMessage: getErrorMessage(error), errorRaw: typeof error === 'object' && error !== null ? JSON.stringify(error) : String(error) }
+      })
+    }).catch(() => {});
+  }
+  // #endregion agent log
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Department[];
 }
