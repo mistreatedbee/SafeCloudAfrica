@@ -30,10 +30,6 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useUser } from '@insforge/react';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
-import { EVIDENCE_BUCKET } from '../components/evidence/EvidenceModal';
-import { InspectionRunItem as RunItemModel } from '../api/models/entities';
-import { listInspectionItemEvidence, createInspectionItemEvidence } from '../api/services/inspectionEvidenceService';
-import { insforge } from '../api/insforge/client';
 
 type RunWithItems = { run: InspectionRun; items: InspectionRunItem[] };
 
@@ -43,11 +39,15 @@ export function InspectionDetailPage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
 
-  const canEdit =
+  const canEditBase =
     activeRole === 'admin' ||
     activeRole === 'manager' ||
     activeRole === 'supervisor' ||
     activeRole === 'consultant';
+  const isAuditee = activeRole === 'employee';
+  const isManager = activeRole === 'manager';
+  const isAuditor = activeRole === 'auditor';
+  const canScore = canEditBase || isAuditor;
 
   const {
     data: inspection,
@@ -159,11 +159,60 @@ export function InspectionDetailPage() {
         risk_level: patch.risk_level as any,
         comments: patch.comments ?? item.comments
       });
-  async function handleOpenItemEvidence(item: RunItemModel) {
+      await refreshRun();
+    } finally {
+      setSavingItemId(null);
+    }
+  }
+
+  async function handleOpenItemEvidence(item: InspectionRunItem) {
     if (!activeCompanyId || !user?.id) return;
     setEvidenceItemId(item.id as string);
     setEvidenceOpen(true);
   }
+
+  async function handleAuditeeSubmitClosure(item: InspectionRunItem) {
+    if (!activeCompanyId || !user?.id) return;
+    setSavingItemId(item.id as string);
+    try {
+      const now = new Date().toISOString();
+      await updateInspectionRunItem(activeCompanyId as UUID, item.id as UUID, {
+        status: 'under-review',
+        closure_requested_at: now,
+        closure_evidence_submitted_at: now
+      } as any);
+      await refreshRun();
+    } finally {
+      setSavingItemId(null);
+    }
+  }
+
+  async function handleManagerSignOff(item: InspectionRunItem) {
+    if (!activeCompanyId || !user?.id) return;
+    setSavingItemId(item.id as string);
+    try {
+      const now = new Date().toISOString();
+      await updateInspectionRunItem(activeCompanyId as UUID, item.id as UUID, {
+        status: 'approved',
+        manager_approved_by_user_id: user.id as UUID,
+        manager_approved_at: now
+      } as any);
+      await refreshRun();
+    } finally {
+      setSavingItemId(null);
+    }
+  }
+
+  async function handleAuditorVerifyAndClose(item: InspectionRunItem) {
+    if (!activeCompanyId || !user?.id) return;
+    setSavingItemId(item.id as string);
+    try {
+      const now = new Date().toISOString();
+      await updateInspectionRunItem(activeCompanyId as UUID, item.id as UUID, {
+        status: 'closed',
+        auditor_verified_by_user_id: user.id as UUID,
+        auditor_verified_at: now
+      } as any);
       await refreshRun();
     } finally {
       setSavingItemId(null);
@@ -383,7 +432,7 @@ export function InspectionDetailPage() {
                               </td>
                               <td className="py-2 pr-3">
                                 <select
-                                  disabled={!canEdit || latestRun.run.status === 'completed'}
+                                  disabled={!canScore || latestRun.run.status === 'completed'}
                                   value={item.inspection_rating ?? 'C'}
                                   onChange={(e) =>
                                     void handleUpdateItem(item, {
@@ -399,7 +448,7 @@ export function InspectionDetailPage() {
                               </td>
                               <td className="py-2 pr-3">
                                 <select
-                                  disabled={!canEdit || latestRun.run.status === 'completed'}
+                                  disabled={!canScore || latestRun.run.status === 'completed'}
                                   value={item.risk_level ?? ''}
                                   onChange={(e) =>
                                     void handleUpdateItem(item, {
@@ -416,7 +465,7 @@ export function InspectionDetailPage() {
                               </td>
                               <td className="py-2 pr-3">
                                 <textarea
-                                  disabled={!canEdit || latestRun.run.status === 'completed'}
+                                  disabled={(!canScore && !isAuditee) || latestRun.run.status === 'completed'}
                                   defaultValue={item.comments || ''}
                                   onBlur={(e) =>
                                     void handleUpdateItem(item, {
@@ -437,17 +486,52 @@ export function InspectionDetailPage() {
                                 </button>
                               </td>
                               <td className="py-2 pr-3 text-xs">
-                                {item.compliance_status === 'NC' ? (
-                                  <span className="inline-flex items-center gap-1 text-critical">
-                                    <AlertCircleIcon className="w-4 h-4" />
-                                    {item.auto_ncr_id ? 'NCR created' : 'Will create NCR on complete'}
+                                <div className="flex flex-col gap-1">
+                                  {item.compliance_status === 'NC' || item.inspection_rating === 'NC' ? (
+                                    <span className="inline-flex items-center gap-1 text-critical">
+                                      <AlertCircleIcon className="w-4 h-4" />
+                                      {item.auto_ncr_id ? 'NCR created' : 'Will create NCR on complete'}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-success">
+                                      <CheckCircleIcon className="w-4 h-4" />
+                                      OK
+                                    </span>
+                                  )}
+                                  <span className="inline-flex items-center gap-1 text-[11px] text-charcoal-500">
+                                    Status: {item.status}
                                   </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-success">
-                                    <CheckCircleIcon className="w-4 h-4" />
-                                    OK
-                                  </span>
-                                )}
+                                  {isAuditee && item.status !== 'closed' && (
+                                    <button
+                                      type="button"
+                                      disabled={savingItemId === String(item.id)}
+                                      onClick={() => void handleAuditeeSubmitClosure(item)}
+                                      className="mt-1 px-2 py-0.5 rounded-lg border border-surface-300 text-[11px] text-charcoal-700 hover:bg-surface-50"
+                                    >
+                                      Submit closure
+                                    </button>
+                                  )}
+                                  {isManager && item.status === 'under-review' && (
+                                    <button
+                                      type="button"
+                                      disabled={savingItemId === String(item.id)}
+                                      onClick={() => void handleManagerSignOff(item)}
+                                      className="mt-1 px-2 py-0.5 rounded-lg border border-navy/50 text-[11px] text-navy hover:bg-navy/5"
+                                    >
+                                      Manager sign-off
+                                    </button>
+                                  )}
+                                  {(canScore || isAuditor) && item.status === 'approved' && (
+                                    <button
+                                      type="button"
+                                      disabled={savingItemId === String(item.id)}
+                                      onClick={() => void handleAuditorVerifyAndClose(item)}
+                                      className="mt-1 px-2 py-0.5 rounded-lg border border-teal text-[11px] text-teal hover:bg-teal/5"
+                                    >
+                                      Verify & close
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))}

@@ -14,6 +14,8 @@ import { createActivityLog } from './activityLogService';
 import { getMyProfile } from './profilesService';
 import { createQualityNcrFromInspectionItem } from './qualityNcrsService';
 import { createCorrectiveAction } from './correctiveActionsService';
+import { createNotification } from './notificationsService';
+import { sendTemplatedEmail } from './emailService';
 
 export type ListInspectionsInput = {
   companyId: UUID;
@@ -474,6 +476,12 @@ export async function updateInspectionRunItem(
     status: InspectionRunItem['status'];
     evidence_document_url: string | null;
     photo_url: string | null;
+    closure_requested_at: string | null;
+    closure_evidence_submitted_at: string | null;
+    manager_approved_by_user_id: UUID | null;
+    manager_approved_at: string | null;
+    auditor_verified_by_user_id: UUID | null;
+    auditor_verified_at: string | null;
   }>
 ): Promise<InspectionRunItem> {
   const updatePatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -504,6 +512,15 @@ export async function updateInspectionRunItem(
   if ('status' in patch) updatePatch.status = patch.status;
   if ('evidence_document_url' in patch) updatePatch.evidence_document_url = patch.evidence_document_url;
   if ('photo_url' in patch) updatePatch.photo_url = patch.photo_url;
+  if ('closure_requested_at' in patch) updatePatch.closure_requested_at = patch.closure_requested_at;
+  if ('closure_evidence_submitted_at' in patch)
+    updatePatch.closure_evidence_submitted_at = patch.closure_evidence_submitted_at;
+  if ('manager_approved_by_user_id' in patch)
+    updatePatch.manager_approved_by_user_id = patch.manager_approved_by_user_id;
+  if ('manager_approved_at' in patch) updatePatch.manager_approved_at = patch.manager_approved_at;
+  if ('auditor_verified_by_user_id' in patch)
+    updatePatch.auditor_verified_by_user_id = patch.auditor_verified_by_user_id;
+  if ('auditor_verified_at' in patch) updatePatch.auditor_verified_at = patch.auditor_verified_at;
 
   const { data, error } = await insforge.database
     .from('inspection_run_items')
@@ -626,6 +643,53 @@ export async function completeInspectionRun(input: {
     })
     .eq('company_id', input.companyId)
     .eq('id', run.inspection_id);
+
+  // Escalation: notify on high-risk findings
+  const highRiskItems = items.filter((i) => i.risk_level === 'high');
+  if (highRiskItems.length > 0) {
+    const { data: profiles, error: profilesError } = await insforge.database
+      .from('user_profiles')
+      .select('*')
+      .eq('company_id', input.companyId);
+    if (!profilesError && profiles) {
+      const byUserId = new Map<string, any>();
+      for (const p of profiles as any[]) {
+        if (p.user_id) byUserId.set(String(p.user_id), p);
+      }
+
+      const recipientUserIds = new Set<string>();
+      for (const item of highRiskItems) {
+        if (item.responsible_person_id) recipientUserIds.add(String(item.responsible_person_id));
+        if (run.department_id) {
+          // Best-effort: notify all managers in this tenant as department managers are not modeled directly
+          // This can be tightened later if department-manager mapping is added.
+        }
+      }
+
+      const link = `${window.location.origin}/inspections/${run.inspection_id}`;
+      const emails: string[] = [];
+      for (const userId of recipientUserIds) {
+        const profile = byUserId.get(userId);
+        if (profile?.email) emails.push(profile.email as string);
+        await createNotification(
+          input.companyId,
+          userId as unknown as UUID,
+          'high',
+          'High risk inspection finding',
+          `One or more checklist items were rated high risk in inspection "${run.inspection_id}".`
+        );
+      }
+      if (emails.length > 0) {
+        await sendTemplatedEmail(emails, 'incident_created', {
+          incidentTitle: 'High risk inspection finding',
+          severity: 'high',
+          category: run.module,
+          location: (run as any).location ?? '',
+          link
+        });
+      }
+    }
+  }
 
   await createActivityLog({
     companyId: input.companyId,
