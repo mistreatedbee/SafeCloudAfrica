@@ -1253,6 +1253,84 @@ create index if not exists idx_incidents_company on public.incidents(company_id,
 create index if not exists idx_incidents_assignee on public.incidents(company_id, assignee_user_id);
 create index if not exists idx_incidents_creator on public.incidents(company_id, created_by_user_id);
 
+-- Add new columns for enhanced incident management
+alter table public.incidents
+  add column if not exists incident_type text null,
+  add column if not exists type_of_incident text null,
+  add column if not exists category_id uuid null,
+  add column if not exists category_name text null,
+  add column if not exists subcategory_id uuid null,
+  add column if not exists subcategory_name text null,
+  add column if not exists subcategory_custom_text text null,
+  add column if not exists affected_person_id uuid null,
+  add column if not exists affected_person_name text null,
+  add column if not exists loss_types text[] null,
+  add column if not exists loss_production_value numeric null,
+  add column if not exists loss_financial_value numeric null,
+  add column if not exists risk_category text null check (risk_category is null or risk_category in ('Low', 'Medium', 'High')),
+  add column if not exists reported_to_user_ids uuid[] null,
+  add column if not exists copy_to_emails text[] null,
+  add column if not exists instruction_breakdown text null,
+  add column if not exists task_sequence text null,
+  add column if not exists consequence text null,
+  add column if not exists incident_event_timelines jsonb null,
+  add column if not exists immediate_causes_unsafe_acts jsonb null,
+  add column if not exists immediate_causes_unsafe_conditions jsonb null,
+  add column if not exists root_cause_human_factors jsonb null,
+  add column if not exists root_cause_workplace_factors jsonb null,
+  add column if not exists system_failure jsonb null,
+  add column if not exists contributing_factors text null,
+  add column if not exists contributing_factor_tags text[] null,
+  add column if not exists prepared_by_user_id uuid null,
+  add column if not exists distributions_to_user_ids uuid[] null,
+  add column if not exists distributions_to_emails text[] null;
+
+-- Incident Categories & Subcategories (normalized lookup tables for future admin management)
+create table if not exists public.incident_categories (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  name text not null,
+  display_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique(company_id, name)
+);
+
+create table if not exists public.incident_subcategories (
+  id uuid primary key default gen_random_uuid(),
+  category_id uuid not null references public.incident_categories(id) on delete cascade,
+  company_id uuid not null references public.companies(id) on delete cascade,
+  name text not null,
+  display_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique(category_id, name)
+);
+
+create index if not exists idx_incident_categories_company on public.incident_categories(company_id, display_order);
+create index if not exists idx_incident_subcategories_category on public.incident_subcategories(category_id, display_order);
+
+-- Incident Corrective Actions table
+create table if not exists public.incident_corrective_actions (
+  id uuid primary key default gen_random_uuid(),
+  incident_id uuid not null references public.incidents(id) on delete cascade,
+  company_id uuid not null references public.companies(id) on delete cascade,
+  action_title text not null,
+  action_description text null,
+  owner_user_id uuid null,
+  due_date date null,
+  status text not null check (status in ('Open', 'In Progress', 'Awaiting Evidence', 'Under Review', 'Closed')) default 'Open',
+  evidence_document_urls text[] null,
+  closure_notes text null,
+  manager_approval_user_id uuid null,
+  manager_approval_at timestamptz null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_incident_corrective_actions_incident on public.incident_corrective_actions(incident_id, created_at desc);
+create index if not exists idx_incident_corrective_actions_company on public.incident_corrective_actions(company_id);
+create index if not exists idx_incident_corrective_actions_owner on public.incident_corrective_actions(company_id, owner_user_id);
+
 -- ---------------------------------------------------------------------------
 -- Tasks (Phase 2 shared system)
 -- ---------------------------------------------------------------------------
@@ -1591,6 +1669,67 @@ create policy incidents_update_admin_consultant
 on public.incidents for update
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- Incident Categories & Subcategories RLS
+alter table public.incident_categories enable row level security;
+alter table public.incident_subcategories enable row level security;
+
+drop policy if exists incident_categories_select_member on public.incident_categories;
+create policy incident_categories_select_member
+on public.incident_categories for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists incident_categories_write_admin on public.incident_categories;
+create policy incident_categories_write_admin
+on public.incident_categories for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists incident_subcategories_select_member on public.incident_subcategories;
+create policy incident_subcategories_select_member
+on public.incident_subcategories for select
+using (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists incident_subcategories_write_admin on public.incident_subcategories;
+create policy incident_subcategories_write_admin
+on public.incident_subcategories for all
+using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
+with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+-- Incident Corrective Actions RLS
+alter table public.incident_corrective_actions enable row level security;
+
+drop policy if exists incident_corrective_actions_select_role on public.incident_corrective_actions;
+create policy incident_corrective_actions_select_role
+on public.incident_corrective_actions for select
+using (
+  public.is_company_consultant_or_admin(company_id)
+  or public.is_company_auditor(company_id)
+  or owner_user_id = public.request_user_id()
+  or created_by_user_id = public.request_user_id()
+  or public.is_platform_admin()
+);
+
+drop policy if exists incident_corrective_actions_insert_member on public.incident_corrective_actions;
+create policy incident_corrective_actions_insert_member
+on public.incident_corrective_actions for insert
+with check (public.is_company_member(company_id));
+
+drop policy if exists incident_corrective_actions_update_role on public.incident_corrective_actions;
+create policy incident_corrective_actions_update_role
+on public.incident_corrective_actions for update
+using (
+  public.is_company_consultant_or_admin(company_id)
+  or owner_user_id = public.request_user_id()
+  or created_by_user_id = public.request_user_id()
+  or public.is_platform_admin()
+)
+with check (
+  public.is_company_consultant_or_admin(company_id)
+  or owner_user_id = public.request_user_id()
+  or created_by_user_id = public.request_user_id()
+  or public.is_platform_admin()
+);
 
 -- Tasks:
 -- - Admin/Consultant: full company visibility

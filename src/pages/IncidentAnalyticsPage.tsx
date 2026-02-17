@@ -12,11 +12,12 @@ import {
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { listIncidents } from '../api/services/incidentsService';
+import { listIncidents, listIncidentsWithFilters } from '../api/services/incidentsService';
 import type { Incident } from '../api/models/entities';
-import type { IncidentCategory, RiskLevel } from '../api/models/core';
+import type { IncidentCategory, RiskLevel, RiskCategory } from '../api/models/core';
+import { IncidentTrendCharts } from '../components/incidents/IncidentTrendCharts';
 
-type TrendPeriod = '3months' | '6months' | '12months';
+type TrendPeriod = '1month' | '2months' | '3months' | '6months' | '12months';
 
 export function IncidentAnalyticsPage() {
   const navigate = useNavigate();
@@ -28,9 +29,27 @@ export function IncidentAnalyticsPage() {
   const { data: incidents, loading } = useAsync<Incident[]>(
     async () => {
       if (!activeCompanyId) return [];
-      return await listIncidents({ companyId: activeCompanyId, limit: 1000 });
+      const now = new Date();
+      const cutoffDate = new Date();
+      if (trendPeriod === '1month') {
+        cutoffDate.setMonth(now.getMonth() - 1);
+      } else if (trendPeriod === '2months') {
+        cutoffDate.setMonth(now.getMonth() - 2);
+      } else if (trendPeriod === '3months') {
+        cutoffDate.setMonth(now.getMonth() - 3);
+      } else if (trendPeriod === '6months') {
+        cutoffDate.setMonth(now.getMonth() - 6);
+      } else {
+        cutoffDate.setMonth(now.getMonth() - 12);
+      }
+      return await listIncidentsWithFilters({
+        companyId: activeCompanyId,
+        category: selectedCategory !== 'all' ? selectedCategory : undefined,
+        dateFrom: cutoffDate.toISOString(),
+        limit: 1000
+      });
     },
-    [activeCompanyId]
+    [activeCompanyId, trendPeriod, selectedCategory]
   );
 
   // Filter incidents by date range
@@ -184,6 +203,8 @@ export function IncidentAnalyticsPage() {
                 onChange={(e) => setTrendPeriod(e.target.value as TrendPeriod)}
                 className="px-3 py-1.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
               >
+                <option value="1month">Last 1 Month</option>
+                <option value="2months">Last 2 Months</option>
                 <option value="3months">Last 3 Months</option>
                 <option value="6months">Last 6 Months</option>
                 <option value="12months">Last 12 Months</option>
@@ -250,9 +271,12 @@ export function IncidentAnalyticsPage() {
           </div>
         </div>
 
+        {/* Trend Charts */}
+        <IncidentTrendCharts incidents={filteredIncidents} period={trendPeriod === '1month' ? '1month' : trendPeriod === '2months' ? '2months' : '12months'} />
+
         {/* Monthly Trend Chart */}
         <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
-          <h3 className="font-semibold text-charcoal mb-4">Monthly Trend</h3>
+          <h3 className="font-semibold text-charcoal mb-4">Monthly Trend (Detailed)</h3>
           <div className="space-y-2">
             {monthlyTrends.map(trend => {
               const maxCount = Math.max(...monthlyTrends.map(t => t.count), 1);

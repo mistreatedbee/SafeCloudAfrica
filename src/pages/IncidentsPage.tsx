@@ -12,12 +12,14 @@ import { Layout } from '../components/layout/Layout';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { listIncidents } from '../api/services/incidentsService';
+import { listIncidents, listIncidentsWithFilters } from '../api/services/incidentsService';
 import {
   createRiskAssessmentFromIncident,
   flagAssessmentsForReviewFromEvent
 } from '../api/services/risksService';
 import type { Incident } from '../api/models/entities';
+import type { IncidentCategory, IncidentType, RiskCategory, IncidentStatus } from '../api/models/core';
+import { INCIDENT_CATEGORIES, INCIDENT_TYPES, RISK_CATEGORIES } from '../api/models/core';
 import { useUser } from '@insforge/react';
 import { toCsv, downloadTextFile } from '../utils/csv';
 import { useIdentity } from '../hooks/useIdentity';
@@ -65,56 +67,96 @@ const itemVariants = {
     y: 0
   }
 };
-type DateFilter = 'all' | '1month' | '2months';
+type DateFilter = 'all' | '1month' | '2months' | '12months';
 
 export function IncidentsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
-  const { activeCompanyId } = useTenant();
+  const [categoryFilter, setCategoryFilter] = useState<IncidentCategory | 'all'>('all');
+  const [typeFilter, setTypeFilter] = useState<IncidentType | 'all'>('all');
+  const [riskCategoryFilter, setRiskCategoryFilter] = useState<RiskCategory | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<IncidentStatus | 'all'>('all');
+  const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
   const { fullName, organisationName } = useIdentity();
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
 
+  // RBAC: Filter incidents based on role
+  // Note: RLS policies already enforce this at DB level, but we add client-side filtering for better UX
+  const filteredByRole = useMemo(() => {
+    if (!list || !user?.id) return list;
+    
+    // Admin/Manager/Supervisor/Consultant: see all incidents (already filtered by RLS)
+    if (activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant') {
+      return list;
+    }
+    
+    // Employee: only see incidents they created or are assigned to
+    if (activeRole === 'employee') {
+      return list.filter(incident => 
+        incident.created_by_user_id === user.id || 
+        incident.assignee_user_id === user.id ||
+        (incident.reported_to_user_ids && incident.reported_to_user_ids.includes(user.id as any))
+      );
+    }
+    
+    // Auditor: read-only access (already filtered by RLS)
+    if (activeRole === 'auditor') {
+      return list;
+    }
+    
+    return list;
+  }, [list, user?.id, activeRole]);
+
   useEffect(() => {
     setCreateOpen(isNew);
   }, [isNew]);
 
+  // Calculate date range for filter
+  const dateRange = useMemo(() => {
+    if (dateFilter === 'all') return { from: undefined, to: undefined };
+    const now = new Date();
+    const from = new Date();
+    if (dateFilter === '1month') {
+      from.setMonth(now.getMonth() - 1);
+    } else if (dateFilter === '2months') {
+      from.setMonth(now.getMonth() - 2);
+    } else if (dateFilter === '12months') {
+      from.setMonth(now.getMonth() - 12);
+    }
+    return { from: from.toISOString(), to: now.toISOString() };
+  }, [dateFilter]);
+
   const { data: incidents, loading, error } = useAsync<Incident[]>(
     async () => {
       if (!activeCompanyId) return [];
-      return await listIncidents({ companyId: activeCompanyId, search: searchQuery, limit: 100 });
+      return await listIncidentsWithFilters({
+        companyId: activeCompanyId,
+        search: searchQuery || undefined,
+        category: categoryFilter !== 'all' ? categoryFilter : undefined,
+        incidentType: typeFilter !== 'all' ? typeFilter : undefined,
+        riskCategory: riskCategoryFilter !== 'all' ? riskCategoryFilter : undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        dateFrom: dateRange.from,
+        dateTo: dateRange.to,
+        limit: 1000
+      });
     },
-    [activeCompanyId, searchQuery]
+    [activeCompanyId, searchQuery, categoryFilter, typeFilter, riskCategoryFilter, statusFilter, dateRange]
   );
 
-  const allIncidents = incidents ?? [];
-  
-  // Apply date filter
-  const list = useMemo(() => {
-    if (dateFilter === 'all') return allIncidents;
-    const now = new Date();
-    const cutoffDate = new Date();
-    if (dateFilter === '1month') {
-      cutoffDate.setMonth(now.getMonth() - 1);
-    } else if (dateFilter === '2months') {
-      cutoffDate.setMonth(now.getMonth() - 2);
-    }
-    return allIncidents.filter(incident => {
-      const incidentDate = new Date(incident.occurred_at);
-      return incidentDate >= cutoffDate;
-    });
-  }, [allIncidents, dateFilter]);
-  const openCount = list.filter((i) => i.status === 'open').length;
-  const investigatingCount = list.filter((i) => i.status === 'investigating').length;
-  const nearMissCount = list.filter((i) => i.category === 'Near Miss').length;
+  const list = incidents ?? [];
+  const openCount = filteredByRole.filter((i) => i.status === 'open').length;
+  const investigatingCount = filteredByRole.filter((i) => i.status === 'investigating').length;
+  const nearMissCount = filteredByRole.filter((i) => i.category === 'Near Miss').length;
 
   function handleExportCsv() {
-    if (!activeCompanyId || list.length === 0) return;
+    if (!activeCompanyId || filteredByRole.length === 0) return;
 
-    const rows = list.map((incident) => ({
+    const rows = filteredByRole.map((incident) => ({
       incident_id: shortId(incident.id),
       title: incident.title,
       category: incident.category,
@@ -211,8 +253,8 @@ export function IncidentsPage() {
             <p className="text-2xl font-bold text-warning mt-1">{investigatingCount}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-            <p className="text-sm text-charcoal-500">This Month</p>
-            <p className="text-2xl font-bold text-charcoal mt-1">{list.length}</p>
+            <p className="text-sm text-charcoal-500">Filtered Results</p>
+            <p className="text-2xl font-bold text-charcoal mt-1">{filteredByRole.length}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Near Misses</p>
@@ -235,7 +277,7 @@ export function IncidentsPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setDateFilter('all')}
@@ -256,7 +298,7 @@ export function IncidentsPage() {
                     : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'
                 }`}
               >
-                View by Month
+                1 Month
               </button>
               <button
                 type="button"
@@ -267,9 +309,62 @@ export function IncidentsPage() {
                     : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'
                 }`}
               >
-                View by 2 Months
+                2 Months
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateFilter('12months')}
+                className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  dateFilter === '12months'
+                    ? 'bg-teal text-white'
+                    : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'
+                }`}
+              >
+                12 Months
               </button>
             </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value as IncidentCategory | 'all')}
+              className="px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            >
+              <option value="all">All Categories</option>
+              {INCIDENT_CATEGORIES.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as IncidentType | 'all')}
+              className="px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            >
+              <option value="all">All Types</option>
+              {INCIDENT_TYPES.map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+            <select
+              value={riskCategoryFilter}
+              onChange={(e) => setRiskCategoryFilter(e.target.value as RiskCategory | 'all')}
+              className="px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            >
+              <option value="all">All Risk Levels</option>
+              {RISK_CATEGORIES.map(risk => (
+                <option key={risk} value={risk}>{risk}</option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as IncidentStatus | 'all')}
+              className="px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            >
+              <option value="all">All Statuses</option>
+              <option value="open">Open</option>
+              <option value="investigating">Investigating</option>
+              <option value="closed">Closed</option>
+            </select>
           </div>
           <div className="flex gap-2">
             <button
@@ -283,7 +378,7 @@ export function IncidentsPage() {
               type="button"
               onClick={handleExportCsv}
               className="flex items-center justify-center gap-2 px-4 py-2.5 bg-navy text-white rounded-lg text-sm font-medium hover:bg-navy-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              disabled={!activeCompanyId || list.length === 0}
+              disabled={!activeCompanyId || filteredByRole.length === 0}
             >
               Export CSV
             </button>
@@ -319,13 +414,13 @@ export function IncidentsPage() {
             </div>
           )}
 
-          {!loading && list.length === 0 && activeCompanyId && (
+          {!loading && filteredByRole.length === 0 && activeCompanyId && (
             <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
               <p className="text-sm text-charcoal-500">No incidents found.</p>
             </div>
           )}
 
-          {list.map((incident) => (
+          {filteredByRole.map((incident) => (
           <div
             key={incident.id}
             className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer">

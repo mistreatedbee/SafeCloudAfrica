@@ -84,25 +84,105 @@ export type CreateIncidentInput = {
   location?: string;
   assigneeUserId?: UUID;
   createdByUserId: UUID;
+  // New base fields
+  incidentType?: string;
+  typeOfIncident?: string;
+  categoryId?: UUID;
+  categoryName?: string;
+  subcategoryId?: UUID;
+  subcategoryName?: string;
+  subcategoryCustomText?: string;
+  causeOfIncident?: string;
+  affectedPersonId?: UUID;
+  affectedPersonName?: string;
+  lossTypes?: string[];
+  lossProductionValue?: number;
+  lossFinancialValue?: number;
+  riskCategory?: string;
+  reportedByUserId?: UUID;
+  reportedToUserIds?: UUID[];
+  copyToUserIds?: UUID[];
+  copyToEmails?: string[];
+  investigationRequired?: boolean;
+  projectClient?: string;
+  // Investigation fields
+  instructionBreakdown?: string;
+  taskSequence?: string;
+  consequence?: string;
+  incidentEventTimelines?: Array<{ timestamp: string; notes: string }>;
+  immediateCausesUnsafeActs?: Record<string, Array<string | { other: string }>>;
+  immediateCausesUnsafeConditions?: Record<string, Array<string | { other: string }>>;
+  rootCauseHumanFactors?: Record<string, Array<string | { other: string }>>;
+  rootCauseWorkplaceFactors?: Record<string, Array<string | { other: string }>>;
+  systemFailure?: Array<string | { other: string }>;
+  contributingFactors?: string;
+  contributingFactorTags?: string[];
+  lessonsLearnt?: string;
+  investigationTeamUserIds?: UUID[];
+  conclusion?: string;
+  preparedByUserId?: UUID;
+  distributionsToUserIds?: UUID[];
+  distributionsToEmails?: string[];
 };
 
 export async function createIncident(input: CreateIncidentInput): Promise<Incident> {
+  const insertData: any = {
+    company_id: input.companyId,
+    module: input.module,
+    category: input.category,
+    subcategory: input.subcategory,
+    title: input.title,
+    description: input.description ?? null,
+    severity: input.severity,
+    status: 'open' satisfies IncidentStatus,
+    occurred_at: input.occurredAt,
+    location: input.location ?? null,
+    assignee_user_id: input.assigneeUserId ?? null,
+    created_by_user_id: input.createdByUserId,
+    // New base fields
+    incident_type: input.incidentType ?? null,
+    type_of_incident: input.typeOfIncident ?? null,
+    category_id: input.categoryId ?? null,
+    category_name: input.categoryName ?? null,
+    subcategory_id: input.subcategoryId ?? null,
+    subcategory_name: input.subcategoryName ?? null,
+    subcategory_custom_text: input.subcategoryCustomText ?? null,
+    cause_of_incident: input.causeOfIncident ?? null,
+    affected_person_id: input.affectedPersonId ?? null,
+    affected_person_name: input.affectedPersonName ?? null,
+    loss_types: input.lossTypes ?? null,
+    loss_production_value: input.lossProductionValue ?? null,
+    loss_financial_value: input.lossFinancialValue ?? null,
+    risk_category: input.riskCategory ?? null,
+    reported_by_user_id: input.reportedByUserId ?? null,
+    reported_to_user_ids: input.reportedToUserIds ?? null,
+    copy_to_user_ids: input.copyToUserIds ?? null,
+    copy_to_emails: input.copyToEmails ?? null,
+    investigation_required: input.investigationRequired ?? false,
+    project_client: input.projectClient ?? null,
+    // Investigation fields
+    instruction_breakdown: input.instructionBreakdown ?? null,
+    task_sequence: input.taskSequence ?? null,
+    consequence: input.consequence ?? null,
+    incident_event_timelines: input.incidentEventTimelines ? JSON.stringify(input.incidentEventTimelines) : null,
+    immediate_causes_unsafe_acts: input.immediateCausesUnsafeActs ? JSON.stringify(input.immediateCausesUnsafeActs) : null,
+    immediate_causes_unsafe_conditions: input.immediateCausesUnsafeConditions ? JSON.stringify(input.immediateCausesUnsafeConditions) : null,
+    root_cause_human_factors: input.rootCauseHumanFactors ? JSON.stringify(input.rootCauseHumanFactors) : null,
+    root_cause_workplace_factors: input.rootCauseWorkplaceFactors ? JSON.stringify(input.rootCauseWorkplaceFactors) : null,
+    system_failure: input.systemFailure ? JSON.stringify(input.systemFailure) : null,
+    contributing_factors: input.contributingFactors ?? null,
+    contributing_factor_tags: input.contributingFactorTags ?? null,
+    lessons_learnt: input.lessonsLearnt ?? null,
+    investigation_team_user_ids: input.investigationTeamUserIds ?? null,
+    conclusion: input.conclusion ?? null,
+    prepared_by_user_id: input.preparedByUserId ?? null,
+    distributions_to_user_ids: input.distributionsToUserIds ?? null,
+    distributions_to_emails: input.distributionsToEmails ?? null
+  };
+
   const { data, error } = await insforge.database
     .from('incidents')
-    .insert({
-      company_id: input.companyId,
-      module: input.module,
-      category: input.category,
-      subcategory: input.subcategory,
-      title: input.title,
-      description: input.description ?? null,
-      severity: input.severity,
-      status: 'open' satisfies IncidentStatus,
-      occurred_at: input.occurredAt,
-      location: input.location ?? null,
-      assignee_user_id: input.assigneeUserId ?? null,
-      created_by_user_id: input.createdByUserId
-    })
+    .insert(insertData)
     .select('*')
     .single();
 
@@ -131,5 +211,131 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
   }
 
   return data as Incident;
+}
+
+export async function getIncident(incidentId: UUID): Promise<Incident | null> {
+  const { data, error } = await insforge.database
+    .from('incidents')
+    .select('*')
+    .eq('id', incidentId)
+    .single();
+
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? null) as Incident | null;
+}
+
+export async function updateIncident(incidentId: UUID, patch: Partial<CreateIncidentInput>): Promise<Incident> {
+  const updateData: any = {};
+  
+  if (patch.title !== undefined) updateData.title = patch.title;
+  if (patch.description !== undefined) updateData.description = patch.description;
+  if (patch.severity !== undefined) updateData.severity = patch.severity;
+  if (patch.status !== undefined) updateData.status = patch.status;
+  if (patch.occurredAt !== undefined) updateData.occurred_at = patch.occurredAt;
+  if (patch.location !== undefined) updateData.location = patch.location;
+  if (patch.assigneeUserId !== undefined) updateData.assignee_user_id = patch.assigneeUserId;
+  if (patch.incidentType !== undefined) updateData.incident_type = patch.incidentType;
+  if (patch.typeOfIncident !== undefined) updateData.type_of_incident = patch.typeOfIncident;
+  if (patch.causeOfIncident !== undefined) updateData.cause_of_incident = patch.causeOfIncident;
+  if (patch.affectedPersonId !== undefined) updateData.affected_person_id = patch.affectedPersonId;
+  if (patch.affectedPersonName !== undefined) updateData.affected_person_name = patch.affectedPersonName;
+  if (patch.lossTypes !== undefined) updateData.loss_types = patch.lossTypes;
+  if (patch.lossProductionValue !== undefined) updateData.loss_production_value = patch.lossProductionValue;
+  if (patch.lossFinancialValue !== undefined) updateData.loss_financial_value = patch.lossFinancialValue;
+  if (patch.riskCategory !== undefined) updateData.risk_category = patch.riskCategory;
+  if (patch.reportedByUserId !== undefined) updateData.reported_by_user_id = patch.reportedByUserId;
+  if (patch.reportedToUserIds !== undefined) updateData.reported_to_user_ids = patch.reportedToUserIds;
+  if (patch.copyToUserIds !== undefined) updateData.copy_to_user_ids = patch.copyToUserIds;
+  if (patch.copyToEmails !== undefined) updateData.copy_to_emails = patch.copyToEmails;
+  if (patch.investigationRequired !== undefined) updateData.investigation_required = patch.investigationRequired;
+  if (patch.projectClient !== undefined) updateData.project_client = patch.projectClient;
+  if (patch.instructionBreakdown !== undefined) updateData.instruction_breakdown = patch.instructionBreakdown;
+  if (patch.taskSequence !== undefined) updateData.task_sequence = patch.taskSequence;
+  if (patch.consequence !== undefined) updateData.consequence = patch.consequence;
+  if (patch.incidentEventTimelines !== undefined) updateData.incident_event_timelines = patch.incidentEventTimelines ? JSON.stringify(patch.incidentEventTimelines) : null;
+  if (patch.immediateCausesUnsafeActs !== undefined) updateData.immediate_causes_unsafe_acts = patch.immediateCausesUnsafeActs ? JSON.stringify(patch.immediateCausesUnsafeActs) : null;
+  if (patch.immediateCausesUnsafeConditions !== undefined) updateData.immediate_causes_unsafe_conditions = patch.immediateCausesUnsafeConditions ? JSON.stringify(patch.immediateCausesUnsafeConditions) : null;
+  if (patch.rootCauseHumanFactors !== undefined) updateData.root_cause_human_factors = patch.rootCauseHumanFactors ? JSON.stringify(patch.rootCauseHumanFactors) : null;
+  if (patch.rootCauseWorkplaceFactors !== undefined) updateData.root_cause_workplace_factors = patch.rootCauseWorkplaceFactors ? JSON.stringify(patch.rootCauseWorkplaceFactors) : null;
+  if (patch.systemFailure !== undefined) updateData.system_failure = patch.systemFailure ? JSON.stringify(patch.systemFailure) : null;
+  if (patch.contributingFactors !== undefined) updateData.contributing_factors = patch.contributingFactors;
+  if (patch.contributingFactorTags !== undefined) updateData.contributing_factor_tags = patch.contributingFactorTags;
+  if (patch.lessonsLearnt !== undefined) updateData.lessons_learnt = patch.lessonsLearnt;
+  if (patch.investigationTeamUserIds !== undefined) updateData.investigation_team_user_ids = patch.investigationTeamUserIds;
+  if (patch.conclusion !== undefined) updateData.conclusion = patch.conclusion;
+  if (patch.preparedByUserId !== undefined) updateData.prepared_by_user_id = patch.preparedByUserId;
+  if (patch.distributionsToUserIds !== undefined) updateData.distributions_to_user_ids = patch.distributionsToUserIds;
+  if (patch.distributionsToEmails !== undefined) updateData.distributions_to_emails = patch.distributionsToEmails;
+
+  updateData.updated_at = new Date().toISOString();
+
+  const { data, error } = await insforge.database
+    .from('incidents')
+    .update(updateData)
+    .eq('id', incidentId)
+    .select('*')
+    .single();
+
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update incident.');
+
+  // Log activity
+  const { createActivityLog } = await import('./activityLogService');
+  await createActivityLog({
+    companyId: (data as any).company_id,
+    actorUserId: (data as any).updated_by_user_id || (data as any).created_by_user_id,
+    action: 'incidents.update',
+    entityType: 'incident',
+    entityId: incidentId
+  });
+
+  return data as Incident;
+}
+
+export type ListIncidentsWithFiltersInput = {
+  companyId: UUID;
+  search?: string;
+  category?: string;
+  incidentType?: string;
+  riskCategory?: string;
+  status?: IncidentStatus;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+};
+
+export async function listIncidentsWithFilters(input: ListIncidentsWithFiltersInput): Promise<Incident[]> {
+  let q = insforge.database.from('incidents').select('*').eq('company_id', input.companyId);
+
+  if (input.search?.trim()) {
+    const trimmed = input.search.trim();
+    q = q.or(`title.ilike.%${trimmed}%,category.ilike.%${trimmed}%,subcategory.ilike.%${trimmed}%,project_client.ilike.%${trimmed}%`);
+  }
+
+  if (input.category) q = q.eq('category', input.category);
+  if (input.incidentType) q = q.eq('type_of_incident', input.incidentType);
+  if (input.riskCategory) q = q.eq('risk_category', input.riskCategory);
+  if (input.status) q = q.eq('status', input.status);
+  if (input.dateFrom) q = q.gte('occurred_at', input.dateFrom);
+  if (input.dateTo) q = q.lte('occurred_at', input.dateTo);
+
+  q = q.order('occurred_at', { ascending: false }).limit(input.limit ?? 100);
+
+  const { data, error } = await q;
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as Incident[];
+}
+
+export async function saveIncidentDraft(incidentId: UUID, draftData: Partial<CreateIncidentInput>): Promise<Incident> {
+  return updateIncident(incidentId, draftData);
+}
+
+export async function submitIncidentInvestigation(incidentId: UUID, investigationData: Partial<CreateIncidentInput>): Promise<Incident> {
+  const updateData = {
+    ...investigationData,
+    investigation_required: true,
+    status: 'investigating' as IncidentStatus
+  };
+  return updateIncident(incidentId, updateData);
 }
 
