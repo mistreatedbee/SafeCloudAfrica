@@ -36,6 +36,9 @@ export async function createEvidence(input: {
   storageBucket: string;
   storageKey: string;
   createdByUserId: UUID;
+  originalFilename?: string;
+  displayTitle?: string;
+  fileKind?: 'image' | 'document' | string;
 }): Promise<EvidenceAttachment> {
   const { data, error } = await insforge.database
     .from('evidence_attachments')
@@ -43,10 +46,13 @@ export async function createEvidence(input: {
       company_id: input.companyId,
       entity_type: input.entityType,
       entity_id: input.entityId,
-      title: input.title ?? null,
+      title: input.displayTitle ?? input.title ?? input.originalFilename ?? null,
       storage_bucket: input.storageBucket,
       storage_key: input.storageKey,
-      created_by_user_id: input.createdByUserId
+      created_by_user_id: input.createdByUserId,
+      original_filename: input.originalFilename ?? null,
+      display_title: input.displayTitle ?? null,
+      file_kind: input.fileKind ?? null
     })
     .select('*')
     .single();
@@ -62,6 +68,35 @@ export async function createEvidence(input: {
     metadata: { entityType: input.entityType }
   });
 
+  return data as EvidenceAttachment;
+}
+
+export async function updateEvidence(
+  evidenceId: UUID,
+  patch: { displayTitle?: string | null }
+): Promise<EvidenceAttachment> {
+  const updateData: Record<string, unknown> = {};
+  if (patch.displayTitle !== undefined) updateData.display_title = patch.displayTitle;
+
+  if (Object.keys(updateData).length === 0) {
+    const { data, error } = await insforge.database
+      .from('evidence_attachments')
+      .select('*')
+      .eq('id', evidenceId)
+      .single();
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Evidence not found.');
+    return data as EvidenceAttachment;
+  }
+
+  const { data, error } = await insforge.database
+    .from('evidence_attachments')
+    .update(updateData)
+    .eq('id', evidenceId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update evidence.');
   return data as EvidenceAttachment;
 }
 

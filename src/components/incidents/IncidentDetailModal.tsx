@@ -1,13 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon, SaveIcon, ExternalLinkIcon, FileTextIcon } from 'lucide-react';
-import type { EvidenceAttachment, Incident, IncidentInvestigation, UUID } from '../../api/models/entities';
-import { listEvidence } from '../../api/services/evidenceService';
+import type { EvidenceAttachment, Incident, IncidentCorrectiveAction, IncidentInvestigation, UUID } from '../../api/models/entities';
+import { listEvidence, updateEvidence } from '../../api/services/evidenceService';
 import { getPublicUrl } from '../../api/services/storageService';
 import { formatAuthError } from '../../auth/authMessages';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { getIncidentInvestigation, upsertIncidentInvestigation } from '../../api/services/incidentInvestigationsService';
 import { exportIncidentPDF, downloadFile } from '../../api/services/exportService';
 import { useIdentity } from '../../hooks/useIdentity';
+import { useAsync } from '../../api/hooks/useAsync';
+import { listIncidentCorrectiveActions } from '../../api/services/incidentCorrectiveActionsService';
+import type { IncidentCorrectiveAction } from '../../api/models/entities';
+import { IncidentCorrectiveActionsList } from './IncidentCorrectiveActionsList';
+import { IncidentCorrectiveActionModal } from './IncidentCorrectiveActionModal';
 
 export function IncidentDetailModal(props: {
   open: boolean;
@@ -22,7 +27,18 @@ export function IncidentDetailModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<EvidenceAttachment[]>([]);
+  const [evidenceRenamingId, setEvidenceRenamingId] = useState<string | null>(null);
+  const [evidenceRenameValue, setEvidenceRenameValue] = useState('');
   const [investigation, setInvestigation] = useState<IncidentInvestigation | null>(null);
+  const [correctiveActionModalOpen, setCorrectiveActionModalOpen] = useState(false);
+  const [editingCorrectiveActionId, setEditingCorrectiveActionId] = useState<UUID | null>(null);
+  const [createFromCause, setCreateFromCause] = useState<{ type: 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure'; text: string } | null>(null);
+  const [refreshCorrectiveActions, setRefreshCorrectiveActions] = useState(0);
+
+  const { data: correctiveActions = [] } = useAsync<IncidentCorrectiveAction[]>(
+    async () => (incident && props.companyId ? listIncidentCorrectiveActions(incident.id) : []),
+    [incident?.id, props.companyId, refreshCorrectiveActions]
+  );
 
   const [notes, setNotes] = useState('');
   const [instructionBreakdown, setInstructionBreakdown] = useState('');
@@ -116,6 +132,9 @@ export function IncidentDetailModal(props: {
     const blob = await exportIncidentPDF(incident, {
       companyName: organisationName,
       generatedBy: fullName,
+      includeEvidence: true,
+      evidenceList: evidence,
+      correctiveActions: correctiveActions
     });
     downloadFile(blob, `incident-${incident.id.slice(0, 8)}.pdf`);
   }
@@ -277,21 +296,81 @@ export function IncidentDetailModal(props: {
                     {evidence.length === 0 && <p className="text-sm text-charcoal-500">No evidence uploaded yet.</p>}
                     {evidence.map((ev) => {
                       const url = getPublicUrl(ev.storage_bucket as any, ev.storage_key);
+                      const displayName = ev.display_title ?? ev.title ?? (ev as any).original_filename ?? ev.storage_key?.split('/').pop() ?? '—';
+                      const isRenaming = evidenceRenamingId === ev.id;
                       return (
-                        <a
+                        <div
                           key={ev.id}
-                          href={url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-surface-200 hover:bg-surface-50"
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-surface-200 hover:bg-surface-50"
                         >
-                          <span className="text-sm text-charcoal truncate">{ev.title ?? ev.storage_key}</span>
-                          <ExternalLinkIcon className="w-4 h-4 text-charcoal-400" />
-                        </a>
+                          {isRenaming ? (
+                            <>
+                              <input
+                                type="text"
+                                value={evidenceRenameValue}
+                                onChange={(e) => setEvidenceRenameValue(e.target.value)}
+                                onBlur={async () => {
+                                  if (evidenceRenameValue.trim()) {
+                                    try {
+                                      await updateEvidence(ev.id, { displayTitle: evidenceRenameValue.trim() });
+                                      setEvidence(prev => prev.map(e => e.id === ev.id ? { ...e, display_title: evidenceRenameValue.trim() } : e));
+                                    } catch (_) {}
+                                  }
+                                  setEvidenceRenamingId(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                  if (e.key === 'Escape') setEvidenceRenamingId(null);
+                                }}
+                                className="flex-1 px-2 py-1 text-sm border border-surface-300 rounded"
+                                autoFocus
+                              />
+                              <button type="button" onClick={() => setEvidenceRenamingId(null)} className="text-xs text-charcoal-500">Cancel</button>
+                            </>
+                          ) : (
+                            <>
+                              <a href={url} target="_blank" rel="noreferrer" className="flex-1 min-w-0 truncate text-sm text-charcoal hover:underline">
+                                {displayName}
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEvidenceRenamingId(ev.id);
+                                  setEvidenceRenameValue(displayName);
+                                }}
+                                className="text-xs text-teal hover:text-teal-600 shrink-0"
+                              >
+                                Rename
+                              </button>
+                              <a href={url} target="_blank" rel="noreferrer" className="shrink-0"><ExternalLinkIcon className="w-4 h-4 text-charcoal-400" /></a>
+                            </>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
                 </div>
+
+                {incident && (
+                  <div className="rounded-xl border border-surface-200 p-4">
+                    <IncidentCorrectiveActionsList
+                      incidentId={incident.id}
+                      companyId={props.companyId}
+                      actions={correctiveActions}
+                      onAdd={() => {
+                        setCreateFromCause(null);
+                        setEditingCorrectiveActionId(null);
+                        setCorrectiveActionModalOpen(true);
+                      }}
+                      onEdit={(actionId) => {
+                        setEditingCorrectiveActionId(actionId);
+                        setCreateFromCause(null);
+                        setCorrectiveActionModalOpen(true);
+                      }}
+                      disabled={!props.canEditInvestigation}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -521,6 +600,25 @@ export function IncidentDetailModal(props: {
           )}
         </div>
       </div>
+
+      {incident && (
+        <IncidentCorrectiveActionModal
+          open={correctiveActionModalOpen}
+          onClose={() => {
+            setCorrectiveActionModalOpen(false);
+            setEditingCorrectiveActionId(null);
+            setCreateFromCause(null);
+          }}
+          incidentId={incident.id}
+          companyId={props.companyId}
+          actionId={editingCorrectiveActionId}
+          initial={editingCorrectiveActionId ? (correctiveActions.find(a => a.id === editingCorrectiveActionId) ?? null) : null}
+          createdByUserId={props.actorUserId}
+          onSaved={() => setRefreshCorrectiveActions(c => c + 1)}
+          initialSourceCauseType={createFromCause?.type}
+          initialSourceCauseText={createFromCause?.text}
+        />
+      )}
     </div>
   );
 }

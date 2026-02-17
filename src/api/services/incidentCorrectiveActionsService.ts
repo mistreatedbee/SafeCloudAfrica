@@ -10,6 +10,10 @@ export type CreateIncidentCorrectiveActionInput = {
   ownerUserId?: UUID;
   dueDate?: string;
   createdByUserId: UUID;
+  sourceCauseType?: 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure';
+  sourceCauseText?: string;
+  taskId?: UUID;
+  ncrId?: UUID;
 };
 
 export type UpdateIncidentCorrectiveActionInput = {
@@ -21,6 +25,10 @@ export type UpdateIncidentCorrectiveActionInput = {
   evidenceDocumentUrls?: string[];
   closureNotes?: string;
   managerApprovalUserId?: UUID;
+  sourceCauseType?: 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure';
+  sourceCauseText?: string | null;
+  taskId?: UUID | null;
+  ncrId?: UUID | null;
 };
 
 export async function createIncidentCorrectiveAction(
@@ -36,7 +44,11 @@ export async function createIncidentCorrectiveAction(
       owner_user_id: input.ownerUserId ?? null,
       due_date: input.dueDate ?? null,
       status: 'Open',
-      created_by_user_id: input.createdByUserId
+      created_by_user_id: input.createdByUserId,
+      source_cause_type: input.sourceCauseType ?? null,
+      source_cause_text: input.sourceCauseText ?? null,
+      task_id: input.taskId ?? null,
+      ncr_id: input.ncrId ?? null
     })
     .select('*')
     .single();
@@ -75,6 +87,10 @@ export async function updateIncidentCorrectiveAction(
     updateData.manager_approval_user_id = patch.managerApprovalUserId;
     updateData.manager_approval_at = new Date().toISOString();
   }
+  if (patch.sourceCauseType !== undefined) updateData.source_cause_type = patch.sourceCauseType;
+  if (patch.sourceCauseText !== undefined) updateData.source_cause_text = patch.sourceCauseText;
+  if (patch.taskId !== undefined) updateData.task_id = patch.taskId;
+  if (patch.ncrId !== undefined) updateData.ncr_id = patch.ncrId;
 
   updateData.updated_at = new Date().toISOString();
 

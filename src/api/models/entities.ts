@@ -112,6 +112,10 @@ export type Incident = {
   risk_rating?: string | null;
   risk_category?: string | null;
   risk_level?: string | null;
+  risk_severity_1_5?: number | null;
+  risk_likelihood_1_5?: number | null;
+  risk_rating_product?: number | null;
+  risk_classification?: string | null;
   investigation_required?: boolean;
   description: string | null;
   metadata?: Record<string, unknown> | null;
@@ -152,6 +156,19 @@ export type Incident = {
   prepared_by_user_id?: UUID | null;
   distributions_to_user_ids?: UUID[] | null;
   distributions_to_emails?: string[] | null;
+  required_behaviour?: string | null;
+};
+
+export type IncidentAffectedPerson = {
+  id: UUID;
+  incident_id: UUID;
+  company_id: UUID;
+  user_id: UUID | null;
+  display_name: string | null;
+  task_operation: string | null;
+  machinery_equipment_tools: string | null;
+  sort_order: number;
+  created_at: string;
 };
 
 export type IncidentInvestigation = {
@@ -180,6 +197,8 @@ export type IncidentInvestigation = {
   updated_at: string;
 };
 
+export type IncidentCorrectiveActionSourceCauseType = 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure';
+
 export type IncidentCorrectiveAction = {
   id: UUID;
   incident_id: UUID;
@@ -196,6 +215,10 @@ export type IncidentCorrectiveAction = {
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;
+  task_id?: UUID | null;
+  ncr_id?: UUID | null;
+  source_cause_type?: IncidentCorrectiveActionSourceCauseType | null;
+  source_cause_text?: string | null;
 };
 
 export type TaskStatus =
@@ -1169,6 +1192,9 @@ export type EvidenceAttachment = {
   storage_key: string;
   created_by_user_id: UUID;
   created_at: string;
+  original_filename?: string | null;
+  display_title?: string | null;
+  file_kind?: string | null;
 };
 
 export type ProgramAuditFindingStatus =

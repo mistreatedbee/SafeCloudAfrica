@@ -99,6 +99,8 @@ export type CreateIncidentInput = {
   lossProductionValue?: number;
   lossFinancialValue?: number;
   riskCategory?: string;
+  riskSeverity1To5?: number;
+  riskLikelihood1To5?: number;
   reportedByUserId?: UUID;
   reportedToUserIds?: UUID[];
   copyToUserIds?: UUID[];
@@ -125,9 +127,27 @@ export type CreateIncidentInput = {
   preparedByUserId?: UUID;
   distributionsToUserIds?: UUID[];
   distributionsToEmails?: string[];
+  requiredBehaviour?: string;
+  affectedPersons?: Array<{
+    userId?: UUID | null;
+    displayName?: string | null;
+    taskOperation?: string | null;
+    machineryEquipmentTools?: string | null;
+  }>;
 };
 
+function riskProductToClassification(product: number): 'Low' | 'Medium' | 'High' {
+  if (product <= 5) return 'Low';
+  if (product <= 12) return 'Medium';
+  return 'High';
+}
+
 export async function createIncident(input: CreateIncidentInput): Promise<Incident> {
+  const sev = input.riskSeverity1To5 ?? null;
+  const like = input.riskLikelihood1To5 ?? null;
+  const product = sev != null && like != null ? sev * like : null;
+  const classification = product != null ? riskProductToClassification(product) : null;
+
   const insertData: any = {
     company_id: input.companyId,
     module: input.module,
@@ -150,12 +170,16 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
     subcategory_name: input.subcategoryName ?? null,
     subcategory_custom_text: input.subcategoryCustomText ?? null,
     cause_of_incident: input.causeOfIncident ?? null,
-    affected_person_id: input.affectedPersonId ?? null,
-    affected_person_name: input.affectedPersonName ?? null,
+    affected_person_id: input.affectedPersonId ?? input.affectedPersons?.[0]?.userId ?? null,
+    affected_person_name: input.affectedPersonName ?? input.affectedPersons?.[0]?.displayName ?? null,
     loss_types: input.lossTypes ?? null,
     loss_production_value: input.lossProductionValue ?? null,
     loss_financial_value: input.lossFinancialValue ?? null,
-    risk_category: input.riskCategory ?? null,
+    risk_category: input.riskCategory ?? classification ?? null,
+    risk_severity_1_5: sev ?? null,
+    risk_likelihood_1_5: like ?? null,
+    risk_rating_product: product ?? null,
+    risk_classification: classification ?? null,
     reported_by_user_id: input.reportedByUserId ?? null,
     reported_to_user_ids: input.reportedToUserIds ?? null,
     copy_to_user_ids: input.copyToUserIds ?? null,
@@ -181,7 +205,8 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
     conclusion: input.conclusion ?? null,
     prepared_by_user_id: input.preparedByUserId ?? null,
     distributions_to_user_ids: input.distributionsToUserIds ?? null,
-    distributions_to_emails: input.distributionsToEmails ?? null
+    distributions_to_emails: input.distributionsToEmails ?? null,
+    required_behaviour: input.requiredBehaviour ?? null
   };
 
   const { data, error } = await insforge.database
@@ -192,6 +217,12 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
 
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create incident.');
+
+  const created = data as Incident;
+  if (input.affectedPersons && input.affectedPersons.length > 0) {
+    const { upsertIncidentAffectedPersons } = await import('./incidentAffectedPersonsService');
+    await upsertIncidentAffectedPersons(created.id, input.companyId, input.affectedPersons);
+  }
 
   // Lazy import to avoid circular dependency
   const { createActivityLog } = await import('./activityLogService');
@@ -204,7 +235,6 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
     entityId: (data as any).id as UUID
   });
 
-  const created = data as Incident;
   if (created.assignee_user_id) {
     await notifyIncidentCreated(
       input.companyId,
@@ -257,6 +287,19 @@ export async function getIncident(incidentId: UUID): Promise<Incident | null> {
 
 export async function updateIncident(incidentId: UUID, patch: Partial<CreateIncidentInput>): Promise<Incident> {
   const updateData: any = {};
+
+  if (patch.riskSeverity1To5 !== undefined || patch.riskLikelihood1To5 !== undefined) {
+    const current = await getIncident(incidentId);
+    const sev = patch.riskSeverity1To5 ?? (current as any)?.risk_severity_1_5 ?? null;
+    const like = patch.riskLikelihood1To5 ?? (current as any)?.risk_likelihood_1_5 ?? null;
+    updateData.risk_severity_1_5 = sev;
+    updateData.risk_likelihood_1_5 = like;
+    if (sev != null && like != null) {
+      const product = sev * like;
+      updateData.risk_rating_product = product;
+      updateData.risk_classification = riskProductToClassification(product);
+    }
+  }
   
   if (patch.title !== undefined) updateData.title = patch.title;
   if (patch.description !== undefined) updateData.description = patch.description;
@@ -297,6 +340,7 @@ export async function updateIncident(incidentId: UUID, patch: Partial<CreateInci
   if (patch.preparedByUserId !== undefined) updateData.prepared_by_user_id = patch.preparedByUserId;
   if (patch.distributionsToUserIds !== undefined) updateData.distributions_to_user_ids = patch.distributionsToUserIds;
   if (patch.distributionsToEmails !== undefined) updateData.distributions_to_emails = patch.distributionsToEmails;
+  if (patch.requiredBehaviour !== undefined) updateData.required_behaviour = patch.requiredBehaviour;
   if (patch.area !== undefined) updateData.area = patch.area;
   if (patch.activity !== undefined) updateData.activity = patch.activity;
 
@@ -313,6 +357,10 @@ export async function updateIncident(incidentId: UUID, patch: Partial<CreateInci
   if (!data) throw new Error('Failed to update incident.');
 
   const updated = data as Incident;
+  if (patch.affectedPersons !== undefined) {
+    const { upsertIncidentAffectedPersons } = await import('./incidentAffectedPersonsService');
+    await upsertIncidentAffectedPersons(updated.id, updated.company_id, patch.affectedPersons);
+  }
   const { evaluateIncidentTrigger } = await import('./riskAssessmentTriggersService');
   await evaluateIncidentTrigger(updated.company_id, {
     id: updated.id,

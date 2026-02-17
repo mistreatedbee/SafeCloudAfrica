@@ -6,7 +6,9 @@
  */
 
 import type { UUID } from '../models/core';
-import type { Incident, QualityNcr, Audit } from '../models/entities';
+import type { Incident, QualityNcr, Audit, EvidenceAttachment, IncidentCorrectiveAction } from '../models/entities';
+import { getPublicUrl } from './storageService';
+import type { StorageBucket } from './storageService';
 
 export interface ExportOptions {
   includeEvidence?: boolean;
@@ -15,6 +17,8 @@ export interface ExportOptions {
   orientation?: 'portrait' | 'landscape';
   companyName?: string;
   generatedBy?: string;
+  evidenceList?: EvidenceAttachment[];
+  correctiveActions?: IncidentCorrectiveAction[];
 }
 
 export type ExportFormat = 'pdf' | 'csv' | 'xlsx';
@@ -31,7 +35,9 @@ export async function exportIncidentPDF(
     includeSignatures = true,
     fontSize = 11,
     companyName = '',
-    generatedBy = ''
+    generatedBy = '',
+    evidenceList = [],
+    correctiveActions = []
   } = options;
 
   // Generate HTML content
@@ -41,6 +47,8 @@ export async function exportIncidentPDF(
     fontSize,
     companyName,
     generatedBy,
+    evidenceList,
+    correctiveActions
   });
 
   // Convert to PDF (using simple approach - can upgrade to pdfkit)
@@ -256,14 +264,74 @@ export function exportAuditChecklistCSV(
   return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
 }
 
+function escapeHtmlReport(s: string | null | undefined): string {
+  if (s == null) return '—';
+  const t = String(s);
+  return t
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /**
- * Generate incident HTML for PDF
+ * Generate incident HTML for PDF (audit-ready: risk rating, sections, evidence list, inline images, corrective actions)
  */
 function generateIncidentHTML(
   incident: Incident,
-  options: { includeEvidence: boolean; includeSignatures: boolean; fontSize: number; companyName?: string; generatedBy?: string }
+  options: {
+    includeEvidence: boolean;
+    includeSignatures: boolean;
+    fontSize: number;
+    companyName?: string;
+    generatedBy?: string;
+    evidenceList?: EvidenceAttachment[];
+    correctiveActions?: IncidentCorrectiveAction[];
+  }
 ): string {
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString();
+  const formatDateTime = (iso: string) => new Date(iso).toLocaleString();
+  const inc = incident as Record<string, unknown>;
+  const evidenceList = options.evidenceList ?? [];
+  const correctiveActions = options.correctiveActions ?? [];
+
+  const severity1To5 = (inc.risk_severity_1_5 as number) ?? null;
+  const likelihood1To5 = (inc.risk_likelihood_1_5 as number) ?? null;
+  const product = (inc.risk_rating_product as number) ?? (severity1To5 != null && likelihood1To5 != null ? severity1To5 * likelihood1To5 : null);
+  const classification = (inc.risk_classification as string) ?? (product != null ? (product <= 5 ? 'Low' : product <= 12 ? 'Medium' : 'High') : null);
+
+  const riskClassStyle = classification === 'High' ? 'background:#dc2626;color:white;padding:4px 8px;border-radius:4px;' :
+    classification === 'Medium' ? 'background:#eab308;color:#333;padding:4px 8px;border-radius:4px;' :
+    'background:#22c55e;color:white;padding:4px 8px;border-radius:4px;';
+
+  const evidenceRows = evidenceList.map((ev) => {
+    const orig = (ev as any).original_filename ?? ev.title ?? ev.storage_key?.split('/').pop() ?? '—';
+    const display = ev.display_title ?? ev.title ?? orig;
+    const uploadedAt = formatDateTime(ev.created_at);
+    return `<tr><td>${escapeHtmlReport(orig)}</td><td>${escapeHtmlReport(display)}</td><td>${escapeHtmlReport(uploadedAt)}</td><td>—</td></tr>`;
+  }).join('');
+
+  const evidenceInlineImages = evidenceList
+    .filter((ev) => (ev as any).file_kind === 'image' || /\.(jpg|jpeg|png|gif|webp)$/i.test(ev.storage_key || ''))
+    .map((ev) => {
+      try {
+        const url = getPublicUrl(ev.storage_bucket as StorageBucket, ev.storage_key);
+        return `<div class="section"><img src="${escapeHtmlReport(url)}" alt="${escapeHtmlReport(ev.display_title ?? ev.title ?? '')}" style="max-width:100%;height:auto;max-height:300px;" /></div>`;
+      } catch {
+        return '';
+      }
+    })
+    .filter(Boolean)
+    .join('');
+
+  const correctiveRows = correctiveActions.map((ca) => {
+    const due = ca.due_date ? formatDate(ca.due_date) : '—';
+    const cause = (ca as any).source_cause_text ? ` (${escapeHtmlReport((ca as any).source_cause_text)})` : '';
+    return `<tr><td>${escapeHtmlReport(ca.action_title)}${cause}</td><td>${escapeHtmlReport(ca.action_description ?? '')}</td><td>—</td><td>${due}</td><td>${escapeHtmlReport(ca.status)}</td></tr>`;
+  }).join('');
+
+  const section = (title: string, value: string | null | undefined) =>
+    value ? `<div class="field"><span class="field-label">${escapeHtmlReport(title)}:</span><span class="field-value">${escapeHtmlReport(value)}</span></div>` : '';
 
   return `
     <!DOCTYPE html>
@@ -299,56 +367,91 @@ function generateIncidentHTML(
 
       <div class="section">
         <div class="section-title">Basic Information</div>
-        <div class="field">
-          <span class="field-label">Title:</span>
-          <span class="field-value">${incident.title}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">Category:</span>
-          <span class="field-value">${incident.category} / ${incident.subcategory}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">Severity:</span>
-          <span class="field-value"><span class="severity-${incident.severity}">${incident.severity.toUpperCase()}</span></span>
-        </div>
-        <div class="field">
-          <span class="field-label">Status:</span>
-          <span class="field-value">${incident.status}</span>
-        </div>
+        <div class="field"><span class="field-label">Title:</span><span class="field-value">${escapeHtmlReport(incident.title)}</span></div>
+        <div class="field"><span class="field-label">Category:</span><span class="field-value">${escapeHtmlReport(incident.category)} / ${escapeHtmlReport(incident.subcategory)}</span></div>
+        <div class="field"><span class="field-label">Type of Incident:</span><span class="field-value">${escapeHtmlReport((inc as any).incident_type ?? (inc as any).type_of_incident)}</span></div>
+        <div class="field"><span class="field-label">Severity:</span><span class="field-value"><span class="severity-${incident.severity}">${incident.severity.toUpperCase()}</span></span></div>
+        <div class="field"><span class="field-label">Status:</span><span class="field-value">${incident.status}</span></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Risk Rating</div>
+        <div class="field"><span class="field-label">Severity (1–5):</span><span class="field-value">${severity1To5 ?? '—'}</span></div>
+        <div class="field"><span class="field-label">Likelihood (1–5):</span><span class="field-value">${likelihood1To5 ?? '—'}</span></div>
+        <div class="field"><span class="field-label">Risk Rating (read-only):</span><span class="field-value">${product ?? '—'}</span></div>
+        <div class="field"><span class="field-label">Risk Classification:</span><span class="field-value" style="${riskClassStyle}">${escapeHtmlReport(classification ?? '—')}</span></div>
       </div>
 
       <div class="section">
         <div class="section-title">Incident Details</div>
-        <div class="field">
-          <span class="field-label">Occurred At:</span>
-          <span class="field-value">${formatDate(incident.occurred_at)}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">Location:</span>
-          <span class="field-value">${incident.location || 'Not specified'}</span>
-        </div>
-        ${incident.description ? `
-        <div class="field">
-          <span class="field-label">Description:</span>
-        </div>
-        <div style="margin-left: 150px; white-space: pre-wrap;">${incident.description}</div>
-        ` : ''}
+        <div class="field"><span class="field-label">Occurred At:</span><span class="field-value">${formatDate(incident.occurred_at)}</span></div>
+        <div class="field"><span class="field-label">Location:</span><span class="field-value">${escapeHtmlReport(incident.location) || 'Not specified'}</span></div>
+        ${section('Nature of Incident', (inc as any).nature_of_incident)}
+        ${section('Cause of Incident', (inc as any).cause_of_incident)}
+        ${section('Loss / Potential Loss', Array.isArray(inc.loss_types) ? (inc.loss_types as string[]).join(', ') : (inc as any).loss_type)}
+        ${section('Required Behaviour', (inc as any).required_behaviour)}
+        ${incident.description ? `<div class="field"><span class="field-label">Description:</span></div><div style="margin-left: 150px; white-space: pre-wrap;">${escapeHtmlReport(incident.description)}</div>` : ''}
       </div>
 
-      ${options.includeEvidence ? `
       <div class="section">
-        <div class="section-title">Evidence & Attachments</div>
-        <p style="color: #666;">Evidence files attached separately</p>
+        <div class="section-title">Incident Flow</div>
+        ${section('Instruction breakdown / flow', (inc as any).instruction_breakdown)}
+      </div>
+      <div class="section">
+        <div class="section-title">Unsafe Acts</div>
+        <div class="field-value">${escapeHtmlReport((inc as any).unsafe_acts ?? (inc as any).immediate_causes_unsafe_acts ? JSON.stringify((inc as any).immediate_causes_unsafe_acts) : '')}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Unsafe Conditions</div>
+        <div class="field-value">${escapeHtmlReport((inc as any).unsafe_conditions ?? '')}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Root Causes</div>
+        <div class="field-value">${escapeHtmlReport((inc as any).root_cause_human ?? '')} ${escapeHtmlReport((inc as any).root_cause_workplace ?? '')}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">System Failures</div>
+        <div class="field-value">${escapeHtmlReport(Array.isArray((inc as any).system_failure) ? (inc as any).system_failure.join(', ') : (inc as any).system_failure)}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Corrective Actions (summary)</div>
+        <div class="field-value">${escapeHtmlReport((inc as any).corrective_actions ?? '')}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Lessons Learnt</div>
+        <div class="field-value">${escapeHtmlReport((inc as any).lessons_learnt ?? '')}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Conclusion</div>
+        <div class="field-value">${escapeHtmlReport((inc as any).conclusion ?? '')}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Distribution (Copy To)</div>
+        <div class="field-value">${escapeHtmlReport(Array.isArray((inc as any).distributions_to_user_ids) ? (inc as any).distributions_to_user_ids.join(', ') : '')}</div>
+      </div>
+
+      ${correctiveActions.length > 0 ? `
+      <div class="section">
+        <div class="section-title">Corrective Actions</div>
+        <table><thead><tr><th>Action</th><th>Description</th><th>Owner</th><th>Due</th><th>Status</th></tr></thead><tbody>${correctiveRows}</tbody></table>
+      </div>
+      ` : ''}
+
+      ${options.includeEvidence && (evidenceList.length > 0 || evidenceInlineImages) ? `
+      <div class="section">
+        <div class="section-title">Evidence</div>
+        ${evidenceInlineImages}
+        <table><thead><tr><th>Original filename</th><th>Display title</th><th>Upload date</th><th>Uploaded by</th></tr></thead><tbody>${evidenceRows}</tbody></table>
       </div>
       ` : ''}
 
       <div class="footer">
         <div class="footer-left">
           <div>SafeCloud Africa</div>
-          <div>Generated by: ${options.generatedBy || 'SafeCloud Africa user'}</div>
+          <div>Generated by: ${escapeHtmlReport(options.generatedBy || 'SafeCloud Africa user')}</div>
         </div>
         <div class="footer-right">
-          <div>${options.companyName || 'Company Name'}</div>
+          <div>${escapeHtmlReport(options.companyName || 'Company Name')}</div>
           <div>${new Date().toLocaleDateString()}</div>
         </div>
       </div>

@@ -25,6 +25,9 @@ export type IncidentCorrectiveActionModalProps = {
   initial?: IncidentCorrectiveAction | null;
   createdByUserId: UUID;
   onSaved?: () => void;
+  /** When creating from a cause (Unsafe Act, Unsafe Condition, Root Cause, System Failure), pass to pre-fill and link */
+  initialSourceCauseType?: 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure';
+  initialSourceCauseText?: string;
 };
 
 export function IncidentCorrectiveActionModal({
@@ -35,7 +38,9 @@ export function IncidentCorrectiveActionModal({
   actionId,
   initial,
   createdByUserId,
-  onSaved
+  onSaved,
+  initialSourceCauseType,
+  initialSourceCauseText
 }: IncidentCorrectiveActionModalProps) {
   const [actionTitle, setActionTitle] = useState('');
   const [actionDescription, setActionDescription] = useState('');
@@ -55,10 +60,13 @@ export function IncidentCorrectiveActionModal({
       setDueDate(initial.due_date ? new Date(initial.due_date).toISOString().slice(0, 10) : '');
       setStatus(initial.status);
       setClosureNotes(initial.closure_notes || '');
+    } else if (open && initialSourceCauseText) {
+      setActionTitle(initialSourceCauseText.slice(0, 200));
+      setActionDescription(initialSourceCauseType ? `Linked to: ${initialSourceCauseType.replace('_', ' ')} - ${initialSourceCauseText}` : initialSourceCauseText);
     } else {
       resetForm();
     }
-  }, [initial, open]);
+  }, [initial, open, initialSourceCauseType, initialSourceCauseText]);
 
   function resetForm() {
     setActionTitle('');
@@ -136,7 +144,9 @@ export function IncidentCorrectiveActionModal({
           actionDescription: actionDescription.trim() || undefined,
           ownerUserId: ownerUserId || undefined,
           dueDate: dueDate || undefined,
-          createdByUserId
+          createdByUserId,
+          sourceCauseType: initialSourceCauseType,
+          sourceCauseText: initialSourceCauseText || undefined
         };
 
         const created = await createIncidentCorrectiveAction(createData);

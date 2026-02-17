@@ -24,6 +24,8 @@ import { useUser } from '@insforge/react';
 import { toCsv, downloadTextFile } from '../utils/csv';
 import { useIdentity } from '../hooks/useIdentity';
 import { IncidentCreateModal } from '../components/incidents/IncidentCreateModal';
+import { IncidentDetailModal } from '../components/incidents/IncidentDetailModal';
+import type { UUID } from '../api/models/core';
 
 function formatDateZA(iso: string): string {
   const d = new Date(iso);
@@ -82,6 +84,7 @@ export function IncidentsPage() {
   const { fullName, organisationName } = useIdentity();
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
 
   // #region agent log
   fetch('http://127.0.0.1:7242/ingest/0b6fab05-6c3e-43f5-9c91-57b342f42891', {
@@ -233,17 +236,27 @@ export function IncidentsPage() {
   return (
     <Layout title="Incidents & Near Misses">
       {activeCompanyId && user?.id && (
-        <IncidentCreateModal
-          open={createOpen}
-          onClose={() => {
-            setCreateOpen(false);
-            if (isNew) navigate('/incidents', { replace: true });
-          }}
-          companyId={activeCompanyId}
-          createdByUserId={user.id}
-          defaultModule="safety"
-          onCreated={() => navigate('/incidents', { replace: true })}
-        />
+        <>
+          <IncidentCreateModal
+            open={createOpen}
+            onClose={() => {
+              setCreateOpen(false);
+              if (isNew) navigate('/incidents', { replace: true });
+            }}
+            companyId={activeCompanyId}
+            createdByUserId={user.id}
+            defaultModule="safety"
+            onCreated={() => navigate('/incidents', { replace: true })}
+          />
+          <IncidentDetailModal
+            open={!!selectedIncident}
+            onClose={() => setSelectedIncident(null)}
+            companyId={activeCompanyId}
+            incident={selectedIncident}
+            actorUserId={user.id as UUID}
+            canEditInvestigation={activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant'}
+          />
+        </>
       )}
       <motion.div
         variants={containerVariants}
@@ -435,6 +448,10 @@ export function IncidentsPage() {
           {filteredByRole.map((incident) => (
           <div
             key={incident.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelectedIncident(incident)}
+            onKeyDown={(e) => e.key === 'Enter' && setSelectedIncident(incident)}
             className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer">
 
               <div className="flex items-start gap-4">
@@ -453,8 +470,7 @@ export function IncidentsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={incident.status as any} size="sm" />
-                      <button className="text-blue hover:text-blue-600 text-sm">Edit</button>
-                      <button className="text-critical hover:text-critical-600 text-sm">Delete</button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedIncident(incident); }} className="text-blue hover:text-blue-600 text-sm">View</button>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">
