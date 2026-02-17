@@ -731,12 +731,64 @@ export type Risk = {
   updated_at: string;
 };
 
+/** PPE category (Head/Eye/Hearing/Respiratory/Hand/Foot/Chemical/Chainsaw/Fall protection/Other) */
+export type PpeCategory =
+  | 'Head'
+  | 'Eye'
+  | 'Hearing'
+  | 'Respiratory'
+  | 'Hand'
+  | 'Foot'
+  | 'Chemical'
+  | 'Chainsaw'
+  | 'Fall protection'
+  | 'Other';
+
+/** Reason for issue (dropdown + typeable Other) */
+export type PpeReasonForIssue =
+  | 'New Issue'
+  | 'Replacement (Torn)'
+  | 'Replacement (Lost)'
+  | 'Replacement (Expired)'
+  | 'Replacement (Incorrect Size)'
+  | 'Damage'
+  | 'Non-compliance Correction'
+  | 'Other';
+
+export const PPE_REASON_FOR_ISSUE_OPTIONS: { value: PpeReasonForIssue; label: string }[] = [
+  { value: 'New Issue', label: 'New Issue' },
+  { value: 'Replacement (Torn)', label: 'Replacement (Torn)' },
+  { value: 'Replacement (Lost)', label: 'Replacement (Lost)' },
+  { value: 'Replacement (Expired)', label: 'Replacement (Expired)' },
+  { value: 'Replacement (Incorrect Size)', label: 'Replacement (Incorrect Size)' },
+  { value: 'Damage', label: 'Damage' },
+  { value: 'Non-compliance Correction', label: 'Non-compliance Correction' },
+  { value: 'Other', label: 'Other (type)' }
+];
+
+export const PPE_CATEGORY_OPTIONS: { value: PpeCategory; label: string }[] = [
+  { value: 'Head', label: 'Head' },
+  { value: 'Eye', label: 'Eye' },
+  { value: 'Hearing', label: 'Hearing' },
+  { value: 'Respiratory', label: 'Respiratory' },
+  { value: 'Hand', label: 'Hand' },
+  { value: 'Foot', label: 'Foot' },
+  { value: 'Chemical', label: 'Chemical' },
+  { value: 'Chainsaw', label: 'Chainsaw' },
+  { value: 'Fall protection', label: 'Fall protection' },
+  { value: 'Other', label: 'Other' }
+];
+
 export type PPEItem = {
   id: UUID;
   company_id: UUID;
   name: string;
   category: string | null;
   unit_cost: number | null;
+  description?: string | null;
+  sizes_available?: string[] | null;
+  supplier_name?: string | null;
+  stock_location?: string | null;
   created_at: string;
 };
 
@@ -751,6 +803,24 @@ export type PPEIssue = {
   return_due_at: string | null;
   returned_at: string | null;
   notes: string | null;
+  // PPE Module Comments 2
+  site_id?: UUID | null;
+  department_id?: UUID | null;
+  issue_date?: string | null;
+  issued_to_employee_number?: string | null;
+  job_role?: string | null;
+  job_description?: string | null;
+  ppe_item_name?: string | null;
+  ppe_category?: string | null;
+  size?: string | null;
+  quantity_issued?: number;
+  reason_for_issue?: string | null;
+  issued_by_name?: string | null;
+  issued_by_role?: string | null;
+  unit_cost_at_issue?: number | null;
+  total_cost_at_issue?: number | null;
+  issuer_signature?: string | null;
+  receiver_signature?: string | null;
 };
 
 export type PpeIssueTrackerStatus =
@@ -880,9 +950,16 @@ export type PpeStock = {
   updated_by_user_id: UUID | null;
   created_at: string;
   updated_at: string;
+  captured_by_user_id?: UUID | null;
+  captured_by_name?: string | null;
+  date_ordered?: string | null;
+  date_stock_received?: string | null;
+  opening_stock_qty?: number | null;
+  qty_ordered?: number | null;
+  qty_received?: number | null;
 };
 
-export type PpeStockMovementType = 'in' | 'out' | 'adjust' | 'return';
+export type PpeStockMovementType = 'in' | 'out' | 'adjust' | 'return' | 'ordered';
 
 export type PpeStockMovement = {
   id: UUID;
@@ -898,6 +975,7 @@ export type PpeStockMovement = {
   new_on_hand_qty: number | null;
   created_by_user_id: UUID;
   created_at: string;
+  transaction_date?: string | null;
 };
 
 export type PpeReorderRequestStatus =

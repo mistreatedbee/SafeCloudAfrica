@@ -137,6 +137,11 @@ export function PpeStockDetailModal(props: {
               {title} • On hand: {props.stock.on_hand_qty} • Location:{' '}
               {props.siteName || 'All sites'} / {props.departmentName || 'All departments'}
             </p>
+            {(props.stock.captured_by_name || props.stock.date_ordered || props.stock.date_stock_received) && (
+              <p className="text-xs text-charcoal-400 mt-1">
+                Captured by: {props.stock.captured_by_name ?? '—'} • Ordered: {props.stock.date_ordered ?? '—'} • Received: {props.stock.date_stock_received ?? '—'}
+              </p>
+            )}
           </div>
           <button
             type="button"

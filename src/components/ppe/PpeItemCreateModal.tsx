@@ -3,6 +3,7 @@ import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { UUID } from '../../api/models/entities';
+import { PPE_CATEGORY_OPTIONS } from '../../api/models/entities';
 import { createPpeItem } from '../../api/services/ppeService';
 
 export function PpeItemCreateModal(props: {
@@ -13,9 +14,19 @@ export function PpeItemCreateModal(props: {
 }) {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
+  const [description, setDescription] = useState('');
+  const [sizesText, setSizesText] = useState('');
+  const [supplierName, setSupplierName] = useState('');
+  const [stockLocation, setStockLocation] = useState('');
   const [unitCost, setUnitCost] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const sizesAvailable = useMemo(() => {
+    const t = sizesText.trim();
+    if (!t) return null;
+    return t.split(/[\s,]+/).filter(Boolean);
+  }, [sizesText]);
 
   const canSubmit = useMemo(() => name.trim().length > 2, [name]);
 
@@ -29,15 +40,23 @@ export function PpeItemCreateModal(props: {
         companyId: props.companyId,
         name: name.trim(),
         category: category.trim() || undefined,
-        unitCost: unitCost ? Number(unitCost) : null
+        unitCost: unitCost ? Number(unitCost) : null,
+        description: description.trim() || null,
+        sizesAvailable: sizesAvailable && sizesAvailable.length > 0 ? sizesAvailable : null,
+        supplierName: supplierName.trim() || null,
+        stockLocation: stockLocation.trim() || null
       });
       props.onCreated?.();
       props.onClose();
       setName('');
       setCategory('');
+      setDescription('');
+      setSizesText('');
+      setSupplierName('');
+      setStockLocation('');
       setUnitCost('');
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err: unknown) {
+      setError(formatAuthError(err as Error));
     } finally {
       setLoading(false);
     }
@@ -74,26 +93,75 @@ export function PpeItemCreateModal(props: {
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Description (optional)</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              placeholder="e.g. Safety helmet, EN 397"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Category (optional)</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            >
+              <option value="">Select category</option>
+              {PPE_CATEGORY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Sizes available (optional)</label>
+            <input
+              value={sizesText}
+              onChange={(e) => setSizesText(e.target.value)}
+              placeholder="e.g. S, M, L, XL or one per line"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            />
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Category (optional)</label>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Supplier name (optional)</label>
               <input
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="e.g. Head protection"
+                value={supplierName}
+                onChange={(e) => setSupplierName(e.target.value)}
+                placeholder="e.g. Acme Safety"
                 className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Unit cost (optional)</label>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Stock location (optional)</label>
               <input
-                type="number"
-                value={unitCost}
-                onChange={(e) => setUnitCost(e.target.value)}
-                placeholder="e.g. 250"
+                value={stockLocation}
+                onChange={(e) => setStockLocation(e.target.value)}
+                placeholder="e.g. Warehouse A"
                 className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Unit cost (optional)</label>
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={unitCost}
+              onChange={(e) => setUnitCost(e.target.value)}
+              placeholder="e.g. 250"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            />
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">

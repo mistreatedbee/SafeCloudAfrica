@@ -4,6 +4,8 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { Department, PPEItem, Site, UUID } from '../../api/models/entities';
 import { createPpeStock } from '../../api/services/ppeService';
+import { getMyProfile } from '../../api/services/profilesService';
+import { useAsync } from '../../api/hooks/useAsync';
 
 export function PpeStockCreateModal(props: {
   open: boolean;
@@ -18,13 +20,27 @@ export function PpeStockCreateModal(props: {
   const [ppeItemId, setPpeItemId] = useState('');
   const [siteId, setSiteId] = useState('');
   const [departmentId, setDepartmentId] = useState('');
+  const [dateOrdered, setDateOrdered] = useState('');
+  const [dateStockReceived, setDateStockReceived] = useState('');
   const [onHandQty, setOnHandQty] = useState('');
   const [reorderLevel, setReorderLevel] = useState('');
   const [reorderQty, setReorderQty] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = useMemo(() => !!ppeItemId, [ppeItemId]);
+  const { data: myProfile } = useAsync(
+    async () => {
+      if (!props.open || !props.companyId || !props.createdByUserId) return null;
+      return await getMyProfile(props.companyId, props.createdByUserId);
+    },
+    [props.open, props.companyId, props.createdByUserId]
+  );
+  const capturedByName = myProfile?.full_name ?? `User ${props.createdByUserId.slice(0, 8)}`;
+
+  const canSubmit = useMemo(
+    () => !!ppeItemId && !!dateOrdered && !!dateStockReceived,
+    [ppeItemId, dateOrdered, dateStockReceived]
+  );
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,24 +50,28 @@ export function PpeStockCreateModal(props: {
       setLoading(true);
       await createPpeStock({
         companyId: props.companyId,
-        siteId: siteId ? (siteId as any) : null,
-        departmentId: departmentId ? (departmentId as any) : null,
-        ppeItemId: ppeItemId as any,
+        siteId: siteId ? (siteId as UUID) : null,
+        departmentId: departmentId ? (departmentId as UUID) : null,
+        ppeItemId: ppeItemId as UUID,
         onHandQty: onHandQty ? Number(onHandQty) : 0,
         reorderLevel: reorderLevel ? Number(reorderLevel) : 0,
         reorderQty: reorderQty ? Number(reorderQty) : 0,
-        createdByUserId: props.createdByUserId
+        createdByUserId: props.createdByUserId,
+        dateOrdered: dateOrdered || null,
+        dateStockReceived: dateStockReceived || null
       });
       props.onCreated?.();
       props.onClose();
       setPpeItemId('');
       setSiteId('');
       setDepartmentId('');
+      setDateOrdered('');
+      setDateStockReceived('');
       setOnHandQty('');
       setReorderLevel('');
       setReorderQty('');
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err: unknown) {
+      setError(formatAuthError(err as Error));
     } finally {
       setLoading(false);
     }
@@ -77,6 +97,36 @@ export function PpeStockCreateModal(props: {
               <p className="text-sm text-charcoal-600 mt-1">{error}</p>
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Person capturing stock (auto-filled)</label>
+            <input
+              readOnly
+              value={capturedByName}
+              className="w-full px-4 py-2.5 bg-surface-50 border border-surface-200 rounded-lg text-sm text-charcoal-600"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Date ordered *</label>
+              <input
+                type="date"
+                value={dateOrdered}
+                onChange={(e) => setDateOrdered(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Date stock received *</label>
+              <input
+                type="date"
+                value={dateStockReceived}
+                onChange={(e) => setDateStockReceived(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              />
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

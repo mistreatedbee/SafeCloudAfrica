@@ -14,6 +14,7 @@ import type {
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { createNotification } from './notificationsService';
+import { getMyProfile } from './profilesService';
 
 export async function listPpeItems(companyId: UUID): Promise<PPEItem[]> {
   const { data, error } = await insforge.database.from('ppe_items').select('*').eq('company_id', companyId).order('created_at', {
@@ -23,15 +24,79 @@ export async function listPpeItems(companyId: UUID): Promise<PPEItem[]> {
   return (data ?? []) as PPEItem[];
 }
 
-export async function listPpeIssues(companyId: UUID, limit = 200): Promise<PPEIssue[]> {
+export type PpeIssuesFilters = {
+  companyId: UUID;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  siteId?: UUID | null;
+  departmentId?: UUID | null;
+  issuedToUserId?: UUID | null;
+  ppeItemId?: UUID | null;
+  reasonForIssue?: string | null;
+  issuedByUserId?: UUID | null;
+  limit?: number;
+};
+
+export async function listPpeIssues(
+  companyIdOrFilters: UUID | PpeIssuesFilters,
+  limit = 200
+): Promise<PPEIssue[]> {
+  const input: PpeIssuesFilters =
+    typeof companyIdOrFilters === 'string' || typeof companyIdOrFilters === 'object'
+      ? typeof companyIdOrFilters === 'object'
+        ? companyIdOrFilters
+        : { companyId: companyIdOrFilters, limit }
+      : { companyId: companyIdOrFilters as UUID, limit };
+  const {
+    companyId,
+    dateFrom,
+    dateTo,
+    siteId,
+    departmentId,
+    issuedToUserId,
+    ppeItemId,
+    reasonForIssue,
+    issuedByUserId,
+    limit: lim
+  } = input;
+
+  let query = insforge.database
+    .from('ppe_issues')
+    .select('*')
+    .eq('company_id', companyId);
+
+  if (dateFrom) {
+    query = query.gte('issued_at', `${dateFrom}T00:00:00Z`);
+  }
+  if (dateTo) {
+    query = query.lte('issued_at', `${dateTo}T23:59:59.999Z`);
+  }
+  if (siteId !== undefined && siteId !== null) query = query.eq('site_id', siteId);
+  if (departmentId !== undefined && departmentId !== null) query = query.eq('department_id', departmentId);
+  if (issuedToUserId !== undefined && issuedToUserId !== null)
+    query = query.eq('issued_to_user_id', issuedToUserId);
+  if (ppeItemId !== undefined && ppeItemId !== null) query = query.eq('ppe_item_id', ppeItemId);
+  if (reasonForIssue) query = query.eq('reason_for_issue', reasonForIssue);
+  if (issuedByUserId !== undefined && issuedByUserId !== null)
+    query = query.eq('issued_by_user_id', issuedByUserId);
+
+  const { data, error } = await query
+    .order('issue_date', { ascending: false, nullsFirst: false })
+    .order('issued_at', { ascending: false })
+    .limit(lim ?? limit);
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as PPEIssue[];
+}
+
+export async function getPpeIssueById(companyId: UUID, issueId: UUID): Promise<PPEIssue | null> {
   const { data, error } = await insforge.database
     .from('ppe_issues')
     .select('*')
     .eq('company_id', companyId)
-    .order('issued_at', { ascending: false })
-    .limit(limit);
+    .eq('id', issueId)
+    .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as PPEIssue[];
+  return (data ?? null) as PPEIssue | null;
 }
 
 export async function getPpeCompliance(companyId: UUID): Promise<number> {
@@ -51,14 +116,27 @@ export async function getPpeCompliance(companyId: UUID): Promise<number> {
   return Math.round((ok / relevant) * 100);
 }
 
-export async function createPpeItem(input: { companyId: UUID; name: string; category?: string; unitCost?: number | null }): Promise<PPEItem> {
+export async function createPpeItem(input: {
+  companyId: UUID;
+  name: string;
+  category?: string | null;
+  unitCost?: number | null;
+  description?: string | null;
+  sizesAvailable?: string[] | null;
+  supplierName?: string | null;
+  stockLocation?: string | null;
+}): Promise<PPEItem> {
   const { data, error } = await insforge.database
     .from('ppe_items')
     .insert({
       company_id: input.companyId,
       name: input.name,
       category: input.category ?? null,
-      unit_cost: typeof input.unitCost === 'number' ? input.unitCost : null
+      unit_cost: typeof input.unitCost === 'number' ? input.unitCost : null,
+      description: input.description ?? null,
+      sizes_available: Array.isArray(input.sizesAvailable) ? input.sizesAvailable : null,
+      supplier_name: input.supplierName ?? null,
+      stock_location: input.stockLocation ?? null
     })
     .select('*')
     .single();
@@ -67,15 +145,102 @@ export async function createPpeItem(input: { companyId: UUID; name: string; cate
   return data as PPEItem;
 }
 
-export async function createPpeIssue(input: {
+export async function updatePpeItem(input: {
+  companyId: UUID;
+  itemId: UUID;
+  patch: Partial<{
+    name: string;
+    category: string | null;
+    unit_cost: number | null;
+    description: string | null;
+    sizes_available: string[] | null;
+    supplier_name: string | null;
+    stock_location: string | null;
+  }>;
+}): Promise<PPEItem> {
+  const payload: Record<string, unknown> = { ...input.patch };
+  if ('sizes_available' in input.patch) payload.sizes_available = input.patch.sizes_available ?? null;
+  const { data, error } = await insforge.database
+    .from('ppe_items')
+    .update(payload)
+    .eq('company_id', input.companyId)
+    .eq('id', input.itemId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update PPE item.');
+  return data as PPEItem;
+}
+
+export type CreatePpeIssueInput = {
   companyId: UUID;
   ppeItemId: UUID;
   issuedToUserId?: UUID | null;
   issuedByUserId: UUID;
+  issuedByRole?: string | null;
   nextIssueAt?: string | null;
   returnDueAt?: string | null;
   notes?: string | null;
-}): Promise<PPEIssue> {
+  issueDate?: string | null;
+  siteId?: UUID | null;
+  departmentId?: UUID | null;
+  issuedToEmployeeNumber?: string | null;
+  jobRole?: string | null;
+  jobDescription?: string | null;
+  size?: string | null;
+  quantityIssued?: number;
+  reasonForIssue?: string | null;
+  unitCostAtIssue?: number | null;
+  stockId?: UUID | null;
+  adminOverrideInsufficientStock?: boolean;
+};
+
+export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIssue> {
+  const quantity = Number.isFinite(input.quantityIssued) && input.quantityIssued! > 0 ? input.quantityIssued! : 1;
+  const issueDate = input.issueDate || new Date().toISOString().slice(0, 10);
+  const issuedAt = new Date().toISOString();
+
+  const { data: itemRow, error: itemError } = await insforge.database
+    .from('ppe_items')
+    .select('name, category, unit_cost')
+    .eq('company_id', input.companyId)
+    .eq('id', input.ppeItemId)
+    .single();
+  if (itemError || !itemRow) throw new Error('PPE item not found.');
+  const item = itemRow as PPEItem;
+  const ppeItemName = item.name;
+  const ppeCategory = item.category ?? null;
+  const unitCost =
+    typeof input.unitCostAtIssue === 'number' ? input.unitCostAtIssue : (item.unit_cost ?? null);
+  const totalCostAtIssue = unitCost != null && quantity > 0 ? unitCost * quantity : null;
+
+  let issuedByName: string | null = null;
+  let issuedByRole: string | null = input.issuedByRole ?? null;
+  try {
+    const profile = await getMyProfile(input.companyId, input.issuedByUserId);
+    if (profile?.full_name) issuedByName = profile.full_name;
+  } catch {
+    // optional
+  }
+
+  if (input.stockId) {
+    const { data: stockRow, error: stockErr } = await insforge.database
+      .from('ppe_stock')
+      .select('on_hand_qty')
+      .eq('company_id', input.companyId)
+      .eq('id', input.stockId)
+      .single();
+    if (!stockErr && stockRow) {
+      const onHand = (stockRow as PpeStock).on_hand_qty ?? 0;
+      if (onHand < quantity && !input.adminOverrideInsufficientStock) {
+        const e = new Error('Insufficient stock for this issue.') as Error & { insufficientStock?: boolean; allowOverride?: boolean };
+        e.insufficientStock = true;
+        e.allowOverride = true;
+        throw e;
+      }
+    }
+  }
+
   const { data, error } = await insforge.database
     .from('ppe_issues')
     .insert({
@@ -83,25 +248,58 @@ export async function createPpeIssue(input: {
       ppe_item_id: input.ppeItemId,
       issued_to_user_id: input.issuedToUserId ?? null,
       issued_by_user_id: input.issuedByUserId,
-      issued_at: new Date().toISOString(),
+      issued_at: issuedAt,
       next_issue_at: input.nextIssueAt ?? null,
       return_due_at: input.returnDueAt ?? null,
-      notes: input.notes ?? null
+      notes: input.notes ?? null,
+      site_id: input.siteId ?? null,
+      department_id: input.departmentId ?? null,
+      issue_date: issueDate,
+      issued_to_employee_number: input.issuedToEmployeeNumber ?? null,
+      job_role: input.jobRole ?? null,
+      job_description: input.jobDescription ?? null,
+      ppe_item_name: ppeItemName,
+      ppe_category: ppeCategory,
+      size: input.size ?? null,
+      quantity_issued: quantity,
+      reason_for_issue: input.reasonForIssue ?? null,
+      issued_by_name: issuedByName,
+      issued_by_role: issuedByRole,
+      unit_cost_at_issue: unitCost,
+      total_cost_at_issue: totalCostAtIssue
     })
     .select('*')
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to issue PPE.');
+  const issue = data as PPEIssue;
+
+  if (input.stockId) {
+    try {
+      await createPpeStockMovement({
+        companyId: input.companyId,
+        stockId: input.stockId,
+        movementType: 'out',
+        quantity,
+        referenceId: issue.id,
+        ppeIssueId: issue.id,
+        actorUserId: input.issuedByUserId,
+        allowNegativeStock: input.adminOverrideInsufficientStock
+      });
+    } catch (movErr) {
+      if ((movErr as Error & { insufficientStock?: boolean }).insufficientStock) throw movErr;
+    }
+  }
 
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.issuedByUserId,
     action: 'ppe_issues.create',
     entityType: 'ppe_issue',
-    entityId: (data as any).id as UUID
+    entityId: issue.id
   });
 
-  return data as PPEIssue;
+  return issue;
 }
 
 // ---------------------------
@@ -113,6 +311,7 @@ export async function listPpeStock(input: {
   siteId?: UUID | null;
   departmentId?: UUID | null;
   includeInactive?: boolean;
+  ppeItemId?: UUID | null;
 }): Promise<PpeStock[]> {
   let query = insforge.database.from('ppe_stock').select('*').eq('company_id', input.companyId);
 
@@ -122,6 +321,9 @@ export async function listPpeStock(input: {
   if (input.departmentId !== undefined) {
     query = query.eq('department_id', input.departmentId);
   }
+  if (input.ppeItemId !== undefined && input.ppeItemId !== null) {
+    query = query.eq('ppe_item_id', input.ppeItemId);
+  }
   if (!input.includeInactive) {
     query = query.eq('is_active', true);
   }
@@ -129,6 +331,23 @@ export async function listPpeStock(input: {
   const { data, error } = await query.order('updated_at', { ascending: false });
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as PpeStock[];
+}
+
+/** Resolve a stock record by location and item (e.g. for issuing). Returns first match. */
+export async function getPpeStockByLocation(input: {
+  companyId: UUID;
+  siteId?: UUID | null;
+  departmentId?: UUID | null;
+  ppeItemId: UUID;
+}): Promise<PpeStock | null> {
+  const list = await listPpeStock({
+    companyId: input.companyId,
+    siteId: input.siteId,
+    departmentId: input.departmentId,
+    ppeItemId: input.ppeItemId,
+    includeInactive: false
+  });
+  return list.length > 0 ? list[0] : null;
 }
 
 export async function createPpeStock(input: {
@@ -140,7 +359,25 @@ export async function createPpeStock(input: {
   reorderLevel?: number;
   reorderQty?: number;
   createdByUserId: UUID;
+  capturedByUserId?: UUID | null;
+  capturedByName?: string | null;
+  dateOrdered?: string | null;
+  dateStockReceived?: string | null;
+  openingStockQty?: number | null;
+  qtyOrdered?: number | null;
+  qtyReceived?: number | null;
 }): Promise<PpeStock> {
+  const capturedByUserId = input.capturedByUserId ?? input.createdByUserId;
+  let capturedByName = input.capturedByName ?? null;
+  if (!capturedByName && capturedByUserId) {
+    try {
+      const profile = await getMyProfile(input.companyId, capturedByUserId);
+      if (profile?.full_name) capturedByName = profile.full_name;
+    } catch {
+      // optional
+    }
+  }
+
   const nowIso = new Date().toISOString();
   const { data, error } = await insforge.database
     .from('ppe_stock')
@@ -157,7 +394,14 @@ export async function createPpeStock(input: {
       created_by_user_id: input.createdByUserId,
       updated_by_user_id: input.createdByUserId,
       created_at: nowIso,
-      updated_at: nowIso
+      updated_at: nowIso,
+      captured_by_user_id: capturedByUserId,
+      captured_by_name: capturedByName,
+      date_ordered: input.dateOrdered ?? null,
+      date_stock_received: input.dateStockReceived ?? null,
+      opening_stock_qty: input.openingStockQty ?? null,
+      qty_ordered: input.qtyOrdered ?? null,
+      qty_received: input.qtyReceived ?? null
     })
     .select('*')
     .single();
@@ -179,7 +423,20 @@ export async function createPpeStock(input: {
 export async function updatePpeStock(input: {
   companyId: UUID;
   stockId: UUID;
-  patch: Partial<Pick<PpeStock, 'reorder_level' | 'reorder_qty' | 'is_active'>>;
+  patch: Partial<
+    Pick<
+      PpeStock,
+      | 'reorder_level'
+      | 'reorder_qty'
+      | 'is_active'
+      | 'date_ordered'
+      | 'date_stock_received'
+      | 'captured_by_name'
+      | 'opening_stock_qty'
+      | 'qty_ordered'
+      | 'qty_received'
+    >
+  >;
   actorUserId: UUID;
 }): Promise<PpeStock> {
   const nowIso = new Date().toISOString();
@@ -237,6 +494,8 @@ export async function createPpeStockMovement(input: {
   referenceId?: UUID | null;
   ppeIssueId?: UUID | null;
   actorUserId: UUID;
+  transactionDate?: string | null;
+  allowNegativeStock?: boolean;
 }): Promise<{ stock: PpeStock; movement: PpeStockMovement }> {
   if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
     throw new Error('Quantity must be a positive number.');
@@ -260,12 +519,16 @@ export async function createPpeStockMovement(input: {
     newQty = currentQty + input.quantity;
   } else if (input.movementType === 'out') {
     newQty = currentQty - input.quantity;
-    if (newQty < 0) {
-      throw new Error('Insufficient stock for this movement.');
+    if (newQty < 0 && !input.allowNegativeStock) {
+      const e = new Error('Insufficient stock for this movement.') as Error & { insufficientStock?: boolean };
+      e.insufficientStock = true;
+      throw e;
     }
   } else if (input.movementType === 'adjust') {
-    // For adjustments, treat quantity as the new on-hand quantity.
     newQty = input.quantity;
+  } else if (input.movementType === 'ordered') {
+    // ordered: no change to on_hand_qty
+    newQty = currentQty;
   }
 
   const nowIso = new Date().toISOString();
@@ -285,22 +548,25 @@ export async function createPpeStockMovement(input: {
   if (updateError) throw new Error(getErrorMessage(updateError));
   if (!updatedStockRow) throw new Error('Failed to update PPE stock quantity.');
 
+  const movementPayload: Record<string, unknown> = {
+    company_id: input.companyId,
+    stock_id: input.stockId,
+    movement_type: input.movementType,
+    quantity: input.quantity,
+    reason: input.reason ?? null,
+    reference_type: input.referenceType ?? null,
+    reference_id: input.referenceId ?? null,
+    ppe_issue_id: input.ppeIssueId ?? null,
+    old_on_hand_qty: currentQty,
+    new_on_hand_qty: newQty,
+    created_by_user_id: input.actorUserId,
+    created_at: nowIso
+  };
+  if (input.transactionDate) movementPayload.transaction_date = input.transactionDate;
+
   const { data: movementRow, error: movementError } = await insforge.database
     .from('ppe_stock_movements')
-    .insert({
-      company_id: input.companyId,
-      stock_id: input.stockId,
-      movement_type: input.movementType,
-      quantity: input.quantity,
-      reason: input.reason ?? null,
-      reference_type: input.referenceType ?? null,
-      reference_id: input.referenceId ?? null,
-      ppe_issue_id: input.ppeIssueId ?? null,
-      old_on_hand_qty: currentQty,
-      new_on_hand_qty: newQty,
-      created_by_user_id: input.actorUserId,
-      created_at: nowIso
-    })
+    .insert(movementPayload)
     .select('*')
     .single();
 

@@ -6,7 +6,15 @@
  */
 
 import type { UUID } from '../models/core';
-import type { Incident, QualityNcr, Audit, EvidenceAttachment, IncidentCorrectiveAction } from '../models/entities';
+import type {
+  Incident,
+  QualityNcr,
+  Audit,
+  EvidenceAttachment,
+  IncidentCorrectiveAction,
+  PPEIssue
+} from '../models/entities';
+import type { PpeCostSummary, PpeUsageSummary } from './ppeAnalyticsService';
 import { getPublicUrl } from './storageService';
 import type { StorageBucket } from './storageService';
 
@@ -235,6 +243,201 @@ export function exportIncidentsCSV(incidents: Incident[]): Blob {
   ].join('\n');
 
   return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+}
+
+/**
+ * Export PPE issue register to CSV
+ */
+export function exportPpeIssueRegisterCSV(issues: PPEIssue[]): Blob {
+  const headers = [
+    'ID',
+    'Issue Date',
+    'PPE Item',
+    'Category',
+    'Size',
+    'Quantity',
+    'Reason',
+    'Issued To (User ID)',
+    'Employee Number',
+    'Job Role',
+    'Issued By',
+    'Department ID',
+    'Site ID',
+    'Unit Cost',
+    'Total Cost',
+    'Notes'
+  ];
+  const rows = issues.map((i) => [
+    i.id.slice(0, 8),
+    i.issue_date ?? (i.issued_at ? i.issued_at.slice(0, 10) : ''),
+    i.ppe_item_name ?? '',
+    i.ppe_category ?? '',
+    i.size ?? '',
+    i.quantity_issued ?? 1,
+    i.reason_for_issue ?? '',
+    i.issued_to_user_id ?? '',
+    i.issued_to_employee_number ?? '',
+    i.job_role ?? '',
+    i.issued_by_name ?? '',
+    i.department_id ?? '',
+    i.site_id ?? '',
+    i.unit_cost_at_issue ?? '',
+    i.total_cost_at_issue ?? '',
+    (i.notes ?? '').replace(/"/g, '""')
+  ]);
+  const csvContent = [
+    headers.join(','),
+    ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+  ].join('\n');
+  return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+}
+
+/**
+ * Export PPE cost summary to CSV
+ */
+export function exportPpeCostSummaryCSV(summary: PpeCostSummary): Blob {
+  const lines: string[] = [
+    'PPE Cost Summary',
+    `Total PPE Cost,R ${summary.totalPpeCost.toFixed(2)}`,
+    '',
+    'Top Costing Items',
+    'Item Name,Total Cost,Quantity,Avg Cost Per Issue'
+  ];
+  summary.topCostingPpeItems.forEach((t) => {
+    lines.push(
+      `"${(t.ppeItemName ?? '').replace(/"/g, '""')}",${t.totalCost.toFixed(2)},${t.quantityIssued},${t.avgCostPerIssue.toFixed(2)}`
+    );
+  });
+  lines.push('', 'Cost by Category', 'Category,Total Cost');
+  summary.costByCategory.forEach((c) => {
+    lines.push(`"${(c.category ?? '').replace(/"/g, '""')}",${c.totalCost.toFixed(2)}`);
+  });
+  lines.push('', 'Cost by Department', 'Department ID,Total Cost');
+  summary.costByDepartment.forEach((d) => {
+    lines.push(`${d.departmentId ?? ''},${d.totalCost.toFixed(2)}`);
+  });
+  lines.push('', 'Cost by Site', 'Site ID,Total Cost');
+  summary.costBySite.forEach((s) => {
+    lines.push(`${s.siteId ?? ''},${s.totalCost.toFixed(2)}`);
+  });
+  return new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+}
+
+/**
+ * Export PPE usage summary to CSV
+ */
+export function exportPpeUsageSummaryCSV(summary: PpeUsageSummary): Blob {
+  const lines: string[] = [
+    'PPE Usage Summary',
+    `Total Quantity Issued,${summary.totalQuantityIssued}`,
+    '',
+    'Usage by Item',
+    'Item Name,Quantity Issued'
+  ];
+  summary.usageByPpeItem.forEach((u) => {
+    lines.push(`"${(u.ppeItemName ?? '').replace(/"/g, '""')}",${u.quantityIssued}`);
+  });
+  lines.push('', 'Usage by Category', 'Category,Quantity');
+  summary.usageByCategory.forEach((c) => {
+    lines.push(`"${(c.category ?? '').replace(/"/g, '""')}",${c.quantityIssued}`);
+  });
+  lines.push('', 'Reason Breakdown', 'Reason,Count,Quantity');
+  summary.reasonBreakdown.forEach((r) => {
+    lines.push(`"${(r.reason ?? '').replace(/"/g, '""')}",${r.count},${r.quantity}`);
+  });
+  return new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+}
+
+/**
+ * Export PPE cost summary to PDF (HTML print)
+ */
+export async function exportPpeCostSummaryPDF(
+  summary: PpeCostSummary,
+  options: { companyName?: string; generatedBy?: string } = {}
+): Promise<Blob> {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"/><style>
+      body{font-family:Arial,sans-serif;font-size:11pt;padding:20px;}
+      h1{color:#0369a1;} .section{margin:20px 0;}
+      table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ddd;padding:8px;text-align:left;}
+      th{background:#f0f9ff;}
+    </style></head>
+    <body>
+      <h1>PPE Cost Summary</h1>
+      <p>Generated: ${new Date().toLocaleString()} ${options.companyName ? ` • ${options.companyName}` : ''}</p>
+      <div class="section">
+        <h2>Total PPE Cost: R ${summary.totalPpeCost.toFixed(2)}</h2>
+      </div>
+      <div class="section">
+        <h3>Top Costing Items</h3>
+        <table>
+          <tr><th>Item</th><th>Total Cost</th><th>Qty</th><th>Avg/Issue</th></tr>
+          ${summary.topCostingPpeItems.slice(0, 15).map((t) => `
+            <tr><td>${(t.ppeItemName ?? '—').replace(/</g, '&lt;')}</td><td>R ${t.totalCost.toFixed(2)}</td><td>${t.quantityIssued}</td><td>R ${t.avgCostPerIssue.toFixed(2)}</td></tr>
+          `).join('')}
+        </table>
+      </div>
+      <div class="section">
+        <h3>Cost by Category</h3>
+        <table>
+          <tr><th>Category</th><th>Total Cost</th></tr>
+          ${summary.costByCategory.map((c) => `
+            <tr><td>${(c.category ?? '—').replace(/</g, '&lt;')}</td><td>R ${c.totalCost.toFixed(2)}</td></tr>
+          `).join('')}
+        </table>
+      </div>
+    </body>
+    </html>
+  `;
+  return htmlToPDF(html, { filename: 'ppe-cost-summary.pdf', title: 'PPE Cost Summary' });
+}
+
+/**
+ * Export PPE usage summary to PDF (HTML print)
+ */
+export async function exportPpeUsageSummaryPDF(
+  summary: PpeUsageSummary,
+  options: { companyName?: string; generatedBy?: string } = {}
+): Promise<Blob> {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"/><style>
+      body{font-family:Arial,sans-serif;font-size:11pt;padding:20px;}
+      h1{color:#0369a1;} .section{margin:20px 0;}
+      table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ddd;padding:8px;text-align:left;}
+      th{background:#f0f9ff;}
+    </style></head>
+    <body>
+      <h1>PPE Usage Summary</h1>
+      <p>Generated: ${new Date().toLocaleString()} ${options.companyName ? ` • ${options.companyName}` : ''}</p>
+      <div class="section">
+        <h2>Total Quantity Issued: ${summary.totalQuantityIssued}</h2>
+      </div>
+      <div class="section">
+        <h3>Usage by Item</h3>
+        <table>
+          <tr><th>Item</th><th>Quantity Issued</th></tr>
+          ${summary.usageByPpeItem.slice(0, 15).map((u) => `
+            <tr><td>${(u.ppeItemName ?? '—').replace(/</g, '&lt;')}</td><td>${u.quantityIssued}</td></tr>
+          `).join('')}
+        </table>
+      </div>
+      <div class="section">
+        <h3>Reason Breakdown</h3>
+        <table>
+          <tr><th>Reason</th><th>Count</th><th>Quantity</th></tr>
+          ${summary.reasonBreakdown.map((r) => `
+            <tr><td>${(r.reason ?? '—').replace(/</g, '&lt;')}</td><td>${r.count}</td><td>${r.quantity}</td></tr>
+          `).join('')}
+        </table>
+      </div>
+    </body>
+    </html>
+  `;
+  return htmlToPDF(html, { filename: 'ppe-usage-summary.pdf', title: 'PPE Usage Summary' });
 }
 
 /**

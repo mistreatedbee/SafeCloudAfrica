@@ -269,6 +269,114 @@ async function seedAuditDemo(input: { adminClient: any; companyId: string; admin
   ]);
 }
 
+async function seedPpeDemo(input: {
+  adminClient: any;
+  companyId: string;
+  adminUserId: string;
+}) {
+  const { adminClient, companyId, adminUserId } = input;
+  const now = new Date().toISOString();
+  const today = now.slice(0, 10);
+
+  const { data: sites, error: sitesErr } = await adminClient.database
+    .from('sites')
+    .select('id')
+    .eq('company_id', companyId)
+    .limit(2);
+  let site1 = sites?.[0]?.id;
+  let site2 = sites?.[1]?.id;
+  if (sitesErr || !site1) {
+    const { data: insSite } = await adminClient.database.from('sites').insert([
+      { company_id: companyId, name: 'Site Alpha', address: '123 Main Rd', is_active: true, created_by_user_id: adminUserId },
+      { company_id: companyId, name: 'Site Beta', address: '456 Industrial Ave', is_active: true, created_by_user_id: adminUserId }
+    ]).select('id');
+    site1 = insSite?.[0]?.id;
+    site2 = insSite?.[1]?.id;
+  }
+  if (!site2 && sites?.[1]) site2 = sites[1].id;
+
+  const { data: depts, error: deptsErr } = await adminClient.database
+    .from('departments')
+    .select('id')
+    .eq('company_id', companyId)
+    .limit(2);
+  let dept1 = depts?.[0]?.id;
+  let dept2 = depts?.[1]?.id;
+  if (deptsErr || !dept1) {
+    const { data: insDept } = await adminClient.database.from('departments').insert([
+      { company_id: companyId, site_id: site1, name: 'Operations', is_active: true, created_by_user_id: adminUserId },
+      { company_id: companyId, site_id: site1, name: 'Maintenance', is_active: true, created_by_user_id: adminUserId }
+    ]).select('id');
+    dept1 = insDept?.[0]?.id;
+    dept2 = insDept?.[1]?.id;
+  }
+  if (!dept2 && depts?.[1]) dept2 = depts[1].id;
+
+  const itemsPayload = [
+    { company_id: companyId, name: 'Safety Helmet', category: 'Head', unit_cost: 180, description: 'EN 397', sizes_available: ['S', 'M', 'L'], supplier_name: 'Acme Safety', stock_location: 'Store A' },
+    { company_id: companyId, name: 'Safety Boots', category: 'Foot', unit_cost: 450, description: 'S3', sizes_available: ['40', '42', '44', '46'], supplier_name: 'BootCo', stock_location: 'Store A' },
+    { company_id: companyId, name: 'Safety Harness', category: 'Fall protection', unit_cost: 1200, description: 'Full body', sizes_available: ['M', 'L', 'XL'], supplier_name: 'HeightSafe', stock_location: 'Store B' },
+    { company_id: companyId, name: 'Safety Glasses', category: 'Eye', unit_cost: 85, description: 'Anti-fog', sizes_available: ['One size'], supplier_name: 'Acme Safety', stock_location: 'Store A' },
+    { company_id: companyId, name: 'Work Gloves', category: 'Hand', unit_cost: 65, description: 'Cut-resistant', sizes_available: ['S', 'M', 'L'], supplier_name: 'GloveCo', stock_location: 'Store A' }
+  ];
+  const { data: insertedItems, error: itemsError } = await adminClient.database.from('ppe_items').insert(itemsPayload).select('id,name,unit_cost');
+  if (itemsError || !insertedItems?.length) throw new Error('Failed to seed PPE items');
+  const itemIds = insertedItems.map((r: { id: string }) => r.id);
+  const harnessItem = insertedItems.find((r: { name: string }) => r.name === 'Safety Harness');
+  const harnessId = harnessItem?.id ?? itemIds[2];
+
+  for (let i = 0; i < itemIds.length; i++) {
+    await adminClient.database.from('ppe_stock').insert({
+      company_id: companyId,
+      site_id: site1,
+      department_id: i % 2 === 0 ? dept1 : dept2,
+      ppe_item_id: itemIds[i],
+      on_hand_qty: 50,
+      reserved_qty: 0,
+      reorder_level: 10,
+      reorder_qty: 20,
+      is_active: true,
+      created_by_user_id: adminUserId,
+      updated_by_user_id: adminUserId,
+      captured_by_user_id: adminUserId,
+      captured_by_name: 'Demo Admin',
+      date_ordered: today,
+      date_stock_received: today
+    });
+  }
+
+  const reasons = ['New Issue', 'Replacement (Torn)', 'Replacement (Lost)', 'Replacement (Expired)', 'Damage'];
+  const issues: any[] = [];
+  for (let i = 0; i < 20; i++) {
+    const itemIdx = i < 8 ? 2 : i % 5;
+    const itemId = itemIds[itemIdx];
+    const itemRow = insertedItems[itemIdx];
+    const unitCost = itemRow?.unit_cost ?? 100;
+    const qty = i % 3 === 0 ? 2 : 1;
+    const totalCost = unitCost * qty;
+    issues.push({
+      company_id: companyId,
+      ppe_item_id: itemId,
+      issued_to_user_id: null,
+      issued_by_user_id: adminUserId,
+      issued_at: now,
+      issue_date: today,
+      site_id: i % 2 === 0 ? site1 : site2,
+      department_id: i % 2 === 0 ? dept1 : dept2,
+      ppe_item_name: itemRow?.name ?? 'Item',
+      ppe_category: itemsPayload[itemIdx]?.category ?? 'Other',
+      size: 'M',
+      quantity_issued: qty,
+      reason_for_issue: reasons[i % reasons.length],
+      issued_by_name: 'Demo Admin',
+      unit_cost_at_issue: unitCost,
+      total_cost_at_issue: totalCost
+    });
+  }
+  const { error: issuesErr } = await adminClient.database.from('ppe_issues').insert(issues);
+  if (issuesErr) throw new Error('Failed to seed PPE issues: ' + (issuesErr as Error).message);
+}
+
 export function SeedDemoPage() {
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
@@ -383,6 +491,14 @@ export function SeedDemoPage() {
         employeeUserId: created['Company A Employee'].userId
       });
       setLog((l) => [...l, '- OK sample audit with checklist']);
+
+      setLog((l) => [...l, 'Seeding PPE demo (5 items, 20 issues, 2 depts)…']);
+      await seedPpeDemo({
+        adminClient: created['Company A Admin'].client,
+        companyId: companyA.id,
+        adminUserId: created['Company A Admin'].userId
+      });
+      setLog((l) => [...l, '- OK PPE items, stock, and issue register']);
 
       setLog((l) => [
         ...l,
