@@ -73,6 +73,11 @@ const modules: NavItem[] = [
   icon: UsersIcon
 },
 {
+  name: 'Performance KPIs',
+  path: '/modules/hr/kpis',
+  icon: TrendingUpIcon
+},
+{
   name: 'Security',
   path: '/modules/security',
   icon: LockIcon

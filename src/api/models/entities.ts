@@ -1240,6 +1240,100 @@ export type HrKpi = {
   updated_at: string;
 };
 
+// --- KPI Performance Module (HR) ---
+export type KpiImportance = 'low' | 'medium' | 'high';
+export type KpiAssessmentType = 'employee' | 'project';
+export type KpiPeriodType = 'monthly' | 'quarterly' | 'annual';
+export type KpiAssessmentStatus = 'draft' | 'submitted' | 'under_review' | 'finalized' | 'closed';
+export type KpiFindingStatus = 'open' | 'in_progress' | 'awaiting_evidence' | 'under_review' | 'closed' | 'overdue';
+
+export type KPIItem = {
+  kpi_item_id: UUID;
+  organization_id: UUID | null;
+  title: string;
+  description: string | null;
+  default_importance: KpiImportance;
+  category: string | null;
+  tags: unknown;
+  active: boolean;
+  created_by: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KPIAssessment = {
+  assessment_id: UUID;
+  organization_id: UUID;
+  assessment_type: KpiAssessmentType;
+  employee_id: UUID | null;
+  employee_name_snapshot: string | null;
+  manager_id: UUID;
+  manager_name_snapshot: string | null;
+  project_id: UUID | null;
+  project_name: string | null;
+  department_id: UUID | null;
+  site_id: UUID | null;
+  period_type: KpiPeriodType;
+  period_start_date: string;
+  period_end_date: string;
+  status: KpiAssessmentStatus;
+  employee_comments: string | null;
+  manager_remarks: string | null;
+  overall_score: number | null;
+  overall_rating_band: string | null;
+  bonus_score: number | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KPIAssessmentLine = {
+  line_id: UUID;
+  assessment_id: UUID;
+  kpi_item_id: UUID | null;
+  custom_kpi_title: string | null;
+  kpi_title: string;
+  importance_rating: KpiImportance;
+  employee_own_rating: number | null;
+  manager_rating: number | null;
+  achieved: boolean | null;
+  not_achieved: boolean | null;
+  notes: string | null;
+  finding_generated: boolean;
+  finding_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KPIFindingProofUpload = {
+  storage_bucket: string;
+  storage_key: string;
+  url: string;
+  filename?: string;
+  uploaded_at?: string;
+};
+
+export type KPIFinding = {
+  finding_id: UUID;
+  organization_id: UUID;
+  assessment_id: UUID;
+  line_id: UUID;
+  employee_id: UUID | null;
+  project_id: UUID | null;
+  description: string;
+  assigned_line_manager_id: UUID;
+  due_date: string;
+  status: KpiFindingStatus;
+  proof_uploads: KPIFindingProofUpload[] | null;
+  manager_sign_off_user_id: UUID | null;
+  manager_sign_off_signed_at: string | null;
+  manager_sign_off_comment: string | null;
+  manager_sign_off_signature_method: string | null;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 /**
  * Program audit record
  *
