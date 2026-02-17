@@ -1071,6 +1071,206 @@ create policy "risk_assessment_items_isolation" on public.risk_assessment_items
     )
   );
 
+-- ---------------------------------------------------------------------------
+-- Risk Assessment Module (Phase 2 full spec): settings, extended tables, junctions, versioning, signatures
+-- ---------------------------------------------------------------------------
+
+-- Risk index thresholds (configurable per company): RR <= low_max -> Low, RR <= medium_max -> Medium, else High
+create table if not exists public.risk_assessment_settings (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  key text not null,
+  value numeric not null,
+  created_at timestamptz not null default now(),
+  unique(company_id, key)
+);
+create index if not exists idx_risk_assessment_settings_company on public.risk_assessment_settings(company_id);
+
+-- Default threshold seeds (optional; app can use 6 and 15 if no row)
+-- insert defaults per company on first use or via migration
+
+-- Extend risk_assessments: assessment_type (baseline, task, critical_task, pre_work), status (review_required etc), area/activity, personnel, dates
+alter table public.risk_assessments
+  add column if not exists area_location text null,
+  add column if not exists activity_process_operation text null,
+  add column if not exists last_approved_at timestamptz null,
+  add column if not exists next_review_date date null,
+  add column if not exists reference text null,
+  add column if not exists risk_assessor_user_id uuid null,
+  add column if not exists risk_assessor_name text null,
+  add column if not exists responsible_personnel_user_id uuid null,
+  add column if not exists responsible_personnel_name text null,
+  add column if not exists target_date date null,
+  add column if not exists completion_date date null;
+
+-- Allow new assessment types and statuses (keep task-based for backward compat)
+alter table public.risk_assessments drop constraint if exists risk_assessments_assessment_type_check;
+alter table public.risk_assessments add constraint risk_assessments_assessment_type_check
+  check (assessment_type in ('baseline','task','task-based','critical_task','pre_work'));
+
+alter table public.risk_assessments drop constraint if exists risk_assessments_status_check;
+alter table public.risk_assessments add constraint risk_assessments_status_check
+  check (status in ('draft','in-progress','reviewed','approved','closed','active','review_required','under_review','archived'));
+
+create index if not exists idx_risk_assessments_status on public.risk_assessments(company_id, status);
+create index if not exists idx_risk_assessments_next_review on public.risk_assessments(company_id, next_review_date);
+
+-- Junction: many-to-many risk assessment <-> incidents
+create table if not exists public.risk_assessment_incidents (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  risk_assessment_id uuid not null references public.risk_assessments(id) on delete cascade,
+  incident_id uuid not null references public.incidents(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique(risk_assessment_id, incident_id)
+);
+create index if not exists idx_ra_incidents_ra on public.risk_assessment_incidents(risk_assessment_id);
+create index if not exists idx_ra_incidents_incident on public.risk_assessment_incidents(incident_id);
+
+-- Junction: risk assessment <-> NCRs
+create table if not exists public.risk_assessment_ncrs (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  risk_assessment_id uuid not null references public.risk_assessments(id) on delete cascade,
+  ncr_id uuid not null references public.quality_ncrs(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique(risk_assessment_id, ncr_id)
+);
+create index if not exists idx_ra_ncrs_ra on public.risk_assessment_ncrs(risk_assessment_id);
+create index if not exists idx_ra_ncrs_ncr on public.risk_assessment_ncrs(ncr_id);
+
+-- Change triggers (manual "change in operation/activity")
+create table if not exists public.risk_assessment_change_triggers (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  risk_assessment_id uuid null references public.risk_assessments(id) on delete set null,
+  area_location text null,
+  activity_process_operation text null,
+  description text not null,
+  requested_by_user_id uuid not null,
+  status text not null check (status in ('open','closed')) default 'open',
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_ra_change_triggers_company on public.risk_assessment_change_triggers(company_id);
+create index if not exists idx_ra_change_triggers_ra on public.risk_assessment_change_triggers(risk_assessment_id);
+
+-- Signatures / approvals (Pre-work + optional approvals)
+create table if not exists public.risk_assessment_signatures (
+  id uuid primary key default gen_random_uuid(),
+  risk_assessment_id uuid not null references public.risk_assessments(id) on delete cascade,
+  pre_work_instance_id uuid null,
+  signer_user_id uuid not null,
+  signer_name text null,
+  role text not null check (role in ('Employee','Supervisor')),
+  signed_at timestamptz not null default now(),
+  signature_method text null,
+  comment text null
+);
+create index if not exists idx_ra_signatures_ra on public.risk_assessment_signatures(risk_assessment_id);
+
+-- Pre-work daily instances (each instance = one day, one assessment, list of employees + supervisor sign-off)
+create table if not exists public.pre_work_instances (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  risk_assessment_id uuid not null references public.risk_assessments(id) on delete cascade,
+  instance_date date not null,
+  supervisor_signed_at timestamptz null,
+  supervisor_user_id uuid null,
+  created_at timestamptz not null default now(),
+  unique(risk_assessment_id, instance_date)
+);
+create index if not exists idx_pre_work_instances_ra on public.pre_work_instances(risk_assessment_id);
+create index if not exists idx_pre_work_instances_date on public.pre_work_instances(company_id, instance_date);
+
+alter table public.risk_assessment_signatures
+  add column if not exists pre_work_instance_id uuid null;
+alter table public.risk_assessment_signatures
+  drop constraint if exists risk_assessment_signatures_pre_work_instance_id_fkey;
+alter table public.risk_assessment_signatures
+  add constraint risk_assessment_signatures_pre_work_instance_id_fkey
+  foreign key (pre_work_instance_id) references public.pre_work_instances(id) on delete set null;
+
+-- Versioning: snapshot of assessment + items when "Review & Update" is done
+create table if not exists public.risk_assessment_versions (
+  id uuid primary key default gen_random_uuid(),
+  risk_assessment_id uuid not null references public.risk_assessments(id) on delete cascade,
+  version_number integer not null,
+  snapshot jsonb not null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_ra_versions_ra on public.risk_assessment_versions(risk_assessment_id);
+
+-- Extend risk_assessment_items: S/L/RR/risk_index, residual, type_of_risk, spec fields (keep existing columns for backward compat)
+alter table public.risk_assessment_items
+  add column if not exists hazard text null,
+  add column if not exists aspect_hazard_flaw text null,
+  add column if not exists potential_risk text null,
+  add column if not exists risk text null,
+  add column if not exists who_is_at_risk text null,
+  add column if not exists type_of_risk text null check (type_of_risk is null or type_of_risk in ('Safety','Health','Environmental','Quality','Operational','Financial')),
+  add column if not exists severity_s integer null check (severity_s is null or (severity_s between 1 and 5)),
+  add column if not exists likelihood_l integer null check (likelihood_l is null or (likelihood_l between 1 and 5)),
+  add column if not exists raw_risk_rating_rr integer null,
+  add column if not exists risk_index text null check (risk_index is null or risk_index in ('Low','Medium','High')),
+  add column if not exists residual_severity_s integer null check (residual_severity_s is null or (residual_severity_s between 1 and 5)),
+  add column if not exists residual_likelihood_l integer null check (residual_likelihood_l is null or (residual_likelihood_l between 1 and 5)),
+  add column if not exists residual_rr integer null,
+  add column if not exists residual_risk_index text null check (residual_risk_index is null or residual_risk_index in ('Low','Medium','High')),
+  add column if not exists additional_controls text null,
+  add column if not exists current_year_non_conformances text null,
+  add column if not exists current_year_ncr_ids jsonb null,
+  add column if not exists by_who text null,
+  add column if not exists by_when date null,
+  add column if not exists responsible_person text null,
+  add column if not exists due_date date null,
+  add column if not exists evidence_uploads jsonb null;
+
+-- Incidents: add area and activity for risk assessment matching
+alter table public.incidents
+  add column if not exists area text null,
+  add column if not exists activity text null;
+
+-- RLS for new risk assessment tables
+alter table public.risk_assessment_settings enable row level security;
+drop policy if exists ra_settings_tenant on public.risk_assessment_settings;
+create policy ra_settings_tenant on public.risk_assessment_settings
+  for all using (public.is_company_member(company_id) or public.is_platform_admin());
+
+alter table public.risk_assessment_incidents enable row level security;
+drop policy if exists ra_incidents_tenant on public.risk_assessment_incidents;
+create policy ra_incidents_tenant on public.risk_assessment_incidents
+  for all using (public.is_company_member(company_id) or public.is_platform_admin());
+
+alter table public.risk_assessment_ncrs enable row level security;
+drop policy if exists ra_ncrs_tenant on public.risk_assessment_ncrs;
+create policy ra_ncrs_tenant on public.risk_assessment_ncrs
+  for all using (public.is_company_member(company_id) or public.is_platform_admin());
+
+alter table public.risk_assessment_change_triggers enable row level security;
+drop policy if exists ra_change_triggers_tenant on public.risk_assessment_change_triggers;
+create policy ra_change_triggers_tenant on public.risk_assessment_change_triggers
+  for all using (public.is_company_member(company_id) or public.is_platform_admin());
+
+alter table public.risk_assessment_signatures enable row level security;
+drop policy if exists ra_signatures_via_ra on public.risk_assessment_signatures;
+create policy ra_signatures_via_ra on public.risk_assessment_signatures
+  for all using (
+    risk_assessment_id in (select id from public.risk_assessments ra where public.is_company_member(ra.company_id) or public.is_platform_admin())
+  );
+
+alter table public.pre_work_instances enable row level security;
+drop policy if exists pre_work_instances_tenant on public.pre_work_instances;
+create policy pre_work_instances_tenant on public.pre_work_instances
+  for all using (public.is_company_member(company_id) or public.is_platform_admin());
+
+alter table public.risk_assessment_versions enable row level security;
+drop policy if exists ra_versions_via_ra on public.risk_assessment_versions;
+create policy ra_versions_via_ra on public.risk_assessment_versions
+  for all using (
+    risk_assessment_id in (select id from public.risk_assessments ra where public.is_company_member(ra.company_id) or public.is_platform_admin())
+  );
+
 -- Corrective Actions: Link NCRs, Risk Assessments, and Incidents to corrective/preventive tasks
 create table if not exists public.corrective_actions (
   id uuid primary key default gen_random_uuid(),

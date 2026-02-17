@@ -212,6 +212,17 @@ export async function createQualityNcr(input: {
     )
   );
 
+  const { evaluateNcrTrigger } = await import('./riskAssessmentTriggersService');
+  await evaluateNcrTrigger(input.companyId, {
+    id: created.id,
+    company_id: created.company_id,
+    process_involved: created.process_involved ?? null,
+    activity_involved: created.activity_involved ?? null,
+    department_id: created.department_id ?? null,
+    location: created.location ?? null,
+    nc_number: created.nc_number ?? null
+  }).catch(() => {});
+
   // Immediate escalation for high/critical risk NCRs
   const isHighRisk =
     String(created.severity).toLowerCase() === 'critical' ||

@@ -1,40 +1,56 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Plus, Search, Filter, Loader2 } from 'lucide-react';
+import { useSearchParams, Link } from 'react-router-dom';
+import { AlertTriangle, Plus, Search, Loader2 } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { useUser } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
-import { listRiskAssessments, createRiskAssessment, listRiskAssessmentItems, type RiskAssessment, type RiskAssessmentItem } from '../api/services/risksService';
+import { listRiskAssessments, listRiskAssessmentItems, type RiskAssessment, type RiskAssessmentItem } from '../api/services/risksService';
 import type { UUID } from '../api/models/entities';
 import { toCsv, downloadTextFile } from '../utils/csv';
 import { useIdentity } from '../hooks/useIdentity';
+import { exportHighRiskRegisterCSV, downloadFile } from '../api/services/exportService';
+
+const TYPE_OPTIONS = ['all', 'baseline', 'task', 'task-based', 'critical_task', 'pre_work'] as const;
+const STATUS_OPTIONS = ['all', 'draft', 'active', 'in-progress', 'review_required', 'under_review', 'reviewed', 'approved', 'closed', 'archived'] as const;
 
 export function RisksPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { activeCompanyId } = useTenant();
   const { user } = useUser();
   const [assessments, setAssessments] = useState<RiskAssessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
   const [selectedAssessment, setSelectedAssessment] = useState<RiskAssessment | null>(null);
   const [assessmentItems, setAssessmentItems] = useState<RiskAssessmentItem[]>([]);
-  const [filterType, setFilterType] = useState<'all' | 'baseline' | 'task-based'>('all');
-  const [filterStatus, setFilterStatus] = useState<'all' | RiskAssessment['status']>('all');
-  const [showCriticalOnly, setShowCriticalOnly] = useState(false);
-  const [showPreworkOnly, setShowPreworkOnly] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const filterType = (searchParams.get('type') as typeof TYPE_OPTIONS[number]) || 'all';
+  const filterStatus = (searchParams.get('status') as typeof STATUS_OPTIONS[number]) || 'all';
+  const [filterArea, setFilterArea] = useState(searchParams.get('area') || '');
+  const [filterActivity, setFilterActivity] = useState(searchParams.get('activity') || '');
+  const [fromDate, setFromDate] = useState(searchParams.get('from') || '');
+  const [toDate, setToDate] = useState(searchParams.get('to') || '');
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const { fullName, organisationName } = useIdentity();
 
   useEffect(() => {
     loadAssessments();
-  }, [activeCompanyId]);
-
+  }, [activeCompanyId, filterType, filterStatus, filterArea, filterActivity, fromDate, toDate, searchTerm]);
 
   const loadAssessments = async () => {
     if (!activeCompanyId) return;
     try {
       setLoading(true);
       setError(null);
-      const data = await listRiskAssessments({ companyId: activeCompanyId, limit: 500 });
+      const data = await listRiskAssessments({
+        companyId: activeCompanyId,
+        limit: 500,
+        assessmentType: filterType !== 'all' ? filterType : undefined,
+        status: filterStatus !== 'all' ? filterStatus : undefined,
+        area: filterArea.trim() || undefined,
+        activity: filterActivity.trim() || undefined,
+        fromDate: fromDate || undefined,
+        toDate: toDate || undefined,
+        search: searchTerm.trim() || undefined
+      });
       setAssessments(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load risk assessments');
@@ -57,32 +73,19 @@ export function RisksPage() {
     loadAssessmentItems(assessment.id);
   };
 
-  const handleCreateAssessment = async (type: 'baseline' | 'task-based') => {
-    if (!user?.id) return;
-    try {
-      const assessment = await createRiskAssessment({
-        companyId: activeCompanyId,
-        assessmentType: type,
-        title: `${type.charAt(0).toUpperCase() + type.slice(1)} Risk Assessment - ${new Date().toLocaleDateString()}`,
-        createdByUserId: user.id as UUID
-      });
-      setAssessments([assessment, ...assessments]);
-      setShowCreate(false);
-      handleSelectAssessment(assessment);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create assessment');
-    }
+  const applyFilters = () => {
+    const p = new URLSearchParams(searchParams);
+    if (filterType !== 'all') p.set('type', filterType); else p.delete('type');
+    if (filterStatus !== 'all') p.set('status', filterStatus); else p.delete('status');
+    if (filterArea.trim()) p.set('area', filterArea.trim()); else p.delete('area');
+    if (filterActivity.trim()) p.set('activity', filterActivity.trim()); else p.delete('activity');
+    if (fromDate) p.set('from', fromDate); else p.delete('from');
+    if (toDate) p.set('to', toDate); else p.delete('to');
+    if (searchTerm.trim()) p.set('search', searchTerm.trim()); else p.delete('search');
+    setSearchParams(p);
   };
 
-  const filteredAssessments = assessments.filter(a => {
-    if (filterType !== 'all' && a.assessment_type !== filterType) return false;
-    if (filterStatus !== 'all' && a.status !== filterStatus) return false;
-    if (showCriticalOnly && !a.is_critical) return false;
-    if (showPreworkOnly && !a.is_prework) return false;
-    if (searchTerm && !a.title.toLowerCase().includes(searchTerm.toLowerCase()) && 
-        !a.assessment_number.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-    return true;
-  });
+  const filteredAssessments = assessments;
 
   const getRiskColor = (level: string) => {
     switch (level) {
@@ -97,12 +100,21 @@ export function RisksPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'bg-gray-100 text-gray-700';
-      case 'in-progress': return 'bg-blue-100 text-blue-700';
+      case 'in-progress': case 'active': return 'bg-blue-100 text-blue-700';
+      case 'review_required': return 'bg-amber-100 text-amber-800';
+      case 'under_review': return 'bg-indigo-100 text-indigo-700';
       case 'reviewed': return 'bg-purple-100 text-purple-700';
       case 'approved': return 'bg-green-100 text-green-700';
-      case 'closed': return 'bg-gray-200 text-gray-800';
+      case 'closed': case 'archived': return 'bg-gray-200 text-gray-800';
       default: return 'bg-gray-100 text-gray-700';
     }
+  };
+
+  const getTypeLabel = (type: string) => {
+    if (type === 'task-based') return 'Task';
+    if (type === 'critical_task') return 'Critical Task';
+    if (type === 'pre_work') return 'Pre-work';
+    return type ? String(type).replace(/_/g, ' ') : '—';
   };
 
   const handleExportCsv = () => {
@@ -138,6 +150,13 @@ export function RisksPage() {
     downloadTextFile(filename, content, 'text/csv;charset=utf-8');
   };
 
+  const handleExportHighRiskRegister = () => {
+    if (!activeCompanyId || filteredAssessments.length === 0) return;
+    const blob = exportHighRiskRegisterCSV(filteredAssessments);
+    const filename = `high-risk-register-${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadFile(blob, filename);
+  };
+
   return (
     <Layout title="Risk Assessments">
       <div className="max-w-7xl mx-auto p-6">
@@ -156,43 +175,21 @@ export function RisksPage() {
               Export CSV
             </button>
             <button
-              onClick={() => setShowCreate(!showCreate)}
+              onClick={handleExportHighRiskRegister}
+              disabled={!activeCompanyId || filteredAssessments.length === 0}
+              className="bg-amber-100 hover:bg-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Export high-risk register
+            </button>
+            <Link
+              to="/risks/new"
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
             >
               <Plus className="w-5 h-5" />
               New Assessment
-            </button>
+            </Link>
           </div>
         </div>
-
-        {/* Create Options */}
-        {showCreate && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6 border border-blue-200">
-            <h3 className="font-semibold text-gray-900 mb-4">Select Assessment Type</h3>
-            <div className="flex gap-4">
-              <button
-                onClick={() => handleCreateAssessment('baseline')}
-                className="flex-1 bg-blue-50 hover:bg-blue-100 border border-blue-300 rounded-lg p-4 text-left transition"
-              >
-                <h4 className="font-semibold text-blue-900 mb-2">Baseline Risk Assessment</h4>
-                <p className="text-sm text-blue-700">Company-wide baseline hazards and controls</p>
-              </button>
-              <button
-                onClick={() => handleCreateAssessment('task-based')}
-                className="flex-1 bg-green-50 hover:bg-green-100 border border-green-300 rounded-lg p-4 text-left transition"
-              >
-                <h4 className="font-semibold text-green-900 mb-2">Task-Based Assessment</h4>
-                <p className="text-sm text-green-700">Specific task or activity hazard assessment</p>
-              </button>
-            </div>
-            <button
-              onClick={() => setShowCreate(false)}
-              className="mt-4 text-sm text-gray-600 hover:text-gray-900"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-red-700">
@@ -220,55 +217,62 @@ export function RisksPage() {
             {/* Type Filter */}
             <select
               value={filterType}
-              onChange={(e) => setFilterType(e.target.value as any)}
+              onChange={(e) => setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('type', e.target.value); return p; })}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="all">All Types</option>
-              <option value="baseline">Baseline</option>
-              <option value="task-based">Task-Based</option>
+              {TYPE_OPTIONS.map((t) => (
+                <option key={t} value={t}>{t === 'all' ? 'All Types' : getTypeLabel(t)}</option>
+              ))}
             </select>
 
             {/* Status Filter */}
             <select
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as any)}
+              onChange={(e) => setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('status', e.target.value); return p; })}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="all">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="in-progress">In Progress</option>
-              <option value="reviewed">Reviewed</option>
-              <option value="approved">Approved</option>
-              <option value="closed">Closed</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s === 'all' ? 'All Status' : s.replace(/_/g, ' ')}
+                </option>
+              ))}
             </select>
 
-            {/* Critical / Prework toggles */}
-            <div className="flex items-center gap-3">
-              <label className="inline-flex items-center gap-1 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                  checked={showCriticalOnly}
-                  onChange={(e) => {
-                    setShowCriticalOnly(e.target.checked);
-                    if (e.target.checked) setShowPreworkOnly(false);
-                  }}
-                />
-                <span>Critical only</span>
-              </label>
-              <label className="inline-flex items-center gap-1 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-                  checked={showPreworkOnly}
-                  onChange={(e) => {
-                    setShowPreworkOnly(e.target.checked);
-                    if (e.target.checked) setShowCriticalOnly(false);
-                  }}
-                />
-                <span>Prework only</span>
-              </label>
-            </div>
+            <input
+              type="text"
+              placeholder="Area"
+              value={filterArea}
+              onChange={(e) => setFilterArea(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-32"
+            />
+            <input
+              type="text"
+              placeholder="Activity"
+              value={filterActivity}
+              onChange={(e) => setFilterActivity(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-32"
+            />
+            <input
+              type="date"
+              placeholder="From"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+            <input
+              type="date"
+              placeholder="To"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+            <button
+              type="button"
+              onClick={applyFilters}
+              className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium"
+            >
+              Apply
+            </button>
           </div>
         </div>
 
@@ -291,43 +295,46 @@ export function RisksPage() {
                   </div>
                 ) : (
                   filteredAssessments.map(assessment => (
-                    <button
+                    <div
                       key={assessment.id}
-                      onClick={() => handleSelectAssessment(assessment)}
-                      className={`w-full text-left p-4 hover:bg-gray-50 transition ${
-                        selectedAssessment?.id === assessment.id ? 'bg-blue-50 border-l-4 border-blue-600' : ''
+                      className={`w-full text-left p-4 hover:bg-gray-50 transition border-l-4 ${
+                        selectedAssessment?.id === assessment.id ? 'bg-blue-50 border-blue-600' : 'border-transparent'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-900 truncate">{assessment.assessment_number}</p>
-                          <p className="text-sm text-gray-600 truncate">{assessment.title}</p>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(assessment.status)}`}>
-                              {assessment.status}
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAssessment(assessment)}
+                        className="w-full text-left"
+                      >
+                        <p className="font-medium text-gray-900 truncate">{assessment.assessment_number}</p>
+                        <p className="text-sm text-gray-600 truncate">{assessment.title}</p>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(assessment.status)}`}>
+                            {assessment.status.replace(/_/g, ' ')}
+                          </span>
+                          <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
+                            {getTypeLabel(assessment.assessment_type)}
+                          </span>
+                          {assessment.is_critical && (
+                            <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-semibold">Critical</span>
+                          )}
+                          {assessment.is_prework && !assessment.is_critical && (
+                            <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 font-semibold">Prework</span>
+                          )}
+                          {assessment.review_due_at && (
+                            <span className="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">
+                              Review due {new Date(assessment.review_due_at).toLocaleDateString()}
                             </span>
-                            <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                              {assessment.assessment_type === 'baseline' ? 'Baseline' : 'Task'}
-                            </span>
-                            {assessment.is_critical && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-semibold">
-                                Critical
-                              </span>
-                            )}
-                            {assessment.is_prework && !assessment.is_critical && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 font-semibold">
-                                Prework
-                              </span>
-                            )}
-                            {assessment.review_due_at && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">
-                                Review due {new Date(assessment.review_due_at).toLocaleDateString()}
-                              </span>
-                            )}
-                          </div>
+                          )}
                         </div>
-                      </div>
-                    </button>
+                      </button>
+                      <Link
+                        to={`/risks/${assessment.id}`}
+                        className="mt-2 inline-block text-sm text-blue-600 hover:underline"
+                      >
+                        View full →
+                      </Link>
+                    </div>
                   ))
                 )}
               </div>
@@ -347,7 +354,7 @@ export function RisksPage() {
                         {selectedAssessment.status}
                       </span>
                       <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                        {selectedAssessment.assessment_type === 'baseline' ? 'Baseline' : 'Task'}
+                        {getTypeLabel(selectedAssessment.assessment_type)}
                       </span>
                       {selectedAssessment.is_critical && (
                         <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-semibold">

@@ -26,6 +26,10 @@ import { HelpSupportPage } from './pages/HelpSupportPage';
 import NCRsPage from './pages/NCRsPage';
 import { RisksPage } from './pages/RisksPage';
 import { RiskReviewsPage } from './pages/RiskReviewsPage';
+import { RiskAssessmentDashboardPage } from './pages/risks/RiskAssessmentDashboardPage';
+import { RiskAssessmentCreatePage } from './pages/risks/RiskAssessmentCreatePage';
+import { RiskAssessmentDetailPage } from './pages/risks/RiskAssessmentDetailPage';
+import { PreWorkInstancesPage } from './pages/risks/PreWorkInstancesPage';
 import { PPEPage } from './pages/PPEPage';
 import { LegalRegisterPage } from './pages/LegalRegisterPage';
 import { UsersPage } from './pages/UsersPage';
@@ -419,11 +423,33 @@ export function App() {
             }
           />
           <Route
-            path="/risks"
+            path="/risks/dashboard"
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RisksPage />
+                  <RiskAssessmentDashboardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/risks/new"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireCompanyRole allowed={['admin', 'manager', 'supervisor']}>
+                    <RiskAssessmentCreatePage />
+                  </RequireCompanyRole>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/risks/prework"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <PreWorkInstancesPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -434,6 +460,26 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RiskReviewsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/risks/:id"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RiskAssessmentDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/risks"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RisksPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

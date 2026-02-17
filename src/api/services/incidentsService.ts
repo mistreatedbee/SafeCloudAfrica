@@ -105,6 +105,8 @@ export type CreateIncidentInput = {
   copyToEmails?: string[];
   investigationRequired?: boolean;
   projectClient?: string;
+  area?: string;
+  activity?: string;
   // Investigation fields
   instructionBreakdown?: string;
   taskSequence?: string;
@@ -160,6 +162,8 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
     copy_to_emails: input.copyToEmails ?? null,
     investigation_required: input.investigationRequired ?? false,
     project_client: input.projectClient ?? null,
+    area: input.area ?? null,
+    activity: input.activity ?? null,
     // Investigation fields
     instruction_breakdown: input.instructionBreakdown ?? null,
     task_sequence: input.taskSequence ?? null,
@@ -209,6 +213,17 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
       created.severity as Severity
     );
   }
+
+  const { evaluateIncidentTrigger } = await import('./riskAssessmentTriggersService');
+  await evaluateIncidentTrigger(input.companyId, {
+    id: created.id,
+    company_id: created.company_id,
+    area: (created as any).area ?? input.area ?? null,
+    activity: (created as any).activity ?? input.activity ?? null,
+    location: created.location ?? null,
+    category: created.category ?? null,
+    project_client: (created as any).project_client ?? null
+  }).catch(() => {});
 
   return data as Incident;
 }
@@ -266,6 +281,8 @@ export async function updateIncident(incidentId: UUID, patch: Partial<CreateInci
   if (patch.preparedByUserId !== undefined) updateData.prepared_by_user_id = patch.preparedByUserId;
   if (patch.distributionsToUserIds !== undefined) updateData.distributions_to_user_ids = patch.distributionsToUserIds;
   if (patch.distributionsToEmails !== undefined) updateData.distributions_to_emails = patch.distributionsToEmails;
+  if (patch.area !== undefined) updateData.area = patch.area;
+  if (patch.activity !== undefined) updateData.activity = patch.activity;
 
   updateData.updated_at = new Date().toISOString();
 
@@ -278,6 +295,18 @@ export async function updateIncident(incidentId: UUID, patch: Partial<CreateInci
 
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update incident.');
+
+  const updated = data as Incident;
+  const { evaluateIncidentTrigger } = await import('./riskAssessmentTriggersService');
+  await evaluateIncidentTrigger(updated.company_id, {
+    id: updated.id,
+    company_id: updated.company_id,
+    area: (updated as any).area ?? null,
+    activity: (updated as any).activity ?? null,
+    location: updated.location ?? null,
+    category: updated.category ?? null,
+    project_client: (updated as any).project_client ?? null
+  }).catch(() => {});
 
   // Log activity
   const { createActivityLog } = await import('./activityLogService');

@@ -131,7 +131,7 @@ const supportingSections: NavItem[] = [
 },
 {
   name: 'Risk Management',
-  path: '/risks',
+  path: '/risks/dashboard',
   icon: AlertOctagonIcon
 },
 {
