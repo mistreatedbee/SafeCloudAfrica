@@ -321,6 +321,22 @@ export async function listIncidentsWithFilters(input: ListIncidentsWithFiltersIn
 
   q = q.order('occurred_at', { ascending: false }).limit(input.limit ?? 100);
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/0b6fab05-6c3e-43f5-9c91-57b342f42891', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: `log_${Date.now()}_inc_list_filters`,
+      timestamp: Date.now(),
+      location: 'src/api/services/incidentsService.ts:listIncidentsWithFilters',
+      message: 'listIncidentsWithFilters input',
+      hypothesisId: 'H1',
+      runId: 'pre-fix',
+      data: input
+    })
+  }).catch(() => {});
+  // #endregion agent log
+
   const { data, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Incident[];

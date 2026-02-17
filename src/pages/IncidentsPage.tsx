@@ -84,32 +84,21 @@ export function IncidentsPage() {
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
 
-  // RBAC: Filter incidents based on role
-  // Note: RLS policies already enforce this at DB level, but we add client-side filtering for better UX
-  const filteredByRole = useMemo(() => {
-    if (!list || !user?.id) return list;
-    
-    // Admin/Manager/Supervisor/Consultant: see all incidents (already filtered by RLS)
-    if (activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant') {
-      return list;
-    }
-    
-    // Employee: only see incidents they created or are assigned to
-    if (activeRole === 'employee') {
-      return list.filter(incident => 
-        incident.created_by_user_id === user.id || 
-        incident.assignee_user_id === user.id ||
-        (incident.reported_to_user_ids && incident.reported_to_user_ids.includes(user.id as any))
-      );
-    }
-    
-    // Auditor: read-only access (already filtered by RLS)
-    if (activeRole === 'auditor') {
-      return list;
-    }
-    
-    return list;
-  }, [list, user?.id, activeRole]);
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/0b6fab05-6c3e-43f5-9c91-57b342f42891', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: `log_${Date.now()}_IncidentsPage_render`,
+      timestamp: Date.now(),
+      location: 'src/pages/IncidentsPage.tsx:IncidentsPage',
+      message: 'IncidentsPage render start',
+      hypothesisId: 'H4',
+      runId: 'pre-fix',
+      data: { path: location.pathname }
+    })
+  }).catch(() => {});
+  // #endregion agent log
 
   useEffect(() => {
     setCreateOpen(isNew);
@@ -149,6 +138,32 @@ export function IncidentsPage() {
   );
 
   const list = incidents ?? [];
+  // RBAC: Filter incidents based on role
+  // Note: RLS policies already enforce this at DB level, but we add client-side filtering for better UX
+  const filteredByRole = useMemo(() => {
+    if (!list || !user?.id) return list;
+
+    // Admin/Manager/Supervisor/Consultant: see all incidents (already filtered by RLS)
+    if (activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant') {
+      return list;
+    }
+
+    // Employee: only see incidents they created or are assigned to
+    if (activeRole === 'employee') {
+      return list.filter(incident =>
+        incident.created_by_user_id === user.id ||
+        incident.assignee_user_id === user.id ||
+        (incident as any).reported_to_user_ids?.includes(user.id as any)
+      );
+    }
+
+    // Auditor: read-only access (already filtered by RLS)
+    if (activeRole === 'auditor') {
+      return list;
+    }
+
+    return list;
+  }, [list, user?.id, activeRole]);
   const openCount = filteredByRole.filter((i) => i.status === 'open').length;
   const investigatingCount = filteredByRole.filter((i) => i.status === 'investigating').length;
   const nearMissCount = filteredByRole.filter((i) => i.category === 'Near Miss').length;
