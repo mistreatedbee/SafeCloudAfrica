@@ -38,11 +38,13 @@ export function AuditScheduleModal(props: {
   );
 
   const proposedDatesParsed = useMemo(() => {
-    return proposedDatesInput
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((d) => new Date(d).toISOString());
+    const parts = proposedDatesInput.split(',').map((s) => s.trim()).filter(Boolean);
+    const result: string[] = [];
+    for (const d of parts) {
+      const date = new Date(d);
+      if (!Number.isNaN(date.getTime())) result.push(date.toISOString());
+    }
+    return result;
   }, [proposedDatesInput]);
 
   const canSubmit = useMemo(
@@ -87,7 +89,12 @@ export function AuditScheduleModal(props: {
         .map((s) => s.trim())
         .filter(Boolean)
         .map((label, i) => ({ key: `doc-${i}`, label }));
-      const documentSubmissionDeadline = documentDeadline ? new Date(documentDeadline).toISOString() : undefined;
+      const documentSubmissionDeadline = documentDeadline
+        ? (() => {
+            const dd = new Date(documentDeadline);
+            return !Number.isNaN(dd.getTime()) ? dd.toISOString() : undefined;
+          })()
+        : undefined;
 
       await createAudit({
         companyId: props.companyId,
@@ -255,7 +262,7 @@ export function AuditScheduleModal(props: {
               />
               <p className="mt-1 text-xs text-charcoal-400">
                 {proposedDatesParsed.length < 3
-                  ? `Enter at least 3 dates (comma-separated). Current: ${proposedDatesParsed.length}`
+                  ? `Enter at least 3 dates (comma-separated, YYYY-MM-DD format). Current: ${proposedDatesParsed.length}`
                   : `${proposedDatesParsed.length} date(s) — auditee will choose one.`}
               </p>
             </div>
