@@ -20,7 +20,7 @@ export function AuditScheduleModal(props: {
   const [objectives, setObjectives] = useState('');
   const [auditCriteria, setAuditCriteria] = useState('');
   const [scopeOfAudit, setScopeOfAudit] = useState('');
-  const [proposedDatesInput, setProposedDatesInput] = useState('');
+  const [proposedDates, setProposedDates] = useState<string[]>(['', '', '']);
   const [location, setLocation] = useState('');
   const [auditorIdsInput, setAuditorIdsInput] = useState('');
   const [auditeeIdsInput, setAuditeeIdsInput] = useState('');
@@ -37,48 +37,25 @@ export function AuditScheduleModal(props: {
     [props.companyId, props.open]
   );
 
-  /** Parse date string - supports YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY */
-  function parseDateString(s: string): Date | null {
-    const d = new Date(s);
-    if (!Number.isNaN(d.getTime())) return d;
-    const m = s.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})$/);
-    if (!m) return null;
-    const n1 = parseInt(m[1], 10);
-    const n2 = parseInt(m[2], 10);
-    const n3 = parseInt(m[3], 10);
-    let year: number, month: number, day: number;
-    if (n1 > 31) {
-      year = n1;
-      month = n2 - 1;
-      day = n3;
-    } else if (n3 > 31) {
-      year = n3;
-      if (n1 > 12) {
-        day = n1;
-        month = n2 - 1;
-      } else if (n2 > 12) {
-        day = n2;
-        month = n1 - 1;
-      } else {
-        day = n1;
-        month = n2 - 1;
-      }
-    } else {
-      return null;
-    }
-    const parsed = new Date(year, month, day);
-    return !Number.isNaN(parsed.getTime()) ? parsed : null;
-  }
-
   const proposedDatesParsed = useMemo(() => {
-    const parts = proposedDatesInput.split(',').map((s) => s.trim()).filter(Boolean);
-    const result: string[] = [];
-    for (const d of parts) {
-      const date = parseDateString(d);
-      if (date) result.push(date.toISOString());
-    }
-    return result;
-  }, [proposedDatesInput]);
+    return proposedDates
+      .filter((d) => d.trim().length > 0)
+      .map((d) => new Date(d).toISOString());
+  }, [proposedDates]);
+
+  function setProposedDate(i: number, value: string) {
+    setProposedDates((prev) => {
+      const next = [...prev];
+      next[i] = value;
+      return next;
+    });
+  }
+  function addProposedDate() {
+    setProposedDates((prev) => [...prev, '']);
+  }
+  function removeProposedDate(i: number) {
+    setProposedDates((prev) => (prev.length > 3 ? prev.filter((_, idx) => idx !== i) : prev));
+  }
 
   const canSubmit = useMemo(
     () =>
@@ -155,7 +132,7 @@ export function AuditScheduleModal(props: {
       setObjectives('');
       setAuditCriteria('');
       setScopeOfAudit('');
-      setProposedDatesInput('');
+      setProposedDates(['', '', '']);
       setLocation('');
       setAuditorIdsInput('');
       setAuditeeIdsInput('');
@@ -281,33 +258,53 @@ export function AuditScheduleModal(props: {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">
-                Proposed dates (at least 3) *
-              </label>
-              <input
-                type="text"
-                value={proposedDatesInput}
-                onChange={(e) => setProposedDatesInput(e.target.value)}
-                placeholder="e.g. 2026-03-01, 2026-03-08, 2026-03-15"
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
-              <p className="mt-1 text-xs text-charcoal-400">
-                {proposedDatesParsed.length < 3
-                  ? `Enter at least 3 dates (comma-separated). Formats: 2026-03-01 or 17/02/2026. Current: ${proposedDatesParsed.length}`
-                  : `${proposedDatesParsed.length} date(s) — auditee will choose one.`}
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Location (optional)</label>
-              <input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="e.g. Site A"
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">
+              Proposed dates (at least 3) *
+            </label>
+            {proposedDates.map((dateVal, i) => (
+              <div key={i} className="flex gap-2 mb-2 items-center">
+                <span className="text-xs text-charcoal-500 w-16 shrink-0">Date {i + 1}</span>
+                <input
+                  type="date"
+                  value={dateVal}
+                  onChange={(e) => setProposedDate(i, e.target.value)}
+                  className="flex-1 px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+                {proposedDates.length > 3 && (
+                  <button
+                    type="button"
+                    onClick={() => removeProposedDate(i)}
+                    className="p-2 rounded-lg border border-surface-300 text-charcoal-500 hover:bg-surface-50"
+                    title="Remove date"
+                  >
+                    <Trash2Icon className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addProposedDate}
+              className="inline-flex items-center gap-1 text-sm text-teal font-medium hover:underline"
+            >
+              <PlusIcon className="w-4 h-4" /> Add another date
+            </button>
+            <p className="mt-1 text-xs text-charcoal-400">
+              {proposedDatesParsed.length < 3
+                ? `Select at least 3 dates. Current: ${proposedDatesParsed.length}`
+                : `${proposedDatesParsed.length} date(s) — auditee will choose one.`}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Location (optional)</label>
+            <input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g. Site A"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            />
           </div>
 
           <div>
