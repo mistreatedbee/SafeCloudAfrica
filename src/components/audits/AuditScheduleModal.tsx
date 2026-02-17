@@ -37,12 +37,45 @@ export function AuditScheduleModal(props: {
     [props.companyId, props.open]
   );
 
+  /** Parse date string - supports YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY */
+  function parseDateString(s: string): Date | null {
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return d;
+    const m = s.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})$/);
+    if (!m) return null;
+    const n1 = parseInt(m[1], 10);
+    const n2 = parseInt(m[2], 10);
+    const n3 = parseInt(m[3], 10);
+    let year: number, month: number, day: number;
+    if (n1 > 31) {
+      year = n1;
+      month = n2 - 1;
+      day = n3;
+    } else if (n3 > 31) {
+      year = n3;
+      if (n1 > 12) {
+        day = n1;
+        month = n2 - 1;
+      } else if (n2 > 12) {
+        day = n2;
+        month = n1 - 1;
+      } else {
+        day = n1;
+        month = n2 - 1;
+      }
+    } else {
+      return null;
+    }
+    const parsed = new Date(year, month, day);
+    return !Number.isNaN(parsed.getTime()) ? parsed : null;
+  }
+
   const proposedDatesParsed = useMemo(() => {
     const parts = proposedDatesInput.split(',').map((s) => s.trim()).filter(Boolean);
     const result: string[] = [];
     for (const d of parts) {
-      const date = new Date(d);
-      if (!Number.isNaN(date.getTime())) result.push(date.toISOString());
+      const date = parseDateString(d);
+      if (date) result.push(date.toISOString());
     }
     return result;
   }, [proposedDatesInput]);
@@ -262,7 +295,7 @@ export function AuditScheduleModal(props: {
               />
               <p className="mt-1 text-xs text-charcoal-400">
                 {proposedDatesParsed.length < 3
-                  ? `Enter at least 3 dates (comma-separated, YYYY-MM-DD format). Current: ${proposedDatesParsed.length}`
+                  ? `Enter at least 3 dates (comma-separated). Formats: 2026-03-01 or 17/02/2026. Current: ${proposedDatesParsed.length}`
                   : `${proposedDatesParsed.length} date(s) — auditee will choose one.`}
               </p>
             </div>
