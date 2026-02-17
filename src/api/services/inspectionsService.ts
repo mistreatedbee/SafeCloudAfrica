@@ -613,6 +613,25 @@ export async function completeInspectionRun(input: {
         .eq('id', item.id);
     }
 
+    // Auto-create task from inspection NC item
+    if (needsCapa) {
+      const { createTaskFromInspectionItem } = await import('./tasksService');
+      await createTaskFromInspectionItem(
+        { inspection_id: run.inspection_id, site_id: run.site_id ?? null, department_id: run.department_id ?? null, module: run.module },
+        {
+          id: item.id,
+          company_id: input.companyId,
+          run_id: run.id,
+          question: item.question,
+          comments: item.comments ?? item.auditor_comments ?? null,
+          risk_level: item.risk_level ?? null,
+          due_date: (item.due_date as string | null | undefined) ?? null,
+          responsible_person_id: item.responsible_person_id ?? null
+        },
+        input.actorUserId
+      ).catch(() => {});
+    }
+
     // Auto-create a linked PPE issue when checklist item clearly relates to PPE
     const questionLower = (item.question ?? '').toLowerCase();
     const riskAreaLower = (item.risk_area ?? '').toLowerCase();

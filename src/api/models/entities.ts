@@ -211,35 +211,83 @@ export type TaskStatus =
   | 'overdue';
 export type TaskPriority = Severity;
 
+/** Task category enum per Task Master Register spec */
+export type TaskCategory =
+  | 'audit_action'
+  | 'capa'
+  | 'inspection'
+  | 'ppe_issue'
+  | 'safety_action'
+  | 'env_action'
+  | 'quality_action'
+  | 'project_task'
+  | 'maintenance'
+  | 'training'
+  | 'kpi_follow_up';
+
+/** Time status indicator (computed) */
+export type TaskTimeStatusIndicator =
+  | 'on_schedule'
+  | 'at_risk'
+  | 'delayed'
+  | 'overdue'
+  | 'completed_early';
+
+/** Canonical source types for task linking */
+export type TaskSourceEntityType =
+  | 'ncr'
+  | 'inspection_run_item'
+  | 'ppe_issue_tracker'
+  | 'incident'
+  | 'audit_finding'
+  | 'audit'
+  | 'quality_ncr'
+  | 'program_audit_finding';
+
+export type TaskRiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+/** Extension approval object */
+export type TaskExtensionApproval = {
+  approved_by_user_id: UUID | null;
+  approved_at: string | null;
+  new_due_at: string | null;
+  reason: string | null;
+};
+
+/** Single comment entry (stored in task comments JSON) */
+export type TaskComment = {
+  timestamp: string;
+  user_id: UUID;
+  text: string;
+};
+
+/** Single progress update (stored in task progress_updates JSON) */
+export type TaskProgressUpdate = {
+  timestamp: string;
+  user_id: UUID;
+  note: string;
+  percent_complete?: number | null;
+};
+
 export type Task = {
   id: UUID;
   company_id: UUID;
   module: ModuleKey;
   title: string;
   description: string | null;
-  category?:
-    | 'audit_action'
-    | 'capa'
-    | 'inspection'
-    | 'ppe_issue'
-    | 'safety_action'
-    | 'env_action'
-    | 'quality_action'
-    | 'project_task'
-    | 'maintenance'
-    | 'training'
-    | 'kpi_follow_up'
-    | null;
-  risk_level?: 'low' | 'medium' | 'high' | 'critical' | null;
+  category?: TaskCategory | null;
+  risk_level?: TaskRiskLevel | null;
   priority: TaskPriority;
   status: TaskStatus;
   site_id?: UUID | null;
   department_id?: UUID | null;
+  site_name_text?: string | null;
+  department_name_text?: string | null;
   project_ref?: string | null;
   task_owner_user_id?: UUID | null;
   allocated_by_user_id?: UUID | null;
   supporting_team_user_ids?: UUID[] | null;
-  source_entity_type?: string | null;
+  source_entity_type?: TaskSourceEntityType | string | null;
   source_entity_id?: UUID | null;
   planned_start_date?: string | null;
   planned_completion_date?: string | null;
@@ -247,15 +295,42 @@ export type Task = {
   actual_start_at?: string | null;
   actual_completion_at?: string | null;
   time_spent_minutes?: number | null;
+  time_delay_minutes?: number | null;
   delay_reason?: string | null;
   extension_approved_by_user_id?: UUID | null;
   extension_approved_at?: string | null;
+  extension_new_due_at?: string | null;
+  extension_reason?: string | null;
+  extension_approval_json?: TaskExtensionApproval | null;
   due_at: string | null;
   assignee_user_id: UUID | null;
   created_by_user_id: UUID;
+  /** Computed time status indicator */
+  time_status_indicator?: TaskTimeStatusIndicator | null;
+  progress_percent?: number | null;
+  comments?: TaskComment[] | null;
+  progress_updates?: TaskProgressUpdate[] | null;
+  follow_up_inspection_ids?: UUID[] | null;
+  blocked_by_task_ids?: UUID[] | null;
+  effectiveness_checked?: boolean | null;
+  effectiveness_notes?: string | null;
+  effectiveness_check_date?: string | null;
   closure_date?: string | null;
   final_status?: string | null;
   lessons_learned?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Manual time log for a task */
+export type TaskTimeLog = {
+  id: UUID;
+  company_id: UUID;
+  task_id: UUID;
+  started_at: string | null;
+  ended_at: string | null;
+  minutes: number | null;
+  created_by_user_id: UUID;
   created_at: string;
   updated_at: string;
 };

@@ -49,3 +49,21 @@ export async function listActivityLogs(input: {
   return (data ?? []) as ActivityLog[];
 }
 
+export async function listActivityLogsByEntity(input: {
+  companyId: UUID;
+  entityType: string;
+  entityId: UUID;
+  limit?: number;
+}): Promise<ActivityLog[]> {
+  const { data, error } = await insforge.database
+    .from('activity_logs')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('entity_type', input.entityType)
+    .eq('entity_id', input.entityId)
+    .order('created_at', { ascending: false })
+    .limit(input.limit ?? 100);
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as ActivityLog[];
+}
+

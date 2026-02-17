@@ -64,6 +64,21 @@ export async function createProgramAuditFinding(
     }
   });
 
+  const created = data as ProgramAuditFinding;
+  const { createTaskFromProgramAuditFinding } = await import('./tasksService');
+  await createTaskFromProgramAuditFinding({
+    id: created.id,
+    company_id: created.company_id,
+    audit_id: created.audit_id,
+    title: created.title,
+    risk_level: created.risk_level,
+    required_action: created.action_plan ?? created.required_action ?? null,
+    responsible_user_id: created.responsible_user_id ?? null,
+    due_date: created.due_date ?? null,
+    created_by_user_id: created.created_by_user_id,
+    deviation_type: (created as any).deviation_type ?? null
+  }).catch(() => {});
+
   return data as ProgramAuditFinding;
 }
 

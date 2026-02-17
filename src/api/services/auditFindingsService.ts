@@ -48,6 +48,22 @@ export async function createAuditFinding(input: {
     entityId: (data as any).id as UUID
   });
 
+  const created = data as AuditFinding;
+  if (input.nonconformance) {
+    const { createTaskFromAuditFinding } = await import('./tasksService');
+    await createTaskFromAuditFinding({
+      id: created.id,
+      company_id: created.company_id,
+      audit_id: created.inspection_id,
+      title: created.title,
+      risk_level: (created.severity as string) ?? 'medium',
+      required_action: null,
+      responsible_user_id: null,
+      due_date: null,
+      created_by_user_id: created.created_by_user_id
+    }).catch(() => {});
+  }
+
   return data as AuditFinding;
 }
 

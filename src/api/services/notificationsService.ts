@@ -194,6 +194,74 @@ export async function notifyTaskAssigned(
 }
 
 /**
+ * Notify managers/admins about a high-risk task (called when task is created with high/critical risk)
+ */
+export async function notifyHighRiskTaskEscalation(
+  companyId: UUID,
+  task: { id: UUID; title: string; risk_level?: string | null; priority?: string | null; assignee_user_id?: UUID | null; task_owner_user_id?: UUID | null }
+): Promise<void> {
+  const severity = (task.risk_level === 'critical' || task.priority === 'critical' ? 'critical' : 'high') as Severity;
+  const { insforge } = await import('../insforge/client');
+  const { data: members } = await insforge.database
+    .from('company_memberships')
+    .select('user_id')
+    .eq('company_id', companyId)
+    .in('role', ['admin', 'manager', 'supervisor']);
+  const userIds = new Set<UUID>();
+  if (task.assignee_user_id) userIds.add(task.assignee_user_id);
+  if (task.task_owner_user_id) userIds.add(task.task_owner_user_id);
+  for (const m of members ?? []) {
+    const uid = (m as { user_id: UUID }).user_id;
+    if (uid) userIds.add(uid);
+  }
+  const message = `High-risk task "${task.title}" requires attention.`;
+  for (const userId of userIds) {
+    await createNotification(companyId, userId, severity, 'High-Risk Task', message).catch(() => {});
+  }
+}
+
+/**
+ * Send a task reminder (due soon / overdue)
+ */
+export async function notifyTaskReminder(
+  companyId: UUID,
+  userId: UUID,
+  taskTitle: string,
+  taskId: UUID,
+  dueAt: string | null,
+  severity: Severity
+): Promise<void> {
+  const dueText = dueAt ? new Date(dueAt).toLocaleDateString() : 'soon';
+  await createNotification(
+    companyId,
+    userId,
+    severity,
+    'Task Reminder',
+    `Task "${taskTitle}" is due ${dueText}.`
+  );
+}
+
+/**
+ * Send task escalation notification
+ */
+export async function notifyTaskEscalation(
+  companyId: UUID,
+  userId: UUID,
+  taskTitle: string,
+  taskId: UUID,
+  reason: string,
+  severity: Severity
+): Promise<void> {
+  await createNotification(
+    companyId,
+    userId,
+    severity,
+    'Task Escalation',
+    `Task "${taskTitle}" has been escalated: ${reason}`
+  );
+}
+
+/**
  * Notify a user that a risk assessment has been created
  */
 export async function notifyRiskAssessmentCreated(

@@ -12,6 +12,7 @@ import { EnvironmentPage } from './pages/EnvironmentPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { FormsPage } from './pages/FormsPage';
 import { TasksPage } from './pages/TasksPage';
+import { TaskDetailPage } from './pages/TaskDetailPage';
 import { IncidentsPage } from './pages/IncidentsPage';
 import { PjoPage } from './pages/PjoPage';
 import { TrainingPage } from './pages/TrainingPage';
@@ -288,6 +289,16 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <TasksPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/tasks/:taskId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <TaskDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

@@ -58,9 +58,7 @@ export async function decideApproval(input: {
     status: input.decision,
     signed_at: new Date().toISOString(),
     signature_note: input.signatureNote ?? null
-  };
-
-  const { data, error } = await insforge.database.from('approvals').update(patch).eq('id', input.approvalId).select('*').single();
+  };  const { data, error } = await insforge.database.from('approvals').update(patch).eq('id', input.approvalId).select('*').single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update approval.');  await createActivityLog({
     companyId: input.companyId,

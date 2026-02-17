@@ -3,7 +3,24 @@ import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { ModuleKey, Severity, UUID } from '../../api/models/core';
-import { createTask } from '../../api/services/tasksService';
+import { createTask, listTasksWithFilters, countTasksByAssignee } from '../../api/services/tasksService';
+import { UserMultiSelect } from '../ui/UserMultiSelect';
+import { useAsync } from '../../api/hooks/useAsync';
+import { listUserProfiles } from '../../api/services/profilesService';
+import { listCompanyMemberships } from '../../api/services/tenantService';
+import type { UserProfile } from '../../api/models/entities';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { TASK_SOURCE_ENTITY_LABELS } from '../../api/constants/taskLabels';
+
+const SOURCE_ENTITY_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'None' },
+  { value: 'ncr', label: TASK_SOURCE_ENTITY_LABELS.ncr ?? 'NCR' },
+  { value: 'incident', label: TASK_SOURCE_ENTITY_LABELS.incident ?? 'Incident' },
+  { value: 'audit_finding', label: TASK_SOURCE_ENTITY_LABELS.audit_finding ?? 'Audit finding' },
+  { value: 'inspection_run_item', label: TASK_SOURCE_ENTITY_LABELS.inspection_run_item ?? 'Inspection item' },
+  { value: 'ppe_issue_tracker', label: TASK_SOURCE_ENTITY_LABELS.ppe_issue_tracker ?? 'PPE issue' },
+  { value: 'program_audit_finding', label: 'Program audit finding' }
+];
 
 export function TaskCreateModal(props: {
   open: boolean;
@@ -36,8 +53,60 @@ export function TaskCreateModal(props: {
   const [plannedCompletionDate, setPlannedCompletionDate] = useState('');
   const [estimatedHours, setEstimatedHours] = useState('');
   const [dueAt, setDueAt] = useState('');
+  const [assigneeUserId, setAssigneeUserId] = useState<UUID | ''>('');
+  const [taskOwnerUserId, setTaskOwnerUserId] = useState<UUID | ''>('');
+  const [supportingTeamUserIds, setSupportingTeamUserIds] = useState<UUID[]>([]);
+  const [sourceEntityType, setSourceEntityType] = useState('');
+  const [sourceEntityId, setSourceEntityId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { data: companyUsers } = useAsync<{ userId: UUID; name: string }[]>(
+    async () => {
+      if (!props.companyId) return [];
+      const [profiles, memberships] = await Promise.all([
+        listUserProfiles(props.companyId),
+        listCompanyMemberships(props.companyId)
+      ]);
+      const profileMap = new Map<string, UserProfile>();
+      (profiles ?? []).forEach((p) => profileMap.set(p.user_id, p));
+      return (memberships ?? []).map((m) => ({
+        userId: m.user_id,
+        name: profileMap.get(m.user_id)?.full_name ?? `User ${m.user_id.slice(0, 8)}`
+      })).sort((a, b) => a.name.localeCompare(b.name));
+    },
+    [props.companyId]
+  );
+
+  const { data: assigneeTasks } = useAsync(
+    async () => {
+      if (!props.companyId || !assigneeUserId) return [];
+      return listTasksWithFilters({
+        companyId: props.companyId,
+        assigneeUserId: assigneeUserId as UUID,
+        limit: 200
+      });
+    },
+    [props.companyId, assigneeUserId]
+  );
+
+  const { data: assigneeOpenCount } = useAsync(
+    async () => {
+      if (!props.companyId || !assigneeUserId) return 0;
+      return countTasksByAssignee(props.companyId, assigneeUserId as UUID, true);
+    },
+    [props.companyId, assigneeUserId]
+  );
+
+  const workloadChartData = useMemo(() => {
+    const tasks = assigneeTasks ?? [];
+    const estimated = tasks.reduce((s, t) => s + (t.estimated_hours ?? 0), 0);
+    const spent = tasks.reduce((s, t) => s + (t.time_spent_minutes ?? 0) / 60, 0);
+    return [
+      { name: 'Estimated (h)', value: Math.round(estimated * 10) / 10, fill: 'var(--color-teal)' },
+      { name: 'Spent (h)', value: Math.round(spent * 10) / 10, fill: 'var(--color-charcoal-400)' }
+    ].filter((d) => d.value > 0);
+  }, [assigneeTasks]);
 
   const canSubmit = useMemo(() => title.trim().length > 2, [title]);
 
@@ -59,6 +128,12 @@ export function TaskCreateModal(props: {
         plannedCompletionDate: plannedCompletionDate || undefined,
         estimatedHours: estimatedHours ? Number(estimatedHours) || undefined : undefined,
         dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
+        assigneeUserId: assigneeUserId || undefined,
+        taskOwnerUserId: taskOwnerUserId || undefined,
+        allocatedByUserId: props.createdByUserId,
+        supportingTeamUserIds: supportingTeamUserIds.length ? supportingTeamUserIds : undefined,
+        sourceEntityType: sourceEntityType || undefined,
+        sourceEntityId: sourceEntityId.trim() ? (sourceEntityId.trim() as UUID) : undefined,
         createdByUserId: props.createdByUserId
       });
       props.onCreated?.();
@@ -72,6 +147,11 @@ export function TaskCreateModal(props: {
       setPlannedCompletionDate('');
       setEstimatedHours('');
       setDueAt('');
+      setAssigneeUserId('');
+      setTaskOwnerUserId('');
+      setSupportingTeamUserIds([]);
+      setSourceEntityType('');
+      setSourceEntityId('');
       setModule(props.defaultModule ?? 'safety');
     } catch (err: any) {
       setError(formatAuthError(err));
@@ -85,18 +165,19 @@ export function TaskCreateModal(props: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-4xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
             <p className="text-sm font-semibold text-charcoal">Create task</p>
-            <p className="text-xs text-charcoal-500 mt-0.5">Tasks are company-wide and appear immediately.</p>
+            <p className="text-xs text-charcoal-500 mt-0.5">Allocation wizard — assign and plan.</p>
           </div>
           <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
             <XIcon className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="p-5 space-y-4">
+        <form onSubmit={onSubmit} className="p-5 flex flex-col lg:flex-row gap-6">
+          <div className="flex-1 min-w-0 space-y-4">
           {error && (
             <div className="bg-critical/5 border border-critical/20 rounded-xl p-3">
               <p className="text-sm font-semibold text-critical">Could not create task</p>
@@ -238,6 +319,76 @@ export function TaskCreateModal(props: {
             />
           </div>
 
+          <div className="border-t border-surface-200 pt-4">
+            <p className="text-sm font-medium text-charcoal mb-2">Assignment</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-charcoal-500 mb-1">Assignee</label>
+                <select
+                  value={assigneeUserId}
+                  onChange={(e) => setAssigneeUserId((e.target.value || '') as UUID | '')}
+                  className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm"
+                >
+                  <option value="">Unassigned</option>
+                  {(companyUsers ?? []).map((u) => (
+                    <option key={u.userId} value={u.userId}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal-500 mb-1">Task owner</label>
+                <select
+                  value={taskOwnerUserId}
+                  onChange={(e) => setTaskOwnerUserId((e.target.value || '') as UUID | '')}
+                  className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm"
+                >
+                  <option value="">Not set</option>
+                  {(companyUsers ?? []).map((u) => (
+                    <option key={u.userId} value={u.userId}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="mt-3">
+              <label className="block text-xs font-medium text-charcoal-500 mb-1">Supporting team</label>
+              <UserMultiSelect
+                companyId={props.companyId}
+                selectedUserIds={supportingTeamUserIds}
+                onChange={(ids) => setSupportingTeamUserIds(ids)}
+                placeholder="Select supporting team..."
+                allowExternalEmails={false}
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-surface-200 pt-4">
+            <p className="text-sm font-medium text-charcoal mb-2">Link to source (optional)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-charcoal-500 mb-1">Source type</label>
+                <select
+                  value={sourceEntityType}
+                  onChange={(e) => setSourceEntityType(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm"
+                >
+                  {SOURCE_ENTITY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal-500 mb-1">Source ID (UUID)</label>
+                <input
+                  type="text"
+                  value={sourceEntityId}
+                  onChange={(e) => setSourceEntityId(e.target.value)}
+                  placeholder="e.g. record ID"
+                  className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
@@ -255,6 +406,34 @@ export function TaskCreateModal(props: {
               Create task
             </button>
           </div>
+          </div>
+
+          {assigneeUserId && (
+            <div className="w-full lg:w-72 shrink-0 bg-surface-50 rounded-xl border border-surface-200 p-4 h-fit">
+              <p className="text-sm font-semibold text-charcoal mb-2">Workload — assignee</p>
+              <p className="text-xs text-charcoal-500 mb-2">
+                Open tasks: <strong>{assigneeOpenCount ?? 0}</strong>
+              </p>
+              {workloadChartData.length > 0 ? (
+                <div className="h-32">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={workloadChartData} layout="vertical" margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
+                      <XAxis type="number" tick={{ fontSize: 10 }} />
+                      <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 10 }} />
+                      <Tooltip />
+                      <Bar dataKey="value" radius={4}>
+                        {workloadChartData.map((entry, i) => (
+                          <Cell key={i} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="text-xs text-charcoal-500">No time data for this assignee yet.</p>
+              )}
+            </div>
+          )}
         </form>
       </div>
     </div>

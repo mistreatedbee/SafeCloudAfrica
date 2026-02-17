@@ -61,9 +61,7 @@ export async function createPlan(input: {
     action: 'planning_plans.create',
     entityType: 'planning_plan',
     entityId: (data as any).id as UUID
-  });
-
-  return data as PlanningPlan;
+  });  return data as PlanningPlan;
 }export async function createKpi(input: {
   companyId: UUID;
   planId: UUID;

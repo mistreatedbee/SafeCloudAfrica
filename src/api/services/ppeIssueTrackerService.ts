@@ -253,6 +253,19 @@ export async function createPpeIssueTracker(
     entityId: created.id
   });
 
+  if (created.corrective_action_required) {
+    const { createTaskFromPpeIssue } = await import('./tasksService');
+    await createTaskFromPpeIssue({
+      id: created.id,
+      company_id: created.company_id,
+      description_of_issue: created.description_of_issue,
+      risk_level: created.risk_level,
+      responsible_user_id: created.responsible_user_id ?? null,
+      target_completion_date: created.target_completion_date ?? null,
+      created_by_user_id: created.created_by_user_id
+    }).catch(() => {});
+  }
+
   // Auto-escalation for high/critical risk
   if (created.risk_level === 'high' || created.risk_level === 'critical') {
     try {

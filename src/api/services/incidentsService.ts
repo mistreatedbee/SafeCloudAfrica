@@ -225,6 +225,22 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
     project_client: (created as any).project_client ?? null
   }).catch(() => {});
 
+  if (created.investigation_required || created.severity === 'high' || created.severity === 'critical') {
+    const { createTaskFromIncident } = await import('./tasksService');
+    await createTaskFromIncident({
+      id: created.id,
+      company_id: created.company_id,
+      module: created.module,
+      title: created.title,
+      description: created.description ?? null,
+      severity: created.severity,
+      assignee_user_id: created.assignee_user_id ?? null,
+      site_id: (created as any).site_id ?? null,
+      department_id: (created as any).department_id ?? null,
+      created_by_user_id: created.created_by_user_id
+    }).catch(() => {});
+  }
+
   return data as Incident;
 }
 

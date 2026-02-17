@@ -194,10 +194,24 @@ export async function createQualityNcr(input: {
     entityId: (data as any).id as UUID
   });
 
+  const created = data as QualityNcr;
+  const { createTaskFromNcr } = await import('./tasksService');
+  await createTaskFromNcr({
+    id: created.id,
+    company_id: created.company_id,
+    title: created.title,
+    description: created.description ?? null,
+    severity: created.severity ?? null,
+    risk_rating: (created as any).risk_rating ?? null,
+    site_id: created.site_id ?? null,
+    department_id: created.department_id ?? null,
+    corrective_action_due_date: (created as any).corrective_action_due_date ?? null,
+    corrective_action_owner_user_id: (created as any).corrective_action_owner_user_id ?? null,
+    created_by_user_id: created.created_by_user_id
+  }).catch(() => {});
+
   // Notify key participants (auditee and department manager) if present
   const { notifyNcrCreated } = await import('./notificationsService');
-  const created = data as QualityNcr;
-
   const notifyTargets: UUID[] = [];
   if (created.auditee_user_id) {
     notifyTargets.push(created.auditee_user_id as UUID);

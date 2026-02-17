@@ -65,7 +65,5 @@ export async function updateLegalRequirement(input: {
     action: 'legal_requirements.update',
     entityType: 'legal_requirement',
     entityId: input.id
-  });
-
-  return data as LegalRequirement;
+  });  return data as LegalRequirement;
 }
