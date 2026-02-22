@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthSessionListener } from './auth/AuthSessionListener';
 import { RequirePlatformAdmin } from './auth/RequirePlatformAdmin';
 import { RequireWorkspace } from './auth/RequireWorkspace';
 import { RequireSignedIn } from './auth/RequireSignedIn';
@@ -90,6 +91,7 @@ import { KPILibraryPage } from './pages/kpi/KPILibraryPage';
 export function App() {
   return (
     <BrowserRouter>
+      <AuthSessionListener />
       <TenantProvider>
         <ErrorBoundary>
           <Routes>

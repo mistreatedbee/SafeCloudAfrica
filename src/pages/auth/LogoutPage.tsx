@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@insforge/react';
+import { USER_SIGNED_OUT_KEY } from '../../auth/AuthSessionListener';
 
 export function LogoutPage() {
   const navigate = useNavigate();
@@ -8,6 +9,11 @@ export function LogoutPage() {
 
   useEffect(() => {
     void (async () => {
+      try {
+        sessionStorage.setItem(USER_SIGNED_OUT_KEY, '1');
+      } catch {
+        // ignore
+      }
       await signOut();
       navigate('/', { replace: true });
     })();

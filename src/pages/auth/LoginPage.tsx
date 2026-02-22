@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SignIn, useAuth, useUser } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
+import { SESSION_EXPIRED_KEY } from '../../auth/AuthSessionListener';
 import { useTenant } from '../../tenant/TenantContext';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getLoginRedirectPath } from '../../api/services/platformAdminService';
 import type { UUID } from '../../api/models/entities';
@@ -14,6 +15,23 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [redirecting, setRedirecting] = useState(false);
   const [redirectError, setRedirectError] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(() => {
+    try {
+      return typeof sessionStorage !== 'undefined' && sessionStorage.getItem(SESSION_EXPIRED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (sessionExpired) {
+      try {
+        sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+      } catch {
+        // ignore
+      }
+    }
+  }, [sessionExpired]);
 
   const redirectParam = searchParams.get('redirect');
 
@@ -62,6 +80,11 @@ export function LoginPage() {
       subtitle="Enter your email and password below to access your company workspace."
       sideTitle="Safe Cloud Africa"
     >
+      {sessionExpired && (
+        <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+          Your session expired. Please sign in again.
+        </div>
+      )}
       {activated && (
         <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
           License activated. Please log in to continue.
