@@ -8,14 +8,17 @@ import type { UUID } from '../../api/models/entities';
 export function LoginPage() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
-  const [params] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [redirecting, setRedirecting] = useState(false);
+  const [redirectError, setRedirectError] = useState<string | null>(null);
+
+  const redirectParam = searchParams.get('redirect');
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user?.id) return;
-    const redirect = params.get('redirect');
     let cancelled = false;
+    setRedirectError(null);
     setRedirecting(true);
     (async () => {
       try {
@@ -28,9 +31,14 @@ export function LoginPage() {
           return;
         }
         const { path: defaultPath, reason } = await getLoginRedirectPath(user!.id as UUID);
-        const target = redirect ? decodeURIComponent(redirect) : defaultPath;
-        const params = reason ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`) : target;
-        navigate(params, { replace: true });
+        const target = redirectParam ? decodeURIComponent(redirectParam) : defaultPath;
+        const pathWithReason = reason ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`) : target;
+        navigate(pathWithReason, { replace: true });
+      } catch (err) {
+        if (!cancelled) {
+          setRedirectError('Could not determine where to send you. Try again or go to the app.');
+          setRedirecting(false);
+        }
       } finally {
         if (!cancelled) setRedirecting(false);
       }
@@ -38,9 +46,9 @@ export function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, user?.id, navigate, params]);
+  }, [isLoaded, isSignedIn, user?.id, navigate, redirectParam]);
 
-  const activated = params.get('activated') === '1';
+  const activated = searchParams.get('activated') === '1';
 
   return (
     <AuthShell
@@ -51,6 +59,11 @@ export function LoginPage() {
       {activated && (
         <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
           License activated. Please log in to continue.
+        </div>
+      )}
+      {redirectError && (
+        <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+          {redirectError} <Link to="/app" className="font-medium underline">Go to app</Link>
         </div>
       )}
       {redirecting ? (
