@@ -10,10 +10,11 @@ import { useTenant } from '../tenant/TenantContext';
  */
 export function RequireWorkspace({ children }: { children: React.ReactElement }) {
   const { isLoaded, isSignedIn } = useAuth();
-  const { memberships, isPlatformAdmin } = useTenant();
+  const { memberships, isPlatformAdmin, isTenantLoaded } = useTenant();
 
   if (!isLoaded) return null;
   if (!isSignedIn) return <Navigate to="/login" replace />;
+  if (!isTenantLoaded) return null;
   if (isPlatformAdmin) return children;
   if (!memberships || memberships.length === 0) return <Navigate to="/activate?reason=no_org" replace />;
 

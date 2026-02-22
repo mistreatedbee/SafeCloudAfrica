@@ -7,7 +7,7 @@ import { insforge } from './api/insforge/client';
 createRoot(document.getElementById('root')!).render(
   <InsforgeProvider
     client={insforge}
-    afterSignInUrl="/app"
+    afterSignInUrl="/login"
     onSignIn={async (authToken) => {
       // Ensure all SDK database calls include the user's auth context for RLS.
       insforge.getHttpClient().setAuthToken(authToken);

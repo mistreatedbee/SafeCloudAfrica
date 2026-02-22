@@ -14,6 +14,8 @@ type TenantContextValue = {
   activeCompany: Company | null;
   activeRole: CompanyRole | null;
   isPlatformAdmin: boolean;
+  /** True after first refreshTenant() has completed for the current user (so isPlatformAdmin is known). */
+  isTenantLoaded: boolean;
   setActiveCompanyId: (companyId: UUID) => void;
   refreshTenant: () => Promise<void>;
 };
@@ -52,6 +54,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [memberships, setMemberships] = useState<MembershipWithCompany[]>([]);
   const [activeCompanyId, setActiveCompanyIdState] = useState<UUID | null>(getStoredActiveCompanyId());
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [isTenantLoaded, setIsTenantLoaded] = useState(false);
 
   const refreshTenant = useCallback(async () => {
     if (!isLoaded) return;
@@ -60,9 +63,11 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       setActiveCompanyIdState(null);
       storeActiveCompanyId(null);
       setIsPlatformAdmin(false);
+      setIsTenantLoaded(true);
       return;
     }
 
+    setIsTenantLoaded(false);
     const rows = await fetchMemberships(user.id as UUID);
     setMemberships(rows);
 
@@ -87,6 +92,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
     const dbIsAdmin = await checkPlatformAdmin(user.id as UUID);
     setIsPlatformAdmin(dbIsAdmin);
+    setIsTenantLoaded(true);
   }, [isLoaded, user?.id]);
 
   useEffect(() => {
@@ -115,10 +121,11 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       activeCompany,
       activeRole,
       isPlatformAdmin,
+      isTenantLoaded,
       setActiveCompanyId,
       refreshTenant
     }),
-    [activeCompany, activeCompanyId, activeRole, isPlatformAdmin, memberships, refreshTenant, setActiveCompanyId]
+    [activeCompany, activeCompanyId, activeRole, isPlatformAdmin, isTenantLoaded, memberships, refreshTenant, setActiveCompanyId]
   );
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;
