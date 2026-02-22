@@ -68,31 +68,43 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     }
 
     setIsTenantLoaded(false);
-    const rows = await fetchMemberships(user.id as UUID);
-    setMemberships(rows);
+    try {
+      const rows = await fetchMemberships(user.id as UUID);
+      setMemberships(rows);
 
-    const stored = getStoredActiveCompanyId();
-    const hasStored = stored && rows.some((m) => m.company_id === stored);
-    const next = hasStored ? stored : rows[0]?.company_id ?? null;
-    setActiveCompanyIdState(next);
-    storeActiveCompanyId(next);
+      const stored = getStoredActiveCompanyId();
+      const hasStored = stored && rows.some((m) => m.company_id === stored);
+      const next = hasStored ? stored : rows[0]?.company_id ?? null;
+      setActiveCompanyIdState(next);
+      storeActiveCompanyId(next);
 
-    // Ensure the signed-in user has a profile row for the active company for HR views,
-    // but do not overwrite any user-managed profile fields (name, email, etc.).
-    if (next) {
-      try {
-        await upsertMyProfile({
-          companyId: next,
-          userId: user.id as UUID
-        });
-      } catch {
-        // ignore profile bootstrap errors (RLS/ordering); HR pages can still function with fallbacks
+      // Ensure the signed-in user has a profile row for the active company for HR views,
+      // but do not overwrite any user-managed profile fields (name, email, etc.).
+      if (next) {
+        try {
+          await upsertMyProfile({
+            companyId: next,
+            userId: user.id as UUID
+          });
+        } catch {
+          // ignore profile bootstrap errors (RLS/ordering); HR pages can still function with fallbacks
+        }
       }
-    }
 
-    const dbIsAdmin = await checkPlatformAdmin(user.id as UUID);
-    setIsPlatformAdmin(dbIsAdmin);
-    setIsTenantLoaded(true);
+      const dbIsAdmin = await checkPlatformAdmin(user.id as UUID);
+      setIsPlatformAdmin(dbIsAdmin);
+    } catch {
+      // Ensure we don't stay in loading state forever (e.g. network/RLS errors)
+      setMemberships([]);
+      try {
+        const dbIsAdmin = await checkPlatformAdmin(user.id as UUID);
+        setIsPlatformAdmin(dbIsAdmin);
+      } catch {
+        setIsPlatformAdmin(false);
+      }
+    } finally {
+      setIsTenantLoaded(true);
+    }
   }, [isLoaded, user?.id]);
 
   useEffect(() => {

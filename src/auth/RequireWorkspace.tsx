@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
 /**
  * Ensures an authenticated user has selected/created a company workspace.
@@ -12,9 +13,21 @@ export function RequireWorkspace({ children }: { children: React.ReactElement })
   const { isLoaded, isSignedIn } = useAuth();
   const { memberships, isPlatformAdmin, isTenantLoaded } = useTenant();
 
-  if (!isLoaded) return null;
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <LoadingSpinner className="w-8 h-8 border-charcoal-300 border-t-teal" />
+      </div>
+    );
+  }
   if (!isSignedIn) return <Navigate to="/login" replace />;
-  if (!isTenantLoaded) return null;
+  if (!isTenantLoaded) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <LoadingSpinner className="w-8 h-8 border-charcoal-300 border-t-teal" />
+      </div>
+    );
+  }
   if (isPlatformAdmin) return <Navigate to="/super-admin/overview" replace />;
   if (!memberships || memberships.length === 0) return <Navigate to="/activate?reason=no_org" replace />;
 
