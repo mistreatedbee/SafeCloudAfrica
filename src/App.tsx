@@ -3,6 +3,8 @@ import { RequirePlatformAdmin } from './auth/RequirePlatformAdmin';
 import { RequireWorkspace } from './auth/RequireWorkspace';
 import { RequireSignedIn } from './auth/RequireSignedIn';
 import { RequireCompanyRole } from './auth/RequireCompanyRole';
+import { RequireActiveSubscription } from './auth/RequireActiveSubscription';
+import { OwnerOnboardingGate } from './auth/OwnerOnboardingGate';
 import { TenantProvider } from './tenant/TenantContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DashboardPage } from './pages/DashboardPage';
@@ -23,6 +25,7 @@ import { InspectionDetailPage } from './pages/InspectionDetailPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BillingPricingPage } from './pages/BillingPricingPage';
+import { BillingStatusPage } from './pages/BillingStatusPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { HelpSupportPage } from './pages/HelpSupportPage';
 import NCRsPage from './pages/NCRsPage';
@@ -35,6 +38,7 @@ import { PreWorkInstancesPage } from './pages/risks/PreWorkInstancesPage';
 import { PPEPage } from './pages/PPEPage';
 import { LegalRegisterPage } from './pages/LegalRegisterPage';
 import { UsersPage } from './pages/UsersPage';
+import { AdminLicensePage } from './pages/admin/AdminLicensePage';
 import { PlanningReviewPage } from './pages/PlanningReviewPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
 import { DocumentReviewsPage } from './pages/DocumentReviewsPage';
@@ -56,7 +60,10 @@ import { EmergencyPreparednessPage } from './pages/features/EmergencyPreparednes
 import { TemplateLibraryPage } from './pages/features/TemplateLibraryPage';
 import { LogoutPage } from './pages/auth/LogoutPage';
 import { InviteAcceptPage } from './pages/auth/InviteAcceptPage';
+import { InviteAcceptByTokenPage } from './pages/auth/InviteAcceptByTokenPage';
 import { LoginPage } from './pages/auth/LoginPage';
+import { ActivateLicensePage } from './pages/activate/ActivateLicensePage';
+import { OwnerOnboardingWizardPage } from './pages/owner/OwnerOnboardingWizardPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
@@ -96,6 +103,9 @@ export function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/logout" element={<LogoutPage />} />
 
+          {/* License activation (public) */}
+          <Route path="/activate" element={<ActivateLicensePage />} />
+
           {/* Post-login onboarding (create workspace) */}
           <Route
             path="/onboarding"
@@ -110,6 +120,7 @@ export function App() {
           <Route path="/seed-demo" element={<SeedDemoPage />} />
 
           {/* Invite acceptance */}
+          <Route path="/invite/accept" element={<InviteAcceptByTokenPage />} />
           <Route path="/invite/:inviteId" element={<InviteAcceptPage />} />
 
           {/* Super Admin (platform-wide) */}
@@ -139,7 +150,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DashboardPage />
+                  <RequireActiveSubscription>
+                    <DashboardPage />
+                  </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -151,7 +164,25 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DashboardPage />
+                  <RequireActiveSubscription>
+                    <OwnerOnboardingGate>
+                      <DashboardPage />
+                    </OwnerOnboardingGate>
+                  </RequireActiveSubscription>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/owner/onboarding"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireActiveSubscription>
+                    <RequireCompanyRole allowed={['owner']}>
+                      <OwnerOnboardingWizardPage />
+                    </RequireCompanyRole>
+                  </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -161,7 +192,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DashboardPage />
+                  <RequireActiveSubscription>
+                    <DashboardPage />
+                  </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -171,7 +204,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DashboardPage />
+                  <RequireActiveSubscription>
+                    <DashboardPage />
+                  </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -181,7 +216,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DashboardPage />
+                  <RequireActiveSubscription>
+                    <DashboardPage />
+                  </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -191,7 +228,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DashboardPage />
+                  <RequireActiveSubscription>
+                    <DashboardPage />
+                  </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -201,7 +240,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DashboardPage />
+                  <RequireActiveSubscription>
+                    <DashboardPage />
+                  </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -727,6 +768,16 @@ export function App() {
             }
           />
           <Route
+            path="/billing/status"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <BillingStatusPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/profile"
             element={
               <RequireSignedIn>
@@ -754,6 +805,20 @@ export function App() {
                   <RequireCompanyRole allowed={['owner', 'admin', 'manager']}>
                     <UsersPage />
                   </RequireCompanyRole>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/admin/license"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireActiveSubscription>
+                    <RequireCompanyRole allowed={['owner', 'admin']}>
+                      <AdminLicensePage />
+                    </RequireCompanyRole>
+                  </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
             }

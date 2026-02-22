@@ -19,6 +19,7 @@ function shortId(id: string): string {
 }
 
 function formatRole(role: string): string {
+  if (role === 'owner') return 'Organisation Owner';
   if (role === 'admin') return 'Admin';
   if (role === 'manager') return 'Manager';
   if (role === 'supervisor') return 'Supervisor';
@@ -56,9 +57,9 @@ export function UsersPage() {
   );
 
   const roles = ['admin', 'manager', 'supervisor', 'consultant', 'employee', 'auditor'] as const;
-  const canInvite = activeRole === 'admin' || activeRole === 'manager';
+  const canInvite = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager';
   const canEditProfiles = activeRole === 'admin' || activeRole === 'manager';
-  const allowedInviteRoles: CompanyRole[] = ['manager', 'supervisor', 'consultant', 'employee', 'auditor'];
+  const allowedInviteRoles: CompanyRole[] = activeRole === 'owner' ? ['admin', 'manager', 'supervisor', 'consultant', 'employee', 'auditor'] : ['manager', 'supervisor', 'consultant', 'employee', 'auditor'];
   const seatsAllowed = (activeCompany?.license_user_limit ?? activeCompany?.employee_limit ?? 0) as number;
   const seatsUsed = (members ?? []).length;
   const seatsFull = seatsAllowed > 0 && seatsUsed >= seatsAllowed;

@@ -1,10 +1,13 @@
 /**
- * Seed a single South African demo organisation with all roles (Owner, Admin, Manager, Supervisor, Employee, Auditor).
+ * Seed a single South African demo organisation with all roles (Owner, Admin, Manager, Supervisor, Employee, Auditor, Consultant).
  * Respects tenant isolation: one company, one set of sample records.
  *
  * Prerequisites:
- * - Apply docs/phase2-schema.sql and docs/migrations/operating_model_roles_licensing.sql
+ * - Apply docs/phase2-schema.sql, docs/migrations/operating_model_roles_licensing.sql, docs/migrations/license_activation_schema.sql
  * - Set INSFORGE_BASE_URL and INSFORGE_ANON_KEY (or VITE_*)
+ *
+ * Note: For subscription-aware redirects, insert an org_licenses row for the company (as platform admin) or use the /activate flow.
+ * Legacy companies without org_licenses still work (no redirect to billing/status).
  *
  * Usage (PowerShell):
  *   $env:INSFORGE_BASE_URL="https://your-project.insforge.app"
@@ -61,7 +64,8 @@ async function main() {
     { label: 'Manager', email: 'manager@mzanzisafety.co.za', password: 'SafeCloud@123', name: 'Bongani Dube', role: 'manager' },
     { label: 'Supervisor', email: 'supervisor@mzanzisafety.co.za', password: 'SafeCloud@123', name: 'Naledi Khumalo', role: 'supervisor' },
     { label: 'Employee', email: 'employee@mzanzisafety.co.za', password: 'SafeCloud@123', name: 'Lerato Sithole', role: 'employee' },
-    { label: 'Auditor', email: 'auditor@mzanzisafety.co.za', password: 'SafeCloud@123', name: 'Mandla Vilakazi', role: 'auditor' }
+    { label: 'Auditor', email: 'auditor@mzanzisafety.co.za', password: 'SafeCloud@123', name: 'Mandla Vilakazi', role: 'auditor' },
+    { label: 'Consultant', email: 'consultant@mzanzisafety.co.za', password: 'SafeCloud@123', name: 'Zanele Ngcobo', role: 'consultant' }
   ];
 
   console.log('Creating / validating demo users…');
@@ -93,14 +97,15 @@ async function main() {
   const companyId = company.id;
   console.log(`- OK: Company -> ${companyId}`);
 
-  console.log('Adding memberships (Owner, Admin, Manager, Supervisor, Employee, Auditor)…');
+  console.log('Adding memberships (Owner, Admin, Manager, Supervisor, Employee, Auditor, Consultant)…');
   const roles = [
     { label: 'Owner', role: 'owner' },
     { label: 'Admin', role: 'admin' },
     { label: 'Manager', role: 'manager' },
     { label: 'Supervisor', role: 'supervisor' },
     { label: 'Employee', role: 'employee' },
-    { label: 'Auditor', role: 'auditor' }
+    { label: 'Auditor', role: 'auditor' },
+    { label: 'Consultant', role: 'consultant' }
   ];
   for (const r of roles) {
     const { error: mErr } = await ownerClient.database.from('company_memberships').insert({
@@ -160,7 +165,7 @@ async function main() {
 
   console.log('\nDone.');
   console.log('Demo login password for all accounts: SafeCloud@123');
-  console.log('Org: Mzanzi Safety (Pty) Ltd — Owner, Admin, Manager, Supervisor, Employee, Auditor.');
+  console.log('Org: Mzanzi Safety (Pty) Ltd — Owner, Admin, Manager, Supervisor, Employee, Auditor, Consultant.');
   console.log('Add platform_admins row for Super Admin access (see docs/test-accounts.md).');
 }
 

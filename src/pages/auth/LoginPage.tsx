@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SignIn, useAuth, useUser } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
-import { ensureMeAsSuperAdmin, isPlatformAdmin, getRoleBasedRedirectPath } from '../../api/services/platformAdminService';
+import { ensureMeAsSuperAdmin, isPlatformAdmin, getLoginRedirectPath } from '../../api/services/platformAdminService';
 import type { UUID } from '../../api/models/entities';
 
 export function LoginPage() {
@@ -27,8 +27,10 @@ export function LoginPage() {
           navigate('/super-admin', { replace: true });
           return;
         }
-        const defaultPath = await getRoleBasedRedirectPath(user!.id as UUID);
-        navigate(redirect ? decodeURIComponent(redirect) : defaultPath, { replace: true });
+        const { path: defaultPath, reason } = await getLoginRedirectPath(user!.id as UUID);
+        const target = redirect ? decodeURIComponent(redirect) : defaultPath;
+        const params = reason ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`) : target;
+        navigate(params, { replace: true });
       } finally {
         if (!cancelled) setRedirecting(false);
       }
@@ -38,12 +40,19 @@ export function LoginPage() {
     };
   }, [isLoaded, isSignedIn, user?.id, navigate, params]);
 
+  const activated = params.get('activated') === '1';
+
   return (
     <AuthShell
       title="Sign in"
       subtitle="Access your company workspace and manage compliance in real time."
       sideTitle="Safe Cloud Africa"
     >
+      {activated && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
+          License activated. Please log in to continue.
+        </div>
+      )}
       {redirecting ? (
         <p className="text-sm text-charcoal-500">Redirecting…</p>
       ) : (

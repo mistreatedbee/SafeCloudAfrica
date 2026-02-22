@@ -3,6 +3,9 @@ import type { UUID } from '../models/entities';
 
 export type AuditAction =
   | 'license_created'
+  | 'license_activated'
+  | 'license_revoked'
+  | 'org_suspended'
   | 'module_toggled'
   | 'user_role_changed'
   | 'user_disabled'

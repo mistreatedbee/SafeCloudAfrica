@@ -15,7 +15,7 @@ export function RequireWorkspace({ children }: { children: React.ReactElement })
   if (!isLoaded) return null;
   if (!isSignedIn) return <Navigate to="/login" replace />;
   if (isPlatformAdmin) return children;
-  if (!memberships || memberships.length === 0) return <Navigate to="/onboarding" replace />;
+  if (!memberships || memberships.length === 0) return <Navigate to="/activate?reason=no_org" replace />;
 
   return children;
 }

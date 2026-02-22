@@ -210,6 +210,11 @@ const settingsItems: NavItem[] = [
   icon: CreditCardIcon
 },
 {
+  name: 'License',
+  path: '/admin/license',
+  icon: CreditCardIcon
+},
+{
   name: 'User Management',
   path: '/users',
   icon: UsersIcon

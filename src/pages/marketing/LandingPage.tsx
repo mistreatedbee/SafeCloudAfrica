@@ -113,6 +113,9 @@ export function LandingPage() {
             <button onClick={() => scrollToHash('#pricing')} className="hover:text-charcoal transition-colors">
               Pricing
             </button>
+            <Link to="/activate" className="hover:text-charcoal transition-colors">
+              Activate License
+            </Link>
             <button onClick={() => scrollToHash('#testimonials')} className="hover:text-charcoal transition-colors">
               Testimonials
             </button>
@@ -122,6 +125,12 @@ export function LandingPage() {
           </nav>
 
           <div className="flex items-center gap-2">
+            <Link
+              to="/activate"
+              className="hidden sm:inline-flex px-4 py-2 rounded-lg text-sm font-medium text-charcoal hover:bg-surface-100 transition-colors"
+            >
+              Activate License
+            </Link>
             <Link
               to="/login"
               className="hidden sm:inline-flex px-4 py-2 rounded-lg text-sm font-medium text-charcoal hover:bg-surface-100 transition-colors"
@@ -656,14 +665,22 @@ export function LandingPage() {
           >
             <div>
               <p className="font-semibold">Ready to start?</p>
-              <p className="text-sm text-navy-200 mt-1">Verify your email, then sign in to access the platform.</p>
+              <p className="text-sm text-navy-200 mt-1">Have a license key? Activate your organisation. Otherwise register for an account.</p>
             </div>
-            <Link
-              to="/register"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-teal text-white font-semibold hover:bg-teal-600 transition-colors"
-            >
-              Get started <ArrowRightIcon className="w-4 h-4" />
-            </Link>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                to="/activate"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-teal text-white font-semibold hover:bg-teal-600 transition-colors"
+              >
+                Activate License / Register Company <ArrowRightIcon className="w-4 h-4" />
+              </Link>
+              <Link
+                to="/register"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-white/10 border border-white/20 text-white font-semibold hover:bg-white/20 transition-colors"
+              >
+                Get started
+              </Link>
+            </div>
           </motion.div>
         </div>
       </motion.section>

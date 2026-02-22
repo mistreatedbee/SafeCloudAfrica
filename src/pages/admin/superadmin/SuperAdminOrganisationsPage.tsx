@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Building2Icon, SearchIcon, ShieldCheckIcon } from 'lucide-react';
+import { useUser } from '@insforge/react';
 import { useAsync } from '../../../api/hooks/useAsync';
 import { insforge } from '../../../api/insforge/client';
-import type { Company } from '../../../api/models/entities';
+import { suspendOrgSubscription } from '../../../api/services/licensesService';
+import type { Company, UUID } from '../../../api/models/entities';
 
 function formatDateZA(iso: string): string {
   const d = new Date(iso);
@@ -51,9 +53,12 @@ async function fetchCompaniesWithCounts(): Promise<CompanyWithCount[]> {
 }
 
 export function SuperAdminOrganisationsPage() {
+  const { user } = useUser();
   const [query, setQuery] = useState('');
+  const [suspendingId, setSuspendingId] = useState<UUID | null>(null);
+  const [refresh, setRefresh] = useState(0);
 
-  const { data, loading, error } = useAsync(fetchCompaniesWithCounts, []);
+  const { data, loading, error } = useAsync(fetchCompaniesWithCounts, [refresh]);
 
   const companies = data ?? [];
   const filtered = useMemo(() => {
@@ -73,6 +78,19 @@ export function SuperAdminOrganisationsPage() {
       .filter(([, v]) => v)
       .map(([k]) => k);
   };
+
+  const handleSuspend = async (companyId: UUID) => {
+    if (!user?.id || !confirm('Suspend this organisation? They will be redirected to the billing status page until restored.')) return;
+    setSuspendingId(companyId);
+    try {
+      await suspendOrgSubscription(companyId, user.id as UUID);
+      setRefresh((r) => r + 1);
+    } finally {
+      setSuspendingId(null);
+    }
+  };
+
+  const companyStatus = (c: Company & { status?: string }) => c.status ?? c.subscription_status ?? '—';
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
@@ -128,19 +146,20 @@ export function SuperAdminOrganisationsPage() {
                 <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Users / Limit</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Status</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Registered</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100">
               {loading && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-4 text-sm text-charcoal-500">
+                  <td colSpan={7} className="px-5 py-4 text-sm text-charcoal-500">
                     Loading…
                   </td>
                 </tr>
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-4 text-sm text-charcoal-500">
+                  <td colSpan={7} className="px-5 py-4 text-sm text-charcoal-500">
                     No organisations found.
                   </td>
                 </tr>
@@ -166,8 +185,20 @@ export function SuperAdminOrganisationsPage() {
                     <td className="px-5 py-4 text-sm text-charcoal-500">
                       {(c as CompanyWithCount).user_count ?? 0} / {c.employee_limit}
                     </td>
-                    <td className="px-5 py-4 text-sm text-charcoal-500">{c.subscription_status ?? '—'}</td>
+                    <td className="px-5 py-4 text-sm text-charcoal-500">{companyStatus(c)}</td>
                     <td className="px-5 py-4 text-sm text-charcoal-500">{formatDateZA(c.created_at)}</td>
+                    <td className="px-5 py-4">
+                      {(c as Company & { status?: string }).status !== 'suspended' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSuspend(c.id)}
+                          disabled={suspendingId === c.id}
+                          className="text-sm text-critical hover:underline disabled:opacity-50"
+                        >
+                          {suspendingId === c.id ? 'Suspending…' : 'Suspend'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
             </tbody>

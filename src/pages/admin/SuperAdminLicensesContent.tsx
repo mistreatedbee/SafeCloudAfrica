@@ -2,14 +2,18 @@ import React, { useState } from 'react';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
 import { insforge } from '../../api/insforge/client';
-import type { Company } from '../../api/models/entities';
+import type { Company, LicenseKey } from '../../api/models/entities';
 import type { UUID } from '../../api/models/entities';
 import {
   listLicenses,
   createLicense,
+  listLicenseKeys,
+  createLicenseKey,
+  revokeLicenseKey,
   remainingDays,
   type OrgLicenseRow,
-  type CreateLicenseInput
+  type CreateLicenseInput,
+  type CreateLicenseKeyInput
 } from '../../api/services/licensesService';
 
 const PLAN_OPTIONS: { value: CreateLicenseInput['plan_name']; label: string }[] = [
@@ -26,6 +30,13 @@ const SEAT_OPTIONS = [
 ];
 
 const DURATION_OPTIONS = [3, 6, 9, 12];
+
+const PLAN_KEY_OPTIONS: { value: CreateLicenseKeyInput['plan_name']; label: string }[] = [
+  { value: 'base', label: 'Base' },
+  { value: 'growth', label: 'Growth' },
+  { value: 'professional', label: 'Professional' },
+  { value: 'hr_only', label: 'HR-only' }
+];
 
 async function fetchCompanies(): Promise<Company[]> {
   const { data, error } = await insforge.database.from('companies').select('id, name').order('name').limit(500);
@@ -47,6 +58,22 @@ export function SuperAdminLicensesContent() {
   const [created, setCreated] = useState(0);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [generatedKey, setGeneratedKey] = useState<string | null>(null);
+  const [keyMessage, setKeyMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [keySubmitting, setKeySubmitting] = useState(false);
+  const [keyForm, setKeyForm] = useState<{
+    plan_name: CreateLicenseKeyInput['plan_name'];
+    billing_cycle_months: number;
+    seat_limit: number;
+    issued_to: string;
+  }>({
+    plan_name: 'base',
+    billing_cycle_months: 12,
+    seat_limit: 5,
+    issued_to: ''
+  });
+
+  const { data: keysList, loading: keysLoading } = useAsync(listLicenseKeys, [created]);
 
   const [form, setForm] = useState<{
     company_id: string;
@@ -100,9 +127,193 @@ export function SuperAdminLicensesContent() {
     return Math.max(0, license.seat_limit - used);
   };
 
+  const handleCreateKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.id) return;
+    setKeySubmitting(true);
+    setKeyMessage(null);
+    setGeneratedKey(null);
+    try {
+      const { key } = await createLicenseKey(
+        {
+          plan_name: keyForm.plan_name,
+          billing_cycle_months: keyForm.billing_cycle_months,
+          seat_limit: keyForm.seat_limit,
+          issued_to: keyForm.issued_to || null
+        },
+        user.id as UUID
+      );
+      setGeneratedKey(key);
+      setKeyMessage({ type: 'success', text: 'License key created. Share it securely with the client.' });
+      setCreated((c) => c + 1);
+    } catch (err) {
+      setKeyMessage({ type: 'error', text: String((err as Error)?.message ?? err) });
+    } finally {
+      setKeySubmitting(false);
+    }
+  };
+
+  const handleRevokeKey = async (keyId: UUID) => {
+    if (!user?.id || !confirm('Revoke this license key? It cannot be used for activation.')) return;
+    try {
+      await revokeLicenseKey(keyId, user.id as UUID);
+      setCreated((c) => c + 1);
+    } catch (err) {
+      setKeyMessage({ type: 'error', text: String((err as Error)?.message ?? err) });
+    }
+  };
+
+  const copyKey = (key: string) => {
+    navigator.clipboard.writeText(key);
+  };
+
   return (
     <div className="space-y-6">
-      {/* Create License form */}
+      {/* Generate license key (for client activation) */}
+      <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
+        <h2 className="text-base font-semibold text-charcoal mb-4">Generate license key (for client activation)</h2>
+        {keyMessage && (
+          <div
+            className={`mb-4 p-3 rounded-lg text-sm ${
+              keyMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-critical/10 text-critical'
+            }`}
+          >
+            {keyMessage.text}
+          </div>
+        )}
+        {generatedKey && (
+          <div className="mb-4 p-4 rounded-lg bg-surface-50 border border-surface-200">
+            <p className="text-xs font-medium text-charcoal-500 mb-1">License key (share securely with client)</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 font-mono text-sm text-charcoal bg-white px-3 py-2 rounded border border-surface-200">
+                {generatedKey}
+              </code>
+              <button
+                type="button"
+                onClick={() => copyKey(generatedKey)}
+                className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        )}
+        <form onSubmit={handleCreateKey} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1">Plan</label>
+            <select
+              value={keyForm.plan_name}
+              onChange={(e) => setKeyForm((f) => ({ ...f, plan_name: e.target.value as CreateLicenseKeyInput['plan_name'] }))}
+              className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm focus:ring-2 focus:ring-teal focus:border-transparent"
+            >
+              {PLAN_KEY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1">Billing cycle (months)</label>
+            <select
+              value={keyForm.billing_cycle_months}
+              onChange={(e) => setKeyForm((f) => ({ ...f, billing_cycle_months: Number(e.target.value) }))}
+              className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm focus:ring-2 focus:ring-teal focus:border-transparent"
+            >
+              {DURATION_OPTIONS.map((m) => (
+                <option key={m} value={m}>
+                  {m} months
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1">Seat limit</label>
+            <select
+              value={keyForm.seat_limit}
+              onChange={(e) => setKeyForm((f) => ({ ...f, seat_limit: Number(e.target.value) }))}
+              className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm focus:ring-2 focus:ring-teal focus:border-transparent"
+            >
+              {SEAT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1">Contract / issued to (optional)</label>
+            <input
+              type="text"
+              value={keyForm.issued_to}
+              onChange={(e) => setKeyForm((f) => ({ ...f, issued_to: e.target.value }))}
+              placeholder="Client or contract reference"
+              className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm focus:ring-2 focus:ring-teal focus:border-transparent"
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              type="submit"
+              disabled={keySubmitting}
+              className="px-4 py-2 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 disabled:opacity-50"
+            >
+              {keySubmitting ? 'Generating…' : 'Generate license key'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* License keys table */}
+      <div className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">
+        <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between">
+          <p className="font-semibold text-charcoal">License keys</p>
+          <p className="text-sm text-charcoal-500">{(keysList ?? []).length} total</p>
+        </div>
+        {keysLoading && <div className="p-5 text-sm text-charcoal-500">Loading…</div>}
+        {!keysLoading && (!keysList || keysList.length === 0) && (
+          <div className="p-5 text-sm text-charcoal-500">No license keys yet. Generate one above.</div>
+        )}
+        {!keysLoading && keysList && keysList.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-surface-50">
+                <tr>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Key</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Plan</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Seats</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Status</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Created</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-100">
+                {(keysList as LicenseKey[]).map((k) => (
+                  <tr key={k.id} className="hover:bg-surface-50">
+                    <td className="px-5 py-3 text-sm font-mono text-charcoal-600">{k.key}</td>
+                    <td className="px-5 py-3 text-sm text-charcoal">{k.plan_name}</td>
+                    <td className="px-5 py-3 text-sm text-charcoal">{k.seat_limit}</td>
+                    <td className="px-5 py-3 text-sm text-charcoal-500">{k.status}</td>
+                    <td className="px-5 py-3 text-sm text-charcoal-500">{new Date(k.created_at).toLocaleDateString()}</td>
+                    <td className="px-5 py-3">
+                      {k.status === 'unused' && (
+                        <button
+                          type="button"
+                          onClick={() => handleRevokeKey(k.id)}
+                          className="text-sm text-critical hover:underline"
+                        >
+                          Revoke
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Create License form (existing org) */}
       <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
         <h2 className="text-base font-semibold text-charcoal mb-4">Create license</h2>
         {message && (

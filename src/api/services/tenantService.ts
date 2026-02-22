@@ -137,6 +137,15 @@ export async function listCompanyInvites(companyId: UUID): Promise<CompanyInvite
   return (data ?? []) as CompanyInvite[];
 }
 
+/** Resolve invite id from token (for /invite/accept?token=...). Returns null if invalid or expired. */
+export async function getInviteIdByToken(token: string): Promise<UUID | null> {
+  const trimmed = token?.trim();
+  if (!trimmed) return null;
+  const { data, error } = await insforge.database.rpc('get_invite_id_by_token', { p_token: trimmed });
+  if (error || data == null) return null;
+  return data as UUID;
+}
+
 export async function getInviteById(inviteId: UUID): Promise<CompanyInvite> {
   const { data, error } = await insforge.database
     .from('company_invites')
@@ -173,13 +182,20 @@ export async function createInvite(input: {
     throw new Error(`Your licence limit is ${input.company.employee_limit} users. Please upgrade to add more employees.`);
   }
 
+  const token = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
+
   const { data, error } = await insforge.database
     .from('company_invites')
     .insert({
       company_id: input.company.id,
       email: input.email.trim().toLowerCase(),
       role: input.role,
-      created_by_user_id: input.actorUserId
+      created_by_user_id: input.actorUserId,
+      token,
+      expires_at: expiresAt.toISOString(),
+      status: 'pending'
     })
     .select('*')
     .single();
@@ -207,7 +223,8 @@ export async function acceptInvite(input: { inviteId: UUID; userId: UUID }): Pro
     .from('company_invites')
     .update({
       accepted_at: new Date().toISOString(),
-      accepted_user_id: input.userId
+      accepted_user_id: input.userId,
+      status: 'accepted'
     })
     .eq('id', input.inviteId)
     .select('*')

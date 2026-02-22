@@ -13,12 +13,16 @@ export type DynamicOption = {
   usage_count: number;
 };
 
+export type CompanyStatus = 'active' | 'suspended';
+
 export type Company = {
   id: UUID;
   name: string;
   license_type: LicenseType;
   employee_limit: number;
   industry?: string | null;
+  country?: string | null;
+  status?: CompanyStatus | null;
   logo_bucket?: string | null;
   logo_key?: string | null;
   modules_enabled?: Record<string, boolean> | null;
@@ -30,6 +34,7 @@ export type Company = {
   metadata?: Record<string, unknown> | null;
   subscription_duration_months?: number | null; // 3, 6, 9, 12 (Operating Model)
   created_at: string;
+  updated_at?: string | null;
 };
 
 export type CompanyMembership = {
@@ -40,6 +45,8 @@ export type CompanyMembership = {
   created_at: string;
 };
 
+export type CompanyInviteStatus = 'pending' | 'accepted' | 'expired';
+
 export type CompanyInvite = {
   id: UUID;
   company_id: UUID;
@@ -49,6 +56,27 @@ export type CompanyInvite = {
   created_at: string;
   accepted_at: string | null;
   accepted_user_id: UUID | null;
+  token: string;
+  expires_at: string;
+  status: CompanyInviteStatus;
+};
+
+export type LicenseKeyStatus = 'unused' | 'used' | 'revoked';
+
+export type LicenseKey = {
+  id: UUID;
+  key: string;
+  plan_name: 'base' | 'growth' | 'professional' | 'hr_only';
+  billing_cycle_months: number;
+  seat_limit: number;
+  modules_enabled: string[];
+  status: LicenseKeyStatus;
+  issued_to: string | null;
+  expires_at: string | null;
+  created_by_super_admin_id: UUID;
+  created_at: string;
+  used_at: string | null;
+  used_by_organization_id: UUID | null;
 };
 
 export type Site = {
