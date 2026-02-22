@@ -4,7 +4,10 @@ import { KeyRoundIcon, Building2Icon, FileCheckIcon, Loader2Icon } from 'lucide-
 import { useAuth, useUser } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { validateLicenseKey, activateLicenseKey, type ValidatedKeyInfo } from '../../api/services/activationService';
+import { getLoginRedirectPath } from '../../api/services/platformAdminService';
+import { useTenant } from '../../tenant/TenantContext';
 import { insforge } from '../../api/insforge/client';
+import type { UUID } from '../../api/models/entities';
 
 const PLAN_LABELS: Record<string, string> = {
   base: 'Base',
@@ -19,6 +22,7 @@ export function ActivateLicensePage() {
   const navigate = useNavigate();
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
+  const { refreshTenant } = useTenant();
 
   const [key, setKey] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -115,7 +119,7 @@ export function ActivateLicensePage() {
         return;
       }
 
-      await activateLicenseKey({
+      const result = await activateLicenseKey({
         key: k,
         companyName: companyName.trim(),
         industry: industry.trim(),
@@ -125,7 +129,9 @@ export function ActivateLicensePage() {
         phone: phone.trim()
       });
 
-      navigate('/login?activated=1', { replace: true });
+      await refreshTenant();
+      const { path } = await getLoginRedirectPath(result.userId as UUID);
+      navigate(path, { replace: true });
     } catch (err) {
       setSubmitError((err as Error)?.message ?? 'Activation failed. Please try again or contact support.');
     } finally {

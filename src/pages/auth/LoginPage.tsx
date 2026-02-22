@@ -37,6 +37,8 @@ export function LoginPage() {
         const { path: defaultPath, reason } = await getLoginRedirectPath(user!.id as UUID);
         const target = redirectParam ? decodeURIComponent(redirectParam) : defaultPath;
         const pathWithReason = reason ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`) : target;
+        await refreshTenant();
+        if (cancelled) return;
         navigate(pathWithReason, { replace: true });
       } catch (err) {
         if (!cancelled) {
