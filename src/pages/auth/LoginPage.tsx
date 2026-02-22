@@ -2,12 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SignIn, useAuth, useUser } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
+import { useTenant } from '../../tenant/TenantContext';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getLoginRedirectPath } from '../../api/services/platformAdminService';
 import type { UUID } from '../../api/models/entities';
 
 export function LoginPage() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
+  const { refreshTenant } = useTenant();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [redirecting, setRedirecting] = useState(false);
@@ -27,7 +29,9 @@ export function LoginPage() {
         const isSA = await isPlatformAdmin(user!.id as UUID);
         if (cancelled) return;
         if (isSA) {
-          navigate('/super-admin', { replace: true });
+          await refreshTenant();
+          if (cancelled) return;
+          navigate('/super-admin/overview', { replace: true });
           return;
         }
         const { path: defaultPath, reason } = await getLoginRedirectPath(user!.id as UUID);
