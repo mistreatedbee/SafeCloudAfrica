@@ -106,22 +106,6 @@ export async function updateCompanyProfile(input: {
 }
 
 export async function listCompanyMemberships(companyId: UUID): Promise<CompanyMembership[]> {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0b6fab05-6c3e-43f5-9c91-57b342f42891', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id: `log_${Date.now()}_listCompanyMemberships`,
-      timestamp: Date.now(),
-      location: 'src/api/services/tenantService.ts:listCompanyMemberships',
-      message: 'listCompanyMemberships called',
-      hypothesisId: 'H3',
-      runId: 'pre-fix',
-      data: { companyId }
-    })
-  }).catch(() => {});
-  // #endregion agent log
-
   const { data, error } = await insforge.database.from('company_memberships').select('*').eq('company_id', companyId);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as CompanyMembership[];

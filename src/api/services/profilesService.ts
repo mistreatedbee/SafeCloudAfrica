@@ -4,22 +4,6 @@ import type { UserProfile, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
 
 export async function listUserProfiles(companyId: UUID): Promise<UserProfile[]> {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0b6fab05-6c3e-43f5-9c91-57b342f42891', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id: `log_${Date.now()}_listUserProfiles`,
-      timestamp: Date.now(),
-      location: 'src/api/services/profilesService.ts:listUserProfiles',
-      message: 'listUserProfiles called',
-      hypothesisId: 'H2',
-      runId: 'pre-fix',
-      data: { companyId }
-    })
-  }).catch(() => {});
-  // #endregion agent log
-
   const { data, error } = await insforge.database
     .from('user_profiles')
     .select('*')
@@ -65,44 +49,11 @@ export async function upsertMyProfile(input: {
     site: input.site ?? null,
     updated_at: new Date().toISOString()
   };
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0b6fab05-6c3e-43f5-9c91-57b342f42891', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id: `log_${Date.now()}_upsertMyProfile`,
-      timestamp: Date.now(),
-      location: 'profilesService.ts:upsertMyProfile:before',
-      message: 'user_profiles upsert request',
-      hypothesisId: 'H1',
-      data: { keys: Object.keys(payload), onConflict: 'company_id,user_id' }
-    })
-  }).catch(() => {});
-  // #endregion agent log
   const { data, error } = await insforge.database
     .from('user_profiles')
     .upsert(payload, { onConflict: 'company_id,user_id' })
     .select('*')
     .single();
-  // #region agent log
-  if (error) {
-    fetch('http://127.0.0.1:7242/ingest/0b6fab05-6c3e-43f5-9c91-57b342f42891', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: `log_${Date.now()}_upsertErr`,
-        timestamp: Date.now(),
-        location: 'profilesService.ts:upsertMyProfile:error',
-        message: 'user_profiles upsert error',
-        hypothesisId: 'H1',
-        data: {
-          errorMessage: getErrorMessage(error),
-          errorRaw: typeof error === 'object' && error !== null ? JSON.stringify(error) : String(error)
-        }
-      })
-    }).catch(() => {});
-  }
-  // #endregion agent log
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to save profile.');
 
