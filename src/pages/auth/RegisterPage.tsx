@@ -13,7 +13,7 @@ export function RegisterPage() {
       <SignUp signInUrl="/login" emailRedirectTo={`${window.location.origin}/app`} />
 
       <div className="mt-6 flex items-center justify-between text-sm">
-        <Link to="/login" className="text-teal font-semibold hover:text-teal-700">
+        <Link to="/login" className="text-teal font-semibold hover:text-teal-700" aria-label="Go to sign in page">
           Already have an account? Sign in
         </Link>
         <Link to="/" className="text-charcoal-500 hover:text-charcoal">

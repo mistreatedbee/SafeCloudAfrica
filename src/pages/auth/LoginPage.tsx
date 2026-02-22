@@ -53,7 +53,7 @@ export function LoginPage() {
   return (
     <AuthShell
       title="Sign in"
-      subtitle="Access your company workspace and manage compliance in real time."
+      subtitle="Enter your email and password below to access your company workspace."
       sideTitle="Safe Cloud Africa"
     >
       {activated && (
@@ -71,6 +71,7 @@ export function LoginPage() {
       ) : (
         <>
           <SignIn signUpUrl="/register" forgotPasswordUrl="/forgot-password" />
+          <p className="mt-1 text-xs text-charcoal-500">Use the same email and password you used to register.</p>
 
           <div className="mt-6 flex items-center justify-between text-sm">
         <Link to="/register" className="text-teal font-semibold hover:text-teal-700">
