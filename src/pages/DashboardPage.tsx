@@ -28,6 +28,7 @@ import { listRisks } from '../api/services/risksService';
 import { listModuleTargets } from '../api/services/moduleTargetsService';
 import { countOverdueCorrectiveActions } from '../api/services/correctiveActionsService';
 import { countExpiringTraining, countExpiringTrainingForUser } from '../api/services/trainingService';
+import { getLicenseInfo } from '../api/services/licensingService';
 const containerVariants = {
   hidden: {
     opacity: 0
@@ -219,6 +220,14 @@ export function DashboardPage() {
     [activeCompanyId, activeRole, user?.id, refreshKey]
   );
 
+  const { data: licenseInfo } = useAsync(
+    async () => {
+      if (!activeCompanyId || (activeRole !== 'admin' && activeRole !== 'owner')) return null;
+      return await getLicenseInfo(activeCompanyId);
+    },
+    [activeCompanyId, activeRole, refreshKey]
+  );
+
   const openIncidents = summary?.openIncidents ?? 0;
   const overdueActions = summary?.overdueActions ?? 0;
   const expiringTraining = summary?.expiringTraining ?? 0;
@@ -274,6 +283,30 @@ export function DashboardPage() {
               className="mt-3 text-sm text-critical hover:text-critical-600 font-medium underline"
             >
               Try again
+            </button>
+          </motion.div>
+        )}
+
+        {/* License usage (Admin/Owner only) */}
+        {(activeRole === 'admin' || activeRole === 'owner') && licenseInfo && (
+          <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <p className="text-sm font-semibold text-charcoal">License usage</p>
+            <p className="text-sm text-charcoal-500 mt-1">
+              <span className="font-medium text-charcoal">{licenseInfo.currentEmployees}</span> / {licenseInfo.employeeLimit} seats used
+              {' — '}
+              <span className={licenseInfo.canAddEmployees ? 'text-success' : 'text-critical'}>
+                {Math.max(0, licenseInfo.employeeLimit - licenseInfo.currentEmployees)} remaining
+              </span>
+            </p>
+            {!licenseInfo.canAddEmployees && (
+              <p className="text-xs text-critical mt-1">Upgrade your licence to add more users.</p>
+            )}
+            <button
+              type="button"
+              onClick={() => navigate('/billing')}
+              className="mt-2 text-sm font-medium text-teal hover:text-teal-700"
+            >
+              View billing & pricing
             </button>
           </motion.div>
         )}

@@ -11,21 +11,25 @@ export type CreateCompanyInput = {
   employeeLimit: number;
   primaryAdminUserId: UUID;
   metadata?: Record<string, unknown> | null;
+  /** Operating Model: 3, 6, 9, or 12 months */
+  subscriptionDurationMonths?: number | null;
 };
 
 export async function createCompany(input: CreateCompanyInput): Promise<Company> {
   const session = await ensureInsforgeSession();
+  const row: Record<string, unknown> = {
+    name: input.name,
+    license_type: input.licenseType,
+    employee_limit: input.employeeLimit,
+    primary_admin_user_id: session.userId,
+    metadata: input.metadata ?? null
+  };
+  if (input.subscriptionDurationMonths != null && [3, 6, 9, 12].includes(input.subscriptionDurationMonths)) {
+    row.subscription_duration_months = input.subscriptionDurationMonths;
+  }
   const { data, error } = await insforge.database
     .from('companies')
-    .insert({
-      name: input.name,
-      license_type: input.licenseType,
-      employee_limit: input.employeeLimit,
-      // Critical for RLS: auth.uid() must match this value.
-      // Use the session user id (source of truth) to avoid any mismatch.
-      primary_admin_user_id: session.userId,
-      metadata: input.metadata ?? null
-    })
+    .insert(row)
     .select('*')
     .single();
 
@@ -236,6 +240,16 @@ export function getDefaultEmployeeLimit(licenseType: LicenseType): number {
       return 20;
     case 'enterprise_custom':
       return 9999;
+    case 'base':
+      return 5;
+    case 'growth':
+      return 20;
+    case 'professional':
+      return 50;
+    case 'hr_only':
+      return 5;
+    default:
+      return 5;
   }
 }
 

@@ -28,6 +28,7 @@ export type Company = {
   subscription_status?: 'trial' | 'active' | 'past_due' | 'cancelled';
   primary_admin_user_id: UUID;
   metadata?: Record<string, unknown> | null;
+  subscription_duration_months?: number | null; // 3, 6, 9, 12 (Operating Model)
   created_at: string;
 };
 

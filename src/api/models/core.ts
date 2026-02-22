@@ -1,9 +1,10 @@
 export type UUID = string;
 
-// Phase 2 RBAC (company-scoped)
-export type CompanyRole = 'admin' | 'manager' | 'supervisor' | 'consultant' | 'employee' | 'auditor';
+// Phase 2 RBAC (company-scoped) + Operating Model (owner = Organisation Owner)
+export type CompanyRole = 'owner' | 'admin' | 'manager' | 'supervisor' | 'consultant' | 'employee' | 'auditor';
 
-export type LicenseType = 'starter_6m' | 'professional_12m' | 'enterprise_custom';
+// Legacy + Operating Model tiers (base, growth, professional, hr_only)
+export type LicenseType = 'starter_6m' | 'professional_12m' | 'enterprise_custom' | 'base' | 'growth' | 'professional' | 'hr_only';
 
 export type ModuleKey = 'safety' | 'hr' | 'legal' | 'quality' | 'health' | 'environment' | 'general' | 'security';
 

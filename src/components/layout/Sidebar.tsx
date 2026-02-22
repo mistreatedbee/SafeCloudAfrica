@@ -27,8 +27,9 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   XIcon,
-  CloudIcon } from
-'lucide-react';
+  CloudIcon,
+  CreditCardIcon
+} from 'lucide-react';
 type NavItem = {
   name: string;
   path: string;
@@ -202,6 +203,11 @@ const settingsItems: NavItem[] = [
   name: 'Settings',
   path: '/settings',
   icon: SettingsIcon
+},
+{
+  name: 'Billing & Pricing',
+  path: '/billing',
+  icon: CreditCardIcon
 },
 {
   name: 'User Management',

@@ -26,7 +26,7 @@ export function IncidentAnalyticsPage() {
   const [selectedCategory, setSelectedCategory] = useState<IncidentCategory | 'all'>('all');
   const [selectedRiskLevel, setSelectedRiskLevel] = useState<RiskLevel | 'all'>('all');
 
-  const { data: incidents, loading } = useAsync<Incident[]>(
+  const { data: incidents, loading, error: loadError } = useAsync<Incident[]>(
     async () => {
       if (!activeCompanyId) return [];
       const now = new Date();
@@ -72,10 +72,10 @@ export function IncidentAnalyticsPage() {
       // Prefer dedicated columns; fallback to metadata for older rows.
       const riskLevelRaw = String((incident as any)?.risk_rating ?? (incident as any)?.metadata?.riskLevel ?? '').toLowerCase();
       const riskLevel: RiskLevel =
-        riskLevelRaw === 'critical' ? 'Critical' :
-        riskLevelRaw === 'high' ? 'High' :
-        riskLevelRaw === 'low' ? 'Low' :
-        'Medium';
+        riskLevelRaw === 'critical' ? 'critical' :
+        riskLevelRaw === 'high' ? 'high' :
+        riskLevelRaw === 'low' ? 'low' :
+        'medium';
       const matchesRisk = selectedRiskLevel === 'all' || riskLevel === selectedRiskLevel;
       return inDateRange && matchesCategory && matchesRisk;
     });
@@ -103,10 +103,10 @@ export function IncidentAnalyticsPage() {
       
       const riskLevelRaw = String((incident as any)?.risk_rating ?? (incident as any)?.metadata?.riskLevel ?? '').toLowerCase();
       const riskLevel: RiskLevel =
-        riskLevelRaw === 'critical' ? 'Critical' :
-        riskLevelRaw === 'high' ? 'High' :
-        riskLevelRaw === 'low' ? 'Low' :
-        'Medium';
+        riskLevelRaw === 'critical' ? 'critical' :
+        riskLevelRaw === 'high' ? 'high' :
+        riskLevelRaw === 'low' ? 'low' :
+        'medium';
       trend.riskLevels.set(riskLevel, (trend.riskLevels.get(riskLevel) || 0) + 1);
     });
     
@@ -137,10 +137,10 @@ export function IncidentAnalyticsPage() {
     filteredIncidents.forEach(incident => {
       const riskLevelRaw = String((incident as any)?.risk_rating ?? (incident as any)?.metadata?.riskLevel ?? '').toLowerCase();
       const riskLevel: RiskLevel =
-        riskLevelRaw === 'critical' ? 'Critical' :
-        riskLevelRaw === 'high' ? 'High' :
-        riskLevelRaw === 'low' ? 'Low' :
-        'Medium';
+        riskLevelRaw === 'critical' ? 'critical' :
+        riskLevelRaw === 'high' ? 'high' :
+        riskLevelRaw === 'low' ? 'low' :
+        'medium';
       breakdown.set(riskLevel, (breakdown.get(riskLevel) || 0) + 1);
     });
     return Array.from(breakdown.entries());
@@ -175,6 +175,12 @@ export function IncidentAnalyticsPage() {
         animate={{ opacity: 1 }}
         className="space-y-6"
       >
+        {loadError && (
+          <div className="bg-critical/10 border border-critical text-critical px-4 py-3 rounded-lg">
+            <p className="font-medium">Failed to load incidents</p>
+            <p className="text-sm mt-1">{loadError.message}</p>
+          </div>
+        )}
         {/* Header */}
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
           <div>
@@ -231,10 +237,10 @@ export function IncidentAnalyticsPage() {
                 className="px-3 py-1.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
               >
                 <option value="all">All Risk Levels</option>
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-                <option value="Critical">Critical</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
               </select>
             </div>
           </div>
@@ -266,7 +272,7 @@ export function IncidentAnalyticsPage() {
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Critical Risk</p>
             <p className="text-2xl font-bold text-critical mt-1">
-              {riskLevelBreakdown.find(([level]) => level === 'Critical')?.[1] || 0}
+              {riskLevelBreakdown.find(([level]) => level === 'critical')?.[1] || 0}
             </p>
           </div>
         </div>
@@ -339,14 +345,15 @@ export function IncidentAnalyticsPage() {
               {riskLevelBreakdown.map(([level, count]) => {
                 const percentage = (count / filteredIncidents.length) * 100;
                 const color = 
-                  level === 'Critical' ? 'bg-critical' :
-                  level === 'High' ? 'bg-warning' :
-                  level === 'Medium' ? 'bg-teal' :
+                  level === 'critical' ? 'bg-critical' :
+                  level === 'high' ? 'bg-warning' :
+                  level === 'medium' ? 'bg-teal' :
                   'bg-success';
+                const label = level.charAt(0).toUpperCase() + level.slice(1);
                 return (
                   <div key={level}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-charcoal">{level}</span>
+                      <span className="text-sm text-charcoal">{label}</span>
                       <span className="text-sm font-medium text-charcoal">{count}</span>
                     </div>
                     <div className="w-full bg-surface-100 rounded-full h-2">

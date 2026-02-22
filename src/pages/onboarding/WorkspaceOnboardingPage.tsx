@@ -9,6 +9,7 @@ import { formatAuthError } from '../../auth/authMessages';
 import { useUser } from '@insforge/react';
 import { createCompany, createMembership, getDefaultEmployeeLimit } from '../../api/services/tenantService';
 import { useTenant } from '../../tenant/TenantContext';
+import { PAYMENT_DURATION_MONTHS } from '../../api/services/licensingService';
 
 function getLicenseCopy(type: LicenseType): { title: string; price: string; badge?: string; limit: string; bullets: string[] } {
   switch (type) {
@@ -16,7 +17,7 @@ function getLicenseCopy(type: LicenseType): { title: string; price: string; badg
       return {
         title: 'Starter Licence (6 months)',
         price: 'R3,000 once-off',
-        badge: 'Best for small businesses',
+        badge: 'Legacy',
         limit: 'Up to 4 employees',
         bullets: ['Core modules', 'User & role management', 'Basic storage', 'Audit logs', 'Email support']
       };
@@ -24,7 +25,7 @@ function getLicenseCopy(type: LicenseType): { title: string; price: string; badg
       return {
         title: 'Professional Licence (12 months)',
         price: 'R5,000 once-off',
-        badge: 'Most popular',
+        badge: 'Legacy',
         limit: 'Up to 20 employees',
         bullets: ['Everything in Starter', 'Extended storage', 'Priority support', 'Branding (logo & name)', 'Planned upgrades']
       };
@@ -35,6 +36,45 @@ function getLicenseCopy(type: LicenseType): { title: string; price: string; badg
         badge: 'Custom onboarding',
         limit: 'Custom employee limit',
         bullets: ['Multi-site', 'Custom features', 'Onboarding + training', 'Dedicated support', 'Integrations (planned)']
+      };
+    case 'base':
+      return {
+        title: 'Base',
+        price: 'R4,000/month',
+        badge: '1–5 users',
+        limit: 'Up to 5 employees (HR free)',
+        bullets: ['Core modules', 'HR Module free', 'User & role management', 'Audit logs', 'Email support']
+      };
+    case 'growth':
+      return {
+        title: 'Growth',
+        price: 'R6,500/month',
+        badge: 'Most popular',
+        limit: '6–20 employees (HR free)',
+        bullets: ['Everything in Base', 'Extended storage', 'Priority support', 'Branding', 'Planned upgrades']
+      };
+    case 'professional':
+      return {
+        title: 'Professional',
+        price: 'R7,500/month',
+        badge: '21–50 users',
+        limit: '21–50 employees (HR free)',
+        bullets: ['Full platform', 'Advanced reporting', 'Compliance scoring', 'Dedicated support', 'Integrations']
+      };
+    case 'hr_only':
+      return {
+        title: 'HR-only',
+        price: 'R3,000/month',
+        badge: '1–5 users',
+        limit: 'Up to 5 employees (HR only)',
+        bullets: ['HR Module', 'Training & KPIs', 'Documents', 'User management', 'Email support']
+      };
+    default:
+      return {
+        title: String(type),
+        price: '—',
+        limit: '—',
+        bullets: []
       };
   }
 }
@@ -49,7 +89,8 @@ export function WorkspaceOnboardingPage() {
     if (memberships.length > 0) navigate('/app', { replace: true });
   }, [memberships.length, navigate]);
 
-  const [licenseType, setLicenseType] = useState<LicenseType>('starter_6m');
+  const [licenseType, setLicenseType] = useState<LicenseType>('base');
+  const [subscriptionDurationMonths, setSubscriptionDurationMonths] = useState<number>(12);
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
   const [province, setProvince] = useState('');
@@ -59,6 +100,7 @@ export function WorkspaceOnboardingPage() {
   const [loading, setLoading] = useState(false);
 
   const selected = useMemo(() => getLicenseCopy(licenseType), [licenseType]);
+  const isOperatingModelTier = ['base', 'growth', 'professional', 'hr_only'].includes(licenseType);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -84,9 +126,14 @@ export function WorkspaceOnboardingPage() {
           contact_phone: phone.trim() || null,
           province: province || null,
           industry: industry || null
-        }
+        },
+        subscriptionDurationMonths: isOperatingModelTier ? subscriptionDurationMonths : undefined
       });
-      await createMembership({ companyId: company.id, userId: user.id, role: 'admin' });
+      await createMembership({
+        companyId: company.id,
+        userId: user.id,
+        role: isOperatingModelTier ? 'owner' : 'admin'
+      });
       await refreshTenant();
 
       setSuccess('Workspace created. Redirecting…');
@@ -105,8 +152,9 @@ export function WorkspaceOnboardingPage() {
       <div className="space-y-4">
         <div className="bg-surface-50 border border-surface-200 rounded-xl p-4">
           <p className="text-sm font-semibold text-charcoal">Choose your licence</p>
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {(['starter_6m', 'professional_12m', 'enterprise_custom'] as LicenseType[]).map((t) => {
+          <p className="text-xs text-charcoal-500 mt-1">Operating Model tiers (recommended) or legacy options.</p>
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {(['base', 'growth', 'professional', 'hr_only', 'starter_6m', 'professional_12m', 'enterprise_custom'] as LicenseType[]).map((t) => {
               const c = getLicenseCopy(t);
               const active = t === licenseType;
               return (
@@ -142,6 +190,20 @@ export function WorkspaceOnboardingPage() {
         <div className="bg-white border border-surface-300 rounded-xl p-4">
           <p className="text-sm font-semibold text-charcoal">Selected licence</p>
           <p className="text-sm text-charcoal-500 mt-1">{selected.title} — {selected.price} — {selected.limit}</p>
+          {isOperatingModelTier && (
+            <div className="mt-3">
+              <label className="block text-xs font-medium text-charcoal-500 mb-1">Payment plan duration</label>
+              <select
+                value={subscriptionDurationMonths}
+                onChange={(e) => setSubscriptionDurationMonths(Number(e.target.value))}
+                className="w-full max-w-[200px] px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm"
+              >
+                {PAYMENT_DURATION_MONTHS.map((m) => (
+                  <option key={m} value={m}>{m} months</option>
+                ))}
+              </select>
+            </div>
+          )}
           <ul className="mt-3 space-y-1 text-sm text-charcoal-600">
             {selected.bullets.map((b) => (
               <li key={b}>- {b}</li>

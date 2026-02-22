@@ -10,11 +10,24 @@
  */
 
 import type { UUID } from '../models/core';
+import type { LicenseType } from '../models/core';
 import type { Company } from '../models/entities';
 import { insforge } from '../insforge/client';
 
-export type LicenseType = 'starter_6m' | 'professional_12m' | 'enterprise_custom';
+export type { LicenseType };
 export type LicenseStatus = 'trial' | 'active' | 'expired' | 'suspended';
+
+/** Operating Model: pricing (ZAR/month) and seat ranges */
+export const LICENSE_PRICING: Record<string, { monthlyPriceZAR: number; minSeats: number; maxSeats: number }> = {
+  base: { monthlyPriceZAR: 4000, minSeats: 1, maxSeats: 5 },
+  growth: { monthlyPriceZAR: 6500, minSeats: 6, maxSeats: 20 },
+  professional: { monthlyPriceZAR: 7500, minSeats: 21, maxSeats: 50 },
+  hr_only: { monthlyPriceZAR: 3000, minSeats: 1, maxSeats: 5 },
+  starter_6m: { monthlyPriceZAR: 3000, minSeats: 1, maxSeats: 4 },
+  professional_12m: { monthlyPriceZAR: 5000, minSeats: 1, maxSeats: 20 },
+  enterprise_custom: { monthlyPriceZAR: 0, minSeats: 1, maxSeats: 9999 },
+};
+export const PAYMENT_DURATION_MONTHS = [3, 6, 9, 12] as const;
 
 export interface LicenseInfo {
   type: LicenseType;
@@ -53,9 +66,9 @@ export interface FeatureAccess {
 }
 
 /**
- * Feature availability by license tier
+ * Feature availability by license tier (legacy + Operating Model)
  */
-const FEATURE_MAP: Record<LicenseType, Partial<FeatureAccess>> = {
+const FEATURE_MAP: Record<string, Partial<FeatureAccess>> = {
   starter_6m: {
     incidents: true,
     risks: true,
@@ -99,7 +112,6 @@ const FEATURE_MAP: Record<LicenseType, Partial<FeatureAccess>> = {
     automation: false,
   },
   enterprise_custom: {
-    // All features enabled
     incidents: true,
     risks: true,
     ncrs: true,
@@ -119,6 +131,90 @@ const FEATURE_MAP: Record<LicenseType, Partial<FeatureAccess>> = {
     isoMapping: true,
     complianceScoring: true,
     automation: true,
+  },
+  base: {
+    incidents: true,
+    risks: true,
+    ncrs: true,
+    audits: true,
+    training: true,
+    documents: true,
+    forms: true,
+    ppe: true,
+    environment: true,
+    health: true,
+    planning: true,
+    legal: true,
+    exports: true,
+    api: false,
+    customFields: true,
+    advancedReporting: true,
+    isoMapping: false,
+    complianceScoring: false,
+    automation: false,
+  },
+  growth: {
+    incidents: true,
+    risks: true,
+    ncrs: true,
+    audits: true,
+    training: true,
+    documents: true,
+    forms: true,
+    ppe: true,
+    environment: true,
+    health: true,
+    planning: true,
+    legal: true,
+    exports: true,
+    api: true,
+    customFields: true,
+    advancedReporting: true,
+    isoMapping: false,
+    complianceScoring: false,
+    automation: false,
+  },
+  professional: {
+    incidents: true,
+    risks: true,
+    ncrs: true,
+    audits: true,
+    training: true,
+    documents: true,
+    forms: true,
+    ppe: true,
+    environment: true,
+    health: true,
+    planning: true,
+    legal: true,
+    exports: true,
+    api: true,
+    customFields: true,
+    advancedReporting: true,
+    isoMapping: true,
+    complianceScoring: true,
+    automation: true,
+  },
+  hr_only: {
+    incidents: false,
+    risks: false,
+    ncrs: false,
+    audits: false,
+    training: true,
+    documents: true,
+    forms: true,
+    ppe: false,
+    environment: false,
+    health: true,
+    planning: true,
+    legal: false,
+    exports: true,
+    api: false,
+    customFields: false,
+    advancedReporting: false,
+    isoMapping: false,
+    complianceScoring: false,
+    automation: false,
   },
 };
 
@@ -149,7 +245,8 @@ export async function getLicenseInfo(companyId: UUID): Promise<LicenseInfo> {
   }
 
   const licenseType = company.license_type as LicenseType;
-  const expiresAt = calculateExpiryDate(company.created_at, licenseType);
+  const durationMonths = (company as any).subscription_duration_months as number | null | undefined;
+  const expiresAt = calculateExpiryDate(company.created_at, licenseType, durationMonths);
   const now = new Date();
   const expDate = new Date(expiresAt);
   const daysRemaining = Math.max(0, Math.floor((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
@@ -168,6 +265,9 @@ export async function getLicenseInfo(companyId: UUID): Promise<LicenseInfo> {
     canAddEmployees: (memberCount || 0) < company.employee_limit && !isExpired,
     features: getFeatures(licenseType),
   };
+  } catch (err) {
+    throw err instanceof Error ? err : new Error(String(err));
+  }
 }
 
 /**
@@ -251,10 +351,11 @@ export async function upgradeLicense(
 }
 
 /**
- * Calculate expiry date based on license type
+ * Calculate expiry date based on license type and optional payment duration (3,6,9,12 months)
  */
-function calculateExpiryDate(startDate: string, licenseType: LicenseType): string {
+function calculateExpiryDate(startDate: string, licenseType: LicenseType, durationMonths?: number | null): string {
   const start = new Date(startDate);
+  const months = durationMonths && [3, 6, 9, 12].includes(durationMonths) ? durationMonths : null;
 
   switch (licenseType) {
     case 'starter_6m':
@@ -264,9 +365,16 @@ function calculateExpiryDate(startDate: string, licenseType: LicenseType): strin
       start.setFullYear(start.getFullYear() + 1);
       break;
     case 'enterprise_custom':
-      // Custom license - set far in future (customer responsibility)
       start.setFullYear(start.getFullYear() + 10);
       break;
+    case 'base':
+    case 'growth':
+    case 'professional':
+    case 'hr_only':
+      start.setMonth(start.getMonth() + (months ?? 12));
+      break;
+    default:
+      start.setMonth(start.getMonth() + (months ?? 12));
   }
 
   return start.toISOString();
@@ -300,13 +408,17 @@ export async function getTrialDaysRemaining(companyId: UUID): Promise<number> {
 }
 
 /**
- * Format license type for display
+ * Format license type for display (legacy + Operating Model)
  */
 export function formatLicenseType(licenseType: LicenseType): string {
-  const labels: Record<LicenseType, string> = {
+  const labels: Record<string, string> = {
     starter_6m: 'Starter (6 months)',
     professional_12m: 'Professional (12 months)',
     enterprise_custom: 'Enterprise',
+    base: 'Base (1–5 users)',
+    growth: 'Growth (6–20 users)',
+    professional: 'Professional (21–50 users)',
+    hr_only: 'HR-only (1–5 users)',
   };
   return labels[licenseType] || licenseType;
 }

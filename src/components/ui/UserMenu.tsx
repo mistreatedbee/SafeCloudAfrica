@@ -22,6 +22,7 @@ function getInitials(nameOrEmail: string): string {
 
 function formatRole(role: string | null): string {
   if (!role) return 'Member';
+  if (role === 'owner') return 'Organisation Owner';
   if (role === 'admin') return 'Company Admin';
   if (role === 'consultant') return 'Consultant';
   if (role === 'employee') return 'Employee';

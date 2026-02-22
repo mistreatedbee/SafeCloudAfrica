@@ -22,6 +22,7 @@ import { InspectionsPage } from './pages/InspectionsPage';
 import { InspectionDetailPage } from './pages/InspectionDetailPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { BillingPricingPage } from './pages/BillingPricingPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { HelpSupportPage } from './pages/HelpSupportPage';
 import NCRsPage from './pages/NCRsPage';
@@ -60,7 +61,14 @@ import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { LandingPage } from './pages/marketing/LandingPage';
-import { SuperAdminPage } from './pages/admin/SuperAdminPage';
+import { SuperAdminLayout } from './components/layout/SuperAdminLayout';
+import { SuperAdminOverviewPage } from './pages/admin/superadmin/SuperAdminOverviewPage';
+import { SuperAdminOrganisationsPage } from './pages/admin/superadmin/SuperAdminOrganisationsPage';
+import { SuperAdminLicensesPage } from './pages/admin/superadmin/SuperAdminLicensesPage';
+import { SuperAdminModuleControlPage } from './pages/admin/superadmin/SuperAdminModuleControlPage';
+import { SuperAdminUsersPage } from './pages/admin/superadmin/SuperAdminUsersPage';
+import { SuperAdminAuditLogsPage } from './pages/admin/superadmin/SuperAdminAuditLogsPage';
+import { SuperAdminSupportModePage } from './pages/admin/superadmin/SuperAdminSupportModePage';
 import { SeedDemoPage } from './pages/admin/SeedDemoPage';
 import { WorkspaceOnboardingPage } from './pages/onboarding/WorkspaceOnboardingPage';
 import { KPIModuleLayout } from './pages/kpi/KPIModuleLayout';
@@ -110,15 +118,86 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequirePlatformAdmin>
-                  <SuperAdminPage />
+                  <SuperAdminLayout />
                 </RequirePlatformAdmin>
               </RequireSignedIn>
             }
-          />
+          >
+            <Route index element={<Navigate to="/super-admin/overview" replace />} />
+            <Route path="overview" element={<SuperAdminOverviewPage />} />
+            <Route path="organisations" element={<SuperAdminOrganisationsPage />} />
+            <Route path="licenses" element={<SuperAdminLicensesPage />} />
+            <Route path="module-control" element={<SuperAdminModuleControlPage />} />
+            <Route path="users" element={<SuperAdminUsersPage />} />
+            <Route path="audit-logs" element={<SuperAdminAuditLogsPage />} />
+            <Route path="support-mode" element={<SuperAdminSupportModePage />} />
+          </Route>
 
           {/* Protected app */}
           <Route
             path="/app"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <DashboardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+
+          {/* Role-based dashboard aliases (same content as /app) */}
+          <Route
+            path="/owner"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <DashboardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <DashboardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/manager"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <DashboardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/employee"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <DashboardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/consultant"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <DashboardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/auditor"
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
@@ -463,7 +542,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RequireCompanyRole allowed={['admin', 'manager', 'supervisor']}>
+                  <RequireCompanyRole allowed={['owner', 'admin', 'manager', 'supervisor']}>
                     <RiskAssessmentCreatePage />
                   </RequireCompanyRole>
                 </RequireWorkspace>
@@ -628,8 +707,20 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RequireCompanyRole allowed={['admin', 'manager']}>
+                  <RequireCompanyRole allowed={['owner', 'admin', 'manager']}>
                     <SettingsPage />
+                  </RequireCompanyRole>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/billing"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireCompanyRole allowed={['owner', 'admin', 'manager']}>
+                    <BillingPricingPage />
                   </RequireCompanyRole>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -660,7 +751,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RequireCompanyRole allowed={['admin', 'manager']}>
+                  <RequireCompanyRole allowed={['owner', 'admin', 'manager']}>
                     <UsersPage />
                   </RequireCompanyRole>
                 </RequireWorkspace>
