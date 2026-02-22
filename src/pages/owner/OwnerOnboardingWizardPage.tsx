@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2Icon, UserPlusIcon, UsersIcon, LayersIcon, CheckCircleIcon, ArrowRightIcon } from 'lucide-react';
-import { Layout } from '../components/layout/Layout';
-import { useTenant } from '../tenant/TenantContext';
+import { Layout } from '../../components/layout/Layout';
+import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
-import { useAsync } from '../api/hooks/useAsync';
-import { listSites, createSite } from '../api/services/sitesService';
-import { listDepartments, createDepartment } from '../api/services/departmentsService';
-import { listCompanyMemberships, listCompanyInvites, createInvite, updateCompanyProfile } from '../api/services/tenantService';
-import { insforge } from '../api/insforge/client';
-import { InviteUserModal } from '../components/users/InviteUserModal';
-import type { UUID } from '../api/models/entities';
-import type { CompanyRole } from '../api/models/core';
+import { useAsync } from '../../api/hooks/useAsync';
+import { listSites, createSite } from '../../api/services/sitesService';
+import { listDepartments, createDepartment } from '../../api/services/departmentsService';
+import { listCompanyMemberships, listCompanyInvites, createInvite, updateCompanyProfile } from '../../api/services/tenantService';
+import { insforge } from '../../api/insforge/client';
+import { InviteUserModal } from '../../components/users/InviteUserModal';
+import type { UUID } from '../../api/models/entities';
+import type { CompanyRole } from '../../api/models/core';
 
 const STEPS = [
   { id: 'setup', title: 'Organisation setup', icon: Building2Icon },

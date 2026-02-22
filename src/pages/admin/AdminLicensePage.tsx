@@ -1,9 +1,9 @@
 import React from 'react';
-import { Layout } from '../components/layout/Layout';
-import { useTenant } from '../tenant/TenantContext';
-import { useAsync } from '../api/hooks/useAsync';
-import { getLicenseInfo, formatLicenseType } from '../api/services/licensingService';
-import { insforge } from '../api/insforge/client';
+import { Layout } from '../../components/layout/Layout';
+import { useTenant } from '../../tenant/TenantContext';
+import { useAsync } from '../../api/hooks/useAsync';
+import { getLicenseInfo, formatLicenseType } from '../../api/services/licensingService';
+import { insforge } from '../../api/insforge/client';
 
 export function AdminLicensePage() {
   const { activeCompanyId } = useTenant();

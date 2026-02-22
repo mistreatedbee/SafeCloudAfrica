@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { KeyRoundIcon, Building2Icon, FileCheckIcon, Loader2Icon } from 'lucide-react';
 import { useAuth, useUser } from '@insforge/react';
-import { AuthShell } from '../components/auth/AuthShell';
-import { validateLicenseKey, activateLicenseKey, type ValidatedKeyInfo } from '../api/services/activationService';
-import { insforge } from '../api/insforge/client';
+import { AuthShell } from '../../components/auth/AuthShell';
+import { validateLicenseKey, activateLicenseKey, type ValidatedKeyInfo } from '../../api/services/activationService';
+import { insforge } from '../../api/insforge/client';
 
 const PLAN_LABELS: Record<string, string> = {
   base: 'Base',
