@@ -14,9 +14,10 @@ function resolveBaseUrl(rawBaseUrl: string): string {
   try {
     const targetOrigin = new URL(rawBaseUrl).origin;
     // Use same-origin proxy route in browser when target origin differs.
-    if (window.location.origin !== targetOrigin) return '/api/insforge';
+    if (window.location.origin !== targetOrigin) return `${window.location.origin}/api/insforge`;
   } catch {
-    // If base URL is already relative, keep it.
+    // If base URL is already relative, normalize to absolute.
+    if (rawBaseUrl.startsWith('/')) return `${window.location.origin}${rawBaseUrl}`;
   }
   return rawBaseUrl;
 }
