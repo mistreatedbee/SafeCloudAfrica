@@ -40,14 +40,20 @@ function storeActiveCompanyId(companyId: UUID | null): void {
   }
 }
 
+/** Treat ACTIVE or missing status (legacy DB without status column) as active. */
+function isActiveMembership(row: { status?: string | null }): boolean {
+  const s = row.status;
+  return s === 'ACTIVE' || s == null || s === '';
+}
+
 async function fetchMemberships(userId: UUID): Promise<MembershipWithCompany[]> {
   const { data, error } = await insforge.database
     .from('company_memberships')
     .select('*, companies(*)')
-    .eq('user_id', userId)
-    .eq('status', 'ACTIVE');
+    .eq('user_id', userId);
   if (error) throw error;
-  return (data ?? []).map((row: any) => ({
+  const rows = (data ?? []).filter(isActiveMembership);
+  return rows.map((row: any) => ({
     ...(row as CompanyMembership),
     company: row.companies as Company | undefined
   }));
