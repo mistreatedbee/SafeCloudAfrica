@@ -45,9 +45,10 @@ export async function createMembership(input: { companyId: UUID; userId: UUID; r
   const company = await getCompanyById(input.companyId);
   if (!company) throw new Error('Company not found.');
   
+  const seatLimit = await getSeatLimitForCompany(input.companyId);
   const memberCount = await countActiveMembers(input.companyId);
-  if (memberCount >= company.employee_limit) {
-    throw new Error(`Your licence limit is ${company.employee_limit} users. Please upgrade to add more employees.`);
+  if (memberCount >= seatLimit) {
+    throw new Error(`Seat limit reached (${seatLimit} users). Upgrade license to add more users.`);
   }
   
   const { data, error } = await insforge.database
@@ -144,14 +145,28 @@ export async function getInviteById(inviteId: UUID): Promise<CompanyInvite> {
   } as CompanyInvite & { company?: Company };
 }
 
+/** Count members with status ACTIVE (seat check and display). */
 export async function countActiveMembers(companyId: UUID): Promise<number> {
   const { count, error } = await insforge.database
     .from('company_memberships')
     .select('*', { count: 'exact', head: true })
-    .eq('company_id', companyId);
+    .eq('company_id', companyId)
+    .eq('status', 'ACTIVE');
 
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+}
+
+/** Effective seat limit for company (org_licenses.active or company.employee_limit). */
+export async function getSeatLimitForCompany(companyId: UUID): Promise<number> {
+  try {
+    const { data, error } = await insforge.database.rpc('get_company_seat_limit', { p_company_id: companyId });
+    if (error || data == null) return 0;
+    return typeof data === 'number' ? data : 0;
+  } catch {
+    const company = await getCompanyById(companyId);
+    return company?.employee_limit ?? 0;
+  }
 }
 
 export async function createInvite(input: {
@@ -161,9 +176,10 @@ export async function createInvite(input: {
   role: CompanyRole;
 }): Promise<CompanyInvite> {
   await ensureInsforgeSession();
+  const seatLimit = await getSeatLimitForCompany(input.company.id);
   const memberCount = await countActiveMembers(input.company.id);
-  if (memberCount >= input.company.employee_limit) {
-    throw new Error(`Your licence limit is ${input.company.employee_limit} users. Please upgrade to add more employees.`);
+  if (memberCount >= seatLimit) {
+    throw new Error(`Seat limit reached. Upgrade license to add more users.`);
   }
 
   const token = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;

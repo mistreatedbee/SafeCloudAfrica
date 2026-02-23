@@ -37,11 +37,27 @@ export type Company = {
   updated_at?: string | null;
 };
 
+export type OrganizationMemberStatus = 'INVITED' | 'ACTIVE' | 'DISABLED';
+
+export type ConsultantScope = {
+  allowedModules?: string[];
+  allowedDepartments?: UUID[];
+  allowedSites?: UUID[];
+  auditIds?: UUID[];
+  expiresAt?: string;
+};
+
 export type CompanyMembership = {
   id: UUID;
   company_id: UUID;
   user_id: UUID;
   role: CompanyRole;
+  status?: OrganizationMemberStatus;
+  department_id?: UUID | null;
+  site_id?: UUID | null;
+  invited_by_user_id?: UUID | null;
+  consultant_scope?: ConsultantScope | null;
+  seat_exempt?: boolean;
   created_at: string;
 };
 

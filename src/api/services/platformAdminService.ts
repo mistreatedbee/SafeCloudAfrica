@@ -9,9 +9,9 @@ const ROLE_PATH_MAP: Record<string, string> = {
   admin: '/admin',
   manager: '/manager',
   supervisor: '/manager',
-  consultant: '/consultant',
+  consultant: '/external',
   employee: '/employee',
-  auditor: '/auditor'
+  auditor: '/external'
 };
 
 /** Returns the dashboard path for the user's best role across memberships, or /app. */

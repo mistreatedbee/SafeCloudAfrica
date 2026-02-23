@@ -305,6 +305,20 @@ export async function checkFeatureAccess(
 }
 
 /**
+ * Check if the company can export (download) reports. Trial = view only, no export.
+ * Uses backend RPC can_company_export.
+ */
+export async function checkCanExport(companyId: UUID): Promise<boolean> {
+  try {
+    const { data, error } = await insforge.database.rpc('can_company_export', { p_company_id: companyId });
+    if (error) return false;
+    return data === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Validate employee limit not exceeded
  */
 export async function validateEmployeeLimit(companyId: UUID): Promise<{ valid: boolean; message?: string }> {

@@ -14,7 +14,7 @@ export function RequireCompanyRole(props: { allowed: CompanyRole[]; children: Re
   if (isPlatformAdmin) return props.children;
   if (!activeRole) return <Navigate to="/onboarding" replace />;
   if (!props.allowed.includes(activeRole)) {
-    return <Navigate to="/app" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/access-denied" replace state={{ from: location.pathname }} />;
   }
   return props.children;
 }

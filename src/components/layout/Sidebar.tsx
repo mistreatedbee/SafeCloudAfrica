@@ -1,4 +1,4 @@
-import React, { useState, type ComponentType } from 'react';
+import React, { useMemo, useState, type ComponentType } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -31,248 +31,173 @@ import {
   CloudIcon,
   CreditCardIcon
 } from 'lucide-react';
+import { useTenant } from '../../tenant/TenantContext';
+import type { CompanyRole } from '../../api/models/core';
+
 type NavItem = {
   name: string;
   path: string;
-  icon: ComponentType<{
-    className?: string;
-  }>;
+  icon: ComponentType<{ className?: string }>;
+  /** Roles that can see this item (empty = all org roles). */
+  roles?: CompanyRole[];
 };
+/** Roles that can see management/analytics (not employee or external). */
+const managementRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
+/** Roles that can see admin-only items (users, license). */
+const adminOnlyRoles: CompanyRole[] = ['owner', 'admin'];
+/** Roles that can see full modules (not employee; consultant/auditor see limited via supporting). */
+const moduleRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
+
 const modules: NavItem[] = [
 {
   name: 'General',
   path: '/modules/general',
-  icon: FolderIcon
+  icon: FolderIcon,
+  roles: moduleRoles
 },
 {
   name: 'Safety',
   path: '/modules/safety',
-  icon: ShieldIcon
+  icon: ShieldIcon,
+  roles: moduleRoles
 },
 {
   name: 'Quality',
   path: '/modules/quality',
-  icon: AwardIcon
+  icon: AwardIcon,
+  roles: moduleRoles
 },
 {
   name: 'Environment',
   path: '/modules/environment',
-  icon: LeafIcon
+  icon: LeafIcon,
+  roles: moduleRoles
 },
 {
   name: 'Health',
   path: '/modules/health',
-  icon: HeartIcon
+  icon: HeartIcon,
+  roles: moduleRoles
 },
 {
   name: 'Legal',
   path: '/modules/legal',
-  icon: ScaleIcon
+  icon: ScaleIcon,
+  roles: moduleRoles
 },
 {
   name: 'HR',
   path: '/modules/hr',
-  icon: UsersIcon
+  icon: UsersIcon,
+  roles: moduleRoles
 },
 {
   name: 'Performance KPIs',
   path: '/modules/hr/kpis',
-  icon: TrendingUpIcon
+  icon: TrendingUpIcon,
+  roles: moduleRoles
 },
 {
   name: 'Security',
   path: '/modules/security',
-  icon: LockIcon
+  icon: LockIcon,
+  roles: moduleRoles
 }];
 
 const supportingSections: NavItem[] = [
-{
-  name: 'Documents',
-  path: '/documents',
-  icon: FileTextIcon
-},
-{
-  name: 'Forms & Templates',
-  path: '/forms',
-  icon: FileTextIcon
-},
-{
-  name: 'Non-Conformances (NCR)',
-  path: '/ncrs',
-  icon: AlertTriangleIcon
-},
-{
-  name: 'Plan Job Observations (PJO)',
-  path: '/pjo',
-  icon: ClipboardCheckIcon
-},
-{
-  name: 'Tasks & Time',
-  path: '/tasks',
-  icon: ClipboardCheckIcon
-},
-{
-  name: 'Incidents',
-  path: '/incidents',
-  icon: AlertTriangleIcon
-},
-{
-  name: 'Incident Analytics',
-  path: '/incidents/analytics',
-  icon: BarChart3Icon
-},
-{
-  name: 'Safety Statistics (KPI)',
-  path: '/analytics/safety-statistics',
-  icon: BarChart3Icon
-},
-{
-  name: 'Compliance & Performance',
-  path: '/analytics/compliance',
-  icon: BarChart3Icon
-},
-{
-  name: 'Quality KPIs',
-  path: '/analytics/quality',
-  icon: AwardIcon
-},
-{
-  name: 'Environmental KPIs',
-  path: '/analytics/environmental',
-  icon: LeafIcon
-},
-{
-  name: 'Training',
-  path: '/training',
-  icon: GraduationCapIcon
-},
-{
-  name: 'Audits',
-  path: '/audits',
-  icon: SearchIcon
-},
-{
-  name: 'Inspections',
-  path: '/inspections',
-  icon: ClipboardCheckIcon
-},
-{
-  name: 'Risk Management',
-  path: '/risks/dashboard',
-  icon: AlertOctagonIcon
-},
-{
-  name: 'PPE Management',
-  path: '/ppe',
-  icon: HardHatIcon
-},
-{
-  name: 'Legal Register',
-  path: '/legal-register',
-  icon: BookOpenIcon
-},
-{
-  name: 'Planning & Review',
-  path: '/planning',
-  icon: ClipboardCheckIcon
-},
-{
-  name: 'Approvals',
-  path: '/approvals',
-  icon: LockIcon
-},
-{
-  name: 'Document Reviews',
-  path: '/document-reviews',
-  icon: CalendarIcon
-},
-{
-  name: 'Improvement',
-  path: '/improvement',
-  icon: TrendingUpIcon
-},
-{
-  name: 'Reports',
-  path: '/reports',
-  icon: BarChart3Icon
-},
-{
-  name: 'Hours Worked',
-  path: '/management/hours-worked',
-  icon: ClockIcon
-},
-{
-  name: 'Operational Inputs',
-  path: '/management/operational-inputs',
-  icon: BarChart3Icon
-}];
+{ name: 'Documents', path: '/documents', icon: FileTextIcon },
+{ name: 'Forms & Templates', path: '/forms', icon: FileTextIcon },
+{ name: 'Non-Conformances (NCR)', path: '/ncrs', icon: AlertTriangleIcon, roles: managementRoles },
+{ name: 'Plan Job Observations (PJO)', path: '/pjo', icon: ClipboardCheckIcon, roles: managementRoles },
+{ name: 'Tasks & Time', path: '/tasks', icon: ClipboardCheckIcon },
+{ name: 'Incidents', path: '/incidents', icon: AlertTriangleIcon },
+{ name: 'Incident Analytics', path: '/incidents/analytics', icon: BarChart3Icon, roles: managementRoles },
+{ name: 'Safety Statistics (KPI)', path: '/analytics/safety-statistics', icon: BarChart3Icon, roles: managementRoles },
+{ name: 'Compliance & Performance', path: '/analytics/compliance', icon: BarChart3Icon, roles: managementRoles },
+{ name: 'Quality KPIs', path: '/analytics/quality', icon: AwardIcon, roles: managementRoles },
+{ name: 'Environmental KPIs', path: '/analytics/environmental', icon: LeafIcon, roles: managementRoles },
+{ name: 'Training', path: '/training', icon: GraduationCapIcon },
+{ name: 'Audits', path: '/audits', icon: SearchIcon },
+{ name: 'Inspections', path: '/inspections', icon: ClipboardCheckIcon, roles: managementRoles },
+{ name: 'Risk Management', path: '/risks/dashboard', icon: AlertOctagonIcon },
+{ name: 'PPE Management', path: '/ppe', icon: HardHatIcon },
+{ name: 'Legal Register', path: '/legal-register', icon: BookOpenIcon, roles: managementRoles },
+{ name: 'Planning & Review', path: '/planning', icon: ClipboardCheckIcon, roles: managementRoles },
+{ name: 'Approvals', path: '/approvals', icon: LockIcon, roles: managementRoles },
+{ name: 'Document Reviews', path: '/document-reviews', icon: CalendarIcon, roles: managementRoles },
+{ name: 'Improvement', path: '/improvement', icon: TrendingUpIcon, roles: managementRoles },
+{ name: 'Reports', path: '/reports', icon: BarChart3Icon, roles: managementRoles },
+{ name: 'Hours Worked', path: '/management/hours-worked', icon: ClockIcon, roles: managementRoles },
+{ name: 'Operational Inputs', path: '/management/operational-inputs', icon: BarChart3Icon, roles: managementRoles }
+];
 
 const sellableFeatures: NavItem[] = [
-{
-  name: 'BBS Programme',
-  path: '/bbs',
-  icon: EyeIcon
-},
-{
-  name: 'Contractors & Visitors',
-  path: '/contractors',
-  icon: UsersIcon
-},
-{
-  name: 'Emergency Preparedness',
-  path: '/emergency',
-  icon: AlertTriangleIcon
-},
-{
-  name: 'Template Library',
-  path: '/templates',
-  icon: FolderIcon
-}];
+{ name: 'BBS Programme', path: '/bbs', icon: EyeIcon, roles: managementRoles },
+{ name: 'Contractors & Visitors', path: '/contractors', icon: UsersIcon, roles: managementRoles },
+{ name: 'Emergency Preparedness', path: '/emergency', icon: AlertTriangleIcon, roles: managementRoles },
+{ name: 'Template Library', path: '/templates', icon: FolderIcon, roles: managementRoles }
+];
 
 const settingsItems: NavItem[] = [
-{
-  name: 'Settings',
-  path: '/settings',
-  icon: SettingsIcon
-},
-{
-  name: 'Billing & Pricing',
-  path: '/billing',
-  icon: CreditCardIcon
-},
-{
-  name: 'License',
-  path: '/admin/license',
-  icon: CreditCardIcon
-},
-{
-  name: 'User Management',
-  path: '/users',
-  icon: UsersIcon
-}];
+{ name: 'Settings', path: '/settings', icon: SettingsIcon, roles: adminOnlyRoles },
+{ name: 'Billing & Pricing', path: '/billing', icon: CreditCardIcon, roles: adminOnlyRoles },
+{ name: 'License', path: '/admin/license', icon: CreditCardIcon, roles: adminOnlyRoles },
+{ name: 'User Management', path: '/users', icon: UsersIcon, roles: adminOnlyRoles }
+];
 
 type SidebarProps = {
   isOpen: boolean;
   onClose: () => void;
 };
+function dashboardPathForRole(role: CompanyRole | null): string {
+  if (!role) return '/app';
+  const map: Record<CompanyRole, string> = {
+    owner: '/owner',
+    admin: '/admin',
+    manager: '/manager',
+    supervisor: '/manager',
+    employee: '/employee',
+    consultant: '/external',
+    auditor: '/external'
+  };
+  return map[role] ?? '/app';
+}
+
+function filterByRole<T extends { roles?: CompanyRole[] }>(items: T[], activeRole: CompanyRole | null): T[] {
+  if (!activeRole) return items;
+  return items.filter((item) => {
+    if (!item.roles || item.roles.length === 0) return true;
+    return item.roles.includes(activeRole);
+  });
+}
+
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [modulesExpanded, setModulesExpanded] = useState(true);
   const location = useLocation();
-  const NavLinkItem = ({ item }: {item: NavItem;}) => {
+  const { activeRole } = useTenant();
+
+  const dashboardPath = useMemo(() => dashboardPathForRole(activeRole), [activeRole]);
+  const filteredModules = useMemo(() => filterByRole(modules, activeRole), [activeRole]);
+  const filteredSupporting = useMemo(() => filterByRole(supportingSections, activeRole), [activeRole]);
+  const filteredSellable = useMemo(() => filterByRole(sellableFeatures, activeRole), [activeRole]);
+  const filteredSettings = useMemo(() => filterByRole(settingsItems, activeRole), [activeRole]);
+
+  const NavLinkItem = ({ item }: { item: NavItem }) => {
     const isActive =
-    location.pathname === item.path ||
-    location.pathname.startsWith(item.path + '/');
+      location.pathname === item.path ||
+      location.pathname.startsWith(item.path + '/');
     return (
       <NavLink
         to={item.path}
         onClick={() => window.innerWidth < 1024 && onClose()}
-        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-teal/10 text-teal' : 'text-charcoal-500 hover:bg-surface-200 hover:text-charcoal'}`}>
-
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-teal/10 text-teal' : 'text-charcoal-500 hover:bg-surface-200 hover:text-charcoal'}`}
+      >
         <item.icon className="w-5 h-5 flex-shrink-0" />
         <span>{item.name}</span>
-      </NavLink>);
-
+      </NavLink>
+    );
   };
+
   const sidebarContent =
   <div className="flex flex-col h-full bg-white border-r border-surface-300">
       {/* Logo */}
@@ -300,12 +225,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Home */}
         <div className="mb-4">
           <NavLinkItem
-          item={{
-            name: 'Dashboard',
-            path: '/app',
-            icon: HomeIcon
-          }} />
-
+            item={{
+              name: 'Dashboard',
+              path: dashboardPath,
+              icon: HomeIcon
+            }}
+          />
         </div>
 
         {/* Modules Section */}
@@ -342,9 +267,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             className="overflow-hidden">
 
                 <div className="mt-1 space-y-0.5">
-                  {modules.map((item) =>
-              <NavLinkItem key={item.path} item={item} />
-              )}
+                  {filteredModules.map((item) => (
+                    <NavLinkItem key={item.path} item={item} />
+                  ))}
                 </div>
               </motion.div>
           }
@@ -357,30 +282,32 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             Management
           </div>
           <div className="mt-1 space-y-0.5">
-            {supportingSections.map((item) =>
-          <NavLinkItem key={item.path} item={item} />
-          )}
+            {filteredSupporting.map((item) => (
+              <NavLinkItem key={item.path} item={item} />
+            ))}
           </div>
         </div>
 
         {/* Sellable Features */}
-        <div className="mb-4">
-          <div className="px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider">
-            Sellable Features
+        {filteredSellable.length > 0 && (
+          <div className="mb-4">
+            <div className="px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider">
+              Sellable Features
+            </div>
+            <div className="mt-1 space-y-0.5">
+              {filteredSellable.map((item) => (
+                <NavLinkItem key={item.path} item={item} />
+              ))}
+            </div>
           </div>
-          <div className="mt-1 space-y-0.5">
-            {sellableFeatures.map((item) =>
-          <NavLinkItem key={item.path} item={item} />
-          )}
-          </div>
-        </div>
+        )}
 
         {/* Settings */}
         <div className="pt-4 border-t border-surface-200">
           <div className="space-y-0.5">
-            {settingsItems.map((item) =>
-          <NavLinkItem key={item.path} item={item} />
-          )}
+            {filteredSettings.map((item) => (
+              <NavLinkItem key={item.path} item={item} />
+            ))}
           </div>
         </div>
       </nav>

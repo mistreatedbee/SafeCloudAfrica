@@ -1,18 +1,44 @@
 import React, { useEffect, useState } from 'react';
-import { MenuIcon, SearchIcon } from 'lucide-react';
+import { MenuIcon, SearchIcon, UsersIcon } from 'lucide-react';
 import { NotificationBell, type NotificationItem } from '../ui/NotificationBell';
 import { UserMenu } from '../ui/UserMenu';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
+import { useIdentity } from '../../hooks/useIdentity';
 import { listMyNotifications } from '../../api/services/notificationsService';
+import { countActiveMembers, getSeatLimitForCompany } from '../../api/services/tenantService';
 import type { Notification } from '../../api/models/entities';
+
 type HeaderProps = {
   onMenuClick: () => void;
   title?: string;
 };
+
+function SeatsRemainingBadge() {
+  const { activeCompanyId, activeRole } = useTenant();
+  const [seats, setSeats] = useState<{ used: number; limit: number } | null>(null);
+  useEffect(() => {
+    if (!activeCompanyId || (activeRole !== 'owner' && activeRole !== 'admin')) return;
+    let cancelled = false;
+    Promise.all([countActiveMembers(activeCompanyId), getSeatLimitForCompany(activeCompanyId)])
+      .then(([used, limit]) => { if (!cancelled) setSeats({ used, limit }); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeCompanyId, activeRole]);
+  if (!seats || seats.limit <= 0) return null;
+  const remaining = Math.max(0, seats.limit - seats.used);
+  return (
+    <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-100 border border-surface-200 text-xs text-charcoal-600">
+      <UsersIcon className="w-3.5 h-3.5" />
+      <span>{remaining} seats left</span>
+    </div>
+  );
+}
+
 export function Header({ onMenuClick, title }: HeaderProps) {
   const { activeCompanyId } = useTenant();
   const { user } = useUser();
+  const { organisationName, roleLabel } = useIdentity();
   const [items, setItems] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
@@ -72,16 +98,23 @@ export function Header({ onMenuClick, title }: HeaderProps) {
           </div>
         </div>
 
-        {/* Right side */}
+        {/* Right side: org + role badge, seats (owner/admin), notifications, user */}
         <div className="flex items-center gap-2">
-          {/* Mobile search button */}
+          <div className="hidden md:flex items-center gap-2 text-sm">
+            <span className="text-charcoal-500 truncate max-w-[120px]" title={organisationName}>
+              {organisationName}
+            </span>
+            <span className="px-2 py-0.5 rounded bg-teal/10 text-teal font-medium text-xs">
+              {roleLabel}
+            </span>
+          </div>
+          <SeatsRemainingBadge />
           <button
             className="md:hidden p-2 rounded-lg text-charcoal-500 hover:bg-surface-100 hover:text-charcoal transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal"
             aria-label="Search"
           >
             <SearchIcon className="w-5 h-5" />
           </button>
-
           <NotificationBell items={items} />
           <div className="w-px h-6 bg-surface-300 mx-2 hidden sm:block" />
           <UserMenu />

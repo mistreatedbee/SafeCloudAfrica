@@ -71,6 +71,8 @@ import { InviteAcceptByTokenPage } from './pages/auth/InviteAcceptByTokenPage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { ActivateLicensePage } from './pages/activate/ActivateLicensePage';
 import { OwnerOnboardingWizardPage } from './pages/owner/OwnerOnboardingWizardPage';
+import { OwnerDashboardPage } from './pages/owner/OwnerDashboardPage';
+import { EmployeeDashboardPage } from './pages/employee/EmployeeDashboardPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
@@ -84,6 +86,9 @@ import { SuperAdminUsersPage } from './pages/admin/superadmin/SuperAdminUsersPag
 import { SuperAdminAuditLogsPage } from './pages/admin/superadmin/SuperAdminAuditLogsPage';
 import { SuperAdminSupportModePage } from './pages/admin/superadmin/SuperAdminSupportModePage';
 import { SeedDemoPage } from './pages/admin/SeedDemoPage';
+import { ExternalDashboardPage } from './pages/external/ExternalDashboardPage';
+import { AccessDeniedPage } from './pages/AccessDeniedPage';
+import { AppDashboardRedirect } from './components/AppDashboardRedirect';
 import { WorkspaceOnboardingPage } from './pages/onboarding/WorkspaceOnboardingPage';
 import { KPIModuleLayout } from './pages/kpi/KPIModuleLayout';
 import { KPIDashboardPage } from './pages/kpi/KPIDashboardPage';
@@ -131,6 +136,18 @@ export function App() {
           <Route path="/invite/accept" element={<InviteAcceptByTokenPage />} />
           <Route path="/invite/:inviteId" element={<InviteAcceptPage />} />
 
+          {/* Access denied (role guard redirect) */}
+          <Route
+            path="/access-denied"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <AccessDeniedPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+
           {/* Super Admin (platform-wide) */}
           <Route
             path="/super-admin"
@@ -152,14 +169,14 @@ export function App() {
             <Route path="support-mode" element={<SuperAdminSupportModePage />} />
           </Route>
 
-          {/* Protected app */}
+          {/* Protected app: redirect to role-based dashboard */}
           <Route
             path="/app"
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireActiveSubscription>
-                    <DashboardPage />
+                    <AppDashboardRedirect />
                   </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -174,7 +191,9 @@ export function App() {
                 <RequireWorkspace>
                   <RequireActiveSubscription>
                     <OwnerOnboardingGate>
-                      <DashboardPage />
+                      <RequireCompanyRole allowed={['owner']}>
+                        <OwnerDashboardPage />
+                      </RequireCompanyRole>
                     </OwnerOnboardingGate>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
@@ -201,7 +220,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireActiveSubscription>
-                    <DashboardPage />
+                    <RequireCompanyRole allowed={['admin']}>
+                      <DashboardPage />
+                    </RequireCompanyRole>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -213,7 +234,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireActiveSubscription>
-                    <DashboardPage />
+                    <RequireCompanyRole allowed={['manager', 'supervisor']}>
+                      <DashboardPage />
+                    </RequireCompanyRole>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -225,7 +248,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireActiveSubscription>
-                    <DashboardPage />
+                    <RequireCompanyRole allowed={['employee']}>
+                      <EmployeeDashboardPage />
+                    </RequireCompanyRole>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -237,7 +262,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireActiveSubscription>
-                    <DashboardPage />
+                    <Navigate to="/external" replace />
                   </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -249,7 +274,21 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireActiveSubscription>
-                    <DashboardPage />
+                    <Navigate to="/external" replace />
+                  </RequireActiveSubscription>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/external"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireActiveSubscription>
+                    <RequireCompanyRole allowed={['consultant', 'auditor']}>
+                      <ExternalDashboardPage />
+                    </RequireCompanyRole>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>

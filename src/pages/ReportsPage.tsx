@@ -24,6 +24,7 @@ import { listPjos, listPjoResponses } from '../api/services/pjoService';
 import { listAuditFindings } from '../api/services/auditFindingsService';
 import { isNearMiss } from '../api/utils/incidents';
 import { useIdentity } from '../hooks/useIdentity';
+import { checkCanExport } from '../api/services/licensingService';
 
 type ReportTemplate = {
   id: 'compliance' | 'incidents' | 'training' | 'audits' | 'inspections' | 'pjo';
@@ -105,6 +106,11 @@ export function ReportsPage() {
   const { activeCompanyId } = useTenant();
   const { fullName, organisationName } = useIdentity();
 
+  const { data: canExport } = useAsync(
+    () => (activeCompanyId ? checkCanExport(activeCompanyId) : false),
+    [activeCompanyId]
+  );
+
   const { data: charts } = useAsync(async () => {
     if (!activeCompanyId) return { incidentTrends: [], comparison: [] as any[] };
     const incidents = await listIncidents({ companyId: activeCompanyId, limit: 500 });
@@ -139,6 +145,9 @@ export function ReportsPage() {
 
   async function generate(template: ReportTemplate) {
     if (!activeCompanyId || !user?.id) return;
+    if (canExport === false) {
+      return;
+    }
 
     const now = new Date();
     const dateStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -452,13 +461,19 @@ export function ReportsPage() {
           <h2 className="text-lg font-semibold text-charcoal mb-4">
             Generate Report
           </h2>
+          {canExport === false && (
+            <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+              Exports are not available during trial. Upgrade your subscription to download reports.
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {reportTemplates.map((template) =>
             <button
               key={template.id}
               type="button"
+              disabled={canExport === false}
               onClick={() => void generate(template)}
-              className="flex flex-col items-start gap-3 p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all text-left active:scale-[0.99]">
+              className="flex flex-col items-start gap-3 p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all text-left active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:shadow-card">
 
                 <div
                 className="p-3 rounded-lg"

@@ -41,7 +41,11 @@ function storeActiveCompanyId(companyId: UUID | null): void {
 }
 
 async function fetchMemberships(userId: UUID): Promise<MembershipWithCompany[]> {
-  const { data, error } = await insforge.database.from('company_memberships').select('*, companies(*)').eq('user_id', userId);
+  const { data, error } = await insforge.database
+    .from('company_memberships')
+    .select('*, companies(*)')
+    .eq('user_id', userId)
+    .eq('status', 'ACTIVE');
   if (error) throw error;
   return (data ?? []).map((row: any) => ({
     ...(row as CompanyMembership),
