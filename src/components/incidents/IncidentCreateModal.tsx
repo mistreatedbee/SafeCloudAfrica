@@ -88,7 +88,8 @@ export function IncidentCreateModal(props: {
   const [incidentTypeOther, setIncidentTypeOther] = useState('');
   const [location, setLocation] = useState('');
   const [severity, setSeverity] = useState<Severity>('medium');
-  
+  const [lostDays, setLostDays] = useState<number | undefined>();
+
   // Risk Rating: Severity (1-5) × Likelihood (1-5) → product, classification (Low/Medium/High)
   const [riskSeverity1To5, setRiskSeverity1To5] = useState<1 | 2 | 3 | 4 | 5>(3);
   const [likelihood, setLikelihood] = useState<1 | 2 | 3 | 4 | 5>(3);
@@ -290,7 +291,8 @@ export function IncidentCreateModal(props: {
         distributionsToUserIds: distributionsToUserIds,
         distributionsToEmails: distributionsToEmails
         } : {}),
-      requiredBehaviour: requiredBehaviour.trim() || undefined
+      requiredBehaviour: requiredBehaviour.trim() || undefined,
+        lostDays: lostDays != null ? lostDays : undefined
       });
 
       // Upload evidence files (with original filename, display title, file kind)
@@ -397,6 +399,7 @@ export function IncidentCreateModal(props: {
     setInvestigationFiles([]);
     setUploadInvestigationFirst(false);
     setLocation('');
+    setLostDays(undefined);
     setModule(props.defaultModule ?? 'safety');
     // Legacy fields
     setIncidentTimeline('');
@@ -574,6 +577,20 @@ export function IncidentCreateModal(props: {
                   <option value="critical">Critical</option>
                 </select>
               </div>
+              {category === 'Injury' && (
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Lost days (optional, for Severity Rate)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={lostDays ?? ''}
+                    onChange={(e) => setLostDays(e.target.value === '' ? undefined : Math.max(0, parseInt(e.target.value, 10)))}
+                    placeholder="Days lost"
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+              )}
             </div>
           </div>
 

@@ -134,12 +134,54 @@ export type CreateIncidentInput = {
     taskOperation?: string | null;
     machineryEquipmentTools?: string | null;
   }>;
+  lostDays?: number | null;
+  isRecordableInjury?: boolean | null;
+  isLostTimeInjury?: boolean | null;
+  isFatality?: boolean | null;
+  isNearMiss?: boolean | null;
+  isAccident?: boolean | null;
+  isEnvironmentalIncident?: boolean | null;
+  isSpill?: boolean | null;
+  projectId?: UUID | null;
+  clientId?: UUID | null;
 };
 
 function riskProductToClassification(product: number): 'Low' | 'Medium' | 'High' {
   if (product <= 5) return 'Low';
   if (product <= 12) return 'Medium';
   return 'High';
+}
+
+/** Derive KPI classification flags from category/subcategory/incident_type for TRIR, LTIFR, etc. */
+export function deriveIncidentKpiClassification(input: {
+  category: string;
+  subcategory?: string | null;
+  incidentType?: string | null;
+  typeOfIncident?: string | null;
+}): {
+  is_fatality: boolean;
+  is_lost_time_injury: boolean;
+  is_recordable_injury: boolean;
+  is_near_miss: boolean;
+  is_accident: boolean;
+  is_environmental_incident: boolean;
+  is_spill: boolean;
+} {
+  const sub = trimLower(input.subcategory);
+  const cat = trimLower(input.category);
+  const it = trimLower(input.incidentType ?? input.typeOfIncident);
+  return {
+    is_fatality: sub === 'fatality',
+    is_lost_time_injury: sub === 'lti',
+    is_recordable_injury: sub === 'lti' || sub === 'nlti',
+    is_near_miss: it === 'near miss',
+    is_accident: it === 'accident',
+    is_environmental_incident: cat === 'environmental' || (it && it.includes('environmental')),
+    is_spill: cat === 'environmental' && (sub.includes('spill') || sub.includes('oil') || sub.includes('fuel'))
+  };
+}
+function trimLower(s: string | undefined | null): string {
+  return (s ?? '').trim().toLowerCase();
 }
 
 export async function createIncident(input: CreateIncidentInput): Promise<Incident> {
@@ -208,6 +250,22 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
     distributions_to_emails: input.distributionsToEmails ?? null,
     required_behaviour: input.requiredBehaviour ?? null
   };
+
+  const kpi = deriveIncidentKpiClassification({
+    category: input.category,
+    subcategory: input.subcategory,
+    incidentType: input.incidentType ?? input.typeOfIncident
+  });
+  insertData.lost_days = input.lostDays ?? null;
+  insertData.is_recordable_injury = input.isRecordableInjury ?? kpi.is_recordable_injury;
+  insertData.is_lost_time_injury = input.isLostTimeInjury ?? kpi.is_lost_time_injury;
+  insertData.is_fatality = input.isFatality ?? kpi.is_fatality;
+  insertData.is_near_miss = input.isNearMiss ?? kpi.is_near_miss;
+  insertData.is_accident = input.isAccident ?? kpi.is_accident;
+  insertData.is_environmental_incident = input.isEnvironmentalIncident ?? kpi.is_environmental_incident;
+  insertData.is_spill = input.isSpill ?? kpi.is_spill;
+  insertData.project_id = input.projectId ?? null;
+  insertData.client_id = input.clientId ?? null;
 
   const { data, error } = await insforge.database
     .from('incidents')
@@ -343,6 +401,31 @@ export async function updateIncident(incidentId: UUID, patch: Partial<CreateInci
   if (patch.requiredBehaviour !== undefined) updateData.required_behaviour = patch.requiredBehaviour;
   if (patch.area !== undefined) updateData.area = patch.area;
   if (patch.activity !== undefined) updateData.activity = patch.activity;
+  if (patch.lostDays !== undefined) updateData.lost_days = patch.lostDays;
+  if (patch.isRecordableInjury !== undefined) updateData.is_recordable_injury = patch.isRecordableInjury;
+  if (patch.isLostTimeInjury !== undefined) updateData.is_lost_time_injury = patch.isLostTimeInjury;
+  if (patch.isFatality !== undefined) updateData.is_fatality = patch.isFatality;
+  if (patch.isNearMiss !== undefined) updateData.is_near_miss = patch.isNearMiss;
+  if (patch.isAccident !== undefined) updateData.is_accident = patch.isAccident;
+  if (patch.isEnvironmentalIncident !== undefined) updateData.is_environmental_incident = patch.isEnvironmentalIncident;
+  if (patch.isSpill !== undefined) updateData.is_spill = patch.isSpill;
+  if (patch.projectId !== undefined) updateData.project_id = patch.projectId;
+  if (patch.clientId !== undefined) updateData.client_id = patch.clientId;
+  if (patch.category !== undefined || patch.subcategory !== undefined || patch.incidentType !== undefined || patch.typeOfIncident !== undefined) {
+    const current = await getIncident(incidentId);
+    const kpi = deriveIncidentKpiClassification({
+      category: patch.category ?? (current?.category ?? ''),
+      subcategory: patch.subcategory ?? (current?.subcategory ?? ''),
+      incidentType: patch.incidentType ?? patch.typeOfIncident ?? (current as any)?.incident_type ?? (current as any)?.type_of_incident
+    });
+    if (patch.isRecordableInjury === undefined) updateData.is_recordable_injury = kpi.is_recordable_injury;
+    if (patch.isLostTimeInjury === undefined) updateData.is_lost_time_injury = kpi.is_lost_time_injury;
+    if (patch.isFatality === undefined) updateData.is_fatality = kpi.is_fatality;
+    if (patch.isNearMiss === undefined) updateData.is_near_miss = kpi.is_near_miss;
+    if (patch.isAccident === undefined) updateData.is_accident = kpi.is_accident;
+    if (patch.isEnvironmentalIncident === undefined) updateData.is_environmental_incident = kpi.is_environmental_incident;
+    if (patch.isSpill === undefined) updateData.is_spill = kpi.is_spill;
+  }
 
   updateData.updated_at = new Date().toISOString();
 
@@ -417,6 +500,77 @@ export async function listIncidentsWithFilters(input: ListIncidentsWithFiltersIn
   const { data, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Incident[];
+}
+
+export type IncidentCountsForKpi = {
+  totalIncidents: number;
+  recordableInjuries: number;
+  lostTimeInjuries: number;
+  fatalities: number;
+  nearMisses: number;
+  accidents: number;
+  environmentalIncidents: number;
+  spills: number;
+  totalLostDays: number;
+};
+
+export async function getIncidentCountsForKpi(input: {
+  companyId: UUID;
+  dateFrom: string;
+  dateTo: string;
+  siteId?: UUID | null;
+  departmentId?: UUID | null;
+}): Promise<IncidentCountsForKpi> {
+  let q = insforge.database
+    .from('incidents')
+    .select('id, is_recordable_injury, is_lost_time_injury, is_fatality, is_near_miss, is_accident, is_environmental_incident, is_spill, lost_days')
+    .eq('company_id', input.companyId)
+    .gte('occurred_at', input.dateFrom)
+    .lte('occurred_at', input.dateTo);
+  if (input.siteId != null) q = q.eq('site_id', input.siteId);
+  if (input.departmentId != null) q = q.eq('department_id', input.departmentId);
+  const { data, error } = await q.limit(10000);
+  if (error) throw new Error(getErrorMessage(error));
+  const rows = (data ?? []) as Array<{
+    id: UUID;
+    is_recordable_injury?: boolean | null;
+    is_lost_time_injury?: boolean | null;
+    is_fatality?: boolean | null;
+    is_near_miss?: boolean | null;
+    is_accident?: boolean | null;
+    is_environmental_incident?: boolean | null;
+    is_spill?: boolean | null;
+    lost_days?: number | null;
+  }>;
+  let recordableInjuries = 0;
+  let lostTimeInjuries = 0;
+  let fatalities = 0;
+  let nearMisses = 0;
+  let accidents = 0;
+  let environmentalIncidents = 0;
+  let spills = 0;
+  let totalLostDays = 0;
+  for (const r of rows) {
+    if (r.is_recordable_injury) recordableInjuries++;
+    if (r.is_lost_time_injury) lostTimeInjuries++;
+    if (r.is_fatality) fatalities++;
+    if (r.is_near_miss) nearMisses++;
+    if (r.is_accident) accidents++;
+    if (r.is_environmental_incident) environmentalIncidents++;
+    if (r.is_spill) spills++;
+    totalLostDays += Number(r.lost_days) || 0;
+  }
+  return {
+    totalIncidents: rows.length,
+    recordableInjuries,
+    lostTimeInjuries,
+    fatalities,
+    nearMisses,
+    accidents,
+    environmentalIncidents,
+    spills,
+    totalLostDays
+  };
 }
 
 export async function saveIncidentDraft(incidentId: UUID, draftData: Partial<CreateIncidentInput>): Promise<Incident> {

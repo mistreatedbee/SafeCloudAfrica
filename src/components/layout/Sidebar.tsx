@@ -24,6 +24,7 @@ import {
   BarChart3Icon,
   TrendingUpIcon,
   SettingsIcon,
+  ClockIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   XIcon,
@@ -121,6 +122,26 @@ const supportingSections: NavItem[] = [
   icon: BarChart3Icon
 },
 {
+  name: 'Safety Statistics (KPI)',
+  path: '/analytics/safety-statistics',
+  icon: BarChart3Icon
+},
+{
+  name: 'Compliance & Performance',
+  path: '/analytics/compliance',
+  icon: BarChart3Icon
+},
+{
+  name: 'Quality KPIs',
+  path: '/analytics/quality',
+  icon: AwardIcon
+},
+{
+  name: 'Environmental KPIs',
+  path: '/analytics/environmental',
+  icon: LeafIcon
+},
+{
   name: 'Training',
   path: '/training',
   icon: GraduationCapIcon
@@ -173,6 +194,16 @@ const supportingSections: NavItem[] = [
 {
   name: 'Reports',
   path: '/reports',
+  icon: BarChart3Icon
+},
+{
+  name: 'Hours Worked',
+  path: '/management/hours-worked',
+  icon: ClockIcon
+},
+{
+  name: 'Operational Inputs',
+  path: '/management/operational-inputs',
   icon: BarChart3Icon
 }];
 

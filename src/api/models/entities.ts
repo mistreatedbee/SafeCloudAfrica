@@ -101,6 +101,67 @@ export type Department = {
   updated_at: string;
 };
 
+export type WorkHoursMonthly = {
+  id: UUID;
+  company_id: UUID;
+  site_id: UUID | null;
+  department_id: UUID | null;
+  project_id: UUID | null;
+  year: number;
+  month: number;
+  total_employees: number;
+  salaried_employees: number;
+  wage_employees: number;
+  standard_hours_per_day: number;
+  days_worked: number;
+  salaried_hours_calculated: number | null;
+  wage_hours_calculated: number | null;
+  overtime_hours_week_or_sat: number;
+  overtime_hours_sunday: number;
+  overtime_factor_week_or_sat: number;
+  overtime_factor_sunday: number;
+  employee_absent_days: number;
+  employee_absent_hours: number | null;
+  employee_transport_hours: number | null;
+  contractors_included: boolean;
+  contractor_ids: UUID[] | null;
+  total_hours_worked_final: number;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KPISettings = {
+  company_id: UUID;
+  rate_multiplier_mode: 'SMALL_BUSINESS' | 'CORPORATE';
+  default_days_worked: number;
+  default_standard_hours_per_day: number;
+  include_contractors_in_stats: boolean;
+  rolling_window_months: number;
+  lti_reset_triggers: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type OperationalInputsMonthly = {
+  id: UUID;
+  company_id: UUID;
+  site_id: UUID | null;
+  year: number;
+  month: number;
+  total_deliveries: number | null;
+  total_items_inspected: number | null;
+  production_output: number | null;
+  total_energy_used: number | null;
+  recycled_waste: number | null;
+  total_waste_generated: number | null;
+  ppe_employees_observed: number | null;
+  ppe_employees_wearing: number | null;
+  created_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ActivityLog = {
   id: UUID;
   company_id: UUID;
@@ -199,6 +260,17 @@ export type Incident = {
   distributions_to_user_ids?: UUID[] | null;
   distributions_to_emails?: string[] | null;
   required_behaviour?: string | null;
+  // KPI classification (for TRIR, LTIFR, Severity, etc.)
+  lost_days?: number | null;
+  is_recordable_injury?: boolean | null;
+  is_lost_time_injury?: boolean | null;
+  is_fatality?: boolean | null;
+  is_near_miss?: boolean | null;
+  is_accident?: boolean | null;
+  is_environmental_incident?: boolean | null;
+  is_spill?: boolean | null;
+  project_id?: UUID | null;
+  client_id?: UUID | null;
 };
 
 export type IncidentAffectedPerson = {

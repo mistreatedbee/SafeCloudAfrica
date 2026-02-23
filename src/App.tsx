@@ -50,7 +50,13 @@ import { LegalModulePage } from './pages/modules/LegalModulePage';
 import { HRModulePage } from './pages/modules/HRModulePage';
 import { SecurityModulePage } from './pages/modules/SecurityModulePage';
 import { SafetyManagementPage } from './pages/modules/SafetyManagementPage';
+import { HoursWorkedPage } from './pages/management/HoursWorkedPage';
+import { OperationalInputsPage } from './pages/management/OperationalInputsPage';
 import { IncidentAnalyticsPage } from './pages/IncidentAnalyticsPage';
+import { SafetyStatisticsPage } from './pages/analytics/SafetyStatisticsPage';
+import { ComplianceAnalyticsPage } from './pages/analytics/ComplianceAnalyticsPage';
+import { QualityAnalyticsPage } from './pages/analytics/QualityAnalyticsPage';
+import { EnvironmentalAnalyticsPage } from './pages/analytics/EnvironmentalAnalyticsPage';
 import { InspectionAnalyticsPage } from './pages/InspectionAnalyticsPage';
 import { InspectionRunReportPage } from './pages/InspectionRunReportPage';
 import { PjoAnalyticsPage } from './pages/PjoAnalyticsPage';
@@ -282,11 +288,71 @@ export function App() {
             }
           />
           <Route
+            path="/management/hours-worked"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HoursWorkedPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/management/operational-inputs"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <OperationalInputsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/incidents/analytics"
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
                   <IncidentAnalyticsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/analytics/safety-statistics"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <SafetyStatisticsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/analytics/compliance"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ComplianceAnalyticsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/analytics/quality"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <QualityAnalyticsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/analytics/environmental"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <EnvironmentalAnalyticsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
