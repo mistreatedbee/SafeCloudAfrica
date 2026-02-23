@@ -32,7 +32,7 @@ import {
   CreditCardIcon
 } from 'lucide-react';
 import { useTenant } from '../../tenant/TenantContext';
-import type { CompanyRole } from '../../api/models/core';
+import type { CompanyRole, ModuleKey } from '../../api/models/core';
 
 type NavItem = {
   name: string;
@@ -40,6 +40,8 @@ type NavItem = {
   icon: ComponentType<{ className?: string }>;
   /** Roles that can see this item (empty = all org roles). */
   roles?: CompanyRole[];
+  /** If set, item is hidden when this module is disabled for the org. */
+  module?: ModuleKey;
 };
 /** Roles that can see management/analytics (not employee or external). */
 const managementRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
@@ -49,60 +51,16 @@ const adminOnlyRoles: CompanyRole[] = ['owner', 'admin'];
 const moduleRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
 
 const modules: NavItem[] = [
-{
-  name: 'General',
-  path: '/modules/general',
-  icon: FolderIcon,
-  roles: moduleRoles
-},
-{
-  name: 'Safety',
-  path: '/modules/safety',
-  icon: ShieldIcon,
-  roles: moduleRoles
-},
-{
-  name: 'Quality',
-  path: '/modules/quality',
-  icon: AwardIcon,
-  roles: moduleRoles
-},
-{
-  name: 'Environment',
-  path: '/modules/environment',
-  icon: LeafIcon,
-  roles: moduleRoles
-},
-{
-  name: 'Health',
-  path: '/modules/health',
-  icon: HeartIcon,
-  roles: moduleRoles
-},
-{
-  name: 'Legal',
-  path: '/modules/legal',
-  icon: ScaleIcon,
-  roles: moduleRoles
-},
-{
-  name: 'HR',
-  path: '/modules/hr',
-  icon: UsersIcon,
-  roles: moduleRoles
-},
-{
-  name: 'Performance KPIs',
-  path: '/modules/hr/kpis',
-  icon: TrendingUpIcon,
-  roles: moduleRoles
-},
-{
-  name: 'Security',
-  path: '/modules/security',
-  icon: LockIcon,
-  roles: moduleRoles
-}];
+{ name: 'General', path: '/modules/general', icon: FolderIcon, roles: moduleRoles, module: 'general' },
+{ name: 'Safety', path: '/modules/safety', icon: ShieldIcon, roles: moduleRoles, module: 'safety' },
+{ name: 'Quality', path: '/modules/quality', icon: AwardIcon, roles: moduleRoles, module: 'quality' },
+{ name: 'Environment', path: '/modules/environment', icon: LeafIcon, roles: moduleRoles, module: 'environment' },
+{ name: 'Health', path: '/modules/health', icon: HeartIcon, roles: moduleRoles, module: 'health' },
+{ name: 'Legal', path: '/modules/legal', icon: ScaleIcon, roles: moduleRoles, module: 'legal' },
+{ name: 'HR', path: '/modules/hr', icon: UsersIcon, roles: moduleRoles, module: 'hr' },
+{ name: 'Performance KPIs', path: '/modules/hr/kpis', icon: TrendingUpIcon, roles: moduleRoles, module: 'hr' },
+{ name: 'Security', path: '/modules/security', icon: LockIcon, roles: moduleRoles, module: 'security' }
+];
 
 const supportingSections: NavItem[] = [
 { name: 'Documents', path: '/documents', icon: FileTextIcon },
@@ -111,17 +69,17 @@ const supportingSections: NavItem[] = [
 { name: 'Plan Job Observations (PJO)', path: '/pjo', icon: ClipboardCheckIcon, roles: managementRoles },
 { name: 'Tasks & Time', path: '/tasks', icon: ClipboardCheckIcon },
 { name: 'Incidents', path: '/incidents', icon: AlertTriangleIcon },
-{ name: 'Incident Analytics', path: '/incidents/analytics', icon: BarChart3Icon, roles: managementRoles },
-{ name: 'Safety Statistics (KPI)', path: '/analytics/safety-statistics', icon: BarChart3Icon, roles: managementRoles },
+{ name: 'Incident Analytics', path: '/incidents/analytics', icon: BarChart3Icon, roles: managementRoles, module: 'safety' },
+{ name: 'Safety Statistics (KPI)', path: '/analytics/safety-statistics', icon: BarChart3Icon, roles: managementRoles, module: 'safety' },
 { name: 'Compliance & Performance', path: '/analytics/compliance', icon: BarChart3Icon, roles: managementRoles },
-{ name: 'Quality KPIs', path: '/analytics/quality', icon: AwardIcon, roles: managementRoles },
-{ name: 'Environmental KPIs', path: '/analytics/environmental', icon: LeafIcon, roles: managementRoles },
+{ name: 'Quality KPIs', path: '/analytics/quality', icon: AwardIcon, roles: managementRoles, module: 'quality' },
+{ name: 'Environmental KPIs', path: '/analytics/environmental', icon: LeafIcon, roles: managementRoles, module: 'environment' },
 { name: 'Training', path: '/training', icon: GraduationCapIcon },
 { name: 'Audits', path: '/audits', icon: SearchIcon },
 { name: 'Inspections', path: '/inspections', icon: ClipboardCheckIcon, roles: managementRoles },
 { name: 'Risk Management', path: '/risks/dashboard', icon: AlertOctagonIcon },
 { name: 'PPE Management', path: '/ppe', icon: HardHatIcon },
-{ name: 'Legal Register', path: '/legal-register', icon: BookOpenIcon, roles: managementRoles },
+{ name: 'Legal Register', path: '/legal-register', icon: BookOpenIcon, roles: managementRoles, module: 'legal' },
 { name: 'Planning & Review', path: '/planning', icon: ClipboardCheckIcon, roles: managementRoles },
 { name: 'Approvals', path: '/approvals', icon: LockIcon, roles: managementRoles },
 { name: 'Document Reviews', path: '/document-reviews', icon: CalendarIcon, roles: managementRoles },
@@ -132,7 +90,7 @@ const supportingSections: NavItem[] = [
 ];
 
 const sellableFeatures: NavItem[] = [
-{ name: 'BBS Programme', path: '/bbs', icon: EyeIcon, roles: managementRoles },
+{ name: 'BBS Programme', path: '/bbs', icon: EyeIcon, roles: managementRoles, module: 'safety' },
 { name: 'Contractors & Visitors', path: '/contractors', icon: UsersIcon, roles: managementRoles },
 { name: 'Emergency Preparedness', path: '/emergency', icon: AlertTriangleIcon, roles: managementRoles },
 { name: 'Template Library', path: '/templates', icon: FolderIcon, roles: managementRoles }
@@ -171,15 +129,32 @@ function filterByRole<T extends { roles?: CompanyRole[] }>(items: T[], activeRol
   });
 }
 
+function filterByEnabledModules<T extends { module?: ModuleKey }>(items: T[], enabledModules: ModuleKey[]): T[] {
+  if (!enabledModules.length) return items;
+  return items.filter((item) => {
+    if (!item.module) return true;
+    return enabledModules.includes(item.module);
+  });
+}
+
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [modulesExpanded, setModulesExpanded] = useState(true);
   const location = useLocation();
-  const { activeRole } = useTenant();
+  const { activeRole, enabledModules } = useTenant();
 
   const dashboardPath = useMemo(() => dashboardPathForRole(activeRole), [activeRole]);
-  const filteredModules = useMemo(() => filterByRole(modules, activeRole), [activeRole]);
-  const filteredSupporting = useMemo(() => filterByRole(supportingSections, activeRole), [activeRole]);
-  const filteredSellable = useMemo(() => filterByRole(sellableFeatures, activeRole), [activeRole]);
+  const filteredModules = useMemo(
+    () => filterByEnabledModules(filterByRole(modules, activeRole), enabledModules),
+    [activeRole, enabledModules]
+  );
+  const filteredSupporting = useMemo(
+    () => filterByEnabledModules(filterByRole(supportingSections, activeRole), enabledModules),
+    [activeRole, enabledModules]
+  );
+  const filteredSellable = useMemo(
+    () => filterByEnabledModules(filterByRole(sellableFeatures, activeRole), enabledModules),
+    [activeRole, enabledModules]
+  );
   const filteredSettings = useMemo(() => filterByRole(settingsItems, activeRole), [activeRole]);
 
   const NavLinkItem = ({ item }: { item: NavItem }) => {

@@ -2,8 +2,9 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { useUser } from '@insforge/react';
 import { insforge } from '../api/insforge/client';
 import type { Company, CompanyMembership, UUID } from '../api/models/entities';
-import type { CompanyRole } from '../api/models/core';
+import type { CompanyRole, ModuleKey } from '../api/models/core';
 import { ensureMeAsSuperAdmin, isPlatformAdmin as checkPlatformAdmin } from '../api/services/platformAdminService';
+import { getEnabledModuleKeys } from '../api/services/orgModulesService';
 import { upsertMyProfile } from '../api/services/profilesService';
 
 type MembershipWithCompany = CompanyMembership & { company?: Company };
@@ -13,6 +14,8 @@ type TenantContextValue = {
   activeCompanyId: UUID | null;
   activeCompany: Company | null;
   activeRole: CompanyRole | null;
+  /** Module keys enabled for the active org (Super Admin control). Empty = all enabled (e.g. no config). */
+  enabledModules: ModuleKey[];
   isPlatformAdmin: boolean;
   /** True after first refreshTenant() has completed for the current user (so isPlatformAdmin is known). */
   isTenantLoaded: boolean;
@@ -137,18 +140,23 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     return memberships.find((m) => m.company_id === activeCompanyId)?.role ?? null;
   }, [activeCompanyId, memberships]);
 
+  const enabledModules = useMemo<ModuleKey[]>(() => {
+    return getEnabledModuleKeys(activeCompany ?? null);
+  }, [activeCompany]);
+
   const value = useMemo<TenantContextValue>(
     () => ({
       memberships,
       activeCompanyId,
       activeCompany,
       activeRole,
+      enabledModules,
       isPlatformAdmin,
       isTenantLoaded,
       setActiveCompanyId,
       refreshTenant
     }),
-    [activeCompany, activeCompanyId, activeRole, isPlatformAdmin, isTenantLoaded, memberships, refreshTenant, setActiveCompanyId]
+    [activeCompany, activeCompanyId, activeRole, enabledModules, isPlatformAdmin, isTenantLoaded, memberships, refreshTenant, setActiveCompanyId]
   );
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;

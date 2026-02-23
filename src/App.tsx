@@ -5,6 +5,7 @@ import { RequireWorkspace } from './auth/RequireWorkspace';
 import { RequireSignedIn } from './auth/RequireSignedIn';
 import { RequireCompanyRole } from './auth/RequireCompanyRole';
 import { RequireActiveSubscription } from './auth/RequireActiveSubscription';
+import { RequireModuleEnabled } from './auth/RequireModuleEnabled';
 import { OwnerOnboardingGate } from './auth/OwnerOnboardingGate';
 import { TenantProvider } from './tenant/TenantContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -301,7 +302,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <GeneralModulePage />
+                  <RequireModuleEnabled module="general">
+                    <GeneralModulePage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -311,7 +314,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <SafetyPage />
+                  <RequireModuleEnabled module="safety">
+                    <SafetyPage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -321,7 +326,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <SafetyManagementPage />
+                  <RequireModuleEnabled module="safety">
+                    <SafetyManagementPage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -351,7 +358,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <IncidentAnalyticsPage />
+                  <RequireModuleEnabled module="safety">
+                    <IncidentAnalyticsPage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -361,7 +370,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <SafetyStatisticsPage />
+                  <RequireModuleEnabled module="safety">
+                    <SafetyStatisticsPage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -381,7 +392,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <QualityAnalyticsPage />
+                  <RequireModuleEnabled module="quality">
+                    <QualityAnalyticsPage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -391,7 +404,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <EnvironmentalAnalyticsPage />
+                  <RequireModuleEnabled module="environment">
+                    <EnvironmentalAnalyticsPage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -421,7 +436,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <QualityPage />
+                  <RequireModuleEnabled module="quality">
+                    <QualityPage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -431,7 +448,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <EnvironmentPage />
+                  <RequireModuleEnabled module="environment">
+                    <EnvironmentPage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -441,7 +460,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <HealthModulePage />
+                  <RequireModuleEnabled module="health">
+                    <HealthModulePage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -451,7 +472,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <LegalModulePage />
+                  <RequireModuleEnabled module="legal">
+                    <LegalModulePage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -461,7 +484,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <HRModulePage />
+                  <RequireModuleEnabled module="hr">
+                    <HRModulePage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -471,7 +496,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <SecurityModulePage />
+                  <RequireModuleEnabled module="security">
+                    <SecurityModulePage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -481,7 +508,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <HCSModulePage />
+                  <RequireModuleEnabled module="health">
+                    <HCSModulePage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -592,7 +621,9 @@ export function App() {
           <Route path="/modules/hr/kpis" element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <KPIModuleLayout />
+                  <RequireModuleEnabled module="hr">
+                    <KPIModuleLayout />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }>
@@ -752,7 +783,9 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <LegalRegisterPage />
+                  <RequireModuleEnabled module="legal">
+                    <LegalRegisterPage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }

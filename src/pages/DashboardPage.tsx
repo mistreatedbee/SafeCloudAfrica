@@ -76,7 +76,7 @@ const moduleCards = [
 export function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useUser();
-  const { activeCompanyId, activeRole } = useTenant();
+  const { activeCompanyId, activeRole, enabledModules } = useTenant();
   const { fullName, organisationName } = useIdentity();
   const firstName = String(fullName).split(' ')[0];
   const [refreshKey, setRefreshKey] = useState(0);
@@ -235,8 +235,10 @@ export function DashboardPage() {
   const overallScore = summary?.overallScore ?? 0;
 
   const moduleCardsWithScores = useMemo(() => {
-    return moduleCards.map((m) => ({ ...m, score: moduleScoreByKey[m.id] ?? 0 }));
-  }, [moduleScoreByKey]);
+    const withScores = moduleCards.map((m) => ({ ...m, score: moduleScoreByKey[m.id] ?? 0 }));
+    if (!enabledModules.length) return withScores;
+    return withScores.filter((m) => enabledModules.includes(m.id as 'safety' | 'quality' | 'environment' | 'health' | 'legal' | 'hr'));
+  }, [moduleScoreByKey, enabledModules]);
 
   return (
     <Layout title="Dashboard">
