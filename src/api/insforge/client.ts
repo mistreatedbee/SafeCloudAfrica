@@ -13,10 +13,12 @@ function resolveBaseUrl(rawBaseUrl: string): string {
   if (typeof window === 'undefined') return rawBaseUrl;
   try {
     const targetOrigin = new URL(rawBaseUrl).origin;
-    // Use same-origin proxy route in browser when target origin differs.
-    if (window.location.origin !== targetOrigin) return `${window.location.origin}/api/insforge`;
+    // Use same-origin proxy in browser when target origin differs.
+    // InsForge SDK issues requests under /api/* (auth/database/storage/functions),
+    // so the base URL should be the same-origin root.
+    if (window.location.origin !== targetOrigin) return window.location.origin;
   } catch {
-    // If base URL is already relative, normalize to absolute.
+    // If base URL is relative, normalize to absolute.
     if (rawBaseUrl.startsWith('/')) return `${window.location.origin}${rawBaseUrl}`;
   }
   return rawBaseUrl;

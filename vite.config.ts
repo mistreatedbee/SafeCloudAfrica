@@ -7,10 +7,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api/insforge': {
+      '/api': {
         target: 'https://pas375jb.us-west.insforge.app',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/insforge/, ''),
       },
     },
   },
