@@ -28,7 +28,9 @@ import {
   LockIcon,
   MessageCircleIcon,
   HelpCircleIcon,
-  XIcon
+  XIcon,
+  CalendarIcon,
+  CreditCardIcon
 } from 'lucide-react';
 import { MarketingFooter } from '../../components/marketing/MarketingFooter';
 
@@ -113,9 +115,6 @@ export function LandingPage() {
             <button onClick={() => scrollToHash('#pricing')} className="hover:text-charcoal transition-colors">
               Pricing
             </button>
-            <Link to="/activate" className="hover:text-charcoal transition-colors">
-              Activate License
-            </Link>
             <button onClick={() => scrollToHash('#testimonials')} className="hover:text-charcoal transition-colors">
               Testimonials
             </button>
@@ -125,12 +124,6 @@ export function LandingPage() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <Link
-              to="/activate"
-              className="hidden sm:inline-flex px-4 py-2 rounded-lg text-sm font-medium text-charcoal hover:bg-surface-100 transition-colors"
-            >
-              Activate License
-            </Link>
             <Link
               to="/login"
               className="hidden sm:inline-flex px-4 py-2 rounded-lg text-sm font-medium text-charcoal hover:bg-surface-100 transition-colors"
@@ -163,7 +156,7 @@ export function LandingPage() {
         </Link>
       </motion.div>
 
-      {/* Hero (unchanged but with subtle animation on the side panel) */}
+      {/* Hero (unchanged) */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute -top-24 -right-24 w-72 h-72 bg-teal/15 blur-3xl rounded-full animate-pulse" />
@@ -253,7 +246,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* NEW: Trusted By */}
+      {/* Trusted By - Enhanced with glow */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -262,19 +255,27 @@ export function LandingPage() {
         className="bg-white border-y border-surface-200"
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-          <p className="text-center text-sm font-semibold text-charcoal-500 uppercase tracking-wider">Trusted by leading organisations across Africa</p>
-          <div className="mt-8 grid grid-cols-2 md:grid-cols-5 gap-8 items-center justify-items-center opacity-70">
-            {/* Placeholder logos - replace with actual client logos */}
-            <div className="h-8 w-24 bg-surface-200 rounded-lg flex items-center justify-center text-xs text-charcoal-400">MineCorp</div>
-            <div className="h-8 w-24 bg-surface-200 rounded-lg flex items-center justify-center text-xs text-charcoal-400">BuildSafe</div>
-            <div className="h-8 w-24 bg-surface-200 rounded-lg flex items-center justify-center text-xs text-charcoal-400">EcoEnergy</div>
-            <div className="h-8 w-24 bg-surface-200 rounded-lg flex items-center justify-center text-xs text-charcoal-400">AgriHealth</div>
-            <div className="h-8 w-24 bg-surface-200 rounded-lg flex items-center justify-center text-xs text-charcoal-400">TransNet</div>
+          <p className="text-center text-sm font-semibold text-charcoal-500 uppercase tracking-wider">
+            Trusted by leading organisations across Africa
+          </p>
+          <div className="mt-8 grid grid-cols-2 md:grid-cols-5 gap-8 items-center justify-items-center">
+            {['MineCorp', 'BuildSafe', 'EcoEnergy', 'AgriHealth', 'TransNet'].map((name, i) => (
+              <motion.div
+                key={name}
+                whileHover={{ scale: 1.1 }}
+                className="relative group cursor-pointer"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-teal-400 to-blue-500 rounded-lg opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300" />
+                <div className="relative h-12 w-28 bg-gradient-to-br from-surface-100 to-surface-200 rounded-lg flex items-center justify-center text-sm font-medium text-charcoal-700 border border-surface-300 group-hover:border-teal-400 group-hover:text-teal-700 transition-all duration-300 shadow-sm">
+                  {name}
+                </div>
+              </motion.div>
+            ))}
           </div>
         </div>
       </motion.section>
 
-      {/* NEW: How It Works */}
+      {/* How It Works (unchanged) */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -312,7 +313,7 @@ export function LandingPage() {
         </div>
       </motion.section>
 
-      {/* NEW: Stats */}
+      {/* Stats (unchanged) */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -350,7 +351,7 @@ export function LandingPage() {
         </div>
       </motion.section>
 
-      {/* Modules (existing but with animations) */}
+      {/* Modules (unchanged) */}
       <motion.section
         id="modules"
         initial={{ opacity: 0, y: 20 }}
@@ -403,7 +404,7 @@ export function LandingPage() {
         </div>
       </motion.section>
 
-      {/* Features (existing but enhanced with hover) */}
+      {/* Features (unchanged) */}
       <motion.section
         id="features"
         initial={{ opacity: 0, y: 20 }}
@@ -459,7 +460,7 @@ export function LandingPage() {
         </div>
       </motion.section>
 
-      {/* NEW: Testimonials */}
+      {/* Testimonials (unchanged) */}
       <motion.section
         id="testimonials"
         initial={{ opacity: 0, y: 20 }}
@@ -525,7 +526,7 @@ export function LandingPage() {
         </div>
       </motion.section>
 
-      {/* NEW: Integrations */}
+      {/* Integrations - Enhanced with glow */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -540,11 +541,11 @@ export function LandingPage() {
 
         <div className="mt-10 flex flex-wrap justify-center gap-8">
           {[
-            { name: 'Slack', icon: MessageCircleIcon },
-            { name: 'Google Drive', icon: FileTextIcon },
-            { name: 'Microsoft 365', icon: CloudIcon },
-            { name: 'SAP', icon: ServerIcon },
-            { name: 'Power BI', icon: BarChart3Icon }
+            { name: 'Slack', icon: MessageCircleIcon, color: 'from-purple-400 to-pink-500' },
+            { name: 'Google Drive', icon: FileTextIcon, color: 'from-green-400 to-emerald-500' },
+            { name: 'Microsoft 365', icon: CloudIcon, color: 'from-blue-400 to-indigo-500' },
+            { name: 'SAP', icon: ServerIcon, color: 'from-yellow-400 to-orange-500' },
+            { name: 'Power BI', icon: BarChart3Icon, color: 'from-amber-400 to-yellow-600' }
           ].map((int, i) => (
             <motion.div
               key={int.name}
@@ -552,19 +553,20 @@ export function LandingPage() {
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.05 }}
-              whileHover={{ y: -5 }}
-              className="flex flex-col items-center gap-2"
+              whileHover={{ y: -5, scale: 1.1 }}
+              className="relative group cursor-pointer"
             >
-              <div className="p-4 rounded-2xl bg-surface-100 border border-surface-200">
-                <int.icon className="w-8 h-8 text-charcoal-400" />
+              <div className={`absolute inset-0 bg-gradient-to-r ${int.color} rounded-2xl opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300`} />
+              <div className="relative flex flex-col items-center gap-2 p-4 rounded-2xl bg-white border border-surface-200 shadow-sm group-hover:shadow-lg group-hover:border-transparent transition-all duration-300">
+                <int.icon className="w-8 h-8 text-charcoal-600 group-hover:text-charcoal-900" />
+                <span className="text-xs font-medium text-charcoal-600 group-hover:text-charcoal-900">{int.name}</span>
               </div>
-              <span className="text-xs font-medium text-charcoal-600">{int.name}</span>
             </motion.div>
           ))}
         </div>
       </motion.section>
 
-      {/* Pricing (existing but with hover) */}
+      {/* Pricing - Updated with new tiers */}
       <motion.section
         id="pricing"
         initial={{ opacity: 0, y: 20 }}
@@ -574,89 +576,146 @@ export function LandingPage() {
         className="bg-white border-t border-surface-200"
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14">
-          <h2 className="text-2xl font-bold text-navy">Licensing model</h2>
+          <h2 className="text-2xl font-bold text-navy">Simple, transparent licensing</h2>
           <p className="text-sm text-charcoal-500 mt-2 max-w-3xl">
-            Choose a licence that matches your organisation size. All licences are priced in South African Rands (R).
+            Choose a plan that fits your team size. All prices in South African Rands (R) per month. 
+            <span className="block mt-1 font-medium text-teal">HR Module included free in all plans!</span>
           </p>
 
-          <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {[
-              {
-                title: 'Starter Licence (6 Months)',
-                price: 'R3,000 once-off',
-                badge: 'Best for small businesses',
-                bullets: [
-                  'Access to core SafeCloud Africa platform',
-                  'User & role management',
-                  'Secure cloud storage (basic tier)',
-                  'Activity tracking & audit logs',
-                  'Email support'
-                ]
-              },
-              {
-                title: 'Professional Licence (12 Months)',
-                price: 'R5,000 once-off',
-                badge: 'Most popular',
-                highlight: true,
-                bullets: [
-                  'Everything in Starter',
-                  'Extended storage',
-                  'Priority support',
-                  'Organisation branding (logo & name)',
-                  'Advanced monitoring features (Phase 2 feature)'
-                ]
-              },
-              {
-                title: 'Enterprise / Custom Licence',
-                price: 'Request a quote',
-                badge: 'Custom onboarding',
-                bullets: [
-                  'For larger organisations and multi-site operations',
-                  'Custom features and configuration',
-                  'Onboarding + training',
-                  'Dedicated support options',
-                  'Integrations (Coming soon / planned upgrades)'
-                ]
-              }
-            ].map((p, i) => (
-              <motion.div
-                key={p.title}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                whileHover={{ y: -5 }}
-                className={`bg-surface-50 rounded-2xl border p-6 ${
-                  p.highlight ? 'border-teal shadow-card' : 'border-surface-200'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-sm font-semibold text-charcoal">{p.title}</p>
-                  {p.badge && (
-                    <span
-                      className={`px-2 py-1 rounded-full text-[11px] font-semibold border ${
-                        p.highlight
-                          ? 'bg-teal-50 text-teal border-teal/20'
-                          : 'bg-white text-charcoal-500 border-surface-200'
-                      }`}
-                    >
-                      {p.badge}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-2 text-3xl font-bold text-navy">{p.price}</p>
-                <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
-                  {p.bullets.map((b) => (
-                    <li key={b} className="flex items-start gap-2">
-                      <ShieldCheckIcon className="w-4 h-4 text-success mt-0.5" />
-                      <span>{b}</span>
-                    </li>
-                  ))}
-                </ul>
-              </motion.div>
-            ))}
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Base */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.1 }}
+              whileHover={{ y: -5 }}
+              className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-bold text-charcoal">Base</p>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">1–5 users</span>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-navy">R4,000<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-1 text-xs text-charcoal-500">Ideal for small businesses or teams just getting started.</p>
+              <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Up to 5 users</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />All core modules</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />HR Module included free</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Email support</li>
+              </ul>
+            </motion.div>
+
+            {/* Growth */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.2 }}
+              whileHover={{ y: -5 }}
+              className="bg-surface-50 rounded-2xl border-2 border-teal shadow-card p-6 relative"
+            >
+              <div className="absolute top-0 right-0 bg-teal text-white px-3 py-1 rounded-bl-lg rounded-tr-lg text-xs font-semibold">Most popular</div>
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-bold text-charcoal">Growth</p>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">6–20 users</span>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-navy">R6,500<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-1 text-xs text-charcoal-500">For companies scaling up their operations and team.</p>
+              <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Up to 20 users</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />All core modules</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />HR Module included free</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Priority support</li>
+              </ul>
+            </motion.div>
+
+            {/* Professional */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.3 }}
+              whileHover={{ y: -5 }}
+              className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-bold text-charcoal">Professional</p>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">21–50 users</span>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-navy">R7,500<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-1 text-xs text-charcoal-500">Designed for medium-sized enterprises with multiple departments.</p>
+              <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Up to 50 users</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />All core modules</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />HR Module included free</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Advanced analytics</li>
+              </ul>
+            </motion.div>
+
+            {/* Enterprise */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.4 }}
+              whileHover={{ y: -5 }}
+              className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-bold text-charcoal">Enterprise</p>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">50+ users</span>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-navy">Custom</p>
+              <p className="mt-1 text-xs text-charcoal-500">Custom configuration for large organisations with complex needs.</p>
+              <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Unlimited users</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />All modules + custom</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Dedicated support</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Onboarding & training</li>
+              </ul>
+              <Link to="/contact" className="mt-4 inline-block w-full text-center px-4 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-700 transition-colors">
+                Contact sales
+              </Link>
+            </motion.div>
           </div>
 
+          {/* HR Module standalone */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mt-8 p-6 rounded-2xl bg-surface-100 border border-surface-200"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="font-bold text-charcoal">Need only HR Module?</h3>
+                <p className="text-sm text-charcoal-500">Employee management standalone – for 1–5 users</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-2xl font-bold text-navy">R3,000<span className="text-sm font-normal text-charcoal-500">/mo</span></span>
+                <Link
+                  to="/register?plan=hr"
+                  className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-teal text-white font-semibold hover:bg-teal-600 transition-colors"
+                >
+                  Select <ArrowRightIcon className="w-4 h-4" />
+                </Link>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Payment plans note */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="mt-6 flex items-center gap-3 text-sm text-charcoal-500"
+          >
+            <CreditCardIcon className="w-5 h-5 text-teal" />
+            <p>Flexible payment plans available: 3, 6, 9, or 12 months. Save with longer commitments.</p>
+          </motion.div>
+
+          {/* CTA */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -665,27 +724,19 @@ export function LandingPage() {
           >
             <div>
               <p className="font-semibold">Ready to start?</p>
-              <p className="text-sm text-navy-200 mt-1">Have a license key? Activate your organisation. Otherwise register for an account.</p>
+              <p className="text-sm text-navy-200 mt-1">Verify your email, then sign in to access the platform.</p>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                to="/activate"
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-teal text-white font-semibold hover:bg-teal-600 transition-colors"
-              >
-                Activate License / Register Company <ArrowRightIcon className="w-4 h-4" />
-              </Link>
-              <Link
-                to="/register"
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-white/10 border border-white/20 text-white font-semibold hover:bg-white/20 transition-colors"
-              >
-                Get started
-              </Link>
-            </div>
+            <Link
+              to="/register"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-teal text-white font-semibold hover:bg-teal-600 transition-colors"
+            >
+              Get started <ArrowRightIcon className="w-4 h-4" />
+            </Link>
           </motion.div>
         </div>
       </motion.section>
 
-      {/* NEW: FAQ */}
+      {/* FAQ (unchanged) */}
       <motion.section
         id="faq"
         initial={{ opacity: 0, y: 20 }}
