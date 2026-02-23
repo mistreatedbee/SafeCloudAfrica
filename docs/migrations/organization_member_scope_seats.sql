@@ -83,7 +83,6 @@ $$;
 comment on function public.count_billable_seats(uuid) is 'Number of members that consume a seat (ACTIVE; consultant/auditor only if not seat_exempt).';
 
 grant execute on function public.count_billable_seats(uuid) to authenticated;
-grant execute on function public.count_billable_seats(uuid) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 4) Get effective seat limit for a company (from latest org_licenses or company.employee_limit)
@@ -110,7 +109,6 @@ $$;
 comment on function public.get_company_seat_limit(uuid) is 'Effective seat limit for company (org_licenses.active or company.employee_limit).';
 
 grant execute on function public.get_company_seat_limit(uuid) to authenticated;
-grant execute on function public.get_company_seat_limit(uuid) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 5) RLS: only ACTIVE members have access (INVITED cannot access org data)

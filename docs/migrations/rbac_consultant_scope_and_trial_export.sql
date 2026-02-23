@@ -109,4 +109,3 @@ $$;
 comment on function public.can_company_export(uuid) is 'True if current user can export (download) for this company; false when subscription is in trial.';
 
 grant execute on function public.can_company_export(uuid) to authenticated;
-grant execute on function public.can_company_export(uuid) to service_role;
