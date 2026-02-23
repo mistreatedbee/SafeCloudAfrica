@@ -3,7 +3,7 @@ import { useUser } from '@insforge/react';
 import { insforge } from '../api/insforge/client';
 import type { Company, CompanyMembership, UUID } from '../api/models/entities';
 import type { CompanyRole } from '../api/models/core';
-import { isPlatformAdmin as checkPlatformAdmin } from '../api/services/platformAdminService';
+import { ensureMeAsSuperAdmin, isPlatformAdmin as checkPlatformAdmin } from '../api/services/platformAdminService';
 import { upsertMyProfile } from '../api/services/profilesService';
 
 type MembershipWithCompany = CompanyMembership & { company?: Company };
@@ -69,6 +69,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
     setIsTenantLoaded(false);
     try {
+      await ensureMeAsSuperAdmin();
       const rows = await fetchMemberships(user.id as UUID);
       setMemberships(rows);
 
