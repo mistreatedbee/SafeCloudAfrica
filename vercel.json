@@ -1,4 +1,10 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/" }]
+  "rewrites": [
+    {
+      "source": "/api/insforge/(.*)",
+      "destination": "https://pas375jb.us-west.insforge.app/$1"
+    },
+    { "source": "/(.*)", "destination": "/" }
+  ]
 }
 
