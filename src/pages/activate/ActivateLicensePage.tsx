@@ -4,10 +4,9 @@ import { KeyRoundIcon, Building2Icon, FileCheckIcon, Loader2Icon } from 'lucide-
 import { useAuth, useUser } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { validateLicenseKey, activateLicenseKey, type ValidatedKeyInfo } from '../../api/services/activationService';
-import { getLoginRedirectPath } from '../../api/services/platformAdminService';
+import { getDashboardPathByRole } from '../../api/services/platformAdminService';
 import { useTenant } from '../../tenant/TenantContext';
 import { insforge } from '../../api/insforge/client';
-import type { UUID } from '../../api/models/entities';
 
 const PLAN_LABELS: Record<string, string> = {
   base: 'Base',
@@ -22,7 +21,7 @@ export function ActivateLicensePage() {
   const navigate = useNavigate();
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
-  const { refreshTenant } = useTenant();
+  const { setActiveCompanyId, refreshTenant } = useTenant();
 
   const [key, setKey] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -37,6 +36,7 @@ export function ActivateLicensePage() {
   const [keyValidating, setKeyValidating] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const validateKey = useCallback(async () => {
@@ -129,9 +129,10 @@ export function ActivateLicensePage() {
         phone: phone.trim()
       });
 
+      setActiveCompanyId(result.organizationId);
       await refreshTenant();
-      const { path } = await getLoginRedirectPath(result.userId as UUID);
-      navigate(path, { replace: true });
+      setRedirecting(true);
+      navigate(getDashboardPathByRole('owner'), { replace: true });
     } catch (err) {
       setSubmitError((err as Error)?.message ?? 'Activation failed. Please try again or contact support.');
     } finally {
@@ -140,6 +141,17 @@ export function ActivateLicensePage() {
   };
 
   const keyFormatValid = key.trim().length >= 8;
+
+  if (redirecting) {
+    return (
+      <AuthShell title="Activate License" subtitle="Taking you to your dashboard." sideTitle="Safe Cloud Africa">
+        <div className="flex flex-col items-center gap-3 py-8">
+          <Loader2Icon className="w-10 h-10 animate-spin text-teal" aria-hidden />
+          <p className="text-sm text-charcoal-600">Redirecting to your dashboard…</p>
+        </div>
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell

@@ -3,26 +3,13 @@ import { Link, useLocation } from 'react-router-dom';
 import { ShieldAlertIcon, HomeIcon } from 'lucide-react';
 import { useTenant } from '../tenant/TenantContext';
 import { Layout } from '../components/layout/Layout';
-
-function dashboardPathForRole(role: string | null): string {
-  if (!role) return '/app';
-  const map: Record<string, string> = {
-    owner: '/owner',
-    admin: '/admin',
-    manager: '/manager',
-    supervisor: '/manager',
-    employee: '/employee',
-    consultant: '/external',
-    auditor: '/external'
-  };
-  return map[role] ?? '/app';
-}
+import { getDashboardPathByRole } from '../api/services/platformAdminService';
 
 export function AccessDeniedPage() {
   const location = useLocation();
   const { activeRole } = useTenant();
   const from = (location.state as { from?: string })?.from;
-  const dashboardPath = dashboardPathForRole(activeRole);
+  const dashboardPath = activeRole ? getDashboardPathByRole(activeRole) : '/app';
 
   return (
     <Layout title="Access denied">

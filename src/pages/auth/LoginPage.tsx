@@ -10,7 +10,7 @@ import type { UUID } from '../../api/models/entities';
 export function LoginPage() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
-  const { refreshTenant } = useTenant();
+  const { setActiveCompanyId, refreshTenant } = useTenant();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [redirecting, setRedirecting] = useState(false);
@@ -52,11 +52,12 @@ export function LoginPage() {
           navigate('/super-admin/overview', { replace: true });
           return;
         }
-        const { path: defaultPath, reason } = await getLoginRedirectPath(user!.id as UUID);
-        const target = redirectParam ? decodeURIComponent(redirectParam) : defaultPath;
-        const pathWithReason = reason ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`) : target;
+        const { path: defaultPath, organizationId, reason } = await getLoginRedirectPath(user!.id as UUID);
+        if (organizationId) setActiveCompanyId(organizationId);
         await refreshTenant();
         if (cancelled) return;
+        const target = redirectParam ? decodeURIComponent(redirectParam) : defaultPath;
+        const pathWithReason = reason ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`) : target;
         navigate(pathWithReason, { replace: true });
       } catch (err) {
         if (!cancelled) {
