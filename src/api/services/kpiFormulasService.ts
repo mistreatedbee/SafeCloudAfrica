@@ -213,7 +213,7 @@ export async function getComplianceKpis(
   const [operationalRows, hoursRows, trainingRecords, inspectionRuns, correctiveActions, auditsList] = await Promise.all([
     listOperationalInputsMonthly({ companyId, limit: 24 }),
     listWorkHoursMonthly({ companyId, limit: 24 }),
-    insforge.database.from('training_records').select('user_id, completed_at').eq('company_id', companyId).gte('completed_at', period.dateFrom).lte('completed_at', period.dateTo),
+    insforge.database.from('training_records').select('user_id, completed_at').eq('company_id', companyId).eq('status', 'COMPLETED').not('completed_at', 'is', null).gte('completed_at', period.dateFrom).lte('completed_at', period.dateTo),
     insforge.database.from('inspection_runs').select('id, status, started_at, completed_at').eq('company_id', companyId).not('started_at', 'is', null).gte('started_at', period.dateFrom).lte('started_at', period.dateTo),
     insforge.database.from('corrective_actions').select('id, status, created_at').eq('company_id', companyId),
     insforge.database.from('audits').select('id').eq('company_id', companyId).eq('status', 'completed').gte('created_at', period.dateFrom).lte('created_at', period.dateTo)

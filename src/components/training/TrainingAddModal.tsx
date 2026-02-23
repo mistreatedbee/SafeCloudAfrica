@@ -63,11 +63,13 @@ export function TrainingAddModal(props: {
         certificateKey = data?.path ?? key;
       }
 
+      const hasCompleted = !!(completedAt && certificateBucket && certificateKey);
       await createTrainingRecord({
         companyId: props.companyId,
         userId: userId as UUID,
         courseId: finalCourseId as UUID,
-        completedAt: completedAt ? new Date(completedAt).toISOString() : undefined,
+        status: hasCompleted ? 'COMPLETED' : 'REQUIRED',
+        completedAt: completedAt ? new Date(completedAt).toISOString() : null,
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
         certificateBucket,
         certificateKey,

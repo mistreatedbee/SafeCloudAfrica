@@ -1179,20 +1179,78 @@ export type TrainingCourse = {
   name: string;
   description: string | null;
   valid_months: number | null;
+  unit_standard_required: string | null;
+  credits: number | null;
+  default_frequency_months: number | null;
+  default_validity_months: number | null;
   created_at: string;
+  updated_at?: string | null;
 };
+
+export type TrainingRecordStatus = 'REQUIRED' | 'SCHEDULED' | 'COMPLETED' | 'EXPIRED' | 'OVERDUE';
 
 export type TrainingRecord = {
   id: UUID;
   company_id: UUID;
   user_id: UUID;
   course_id: UUID;
-  completed_at: string;
+  job_description_id: UUID | null;
+  provider_id: UUID | null;
+  provider_type: string | null;
+  arranged_at: string | null;
+  completed_at: string | null;
   expires_at: string | null;
   certificate_bucket: string | null;
   certificate_key: string | null;
+  cost: number | null;
+  status: TrainingRecordStatus;
   created_by_user_id: UUID;
   created_at: string;
+  updated_at?: string | null;
+};
+
+export type JobDescription = {
+  id: UUID;
+  company_id: UUID;
+  title: string;
+  department_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TrainingProviderType = 'INTERNAL' | 'EXTERNAL';
+
+export type TrainingProvider = {
+  id: UUID;
+  company_id: UUID;
+  name: string;
+  provider_type: TrainingProviderType;
+  contact_info: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CourseProviderPrice = {
+  id: UUID;
+  company_id: UUID;
+  course_id: UUID;
+  provider_id: UUID;
+  price: number | null;
+  currency: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobTrainingRequirement = {
+  id: UUID;
+  company_id: UUID;
+  job_description_id: UUID;
+  course_id: UUID;
+  frequency_months: number | null;
+  is_mandatory: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 export type MedicalCertificateStatus = 'valid' | 'expiring' | 'expired';
@@ -1370,6 +1428,9 @@ export type UserProfile = {
   department_id?: UUID | null;
   department: string | null;
   site: string | null;
+  job_description_id?: UUID | null;
+  employee_number?: string | null;
+  supervisor_user_id?: UUID | null;
   created_at: string;
   updated_at: string;
 };

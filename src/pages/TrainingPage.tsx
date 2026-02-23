@@ -3,16 +3,30 @@ import { motion } from 'framer-motion';
 import {
   GraduationCapIcon,
   PlusIcon,
-  SearchIcon } from
-'lucide-react';
+  SearchIcon,
+  SettingsIcon,
+  UsersIcon,
+  BarChart3Icon,
+  UserIcon
+} from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../api/hooks/useAsync';
-import { countExpiringTraining, listTrainingCourses, listTrainingRecords } from '../api/services/trainingService';
-import type { TrainingCourse, TrainingRecord } from '../api/models/entities';
+import {
+  countExpiringTraining,
+  listTrainingCourses,
+  listTrainingRecords,
+  listTrainingProviders
+} from '../api/services/trainingService';
+import type { TrainingCourse, TrainingRecord, TrainingRecordStatus } from '../api/models/entities';
 import { TrainingAddModal } from '../components/training/TrainingAddModal';
+import { TrainingScheduleModal } from '../components/training/TrainingScheduleModal';
+import { TrainingCompleteModal } from '../components/training/TrainingCompleteModal';
+import { TrainingMatrixSetupTab } from '../components/training/TrainingMatrixSetupTab';
+import { TrainingReportsTab } from '../components/training/TrainingReportsTab';
 import { listCompanyMemberships } from '../api/services/tenantService';
+import { listUserProfiles } from '../api/services/profilesService';
 import type { CompanyMembership } from '../api/models/entities';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../api/services/documentsStorageService';
 
@@ -37,13 +51,23 @@ const itemVariants = {
     y: 0
   }
 };
+type TrainingTab = 'matrix' | 'employees' | 'reports' | 'my';
+
 export function TrainingPage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<TrainingTab>('employees');
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
   const canManage = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
+  const canManageMatrix = activeRole === 'admin' || activeRole === 'manager';
+  const isEmployee = activeRole === 'employee';
 
   const [addOpen, setAddOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<TrainingRecordStatus | ''>('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
+  const [scheduleRecord, setScheduleRecord] = useState<TrainingRecord | null>(null);
+  const [completeRecord, setCompleteRecord] = useState<TrainingRecord | null>(null);
+  const [recordsRefresh, setRecordsRefresh] = useState(0);
 
   const { data: courses } = useAsync<TrainingCourse[]>(
     async () => {
@@ -56,11 +80,27 @@ export function TrainingPage() {
   const { data: records } = useAsync<TrainingRecord[]>(
     async () => {
       if (!activeCompanyId) return [];
-      const userId = activeRole === 'employee' ? (user?.id ?? undefined) : undefined;
-      return await listTrainingRecords(activeCompanyId, { userId, limit: 1000 });
+      const userId =
+        activeRole === 'employee' ? (user?.id ?? undefined) : selectedEmployeeId ? selectedEmployeeId : undefined;
+      const status = statusFilter || undefined;
+      return await listTrainingRecords(activeCompanyId, {
+        userId,
+        status: status ? [status] : undefined,
+        limit: 1000
+      });
     },
-    [activeCompanyId, activeRole, user?.id]
+    [activeCompanyId, activeRole, user?.id, selectedEmployeeId, statusFilter, recordsRefresh]
   );
+
+  const { data: profiles } = useAsync(
+    () => (activeCompanyId ? listUserProfiles(activeCompanyId) : []),
+    [activeCompanyId]
+  );
+  const { data: providers } = useAsync(
+    () => (activeCompanyId && canManage ? listTrainingProviders(activeCompanyId) : []),
+    [activeCompanyId, canManage]
+  );
+  const profileByUserId = useMemo(() => new Map((profiles ?? []).map((p) => [p.user_id, p])), [profiles]);
 
   const { data: memberships } = useAsync<CompanyMembership[]>(
     async () => {
@@ -138,6 +178,16 @@ export function TrainingPage() {
     return rows;
   }, [all, memberships]);
 
+  const tabs: { id: TrainingTab; label: string; icon: React.ComponentType<{ className?: string }>; show: boolean }[] = [
+    { id: 'matrix', label: 'Matrix Setup', icon: SettingsIcon, show: canManageMatrix },
+    { id: 'employees', label: 'Employee Training', icon: UsersIcon, show: canManage },
+    { id: 'reports', label: 'Reports & Costs', icon: BarChart3Icon, show: canManageMatrix },
+    { id: 'my', label: 'My Training', icon: UserIcon, show: true }
+  ].filter((t) => t.show);
+
+  const effectiveTab = isEmployee ? 'my' : activeTab;
+  const setEffectiveTab = (t: TrainingTab) => setActiveTab(t);
+
   return (
     <Layout title="Training & Competency">
       {activeCompanyId && user?.id && (
@@ -151,6 +201,29 @@ export function TrainingPage() {
           onAdded={() => setAddOpen(false)}
         />
       )}
+      <div className="flex flex-wrap gap-2 border-b border-surface-200 mb-4">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setEffectiveTab(t.id)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg text-sm font-medium border-b-2 -mb-px transition-colors ${
+              effectiveTab === t.id
+                ? 'border-teal text-teal bg-white'
+                : 'border-transparent text-charcoal-500 hover:text-charcoal hover:bg-surface-50'
+            }`}
+          >
+            <t.icon className="w-4 h-4" />
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {effectiveTab === 'matrix' && canManageMatrix && activeCompanyId && user?.id && (
+        <TrainingMatrixSetupTab companyId={activeCompanyId} createdByUserId={user.id} />
+      )}
+
+      {effectiveTab === 'employees' && (
       <motion.div
         variants={containerVariants}
         initial="hidden"
@@ -227,7 +300,27 @@ export function TrainingPage() {
 
         {/* Training Records */}
         <motion.div variants={itemVariants}>
-          <div className="flex items-center justify-between mb-4">
+          {scheduleRecord && (
+            <TrainingScheduleModal
+              open={!!scheduleRecord}
+              onClose={() => setScheduleRecord(null)}
+              companyId={activeCompanyId!}
+              record={scheduleRecord}
+              providers={providers ?? []}
+              onSaved={() => setRecordsRefresh((r) => r + 1)}
+            />
+          )}
+          {completeRecord && (
+            <TrainingCompleteModal
+              open={!!completeRecord}
+              onClose={() => setCompleteRecord(null)}
+              companyId={activeCompanyId!}
+              record={completeRecord}
+              course={courseById.get(completeRecord.course_id) ?? null}
+              onSaved={() => setRecordsRefresh((r) => r + 1)}
+            />
+          )}
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <h2 className="text-lg font-semibold text-charcoal">
               Training Records
             </h2>
@@ -241,6 +334,40 @@ export function TrainingPage() {
               Add Training
             </button>
           </div>
+          {canManage && (
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-charcoal-500 mb-1">Employee</label>
+                <select
+                  value={selectedEmployeeId}
+                  onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                  className="px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal min-w-[180px]"
+                >
+                  <option value="">All employees</option>
+                  {(profiles ?? []).map((p) => (
+                    <option key={p.user_id} value={p.user_id}>
+                      {p.full_name || p.email || String(p.user_id).slice(0, 8)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal-500 mb-1">Status</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as TrainingRecordStatus | '')}
+                  className="px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                >
+                  <option value="">All</option>
+                  <option value="REQUIRED">Required</option>
+                  <option value="SCHEDULED">Scheduled</option>
+                  <option value="COMPLETED">Completed</option>
+                  <option value="OVERDUE">Overdue</option>
+                  <option value="EXPIRED">Expired</option>
+                </select>
+              </div>
+            </div>
+          )}
           <div className="relative mb-4 max-w-md">
             <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
             <input
@@ -257,45 +384,152 @@ export function TrainingPage() {
                 <p className="text-sm text-charcoal-500">No training records yet.</p>
               </div>
             )}
-            {filteredRecords.map((r: any) => (
-              <div key={r.id} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-                <p className="text-sm font-semibold text-charcoal">{r.courseName}</p>
-                <p className="text-sm text-charcoal-500 mt-1">
-                  User: {String(r.user_id).slice(0, 8)} • Completed: {new Date(r.completed_at).toLocaleDateString('en-ZA')}
-                  {r.expires_at ? ` • Expires: ${new Date(r.expires_at).toLocaleDateString('en-ZA')}` : ''}
-                </p>
-                <div className="mt-3 flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={!r.certificate_bucket || !r.certificate_key}
-                    onClick={async () => {
-                      if (!r.certificate_bucket || !r.certificate_key) return;
-                      const blob = await downloadDocumentFile({ bucket: r.certificate_bucket, key: r.certificate_key });
-                      openBlobInNewTab(blob);
-                    }}
-                    className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    Open certificate
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!r.certificate_bucket || !r.certificate_key}
-                    onClick={async () => {
-                      if (!r.certificate_bucket || !r.certificate_key) return;
-                      const blob = await downloadDocumentFile({ bucket: r.certificate_bucket, key: r.certificate_key });
-                      const filename = r.certificate_key.split('/').pop() ?? 'certificate';
-                      downloadBlob(blob, filename);
-                    }}
-                    className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    Download
-                  </button>
+            {filteredRecords.map((r: TrainingRecord & { courseName?: string }) => {
+              const statusBadge =
+                r.status === 'COMPLETED'
+                  ? 'bg-success/15 text-success'
+                  : r.status === 'EXPIRED' || r.status === 'OVERDUE'
+                    ? 'bg-critical/15 text-critical'
+                    : r.status === 'SCHEDULED'
+                      ? 'bg-warning/15 text-warning'
+                      : 'bg-surface-200 text-charcoal-600';
+              const canSchedule = canManage && (r.status === 'REQUIRED' || r.status === 'OVERDUE');
+              const canComplete = canManage && (r.status === 'REQUIRED' || r.status === 'SCHEDULED' || r.status === 'OVERDUE');
+              const userName = profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email || String(r.user_id).slice(0, 8);
+              return (
+                <div key={r.id} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-charcoal">{r.courseName}</p>
+                      <p className="text-sm text-charcoal-500 mt-1">
+                        {canManage && <span>{userName} • </span>}
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${statusBadge}`}>
+                          {r.status}
+                        </span>
+                        {r.completed_at ? ` • Completed: ${new Date(r.completed_at).toLocaleDateString('en-ZA')}` : ''}
+                        {r.arranged_at ? ` • Arranged: ${new Date(r.arranged_at).toLocaleDateString('en-ZA')}` : ''}
+                        {r.expires_at ? ` • Expires: ${new Date(r.expires_at).toLocaleDateString('en-ZA')}` : ''}
+                        {r.cost != null ? ` • Cost: ZAR ${Number(r.cost).toLocaleString()}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {canSchedule && (
+                      <button
+                        type="button"
+                        onClick={() => setScheduleRecord(r)}
+                        className="px-3 py-2 rounded-lg border border-teal text-teal text-sm font-medium hover:bg-teal/10"
+                      >
+                        Schedule
+                      </button>
+                    )}
+                    {canComplete && (
+                      <button
+                        type="button"
+                        onClick={() => setCompleteRecord(r)}
+                        className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
+                      >
+                        Mark completed
+                      </button>
+                    )}
+                    {r.certificate_bucket && r.certificate_key && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
+                            openBlobInNewTab(blob);
+                          }}
+                          className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                        >
+                          Open certificate
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
+                            downloadBlob(blob, r.certificate_key!.split('/').pop() ?? 'certificate');
+                          }}
+                          className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                        >
+                          Download
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </motion.div>
       </motion.div>
+      )}
+
+      {effectiveTab === 'reports' && canManageMatrix && activeCompanyId && (
+        <TrainingReportsTab companyId={activeCompanyId} />
+      )}
+
+      {effectiveTab === 'my' && (() => {
+        const myRecords = (records ?? []).filter((r) => r.user_id === user?.id);
+        const myWithCourse = myRecords.map((r) => ({
+          ...r,
+          courseName: courseById.get(r.course_id)?.name ?? `Course ${String(r.course_id).slice(0, 8)}`
+        }));
+        const myFiltered = searchQuery.trim()
+          ? myWithCourse.filter(
+              (r) =>
+                r.courseName.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+                String(r.user_id).includes(searchQuery)
+            )
+          : myWithCourse;
+        return (
+          <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+            <h2 className="text-lg font-semibold text-charcoal">My Training</h2>
+            <div className="space-y-3">
+              {myFiltered.length === 0 ? (
+                <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                  <p className="text-sm text-charcoal-500">No training records for you yet.</p>
+                </div>
+              ) : (
+                myFiltered.map((r: TrainingRecord & { courseName?: string }) => (
+                  <div key={r.id} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                    <p className="text-sm font-semibold text-charcoal">{r.courseName ?? 'Course'}</p>
+                    <p className="text-sm text-charcoal-500 mt-1">
+                      Status: <span className="font-medium">{r.status}</span>
+                      {r.completed_at ? ` • Completed: ${new Date(r.completed_at).toLocaleDateString('en-ZA')}` : ''}
+                      {r.expires_at ? ` • Expires: ${new Date(r.expires_at).toLocaleDateString('en-ZA')}` : ''}
+                    </p>
+                    {r.certificate_bucket && r.certificate_key && (
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
+                            openBlobInNewTab(blob);
+                          }}
+                          className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                        >
+                          Open certificate
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
+                            downloadBlob(blob, r.certificate_key!.split('/').pop() ?? 'certificate');
+                          }}
+                          className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                        >
+                          Download
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        );
+      })()}
     </Layout>);
 
 }
