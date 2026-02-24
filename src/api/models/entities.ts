@@ -1412,8 +1412,105 @@ export type Approval = {
   created_at: string;
 };
 
-export type ImprovementStatus = 'planned' | 'active' | 'complete';
+export type ImprovementWorkflowStatus =
+  | 'draft'
+  | 'open'
+  | 'in_progress'
+  | 'awaiting_evidence'
+  | 'awaiting_verification'
+  | 'under_management_review'
+  | 'closed'
+  | 'monitoring_required'
+  | 'escalated';
 
+export type ImprovementRiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export type ImprovementType =
+  | 'corrective_action'
+  | 'preventive_action'
+  | 'audit_finding'
+  | 'management_review_decision'
+  | 'employee_suggestion'
+  | 'process_improvement'
+  | 'client_complaint'
+  | 'other';
+
+export type ImprovementSourceType =
+  | 'incident'
+  | 'ncr'
+  | 'audit'
+  | 'risk'
+  | 'management_review'
+  | 'other';
+
+export type ImprovementClosureStatus = 'closed' | 'monitoring_required' | 'escalated';
+
+export type ImprovementVerificationMethod =
+  | 'follow_up_audit'
+  | 'inspection'
+  | 'observation'
+  | 'kpi_monitoring'
+  | 'training_assessment'
+  | 'client_feedback'
+  | 'other';
+
+export type ImprovementRecord = {
+  id: UUID;
+  company_id: UUID;
+  reference_number: string;
+  date_raised: string;
+  raised_by_user_id: UUID;
+  department_site: string | null;
+  improvement_type: ImprovementType;
+  improvement_type_other_text: string | null;
+  description: string | null;
+  risk_level: ImprovementRiskLevel;
+  action_required: string | null;
+  responsible_user_id: UUID | null;
+  resources_needed: string | null;
+  target_date: string | null;
+  status: ImprovementWorkflowStatus;
+  evidence_file_ids: UUID[] | null;
+  verification_methods: ImprovementVerificationMethod[] | null;
+  verification_method_other_text: string | null;
+  verified_by_user_id: UUID | null;
+  date_verified: string | null;
+  was_action_effective: boolean | null;
+  management_reviewed_by_user_id: UUID | null;
+  management_review_date: string | null;
+  management_recommendations: string | null;
+  management_decision: 'approve' | 'monitor' | 'escalate' | 'rework' | null;
+  closed_by_user_id: UUID | null;
+  closure_date: string | null;
+  closure_status: ImprovementClosureStatus | null;
+  lessons_learned: string | null;
+  source_type: ImprovementSourceType;
+  source_id: UUID | null;
+  source_other_text: string | null;
+  created_by_user_id: UUID;
+  updated_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ImprovementComment = {
+  id: UUID;
+  improvement_id: UUID;
+  company_id: UUID;
+  user_id: UUID;
+  message: string;
+  parent_comment_id: UUID | null;
+  created_at: string;
+};
+
+export type ImprovementReferenceCounter = {
+  company_id: UUID;
+  year: number;
+  last_number: number;
+  updated_at: string;
+};
+
+export type ImprovementStatus = 'planned' | 'active' | 'complete';
 export type ImprovementAction = {
   id: UUID;
   company_id: UUID;

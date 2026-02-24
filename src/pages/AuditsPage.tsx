@@ -8,9 +8,8 @@ import {
   ClipboardCheckIcon,
   AlertCircleIcon,
   CheckCircle,
-  Clock,
-  FileTextIcon
-} from 'lucide-react';
+  Clock } from
+'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTenant } from '../tenant/TenantContext';
@@ -20,8 +19,6 @@ import { listAudits } from '../api/services/auditsService';
 import { listInspections } from '../api/services/inspectionsService';
 import type { Inspection } from '../api/models/entities';
 import { AuditScheduleModal } from '../components/audits/AuditScheduleModal';
-import { toCsv, downloadTextFile } from '../utils/csv';
-import { useIdentity } from '../hooks/useIdentity';
 
 const auditTypeColors = {
   internal: 'bg-teal-50 text-teal-700',
@@ -59,11 +56,8 @@ export function AuditsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [auditTypeFilter, setAuditTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
-  const { fullName, organisationName } = useIdentity();
 
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
@@ -92,9 +86,9 @@ export function AuditsPage() {
   const stats = useMemo(() => {
     if (!audits) return { scheduled: 0, inProgress: 0, completed: 0, total: 0 };
     return {
-      scheduled: audits.filter(a => a.status === 'scheduled' || a.status === 'awaiting-documents').length,
-      inProgress: audits.filter(a => a.status === 'in-progress' || a.status === 'ready-for-audit').length,
-      completed: audits.filter(a => a.status === 'completed' || a.status === 'archived').length,
+      scheduled: audits.filter(a => a.status === 'scheduled').length,
+      inProgress: audits.filter(a => a.status === 'in-progress').length,
+      completed: audits.filter(a => a.status === 'completed').length,
       total: audits.length
     };
   }, [audits]);
@@ -116,39 +110,11 @@ export function AuditsPage() {
     filtered = filtered.filter(a => a.status === statusFilter);
   }
   if (searchQuery) {
-    filtered = filtered.filter(a =>
-      (a.audit_number?.toLowerCase() ?? '').includes(searchQuery.toLowerCase()) ||
-      (a.objectives?.toLowerCase() ?? '').includes(searchQuery.toLowerCase()) ||
-      ((a as any).title?.toLowerCase() ?? '').includes(searchQuery.toLowerCase())
+    filtered = filtered.filter(a => 
+      a.audit_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      a.objectives.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }
-  if (dateFrom) {
-    const from = new Date(dateFrom).getTime();
-    filtered = filtered.filter(a => {
-      const d = a.selected_date ?? (a as any).created_at;
-      return d && new Date(d).getTime() >= from;
-    });
-  }
-  if (dateTo) {
-    const to = new Date(dateTo).getTime();
-    filtered = filtered.filter(a => {
-      const d = a.selected_date ?? (a as any).created_at;
-      return d && new Date(d).getTime() <= to;
-    });
-  }
-
-  const auditsByYear = useMemo(() => {
-    const byYear = new Map<number, typeof filtered>();
-    filtered.forEach((a) => {
-      const d = a.selected_date ?? (a as any).created_at;
-      const year = d ? new Date(d).getFullYear() : new Date((a as any).created_at ?? 0).getFullYear();
-      if (!byYear.has(year)) byYear.set(year, []);
-      byYear.get(year)!.push(a);
-    });
-    return Array.from(byYear.entries())
-      .sort(([a], [b]) => b - a)
-      .map(([year, list]) => ({ year, list }));
-  }, [filtered]);
 
   const auditTypeColors: Record<string, string> = {
     'internal': 'bg-teal-50 text-teal-700 border-teal-200',
@@ -159,48 +125,11 @@ export function AuditsPage() {
   };
 
   const statusIcons: Record<string, JSX.Element> = {
-    'draft': <Clock className="w-4 h-4" />,
+    'planned': <Clock className="w-4 h-4" />,
     'scheduled': <CalendarIcon className="w-4 h-4" />,
-    'awaiting-documents': <Clock className="w-4 h-4" />,
-    'ready-for-audit': <ClipboardCheckIcon className="w-4 h-4" />,
     'in-progress': <Clock className="w-4 h-4" />,
-    'report-pending': <FileTextIcon className="w-4 h-4" />,
-    'corrective-actions-open': <AlertCircleIcon className="w-4 h-4" />,
-    'under-closure-review': <Clock className="w-4 h-4" />,
-    'completed': <CheckCircle className="w-4 h-4" />,
-    'archived': <CheckCircle className="w-4 h-4" />
+    'completed': <CheckCircle className="w-4 h-4" />
   };
-
-  function handleExportCsv() {
-    if (!activeCompanyId || !audits || audits.length === 0) return;
-
-    const rows = filtered.map((audit) => ({
-      audit_number: audit.audit_number,
-      title: audit.objectives,
-      type: audit.audit_type,
-      status: audit.status,
-      module: (audit as any).module ?? '',
-      selected_date: audit.selected_date ?? '',
-      scope_of_audit: audit.scope_of_audit ?? '',
-      findings_count: audit.findings_count ?? 0,
-      nonconformances_count: audit.nonconformances_count ?? 0,
-    }));
-
-    const metaLines = [
-      `Company: ${organisationName}`,
-      `Generated by: ${fullName}`,
-      `Generated at: ${new Date().toISOString()}`,
-      '',
-    ];
-
-    const csvBody = toCsv(rows);
-    const content = `${metaLines.join('\r\n')}\r\n${csvBody}`;
-    const safeOrg = organisationName.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'safecloudafrica';
-    const today = new Date().toISOString().slice(0, 10);
-    const filename = `${safeOrg}-audits-${today}.csv`;
-
-    downloadTextFile(filename, content, 'text/csv;charset=utf-8');
-  }
 
   return (
     <Layout title="Audits & Inspections">
@@ -279,52 +208,22 @@ export function AuditsPage() {
                 className="px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
               >
                 <option value="all">All Status</option>
-                <option value="draft">Draft</option>
+                <option value="planned">Planned</option>
                 <option value="scheduled">Scheduled</option>
-                <option value="awaiting-documents">Awaiting Documents</option>
-                <option value="ready-for-audit">Ready for Audit</option>
                 <option value="in-progress">In Progress</option>
-                <option value="report-pending">Report Pending</option>
-                <option value="corrective-actions-open">Corrective Actions Open</option>
-                <option value="under-closure-review">Under Closure Review</option>
                 <option value="completed">Completed</option>
-                <option value="archived">Archived</option>
               </select>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                placeholder="From"
-                className="px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                placeholder="To"
-                className="px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleExportCsv}
-              disabled={!activeCompanyId || !audits || audits.length === 0}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-navy text-white rounded-lg text-sm font-medium hover:bg-navy-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              Export CSV
-            </button>
-            <button
-              type="button"
-              disabled={!canSchedule}
-              onClick={() => navigate('/audits/new')}
-              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <PlusIcon className="w-4 h-4" />
-              Schedule Audit
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={!canSchedule}
+            onClick={() => navigate('/audits/new')}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <PlusIcon className="w-4 h-4" />
+            Schedule Audit
+          </button>
         </motion.div>
 
         {/* Audits List */}
@@ -345,66 +244,69 @@ export function AuditsPage() {
               <p className="text-sm text-charcoal-500">No audits found.</p>
             </div>
           )}
-          {auditsByYear.map(({ year, list }) => (
-            <div key={year} className="space-y-3">
-              <h3 className="text-sm font-semibold text-charcoal-600">Year {year}</h3>
-              {list.map((audit) => (
-                <div
-                  key={audit.id}
-                  onClick={() => navigate(`/audits/${audit.id}`)}
-                  className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="p-2 bg-surface-100 rounded-lg">
-                      <ClipboardCheckIcon className="w-5 h-5 text-charcoal-500" />
+          {filtered.map((audit) =>
+            <div
+              key={audit.id}
+              className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer">
+              <div className="flex items-start gap-4">
+                <div className="p-2 bg-surface-100 rounded-lg">
+                  <ClipboardCheckIcon className="w-5 h-5 text-charcoal-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-charcoal">{audit.objectives}</p>
+                      <p className="text-sm text-teal mt-0.5">{audit.audit_number}</p>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-charcoal">{(audit as any).title || audit.objectives}</p>
-                          <p className="text-sm text-teal mt-0.5">{audit.audit_number}</p>
-                        </div>
-                        <StatusBadge status={audit.status as any} size="sm" />
-                      </div>
-                      <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">
-                        {audit.selected_date ? (
-                          <span className="flex items-center gap-1.5">
-                            <CalendarIcon className="w-4 h-4" />
-                            {new Date(audit.selected_date).toLocaleDateString('en-ZA')}
-                          </span>
-                        ) : (audit as any).proposed_dates?.length ? (
-                          <span className="flex items-center gap-1.5">
-                            <CalendarIcon className="w-4 h-4" />
-                            Date TBD
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1.5 text-charcoal-400">Date TBD</span>
-                        )}
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize border ${auditTypeColors[audit.audit_type] || 'bg-gray-50 text-gray-700'}`}>
-                          {audit.audit_type}
-                        </span>
-                        <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium truncate max-w-[180px]">
-                          {audit.scope_of_audit || '—'}
-                        </span>
-                        {audit.findings_count > 0 && (
-                          <span className="flex items-center gap-1 text-warning">
-                            <AlertCircleIcon className="w-4 h-4" />
-                            {audit.findings_count} open findings
-                          </span>
-                        )}
-                        {audit.nonconformances_count > 0 && (
-                          <span className="flex items-center gap-1 text-critical">
-                            <AlertCircleIcon className="w-4 h-4" />
-                            {audit.nonconformances_count} NC
-                          </span>
-                        )}
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={audit.status as any} size="sm" />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/improvement/new?sourceType=audit&sourceId=${audit.id}`);
+                        }}
+                        className="text-xs text-teal hover:text-teal-700"
+                      >
+                        Create Improvement/CAPA
+                      </button>
                     </div>
                   </div>
+                  <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">
+                    {audit.selected_date ? (
+                      <span className="flex items-center gap-1.5">
+                        <CalendarIcon className="w-4 h-4" />
+                        {new Date(audit.selected_date).toLocaleDateString('en-ZA')}
+                      </span>
+                    ) : audit.proposed_dates?.length ? (
+                      <span className="flex items-center gap-1.5">
+                        <CalendarIcon className="w-4 h-4" />
+                        {new Date(audit.proposed_dates[0]).toLocaleDateString('en-ZA')}
+                      </span>
+                    ) : null}
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize border ${auditTypeColors[audit.audit_type] || 'bg-gray-50 text-gray-700'}`}>
+                      {audit.audit_type}
+                    </span>
+                    <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
+                      {audit.scope_of_audit}
+                    </span>
+                    {audit.findings_count > 0 &&
+                      <span className="flex items-center gap-1 text-warning">
+                        <AlertCircleIcon className="w-4 h-4" />
+                        {audit.findings_count} findings
+                      </span>
+                    }
+                    {audit.nonconformances_count > 0 &&
+                      <span className="flex items-center gap-1 text-critical">
+                        <AlertCircleIcon className="w-4 h-4" />
+                        {audit.nonconformances_count} NC
+                      </span>
+                    }
+                  </div>
                 </div>
-              ))}
+              </div>
             </div>
-          ))}
+          )}
         </motion.div>
       </motion.div>
     </Layout>);

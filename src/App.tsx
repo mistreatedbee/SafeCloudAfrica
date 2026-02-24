@@ -30,6 +30,7 @@ import { DocumentReviewsPage } from './pages/DocumentReviewsPage';
 import { ReviewMeetingDetailPage } from './pages/ReviewMeetingDetailPage';
 import { ReviewMeetingActionsBoardPage } from './pages/ReviewMeetingActionsBoardPage';
 import { ImprovementPage } from './pages/ImprovementPage';
+import { ImprovementDetailPage } from './pages/ImprovementDetailPage';
 import { GeneralModulePage } from './pages/modules/GeneralModulePage';
 import { HealthModulePage } from './pages/modules/HealthModulePage';
 import { LegalModulePage } from './pages/modules/LegalModulePage';
@@ -436,6 +437,26 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <ImprovementPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/improvement/new"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ImprovementDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/improvement/:improvementId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ImprovementDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

@@ -32,6 +32,7 @@ import {
   managerSignOffProgramAuditFinding,
   auditorVerifyAndCloseProgramAuditFinding
 } from '../api/services/programAuditFindingsService';
+import { listLinkedImprovements } from '../api/services/improvementService';
 import { createTask } from '../api/services/tasksService';
 import {
   getPreAuditSubmission,
@@ -189,6 +190,17 @@ export function AuditDetailPage() {
     },
     [activeCompanyId, auditId]
   );
+  const { data: linkedImprovements, refresh: refreshLinkedImprovements } = useAsync(
+    async () => {
+      if (!activeCompanyId || !auditId) return [];
+      return await listLinkedImprovements({
+        companyId: activeCompanyId,
+        sourceType: 'audit',
+        sourceId: auditId as UUID
+      });
+    },
+    [activeCompanyId, auditId]
+  );
 
   const responsesByQuestion = useMemo(() => {
     const map = new Map<UUID, AuditResponse>();
@@ -282,6 +294,7 @@ export function AuditDetailPage() {
       await refreshFindings();
       await refreshNcrs();
       await refreshCapas();
+      await refreshLinkedImprovements();
     } finally {
       setSavingResponseId(null);
     }
@@ -1003,6 +1016,22 @@ export function AuditDetailPage() {
                     </ul>
                   )}
                 </div>
+                <div>
+                  <p className="text-xs font-semibold text-charcoal mb-2">Linked Improvements</p>
+                  {(!linkedImprovements || linkedImprovements.length === 0) && (
+                    <p className="text-xs text-charcoal-500">No linked improvements yet.</p>
+                  )}
+                  {linkedImprovements && linkedImprovements.length > 0 && (
+                    <ul className="space-y-1">
+                      {linkedImprovements.map((imp: any) => (
+                        <li key={imp.id} className="text-xs text-charcoal-600">
+                          <span className="font-medium">{imp.reference_number}</span>
+                          <span className="text-charcoal-400 ml-1">• {imp.status}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1159,4 +1188,3 @@ export function AuditDetailPage() {
     </Layout>
   );
 }
-

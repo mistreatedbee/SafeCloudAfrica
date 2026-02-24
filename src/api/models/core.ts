@@ -44,6 +44,9 @@ export const INCIDENT_CATEGORY_SUBCATEGORIES: Record<IncidentCategory, readonly 
   Emergency: ['Fire', 'Explosion', 'Natural Disaster', 'Evacuation Failure', 'Medical emergency', 'Other']
 } as const;
 
+// Backward-compat alias used by older incident UI imports.
+export const INCIDENT_SUBCATEGORIES = INCIDENT_CATEGORY_SUBCATEGORIES;
+
 export const INCIDENT_TYPES = [
   'Near Miss',
   'Accident',
@@ -480,4 +483,3 @@ export const SYSTEM_FAILURE_OPTIONS = [
   'Product steward',
   'Other'
 ] as const;
-

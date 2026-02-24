@@ -19,6 +19,7 @@ import {
   unlockSignedReviewMeeting,
   updateReviewMeeting
 } from '../api/services/reviewMeetingsService';
+import { listLinkedImprovements } from '../api/services/improvementService';
 import { createEvidence } from '../api/services/evidenceService';
 import { uploadDocumentFile, downloadBlob, openBlobInNewTab } from '../api/services/documentsStorageService';
 import { listDocuments } from '../api/services/documentsService';
@@ -120,6 +121,17 @@ export function ReviewMeetingDetailPage() {
       return await listDocuments(activeCompanyId);
     },
     [activeCompanyId]
+  );
+  const { data: linkedImprovements, refresh: refreshLinkedImprovements } = useAsync(
+    async () => {
+      if (!activeCompanyId || isCreate || !meetingId) return [];
+      return await listLinkedImprovements({
+        companyId: activeCompanyId,
+        sourceType: 'management_review',
+        sourceId: meetingId as UUID
+      });
+    },
+    [activeCompanyId, isCreate, meetingId]
   );
 
   const profileByUserId = useMemo(() => {
@@ -325,6 +337,7 @@ export function ReviewMeetingDetailPage() {
           }))
         );
         alert('Review meeting updated.');
+        await refreshLinkedImprovements();
       }
     } catch (err: any) {
       setError(err?.message ?? 'Failed to save review meeting.');
@@ -430,6 +443,15 @@ export function ReviewMeetingDetailPage() {
               <>
                 <button type="button" onClick={() => void handleGenerateReport()} className="px-3 py-2 rounded-lg border border-surface-300 bg-white text-sm font-medium hover:bg-surface-50">Generate Report</button>
                 <button type="button" onClick={() => void handleEmailReport()} className="px-3 py-2 rounded-lg border border-surface-300 bg-white text-sm font-medium hover:bg-surface-50">Email Report</button>
+                {!isCreate && meetingId && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/improvement/new?sourceType=management_review&sourceId=${meetingId}`)}
+                    className="px-3 py-2 rounded-lg border border-surface-300 bg-white text-sm font-medium hover:bg-surface-50"
+                  >
+                    Create Improvement Action
+                  </button>
+                )}
                 {signatureStatus !== 'SIGNED' && (
                   <button type="button" onClick={() => void handleSign()} disabled={signing || !canEdit} className="px-3 py-2 rounded-lg bg-navy text-white text-sm font-medium disabled:opacity-60">Sign Meeting Minutes</button>
                 )}
@@ -470,6 +492,22 @@ export function ReviewMeetingDetailPage() {
           <UserMultiSelect companyId={activeCompanyId} selectedUserIds={attendeeUserIds} selectedEmails={[]} onChange={(userIds) => setAttendeeUserIds(userIds as UUID[])} allowExternalEmails={false} disabled={!canEdit} placeholder="Select internal attendees" />
           <label className="text-sm block"><span className="block mb-1 text-charcoal-500">External attendee names (one per line)</span><textarea rows={3} value={externalAttendeesText} onChange={(e) => setExternalAttendeesText(e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
         </div>
+
+        {!isCreate && (
+          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <h3 className="font-semibold text-charcoal mb-2">Linked Improvements</h3>
+            {(!linkedImprovements || linkedImprovements.length === 0) && <p className="text-sm text-charcoal-500">No linked improvements yet.</p>}
+            {linkedImprovements && linkedImprovements.length > 0 && (
+              <div className="space-y-1">
+                {linkedImprovements.map((imp: any) => (
+                  <p key={imp.id} className="text-sm text-charcoal-600">
+                    <span className="font-medium">{imp.reference_number}</span> • {imp.status}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card space-y-3">
           <h3 className="font-semibold text-charcoal">Email List (org users + external emails)</h3>
