@@ -702,6 +702,42 @@ export type QualityCustomerComplaint = {
   updated_at: string;
 };
 
+export type CalibrationCriticality = 'HIGH' | 'MEDIUM' | 'LOW';
+export type CalibrationEquipmentStatus = 'IN_SERVICE' | 'OUT_OF_SERVICE' | 'REQUIRES_ADJUSTMENT_REPAIR';
+export type CalibrationResult = 'PASS' | 'FAIL';
+export type CalibrationModuleTag = 'Quality' | 'Health' | 'Safety' | 'Environment' | 'General';
+
+export type CalibrationRecord = {
+  id: UUID;
+  company_id: UUID;
+  site_id: UUID | null;
+  department_id: UUID | null;
+  sr_no: number;
+  equipment_name: string;
+  equipment_id: string;
+  location: string;
+  criticality: CalibrationCriticality;
+  equipment_status: CalibrationEquipmentStatus;
+  measuring_range: string | null;
+  calibration_type: string | null;
+  calibration_frequency: string | null;
+  calibration_date: string;
+  result: CalibrationResult;
+  next_calibration_date: string;
+  responsible_user_id: UUID | null;
+  responsible_name_snapshot: string;
+  item_picture_file_id: UUID | null;
+  certificate_file_ids: UUID[];
+  module_tags: CalibrationModuleTag[];
+  notes: string | null;
+  failure_notes: string | null;
+  action_required: boolean;
+  linked_ncr_id: UUID | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
 export type NcrEvidenceReference = {
   fileId: UUID;
   url: string;
