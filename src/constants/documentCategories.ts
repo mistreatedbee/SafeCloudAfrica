@@ -85,6 +85,7 @@ export const DOCUMENT_CATEGORIES_BY_MODULE: Record<ModuleKey, readonly string[]>
     'Other'
   ],
   general: ['Policies', 'Procedures', 'Registers', 'Templates', 'Reports', 'Other'],
-  security: ['Policies', 'Access control', 'Audit logs', 'Incident response', 'Other']
+  security: ['Policies', 'Access control', 'Audit logs', 'Incident response', 'Other'],
+  asset_management: ['Asset register', 'Maintenance plans', 'Inspection records', 'Assignment logs', 'Other'],
+  hazardous_chemical_management: ['Chemical register', 'SDS', 'Storage controls', 'Approvals', 'Compliance evidence', 'Other']
 } as const;
-

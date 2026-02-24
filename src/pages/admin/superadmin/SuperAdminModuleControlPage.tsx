@@ -17,7 +17,9 @@ const MODULE_KEYS: { key: ModuleKey; label: string }[] = [
   { key: 'health', label: 'Health' },
   { key: 'hr', label: 'HR' },
   { key: 'general', label: 'General' },
-  { key: 'security', label: 'Security' }
+  { key: 'security', label: 'Security' },
+  { key: 'asset_management', label: 'Asset Mgmt' },
+  { key: 'hazardous_chemical_management', label: 'Hazardous Chemical Mgmt' }
 ];
 
 function getModules(c: Company): Record<string, boolean> {
@@ -82,7 +84,7 @@ export function SuperAdminModuleControlPage() {
           <ToggleLeftIcon className="w-4 h-4 text-teal" /> Module Control
         </p>
         <p className="text-sm text-charcoal-500 mt-1">
-          Enable or disable modules per organisation (Safety, Quality, Legal, Environment, Health, HR, General, Security).
+          Enable or disable modules per organisation, including sellable modules like Asset Management and Hazardous Chemical Management.
         </p>
       </div>
 

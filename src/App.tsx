@@ -3,6 +3,7 @@ import { RequirePlatformAdmin } from './auth/RequirePlatformAdmin';
 import { RequireWorkspace } from './auth/RequireWorkspace';
 import { RequireSignedIn } from './auth/RequireSignedIn';
 import { RequireCompanyRole } from './auth/RequireCompanyRole';
+import { RequireModuleEnabled } from './auth/RequireModuleEnabled';
 import { TenantProvider } from './tenant/TenantContext';
 import { DashboardPage } from './pages/DashboardPage';
 import { SafetyPage } from './pages/SafetyPage';
@@ -28,6 +29,7 @@ import { HelpSupportPage } from './pages/HelpSupportPage';
 import NCRsPage from './pages/NCRsPage';
 import QualityCustomerComplaintsPage from './pages/QualityCustomerComplaintsPage';
 import QualityInternalExternalIssuesPage from './pages/QualityInternalExternalIssuesPage';
+import CalibrationPage from './pages/CalibrationPage';
 import { RisksPage } from './pages/RisksPage';
 import { PPEPage } from './pages/PPEPage';
 import { LegalRegisterPage } from './pages/LegalRegisterPage';
@@ -56,6 +58,8 @@ import { BBSPage } from './pages/features/BBSPage';
 import { ContractorsVisitorsPage } from './pages/features/ContractorsVisitorsPage';
 import { EmergencyPreparednessPage } from './pages/features/EmergencyPreparednessPage';
 import { TemplateLibraryPage } from './pages/features/TemplateLibraryPage';
+import { AssetManagementPage } from './pages/features/AssetManagementPage';
+import { HazardousChemicalManagementPage } from './pages/features/HazardousChemicalManagementPage';
 import { LogoutPage } from './pages/auth/LogoutPage';
 import { InviteAcceptPage } from './pages/auth/InviteAcceptPage';
 import { LoginPage } from './pages/auth/LoginPage';
@@ -425,6 +429,46 @@ export function App() {
             }
           />
           <Route
+            path="/dashboard/quality/calibration"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <CalibrationPage title="Quality Calibration Register" defaultModuleTag="Quality" />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/health/calibration"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <CalibrationPage title="Health Calibration Register" defaultModuleTag="Health" forceReadOnly />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/safety/calibration"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <CalibrationPage title="Safety Calibration Register" defaultModuleTag="Safety" forceReadOnly />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/environment/calibration"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <CalibrationPage title="Environment Calibration Register" defaultModuleTag="Environment" forceReadOnly />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/training"
             element={
               <RequireSignedIn>
@@ -722,6 +766,30 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <TemplateLibraryPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/sellable/asset-management"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireModuleEnabled module="asset_management">
+                    <AssetManagementPage />
+                  </RequireModuleEnabled>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/sellable/hazardous-chemicals"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireModuleEnabled module="hazardous_chemical_management">
+                    <HazardousChemicalManagementPage />
+                  </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }

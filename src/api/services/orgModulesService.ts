@@ -15,11 +15,23 @@ export const ALL_MODULE_KEYS: ModuleKey[] = [
   'health',
   'hr',
   'general',
-  'security'
+  'security',
+  'asset_management',
+  'hazardous_chemical_management'
 ];
 
 /** Paid modules (General is available when any paid module is enabled). */
-const PAID_MODULE_KEYS: ModuleKey[] = ['safety', 'quality', 'legal', 'environment', 'health', 'hr', 'security'];
+const PAID_MODULE_KEYS: ModuleKey[] = [
+  'safety',
+  'quality',
+  'legal',
+  'environment',
+  'health',
+  'hr',
+  'security',
+  'asset_management',
+  'hazardous_chemical_management'
+];
 
 /**
  * Normalise raw modules_enabled from company (metadata or top-level) to Record<moduleKey, boolean>.

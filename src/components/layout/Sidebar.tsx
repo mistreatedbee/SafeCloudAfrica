@@ -30,7 +30,9 @@ import {
   ChevronRightIcon,
   XIcon,
   CloudIcon,
-  CreditCardIcon
+  CreditCardIcon,
+  PackageIcon,
+  FlaskConicalIcon
 } from 'lucide-react';
 import { useTenant } from '../../tenant/TenantContext';
 import type { CompanyRole, ModuleKey } from '../../api/models/core';
@@ -69,6 +71,7 @@ const supportingSections: NavItem[] = [
 { name: 'Non-Conformances (NCR)', path: '/ncrs', icon: AlertTriangleIcon, roles: managementRoles },
 { name: 'Customer Complaints', path: '/dashboard/quality/complaints', icon: AlertCircleIcon, roles: managementRoles, module: 'quality' },
 { name: 'Internal & External Issues', path: '/dashboard/quality/issues', icon: AlertOctagonIcon, roles: managementRoles, module: 'quality' },
+{ name: 'Quality Calibration', path: '/dashboard/quality/calibration', icon: ClipboardCheckIcon, roles: managementRoles, module: 'quality' },
 { name: 'Plan Job Observations (PJO)', path: '/pjo', icon: ClipboardCheckIcon, roles: managementRoles },
 { name: 'Tasks & Time', path: '/tasks', icon: ClipboardCheckIcon },
 { name: 'Incidents', path: '/incidents', icon: AlertTriangleIcon },
@@ -82,11 +85,14 @@ const supportingSections: NavItem[] = [
 { name: 'Health Medical', path: '/dashboard/health/medical', icon: CalendarIcon, roles: managementRoles, module: 'health' },
 { name: 'Health Hygiene', path: '/dashboard/health/hygiene', icon: ClipboardCheckIcon, roles: managementRoles, module: 'health' },
 { name: 'Health Wellness', path: '/dashboard/health/wellness', icon: UsersIcon, roles: managementRoles, module: 'health' },
+{ name: 'Health Calibration', path: '/dashboard/health/calibration', icon: ClipboardCheckIcon, roles: managementRoles, module: 'health' },
 { name: 'Environment EIA', path: '/dashboard/environment/eia', icon: BookOpenIcon, roles: managementRoles, module: 'environment' },
 { name: 'Env Risk & Opportunity', path: '/dashboard/environment/risk-opportunity', icon: AlertOctagonIcon, roles: managementRoles, module: 'environment' },
 { name: 'Env Waste Register', path: '/dashboard/environment/waste', icon: ClipboardCheckIcon, roles: managementRoles, module: 'environment' },
 { name: 'Env Water Monitoring', path: '/dashboard/environment/water', icon: CalendarIcon, roles: managementRoles, module: 'environment' },
 { name: 'Env Air Monitoring', path: '/dashboard/environment/air', icon: CalendarIcon, roles: managementRoles, module: 'environment' },
+{ name: 'Environment Calibration', path: '/dashboard/environment/calibration', icon: ClipboardCheckIcon, roles: managementRoles, module: 'environment' },
+{ name: 'Safety Calibration', path: '/dashboard/safety/calibration', icon: ClipboardCheckIcon, roles: managementRoles, module: 'safety' },
 { name: 'Training', path: '/training', icon: GraduationCapIcon },
 { name: 'Audits', path: '/audits', icon: SearchIcon },
 { name: 'Inspections', path: '/inspections', icon: ClipboardCheckIcon, roles: managementRoles },
@@ -107,7 +113,9 @@ const sellableFeatures: NavItem[] = [
 { name: 'BBS Programme', path: '/bbs', icon: EyeIcon, roles: managementRoles, module: 'safety' },
 { name: 'Contractors & Visitors', path: '/contractors', icon: UsersIcon, roles: managementRoles },
 { name: 'Emergency Preparedness', path: '/emergency', icon: AlertTriangleIcon, roles: managementRoles },
-{ name: 'Template Library', path: '/templates', icon: FolderIcon, roles: managementRoles }
+{ name: 'Template Library', path: '/templates', icon: FolderIcon, roles: managementRoles },
+{ name: 'Asset Management', path: '/dashboard/sellable/asset-management', icon: PackageIcon, roles: managementRoles, module: 'asset_management' },
+{ name: 'Hazardous Chemical Management', path: '/dashboard/sellable/hazardous-chemicals', icon: FlaskConicalIcon, roles: managementRoles, module: 'hazardous_chemical_management' }
 ];
 
 const settingsItems: NavItem[] = [

@@ -6,7 +6,17 @@ export type CompanyRole = 'owner' | 'admin' | 'manager' | 'supervisor' | 'consul
 // Legacy + Operating Model tiers (base, growth, professional, hr_only)
 export type LicenseType = 'starter_6m' | 'professional_12m' | 'enterprise_custom' | 'base' | 'growth' | 'professional' | 'hr_only';
 
-export type ModuleKey = 'safety' | 'hr' | 'legal' | 'quality' | 'health' | 'environment' | 'general' | 'security';
+export type ModuleKey =
+  | 'safety'
+  | 'hr'
+  | 'legal'
+  | 'quality'
+  | 'health'
+  | 'environment'
+  | 'general'
+  | 'security'
+  | 'asset_management'
+  | 'hazardous_chemical_management';
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low';
 export type IncidentStatus = 'open' | 'investigating' | 'closed';
