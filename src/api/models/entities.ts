@@ -534,6 +534,65 @@ export type Document = {
   updated_at: string;
 };
 
+export type ReviewMeetingStatus = 'DRAFT' | 'ACTIVE' | 'SIGNED' | 'ARCHIVED';
+export type ReviewMeetingSignatureStatus = 'SIGNED' | 'NOT_SIGNED';
+export type ReviewMeetingItemStatus = 'IN_PROGRESS' | 'OUTSTANDING' | 'COMPLETED';
+
+export type ReviewMeeting = {
+  id: UUID;
+  company_id: UUID;
+  title: string | null;
+  date: string;
+  time: string;
+  place: string;
+  attendee_user_ids: UUID[] | null;
+  external_attendees: string[] | null;
+  email_list: string[] | null;
+  next_meeting_date: string | null;
+  chairperson_user_id: UUID | null;
+  ceo_approval_required: boolean;
+  status: ReviewMeetingStatus;
+  signature_status: ReviewMeetingSignatureStatus;
+  signed_by_user_id: UUID | null;
+  signed_at: string | null;
+  is_locked: boolean;
+  auto_email_on_create: boolean;
+  auto_email_on_update: boolean;
+  auto_create_tasks_from_items: boolean;
+  site_id: UUID | null;
+  department_id: UUID | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReviewItemUpdateLog = {
+  timestamp: string;
+  note: string;
+  user_id: UUID | null;
+};
+
+export type ReviewMeetingItem = {
+  id: UUID;
+  company_id: UUID;
+  meeting_id: UUID;
+  review_item: string;
+  discussion_notes: string | null;
+  action_required: string;
+  responsible_user_id: UUID | null;
+  responsible_name_external: string | null;
+  target_date: string | null;
+  resources_required: string | null;
+  status: ReviewMeetingItemStatus;
+  completion_date: string | null;
+  evidence_file_ids: UUID[] | null;
+  linked_document_ids: UUID[] | null;
+  linked_task_id: UUID | null;
+  updates_log: ReviewItemUpdateLog[] | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type FormTemplate = {
   id: UUID;
   company_id: UUID;
@@ -1761,4 +1820,3 @@ export type AuditFinding = {
   created_by_user_id: UUID;
   created_at: string;
 };
-

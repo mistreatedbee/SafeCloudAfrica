@@ -82,7 +82,7 @@ const supportingSections: NavItem[] = [
 { name: 'Legal Register', path: '/legal-register', icon: BookOpenIcon, roles: managementRoles, module: 'legal' },
 { name: 'Planning & Review', path: '/planning', icon: ClipboardCheckIcon, roles: managementRoles },
 { name: 'Approvals', path: '/approvals', icon: LockIcon, roles: managementRoles },
-{ name: 'Document Reviews', path: '/document-reviews', icon: CalendarIcon, roles: managementRoles },
+{ name: 'Document Reviews', path: '/document-reviews', icon: CalendarIcon },
 { name: 'Improvement', path: '/improvement', icon: TrendingUpIcon, roles: managementRoles },
 { name: 'Reports', path: '/reports', icon: BarChart3Icon, roles: managementRoles },
 { name: 'Hours Worked', path: '/management/hours-worked', icon: ClockIcon, roles: managementRoles },

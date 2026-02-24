@@ -2,7 +2,6 @@ import { insforge } from '../insforge/client';
 import { getErrorMessage } from '../insforge/errors';
 import type { UserProfile, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
-import { syncTrainingRequirementsForUser } from './trainingService';
 
 export async function listUserProfiles(companyId: UUID): Promise<UserProfile[]> {
   const { data, error } = await insforge.database
@@ -15,18 +14,6 @@ export async function listUserProfiles(companyId: UUID): Promise<UserProfile[]> 
   return (data ?? []) as UserProfile[];
 }
 
-export async function getMyProfile(companyId: UUID, userId: UUID): Promise<UserProfile | null> {
-  const { data, error } = await insforge.database
-    .from('user_profiles')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? null) as UserProfile | null;
-}
-
 export async function upsertMyProfile(input: {
   companyId: UUID;
   userId: UUID;
@@ -35,24 +22,22 @@ export async function upsertMyProfile(input: {
   phone?: string | null;
   department?: string | null;
   site?: string | null;
-  siteId?: UUID | null;
-  departmentId?: UUID | null;
 }): Promise<UserProfile> {
-  const payload = {
-    company_id: input.companyId,
-    user_id: input.userId,
-    full_name: input.fullName ?? null,
-    email: input.email ?? null,
-    phone: input.phone ?? null,
-    site_id: input.siteId ?? null,
-    department_id: input.departmentId ?? null,
-    department: input.department ?? null,
-    site: input.site ?? null,
-    updated_at: new Date().toISOString()
-  };
   const { data, error } = await insforge.database
     .from('user_profiles')
-    .upsert(payload, { onConflict: 'company_id,user_id' })
+    .upsert(
+      {
+        company_id: input.companyId,
+        user_id: input.userId,
+        full_name: input.fullName ?? null,
+        email: input.email ?? null,
+        phone: input.phone ?? null,
+        department: input.department ?? null,
+        site: input.site ?? null,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'company_id,user_id' }
+    )
     .select('*')
     .single();
   if (error) throw new Error(getErrorMessage(error));
@@ -77,11 +62,6 @@ export async function upsertUserProfileAsManager(input: {
   phone?: string | null;
   department?: string | null;
   site?: string | null;
-  siteId?: UUID | null;
-  departmentId?: UUID | null;
-  jobDescriptionId?: UUID | null;
-  employeeNumber?: string | null;
-  supervisorUserId?: UUID | null;
 }): Promise<UserProfile> {
   const { data, error } = await insforge.database
     .from('user_profiles')
@@ -92,13 +72,8 @@ export async function upsertUserProfileAsManager(input: {
         full_name: input.fullName ?? null,
         email: input.email ?? null,
         phone: input.phone ?? null,
-        site_id: input.siteId ?? null,
-        department_id: input.departmentId ?? null,
         department: input.department ?? null,
         site: input.site ?? null,
-        job_description_id: input.jobDescriptionId ?? null,
-        employee_number: input.employeeNumber ?? null,
-        supervisor_user_id: input.supervisorUserId ?? null,
         updated_at: new Date().toISOString()
       },
       { onConflict: 'company_id,user_id' }
@@ -107,15 +82,11 @@ export async function upsertUserProfileAsManager(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to save profile.');
-  const profile = data as UserProfile;
-  if (input.jobDescriptionId !== undefined) {
-    await syncTrainingRequirementsForUser(input.userId, input.companyId);
-  }
-  return profile;
+  return data as UserProfile;
 }
 
 /**
- * Get user profile by company_id and user_id (legacy helper)
+ * Get user profile by company_id and user_id
  */
 export async function getUserProfile(
   companyId: UUID,
@@ -126,15 +97,22 @@ export async function getUserProfile(
     .select('*')
     .eq('company_id', companyId)
     .eq('user_id', userId)
-    .maybeSingle();
+    .single();
 
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? null) as UserProfile | null;
+  if (error && error.code !== 'PGRST116') {
+    // PGRST116 is "no rows found"
+    throw new Error(getErrorMessage(error));
+  }
+
+  return (data as UserProfile) || null;
+}
+
+export async function getMyProfile(companyId: UUID, userId: UUID): Promise<UserProfile | null> {
+  return await getUserProfile(companyId, userId);
 }
 
 /**
- * Update user profile (name/email/phone, site/department, job description, etc.)
- * When job_description_id is updated, training requirements are synced for that user.
+ * Update user profile
  */
 export async function updateUserProfile(
   companyId: UUID,
@@ -145,9 +123,6 @@ export async function updateUserProfile(
     phone?: string | null;
     department?: string | null;
     site?: string | null;
-    job_description_id?: UUID | null;
-    employee_number?: string | null;
-    supervisor_user_id?: UUID | null;
   }
 ): Promise<UserProfile> {
   const { data, error } = await insforge.database
@@ -164,16 +139,12 @@ export async function updateUserProfile(
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update profile.');
 
-  if (updates.job_description_id !== undefined) {
-    await syncTrainingRequirementsForUser(userId, companyId);
-  }
-
   await createActivityLog({
     companyId,
     actorUserId: userId,
     action: 'user_profiles.update',
     entityType: 'user_profile',
-    entityId: (data as { id: UUID }).id
+    entityId: (data as any).id as UUID
   });
 
   return data as UserProfile;
