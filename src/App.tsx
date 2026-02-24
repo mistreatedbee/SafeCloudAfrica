@@ -40,7 +40,10 @@ import { ReviewMeetingActionsBoardPage } from './pages/ReviewMeetingActionsBoard
 import { ImprovementPage } from './pages/ImprovementPage';
 import { ImprovementDetailPage } from './pages/ImprovementDetailPage';
 import { GeneralModulePage } from './pages/modules/GeneralModulePage';
-import { HealthModulePage } from './pages/modules/HealthModulePage';
+import { HealthDashboardPage } from './pages/health/HealthDashboardPage';
+import { HealthMedicalPage } from './pages/health/HealthMedicalPage';
+import { HealthHygienePage } from './pages/health/HealthHygienePage';
+import { HealthWellnessPage } from './pages/health/HealthWellnessPage';
 import { LegalModulePage } from './pages/modules/LegalModulePage';
 import { HRModulePage } from './pages/modules/HRModulePage';
 import { SecurityModulePage } from './pages/modules/SecurityModulePage';
@@ -242,7 +245,47 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <HealthModulePage />
+                  <Navigate to="/dashboard/health" replace />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/health"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HealthDashboardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/health/medical"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HealthMedicalPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/health/hygiene"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HealthHygienePage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/health/wellness"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HealthWellnessPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

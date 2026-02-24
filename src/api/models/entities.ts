@@ -1395,6 +1395,151 @@ export type MedicalCertificate = {
   created_at: string;
 };
 
+export type HealthMedicalType = 'PRE_EMPLOYMENT' | 'PERIODIC' | 'EXIT';
+export type HealthFitnessStatus = 'FIT' | 'RESTRICTED' | 'UNFIT';
+
+export type HealthMedical = {
+  id: UUID;
+  company_id: UUID;
+  employee_user_id: UUID | null;
+  employee_name: string | null;
+  employee_number: string | null;
+  medical_type: HealthMedicalType;
+  medical_date: string;
+  expiry_date: string | null;
+  conducted_by: string | null;
+  fitness_status: HealthFitnessStatus;
+  fitness_certificate_file_ids: UUID[] | null;
+  chronic_illness_disclosed: boolean;
+  chronic_illness_notes: string | null;
+  restricted_duty_required: boolean;
+  restricted_duty_details: string | null;
+  notes: string | null;
+  created_by_user_id: UUID;
+  closed_by_user_id: UUID | null;
+  closed_at: string | null;
+  date_closed: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HealthRestrictedDutyStatus = 'Active' | 'Ended';
+
+export type HealthRestrictedDuty = {
+  id: UUID;
+  company_id: UUID;
+  medical_id: UUID | null;
+  employee_user_id: UUID | null;
+  employee_name: string | null;
+  restriction_reason: string;
+  restriction_details: string | null;
+  start_date: string;
+  end_date: string | null;
+  status: HealthRestrictedDutyStatus;
+  approved_by_user_id: UUID | null;
+  attachment_file_ids: UUID[] | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HealthHygieneComplianceStatus = 'COMPLIANT' | 'NON_COMPLIANT' | 'PARTIAL' | 'UNKNOWN';
+
+export type HealthHygieneRecord = {
+  id: UUID;
+  company_id: UUID;
+  monitoring_type: string;
+  site_location: string | null;
+  department: string | null;
+  monitored_on: string;
+  conducted_by: string | null;
+  method_or_standard: string | null;
+  results_summary: string | null;
+  result_details: Record<string, unknown> | null;
+  compliance_status: HealthHygieneComplianceStatus;
+  non_compliance_reason: string | null;
+  lab_certificate_file_ids: UUID[] | null;
+  linked_risk_assessment_ids: UUID[] | null;
+  action_plan_id: UUID | null;
+  responsible_user_id: UUID | null;
+  action_due_date: string | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HealthWellnessCampaignType = 'Mental health' | 'EAP' | 'Stress management' | 'Awareness';
+
+export type HealthWellnessCampaign = {
+  id: UUID;
+  company_id: UUID;
+  title: string;
+  campaign_type: HealthWellnessCampaignType;
+  date_from: string | null;
+  date_to: string | null;
+  description: string | null;
+  attachment_file_ids: UUID[] | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HealthSubstanceCaseType =
+  | 'Reasonable Suspicion'
+  | 'Random Test'
+  | 'Post-Incident'
+  | 'Return-to-Work'
+  | 'Follow-up Test';
+
+export type HealthSubstanceTestType = 'Breathalyser' | 'Urine' | 'Saliva' | 'Blood';
+export type HealthSubstanceTestResult = 'Negative' | 'Positive' | 'Refused';
+export type HealthSubstanceOutcome = 'Verbal Warning' | 'Written Warning' | 'Final Warning' | 'Dismissal' | 'Referral to Rehab';
+
+export type HealthSubstanceCase = {
+  id: UUID;
+  company_id: UUID;
+  employee_user_id: UUID | null;
+  employee_name: string | null;
+  date_of_report: string;
+  test_conducted_by: string | null;
+  type_of_case: HealthSubstanceCaseType;
+  substance_suspected: string[] | null;
+  substance_suspected_other: string | null;
+  observed_behaviour_symptoms: string | null;
+  witness_names: string[] | null;
+  type_of_test: HealthSubstanceTestType;
+  test_result: HealthSubstanceTestResult;
+  bac_level: number | null;
+  drug_panel_result: string | null;
+  removed_from_duty: boolean;
+  immediate_action_taken: string | null;
+  outcome: HealthSubstanceOutcome | null;
+  employee_comments: string | null;
+  hr_manager_comments: string | null;
+  attachment_file_ids: UUID[] | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HealthVaccination = {
+  id: UUID;
+  company_id: UUID;
+  employee_user_id: UUID | null;
+  employee_name: string | null;
+  vaccine_name: string;
+  dose_no: number | null;
+  date_administered: string | null;
+  batch_no: string | null;
+  administered_by: string | null;
+  next_due_date: string | null;
+  proof_attached_file_ids: UUID[] | null;
+  validity: string | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Notification = {
   id: UUID;
   company_id: UUID;
