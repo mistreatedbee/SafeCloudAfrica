@@ -628,6 +628,54 @@ export type CustomerComplaintStatus =
   | 'MONITORING_REQUIRED'
   | 'ESCALATED_TO_MANAGEMENT';
 
+export type InternalExternalIssueStatus = 'Open' | 'In Progress' | 'Closed';
+export type InternalExternalIssueNature = 'Low' | 'Medium' | 'Serious' | 'Critical' | string;
+
+export type QualityInternalExternalIssuesRegister = {
+  id: UUID;
+  company_id: UUID;
+  doc_no: string;
+  issue_no: string;
+  assessment_year: number;
+  assessment_done_by_user_id: UUID | null;
+  assessment_done_by_name_snapshot: string;
+  assessment_done_on: string;
+  assessment_updated_on: string;
+  approved_by_user_id: UUID | null;
+  approved_at: string | null;
+  approval_signature: string | null;
+  revision_number: number;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type QualityInternalExternalIssue = {
+  id: UUID;
+  register_id: UUID;
+  company_id: UUID;
+  ref_no: number;
+  scope: string;
+  issue_identification: string;
+  risk_or_opp: string;
+  likelihood: number;
+  severity: number;
+  risk_rating: number;
+  nature: InternalExternalIssueNature;
+  nature_override: boolean;
+  control_measure: string | null;
+  responsible_user_id: UUID | null;
+  responsible_name_snapshot: string;
+  target_date: string | null;
+  status: InternalExternalIssueStatus;
+  closure_date: string | null;
+  closure_evidence_file_ids: UUID[] | null;
+  created_by_user_id: UUID;
+  updated_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type QualityCustomerComplaint = {
   id: UUID;
   company_id: UUID;

@@ -68,6 +68,7 @@ const supportingSections: NavItem[] = [
 { name: 'Forms & Templates', path: '/forms', icon: FileTextIcon },
 { name: 'Non-Conformances (NCR)', path: '/ncrs', icon: AlertTriangleIcon, roles: managementRoles },
 { name: 'Customer Complaints', path: '/dashboard/quality/complaints', icon: AlertCircleIcon, roles: managementRoles, module: 'quality' },
+{ name: 'Internal & External Issues', path: '/dashboard/quality/issues', icon: AlertOctagonIcon, roles: managementRoles, module: 'quality' },
 { name: 'Plan Job Observations (PJO)', path: '/pjo', icon: ClipboardCheckIcon, roles: managementRoles },
 { name: 'Tasks & Time', path: '/tasks', icon: ClipboardCheckIcon },
 { name: 'Incidents', path: '/incidents', icon: AlertTriangleIcon },

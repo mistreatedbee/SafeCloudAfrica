@@ -27,6 +27,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { HelpSupportPage } from './pages/HelpSupportPage';
 import NCRsPage from './pages/NCRsPage';
 import QualityCustomerComplaintsPage from './pages/QualityCustomerComplaintsPage';
+import QualityInternalExternalIssuesPage from './pages/QualityInternalExternalIssuesPage';
 import { RisksPage } from './pages/RisksPage';
 import { PPEPage } from './pages/PPEPage';
 import { LegalRegisterPage } from './pages/LegalRegisterPage';
@@ -409,6 +410,16 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <QualityCustomerComplaintsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/quality/issues"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <QualityInternalExternalIssuesPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

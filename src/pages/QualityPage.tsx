@@ -331,6 +331,11 @@ export function QualityPage() {
               color: '#F5A623'
             },
             {
+              icon: AlertCircleIcon,
+              label: 'Internal & External Issues',
+              color: '#3498DB'
+            },
+            {
               icon: CheckCircleIcon,
               label: 'CAPA Management',
               color: '#2ECC71'
@@ -344,6 +349,7 @@ export function QualityPage() {
                 if (item.label === 'Quality Audit') navigate('/audits/new');
                 if (item.label === 'Document Control') navigate('/documents');
                 if (item.label === 'Customer Complaints') navigate('/dashboard/quality/complaints');
+                if (item.label === 'Internal & External Issues') navigate('/dashboard/quality/issues');
                 if (item.label === 'CAPA Management') navigate('/tasks');
               }}
               className="flex flex-col items-center gap-3 p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all active:scale-[0.98]">
