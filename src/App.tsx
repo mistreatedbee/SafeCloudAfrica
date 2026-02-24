@@ -23,6 +23,8 @@ import NCRsPage from './pages/NCRsPage';
 import { RisksPage } from './pages/RisksPage';
 import { PPEPage } from './pages/PPEPage';
 import { LegalRegisterPage } from './pages/LegalRegisterPage';
+import { LegalRequirementDetailPage } from './pages/LegalRequirementDetailPage';
+import { LegalUpdatesPage } from './pages/LegalUpdatesPage';
 import { UsersPage } from './pages/UsersPage';
 import { PlanningReviewPage } from './pages/PlanningReviewPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
@@ -367,6 +369,36 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <LegalRegisterPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/legal/register"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <LegalRegisterPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/legal/register/:requirementId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <LegalRequirementDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/legal/updates"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <LegalUpdatesPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

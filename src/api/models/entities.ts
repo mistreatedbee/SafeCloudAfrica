@@ -1232,17 +1232,53 @@ export type EnvironmentMonitoring = {
   created_at: string;
 };
 
-export type LegalRequirementStatus = 'compliant' | 'non-compliant' | 'in-progress';
+export type LegalComplianceStatus = 'NON_COMPLIANT' | 'PARTIALLY_COMPLIANT' | 'COMPLIANT';
+export type LegalUpdateCompletionStatus = 'OPEN' | 'CLOSED';
+
+export type LegalRequirementReference = {
+  referenceText: string;
+};
+
+export type LegalRequirementEvidenceLink = {
+  documentId: UUID;
+  documentTitleSnapshot: string;
+};
 
 export type LegalRequirement = {
   id: UUID;
   company_id: UUID;
   module: 'legal';
-  requirement: string;
-  reference: string | null;
-  status: LegalRequirementStatus;
-  evidence_bucket: string | null;
-  evidence_key: string | null;
+  requirement_standard: string;
+  applicability: string | null;
+  actions_needed: string | null;
+  compliance_status: LegalComplianceStatus;
+  responsible_user_id: UUID | null;
+  responsible_external_name: string | null;
+  references: LegalRequirementReference[] | null;
+  evidence_links: LegalRequirementEvidenceLink[] | null;
+  created_by_user_id: UUID;
+  updated_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+};
+
+export type LegalUpdate = {
+  id: UUID;
+  company_id: UUID;
+  legal_requirement_id: UUID;
+  date_amended: string | null;
+  law_updated_date: string | null;
+  summary_of_change: string | null;
+  impact_on_business: string | null;
+  action_required: string | null;
+  responsible_user_id: UUID | null;
+  responsible_external_name: string | null;
+  deadline: string | null;
+  completion_status: LegalUpdateCompletionStatus;
+  closure_note: string | null;
+  closed_at: string | null;
+  closed_by_user_id: UUID | null;
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;

@@ -23,7 +23,8 @@ export function LegalModulePage() {
   const { data: reqs } = useAsync<LegalRequirement[]>(
     async () => {
       if (!activeCompanyId) return [];
-      return await listLegalRequirements(activeCompanyId);
+      const res = await listLegalRequirements({ companyId: activeCompanyId, page: 1, pageSize: 500 });
+      return res.rows;
     },
     [activeCompanyId]
   );
@@ -38,13 +39,16 @@ export function LegalModulePage() {
   const compliance = useMemo(() => {
     const list = reqs ?? [];
     if (list.length === 0) return 0;
-    const compliant = list.filter((r) => r.status === 'compliant').length;
+    const compliant = list.filter((r) => r.compliance_status === 'COMPLIANT').length;
     return Math.round((compliant / list.length) * 100);
   }, [reqs]);
 
-  const evidenceCount = evidence?.length ?? 0;
-  const nonCompliant = (reqs ?? []).filter((r) => r.status === 'non-compliant').length;
-  const inProgress = (reqs ?? []).filter((r) => r.status === 'in-progress').length;
+  const evidenceCount = useMemo(
+    () => (reqs ?? []).reduce((sum, row) => sum + (row.evidence_links?.length ?? 0), 0) || evidence?.length || 0,
+    [reqs, evidence]
+  );
+  const nonCompliant = (reqs ?? []).filter((r) => r.compliance_status === 'NON_COMPLIANT').length;
+  const inProgress = (reqs ?? []).filter((r) => r.compliance_status === 'PARTIALLY_COMPLIANT').length;
 
   return (
     <Layout title="Legal Management">
@@ -101,7 +105,7 @@ export function LegalModulePage() {
               Central register linking laws to procedures, risks, training, and evidence.
             </p>
             <button
-              onClick={() => navigate('/legal-register')}
+              onClick={() => navigate('/dashboard/legal/register')}
               className="mt-4 text-sm font-medium text-teal hover:text-teal-700 transition-colors inline-flex items-center gap-1"
             >
               Open register <ArrowRightIcon className="w-4 h-4" />
@@ -144,4 +148,3 @@ export function LegalModulePage() {
     </Layout>
   );
 }
-

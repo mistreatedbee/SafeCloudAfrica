@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   FileTextIcon,
@@ -55,6 +56,7 @@ const itemVariants = {
   }
 };
 export function DocumentsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const { user } = useUser();
@@ -72,6 +74,19 @@ export function DocumentsPage() {
   );
 
   const documents = data ?? [];
+  React.useEffect(() => {
+    const viewId = searchParams.get('view');
+    if (!viewId) return;
+    const doc = documents.find((d) => d.id === viewId);
+    if (!doc?.storage_bucket || !doc.storage_key) return;
+    void (async () => {
+      const blob = await downloadDocumentFile({ bucket: doc.storage_bucket!, key: doc.storage_key! });
+      openBlobInNewTab(blob);
+      const next = new URLSearchParams(searchParams);
+      next.delete('view');
+      setSearchParams(next, { replace: true });
+    })();
+  }, [documents, searchParams, setSearchParams]);
   const filteredDocs = documents.filter((doc) => {
     const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = !selectedCategory || doc.category === selectedCategory;
