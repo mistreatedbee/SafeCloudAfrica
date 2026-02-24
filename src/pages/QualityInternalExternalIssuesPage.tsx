@@ -16,6 +16,8 @@ import {
   IE_STATUS_OPTIONS,
   listInternalExternalIssueRegisters,
   listInternalExternalIssues,
+  listQualityNcrOptions,
+  listRiskAssessmentOptions,
   mapIssueNature,
   updateInternalExternalIssue,
   updateInternalExternalIssueRegister
@@ -49,6 +51,8 @@ type IssueForm = {
   status: InternalExternalIssueStatus;
   closureDate: string;
   closureEvidence: string;
+  linkedRiskAssessmentId: UUID | '';
+  linkedNcrId: UUID | '';
 };
 
 const SCOPE_OPTIONS = IE_SCOPE_OPTIONS.map((value) => ({ id: value, value, label: value }));
@@ -68,7 +72,9 @@ const EMPTY_ISSUE_FORM: IssueForm = {
   targetDate: '',
   status: 'Open',
   closureDate: '',
-  closureEvidence: ''
+  closureEvidence: '',
+  linkedRiskAssessmentId: '',
+  linkedNcrId: ''
 };
 
 function dateOnly(value: Date): string {
@@ -116,7 +122,9 @@ function toIssueForm(row?: QualityInternalExternalIssue): IssueForm {
     targetDate: row?.target_date ?? '',
     status: row?.status ?? 'Open',
     closureDate: row?.closure_date ?? '',
-    closureEvidence: (row?.closure_evidence_file_ids ?? []).join(', ')
+    closureEvidence: (row?.closure_evidence_file_ids ?? []).join(', '),
+    linkedRiskAssessmentId: (row?.linked_risk_assessment_id as UUID | null) ?? '',
+    linkedNcrId: (row?.linked_ncr_id as UUID | null) ?? ''
   };
 }
 
@@ -157,6 +165,8 @@ export default function QualityInternalExternalIssuesPage() {
   const [issueSaving, setIssueSaving] = useState(false);
 
   const { data: profiles } = useAsync(async () => (activeCompanyId ? listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
+  const { data: riskAssessmentOptions } = useAsync(async () => (activeCompanyId ? listRiskAssessmentOptions(activeCompanyId) : []), [activeCompanyId]);
+  const { data: ncrOptions } = useAsync(async () => (activeCompanyId ? listQualityNcrOptions(activeCompanyId) : []), [activeCompanyId]);
   const userLabel = useMemo(() => new Map((profiles ?? []).map((p) => [p.user_id, p.full_name || p.email || p.user_id])), [profiles]);
 
   const { data: registers, loading: registersLoading, error: registersError, refresh: refreshRegisters } = useAsync(async () => {
@@ -332,7 +342,9 @@ export default function QualityInternalExternalIssuesPage() {
         targetDate: issueForm.targetDate || null,
         status: issueForm.status,
         closureDate: issueForm.closureDate || null,
-        closureEvidenceFileIds: evidenceIds.length ? evidenceIds : null
+        closureEvidenceFileIds: evidenceIds.length ? evidenceIds : null,
+        linkedRiskAssessmentId: issueForm.linkedRiskAssessmentId || null,
+        linkedNcrId: issueForm.linkedNcrId || null
       };
       if (formMode === 'create') {
         await createInternalExternalIssue({ ...payload, registerId: selectedRegisterId as UUID });
@@ -356,7 +368,9 @@ export default function QualityInternalExternalIssuesPage() {
             target_date: payload.targetDate,
             status: payload.status,
             closure_date: payload.closureDate,
-            closure_evidence_file_ids: payload.closureEvidenceFileIds
+            closure_evidence_file_ids: payload.closureEvidenceFileIds,
+            linked_risk_assessment_id: payload.linkedRiskAssessmentId,
+            linked_ncr_id: payload.linkedNcrId
           }
         });
       }
@@ -385,6 +399,8 @@ export default function QualityInternalExternalIssuesPage() {
       'Control Measure': row.control_measure ?? '',
       'Responsible person': row.responsible_name_snapshot,
       'Target date': row.target_date ?? '',
+      'Linked Risk Assessment': row.linked_risk_assessment_id ?? '',
+      'Linked NCR': row.linked_ncr_id ?? '',
       Status: row.status,
       'Closure date': row.closure_date ?? ''
     }));
@@ -480,15 +496,15 @@ export default function QualityInternalExternalIssuesPage() {
           {rowsLoading && <p className="p-4 text-sm text-charcoal-500">Loading issues...</p>}
           {!rowsLoading && !rowsError && (
             <table className="w-full min-w-[1900px] text-sm">
-              <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Ref #</th><th className="px-3 py-2 text-left">Internal/External</th><th className="px-3 py-2 text-left">Issues Identification</th><th className="px-3 py-2 text-left">Risk/ Opp.</th><th className="px-3 py-2 text-left">L</th><th className="px-3 py-2 text-left">S</th><th className="px-3 py-2 text-left">R</th><th className="px-3 py-2 text-left">Nature</th><th className="px-3 py-2 text-left">Control Measure</th><th className="px-3 py-2 text-left">Responsible person</th><th className="px-3 py-2 text-left">Target date</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
+              <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Ref #</th><th className="px-3 py-2 text-left">Internal/External</th><th className="px-3 py-2 text-left">Issues Identification</th><th className="px-3 py-2 text-left">Risk/ Opp.</th><th className="px-3 py-2 text-left">L</th><th className="px-3 py-2 text-left">S</th><th className="px-3 py-2 text-left">R</th><th className="px-3 py-2 text-left">Nature</th><th className="px-3 py-2 text-left">Control Measure</th><th className="px-3 py-2 text-left">Responsible person</th><th className="px-3 py-2 text-left">Target date</th><th className="px-3 py-2 text-left">Linked Risk Assessment</th><th className="px-3 py-2 text-left">Linked NCR</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
               <tbody className="divide-y divide-surface-100">
                 {(rows ?? []).map((row) => (
                   <tr key={row.id} className="align-top">
-                    <td className="px-3 py-2 font-semibold text-teal">{row.ref_no}</td><td className="px-3 py-2">{row.scope}</td><td className="px-3 py-2">{row.issue_identification}</td><td className="px-3 py-2">{row.risk_or_opp}</td><td className="px-3 py-2">{row.likelihood}</td><td className="px-3 py-2">{row.severity}</td><td className="px-3 py-2 font-semibold">{row.risk_rating}</td><td className="px-3 py-2"><span className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${natureClass(String(row.nature))}`}>{row.nature}</span></td><td className="px-3 py-2">{row.control_measure || '-'}</td><td className="px-3 py-2">{row.responsible_name_snapshot}</td><td className="px-3 py-2">{formatDate(row.target_date)}</td><td className="px-3 py-2">{row.status}</td>
+                    <td className="px-3 py-2 font-semibold text-teal">{row.ref_no}</td><td className="px-3 py-2">{row.scope}</td><td className="px-3 py-2">{row.issue_identification}</td><td className="px-3 py-2">{row.risk_or_opp}</td><td className="px-3 py-2">{row.likelihood}</td><td className="px-3 py-2">{row.severity}</td><td className="px-3 py-2 font-semibold">{row.risk_rating}</td><td className="px-3 py-2"><span className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${natureClass(String(row.nature))}`}>{row.nature}</span></td><td className="px-3 py-2">{row.control_measure || '-'}</td><td className="px-3 py-2">{row.responsible_name_snapshot}</td><td className="px-3 py-2">{formatDate(row.target_date)}</td><td className="px-3 py-2">{row.linked_risk_assessment_id ? (riskAssessmentOptions ?? []).find((x) => x.id === row.linked_risk_assessment_id)?.label ?? row.linked_risk_assessment_id : '-'}</td><td className="px-3 py-2">{row.linked_ncr_id ? (ncrOptions ?? []).find((x) => x.id === row.linked_ncr_id)?.label ?? row.linked_ncr_id : '-'}</td><td className="px-3 py-2">{row.status}</td>
                     <td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => openViewIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">View</button>{canWrite && <button type="button" onClick={() => openEditIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Edit</button>}{canApprove && <button type="button" onClick={() => void handleApproveRegister()} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Approve</button>}{canExport && <button type="button" onClick={() => exportRows([row], `internal-external-issue-${row.ref_no}`)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Export</button>}</div></td>
                   </tr>
                 ))}
-                {(rows ?? []).length === 0 && <tr><td colSpan={13} className="px-3 py-6 text-center text-charcoal-500">No issues found for the selected filters.</td></tr>}
+                {(rows ?? []).length === 0 && <tr><td colSpan={15} className="px-3 py-6 text-center text-charcoal-500">No issues found for the selected filters.</td></tr>}
               </tbody>
             </table>
           )}
@@ -529,6 +545,22 @@ export default function QualityInternalExternalIssuesPage() {
                 <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Status</span><select value={issueForm.status} onChange={(e) => setIssueForm((prev) => ({ ...prev, status: e.target.value as InternalExternalIssueStatus }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" disabled={formMode === 'view'}>{IE_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
                 <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Closure date</span><input type="date" value={issueForm.closureDate} onChange={(e) => setIssueForm((prev) => ({ ...prev, closureDate: e.target.value }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" disabled={formMode === 'view' || issueForm.status !== 'Closed'} /></label>
                 <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Closure evidence file IDs</span><input value={issueForm.closureEvidence} onChange={(e) => setIssueForm((prev) => ({ ...prev, closureEvidence: e.target.value }))} placeholder="uuid1, uuid2" className="w-full px-3 py-2 border border-surface-300 rounded-lg" disabled={formMode === 'view' || issueForm.status !== 'Closed'} /></label>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <span className="block text-xs text-charcoal-500 mb-1">Linked Risk Assessment</span>
+                  <select value={issueForm.linkedRiskAssessmentId} onChange={(e) => setIssueForm((prev) => ({ ...prev, linkedRiskAssessmentId: (e.target.value || '') as UUID | '' }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" disabled={formMode === 'view'}>
+                    <option value="">None</option>
+                    {(riskAssessmentOptions ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="text-sm">
+                  <span className="block text-xs text-charcoal-500 mb-1">Linked Non-Conformance (NCR)</span>
+                  <select value={issueForm.linkedNcrId} onChange={(e) => setIssueForm((prev) => ({ ...prev, linkedNcrId: (e.target.value || '') as UUID | '' }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" disabled={formMode === 'view'}>
+                    <option value="">None</option>
+                    {(ncrOptions ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                  </select>
+                </label>
               </div>
             </div>
             <div className="px-5 py-4 border-t border-surface-200 flex items-center justify-end gap-2">

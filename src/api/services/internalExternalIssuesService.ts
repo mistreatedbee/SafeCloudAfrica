@@ -8,11 +8,34 @@ import type {
 } from '../models/entities';
 import { createActivityLog } from './activityLogService';
 import { getMyProfile } from './profilesService';
+import { listQualityNcrs } from './qualityNcrsService';
 
 export const IE_DOC_NO_DEFAULT = 'XYZ-IEIRA-F-002';
 export const IE_SCOPE_OPTIONS = ['Internal', 'External'] as const;
 export const IE_RISK_OR_OPP_OPTIONS = ['Risk', 'Opp.', 'Risk/Opp.'] as const;
 export const IE_STATUS_OPTIONS: InternalExternalIssueStatus[] = ['Open', 'In Progress', 'Closed'];
+
+export async function listRiskAssessmentOptions(companyId: UUID): Promise<Array<{ id: UUID; label: string }>> {
+  const { data, error } = await insforge.database
+    .from('risk_assessments')
+    .select('id, assessment_number, title')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []).map((row: any) => ({
+    id: row.id as UUID,
+    label: `${row.assessment_number ?? 'RA'} - ${row.title ?? 'Untitled'}`
+  }));
+}
+
+export async function listQualityNcrOptions(companyId: UUID): Promise<Array<{ id: UUID; label: string }>> {
+  const rows = await listQualityNcrs({ companyId, limit: 500 });
+  return rows.map((row) => ({
+    id: row.id,
+    label: `${row.nc_number ?? 'NCR'} - ${row.title ?? 'Untitled'}`
+  }));
+}
 
 const READ_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor', 'consultant', 'auditor'];
 const WRITE_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
@@ -477,6 +500,8 @@ export async function createInternalExternalIssue(input: {
   status?: InternalExternalIssueStatus;
   closureDate?: string | null;
   closureEvidenceFileIds?: UUID[] | null;
+  linkedRiskAssessmentId?: UUID | null;
+  linkedNcrId?: UUID | null;
 }): Promise<QualityInternalExternalIssue> {
   assertWrite(input.actorRole);
   const register = await getRegisterById(input.companyId, input.registerId);
@@ -532,6 +557,8 @@ export async function createInternalExternalIssue(input: {
     status,
     closure_date: closureDate,
     closure_evidence_file_ids: input.closureEvidenceFileIds ?? null,
+    linked_risk_assessment_id: input.linkedRiskAssessmentId ?? null,
+    linked_ncr_id: input.linkedNcrId ?? null,
     created_by_user_id: input.actorUserId,
     updated_by_user_id: input.actorUserId,
     updated_at: new Date().toISOString()
@@ -656,6 +683,8 @@ export async function updateInternalExternalIssue(input: {
   }
   if (input.patch.target_date !== undefined) dbPatch.target_date = normalizeDateOnly(input.patch.target_date as string);
   if (input.patch.closure_evidence_file_ids !== undefined) dbPatch.closure_evidence_file_ids = input.patch.closure_evidence_file_ids;
+  if (input.patch.linked_risk_assessment_id !== undefined) dbPatch.linked_risk_assessment_id = input.patch.linked_risk_assessment_id;
+  if (input.patch.linked_ncr_id !== undefined) dbPatch.linked_ncr_id = input.patch.linked_ncr_id;
 
   const { data, error } = await insforge.database
     .from('quality_internal_external_issues')

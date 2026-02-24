@@ -670,6 +670,8 @@ export type QualityInternalExternalIssue = {
   status: InternalExternalIssueStatus;
   closure_date: string | null;
   closure_evidence_file_ids: UUID[] | null;
+  linked_risk_assessment_id: UUID | null;
+  linked_ncr_id: UUID | null;
   created_by_user_id: UUID;
   updated_by_user_id: UUID | null;
   created_at: string;
