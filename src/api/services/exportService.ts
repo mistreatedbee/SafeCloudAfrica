@@ -6,7 +6,7 @@
  */
 
 import type { UUID } from '../models/core';
-import type { Incident, QualityNcr, Audit } from '../models/entities';
+import type { Incident, QualityNcr, Audit, PPEIssue } from '../models/entities';
 
 export interface ExportOptions {
   includeEvidence?: boolean;
@@ -538,4 +538,66 @@ export async function exportPpeUsageSummaryPDF(summary: any): Promise<Blob> {
     </body></html>
   `;
   return new Blob([html], { type: 'text/html' });
+}
+
+export function exportPpeAnalyticsReportCSV(input: {
+  periodLabel: string;
+  generatedAt?: string;
+  totalCost: number;
+  totalIssuedCount: number;
+  topItemName?: string | null;
+  topItemCost?: number | null;
+  itemBreakdown: Array<{ name: string; qty: number; avgUnitCost: number; totalCost: number }>;
+  records: PPEIssue[];
+}): Blob {
+  const generatedAt = input.generatedAt ?? new Date().toISOString();
+  const rows: string[][] = [
+    ['PPE Analytics Report'],
+    ['Generated At', generatedAt],
+    ['Period', input.periodLabel],
+    ['Total PPE Cost', String(input.totalCost)],
+    ['Total Issued Quantity', String(input.totalIssuedCount)],
+    ['Most Expensive Item', input.topItemName ?? ''],
+    ['Most Expensive Item Cost', String(input.topItemCost ?? 0)],
+    [''],
+    ['Item Breakdown'],
+    ['Item', 'Qty Issued', 'Avg Cost Per Unit', 'Total Cost'],
+    ...input.itemBreakdown.map((item) => [
+      item.name,
+      String(item.qty),
+      String(item.avgUnitCost),
+      String(item.totalCost)
+    ]),
+    [''],
+    ['Issuance Records Included'],
+    ['Issue Date', 'PPE Item', 'Category', 'Quantity', 'Unit Cost', 'Total Cost', 'Issued To', 'Department', 'Site']
+  ];
+
+  for (const issue of input.records) {
+    const qty = Number(issue.quantity_issued) > 0 ? Number(issue.quantity_issued) : 1;
+    const unitCost =
+      Number.isFinite(Number(issue.unit_cost_at_issue)) && Number(issue.unit_cost_at_issue) >= 0
+        ? Number(issue.unit_cost_at_issue)
+        : 0;
+    const totalCost =
+      Number.isFinite(Number(issue.total_cost_at_issue))
+        ? Number(issue.total_cost_at_issue)
+        : qty * unitCost;
+    rows.push([
+      issue.issue_date ?? (issue.issued_at ? issue.issued_at.slice(0, 10) : ''),
+      issue.ppe_item_name ?? String(issue.ppe_item_id ?? ''),
+      issue.ppe_category ?? '',
+      String(qty),
+      String(unitCost),
+      String(totalCost),
+      String(issue.issued_to_user_id ?? issue.issued_to_employee_number ?? ''),
+      String(issue.department_id ?? ''),
+      String(issue.site_id ?? '')
+    ]);
+  }
+
+  const csv = rows
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  return new Blob([csv], { type: 'text/csv;charset=utf-8;' });
 }

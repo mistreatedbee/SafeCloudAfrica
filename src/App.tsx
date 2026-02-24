@@ -364,6 +364,16 @@ export function App() {
             }
           />
           <Route
+            path="/dashboard/ppe"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <PPEPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/legal-register"
             element={
               <RequireSignedIn>

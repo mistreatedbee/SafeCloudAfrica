@@ -106,18 +106,20 @@ export function PpeItemCreateModal(props: {
 
           <div>
             <label className="block text-sm font-medium text-charcoal mb-1.5">Category (optional)</label>
-            <select
+            <input
+              list="ppe-category-options"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
+              placeholder="Select or type category"
               className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-            >
-              <option value="">Select category</option>
+            />
+            <datalist id="ppe-category-options">
               {PPE_CATEGORY_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
               ))}
-            </select>
+            </datalist>
           </div>
 
           <div>

@@ -1,6 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { HardHatIcon, PlusIcon } from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from 'recharts';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
@@ -17,16 +28,20 @@ import {
 } from '../api/services/ppeIssueTrackerService';
 import {
   getPpeCostSummary,
-  getPpeUsageSummary,
-  getPpeLowStockCount
+  getPpeLowStockCount,
+  getPpeSummary,
+  getPpeTrends,
+  getPpeItems,
+  getPpeRecordsInRange,
+  getMonthRange,
+  getYearRange
 } from '../api/services/ppeAnalyticsService';
 import { getMyProfile } from '../api/services/profilesService';
 import {
   exportPpeIssueRegisterCSV,
   exportPpeCostSummaryCSV,
-  exportPpeUsageSummaryCSV,
   exportPpeCostSummaryPDF,
-  exportPpeUsageSummaryPDF,
+  exportPpeAnalyticsReportCSV,
   downloadFile
 } from '../api/services/exportService';
 import type {
@@ -55,19 +70,74 @@ const containerVariants = {
 };
 const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
 
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatMoney(amount: number): string {
+  return `R ${amount.toFixed(2)}`;
+}
+
+function toYmd(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function getQuickRange(key: 'this_month' | 'last_month' | 'this_year' | 'last_year'): {
+  from: string;
+  to: string;
+  year: number;
+} {
+  const now = new Date();
+  if (key === 'this_month') {
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: toYmd(from), to: toYmd(now), year: now.getFullYear() };
+  }
+  if (key === 'last_month') {
+    const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const to = new Date(now.getFullYear(), now.getMonth(), 0);
+    return { from: toYmd(from), to: toYmd(to), year: from.getFullYear() };
+  }
+  if (key === 'this_year') {
+    return { from: `${now.getFullYear()}-01-01`, to: toYmd(now), year: now.getFullYear() };
+  }
+  const y = now.getFullYear() - 1;
+  return { from: `${y}-01-01`, to: `${y}-12-31`, year: y };
+}
+
 export function PPEPage() {
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
   const canManage =
+    activeRole === 'owner' ||
+    activeRole === 'admin' ||
+    activeRole === 'manager' ||
+    activeRole === 'supervisor';
+  const canViewAnalytics =
+    activeRole === 'owner' ||
     activeRole === 'admin' ||
     activeRole === 'manager' ||
     activeRole === 'supervisor' ||
-    activeRole === 'consultant';
-  const canManagerSignoff = activeRole === 'admin' || activeRole === 'manager';
+    activeRole === 'consultant' ||
+    activeRole === 'auditor';
+  const canExportAnalytics = activeRole === 'owner' || activeRole === 'admin';
+  const canManagerSignoff = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager';
   const canSafetyVerify =
-    activeRole === 'admin' || activeRole === 'supervisor' || activeRole === 'consultant';
+    activeRole === 'owner' ||
+    activeRole === 'admin' ||
+    activeRole === 'supervisor' ||
+    activeRole === 'consultant';
   const canAuditorConfirm = activeRole === 'auditor';
   const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'register' | 'inventory'>('dashboard');
+  const initialQuick = getQuickRange('this_month');
+  const [reportQuickFilter, setReportQuickFilter] = useState<
+    'this_month' | 'last_month' | 'this_year' | 'last_year' | 'custom'
+  >('this_month');
+  const [reportView, setReportView] = useState<'monthly' | 'yearly'>('monthly');
+  const [reportDateFrom, setReportDateFrom] = useState(initialQuick.from);
+  const [reportDateTo, setReportDateTo] = useState(initialQuick.to);
+  const [selectedYear, setSelectedYear] = useState(initialQuick.year);
+  const [showAllItemSpend, setShowAllItemSpend] = useState(false);
   const [issueOpen, setIssueOpen] = useState(false);
   const [createItemOpen, setCreateItemOpen] = useState(false);
   const [stockCreateOpen, setStockCreateOpen] = useState(false);
@@ -113,8 +183,11 @@ export function PPEPage() {
     if (registerFilters.dateTo) f.dateTo = registerFilters.dateTo;
     if (registerFilters.siteId) f.siteId = registerFilters.siteId as any;
     if (registerFilters.departmentId) f.departmentId = registerFilters.departmentId as any;
+    if (activeRole === 'employee' && user?.id) {
+      f.issuedToUserId = user.id as any;
+    }
     return f;
-  }, [activeCompanyId, registerFilters]);
+  }, [activeCompanyId, registerFilters, activeRole, user?.id]);
 
   const { data: issues, loading, error } = useAsync<PPEIssue[]>(
     async () => {
@@ -162,39 +235,149 @@ export function PPEPage() {
     [activeCompanyId, activeTab, refreshKey]
   );
 
-  const dashboardDateFrom = useMemo(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().slice(0, 10);
-  }, []);
-  const dashboardDateTo = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const analyticsScope = useMemo(() => {
+    if (!user?.id) return {};
+    if (activeRole === 'employee') {
+      return { issuedToUserId: user.id as any };
+    }
+    if (
+      activeRole === 'manager' ||
+      activeRole === 'supervisor' ||
+      activeRole === 'consultant' ||
+      activeRole === 'auditor'
+    ) {
+      return {
+        siteId: myProfile?.site_id ?? null,
+        departmentId: myProfile?.department_id ?? null
+      };
+    }
+    return {};
+  }, [activeRole, myProfile?.department_id, myProfile?.site_id, user?.id]);
+
+  const { data: reportSummary } = useAsync(
+    async () => {
+      if (!activeCompanyId || activeTab !== 'dashboard' || !canViewAnalytics) return null;
+      return await getPpeSummary(activeCompanyId, {
+        ...analyticsScope,
+        from: reportDateFrom,
+        to: reportDateTo
+      });
+    },
+    [
+      activeCompanyId,
+      activeTab,
+      canViewAnalytics,
+      analyticsScope,
+      refreshKey,
+      reportDateFrom,
+      reportDateTo
+    ]
+  );
+
+  const { data: reportItems } = useAsync(
+    async () => {
+      if (!activeCompanyId || activeTab !== 'dashboard' || !canViewAnalytics) return [];
+      return await getPpeItems(activeCompanyId, {
+        ...analyticsScope,
+        from: reportDateFrom,
+        to: reportDateTo,
+        sort: 'totalCost_desc'
+      });
+    },
+    [
+      activeCompanyId,
+      activeTab,
+      canViewAnalytics,
+      analyticsScope,
+      refreshKey,
+      reportDateFrom,
+      reportDateTo
+    ]
+  );
+
+  const { data: reportRecords } = useAsync(
+    async () => {
+      if (!activeCompanyId || activeTab !== 'dashboard' || !canViewAnalytics) return [];
+      return await getPpeRecordsInRange(activeCompanyId, {
+        ...analyticsScope,
+        from: reportDateFrom,
+        to: reportDateTo
+      });
+    },
+    [
+      activeCompanyId,
+      activeTab,
+      canViewAnalytics,
+      analyticsScope,
+      refreshKey,
+      reportDateFrom,
+      reportDateTo
+    ]
+  );
+
+  const { data: yearlyTrend } = useAsync(
+    async () => {
+      if (!activeCompanyId || activeTab !== 'dashboard' || !canViewAnalytics) return [];
+      return await getPpeTrends(activeCompanyId, {
+        ...analyticsScope,
+        year: selectedYear
+      });
+    },
+    [activeCompanyId, activeTab, canViewAnalytics, analyticsScope, refreshKey, selectedYear]
+  );
+
+  const monthRange = useMemo(() => getMonthRange(reportDateFrom), [reportDateFrom]);
+  const yearRange = useMemo(() => getYearRange(selectedYear), [selectedYear]);
+
+  const { data: selectedMonthSummary } = useAsync(
+    async () => {
+      if (!activeCompanyId || activeTab !== 'dashboard' || !canViewAnalytics) return null;
+      return await getPpeSummary(activeCompanyId, {
+        ...analyticsScope,
+        from: monthRange.from,
+        to: monthRange.to
+      });
+    },
+    [activeCompanyId, activeTab, canViewAnalytics, analyticsScope, refreshKey, monthRange]
+  );
+
+  const { data: selectedYearSummary } = useAsync(
+    async () => {
+      if (!activeCompanyId || activeTab !== 'dashboard' || !canViewAnalytics) return null;
+      return await getPpeSummary(activeCompanyId, {
+        ...analyticsScope,
+        from: yearRange.from,
+        to: yearRange.to
+      });
+    },
+    [activeCompanyId, activeTab, canViewAnalytics, analyticsScope, refreshKey, yearRange]
+  );
 
   const { data: costSummary } = useAsync(
     async () => {
-      if (!activeCompanyId || activeTab !== 'dashboard') return null;
+      if (!activeCompanyId || activeTab !== 'dashboard' || !canViewAnalytics) return null;
       return await getPpeCostSummary(activeCompanyId, {
-        dateFrom: dashboardDateFrom,
-        dateTo: dashboardDateTo
+        ...analyticsScope,
+        dateFrom: reportDateFrom,
+        dateTo: reportDateTo
       });
     },
-    [activeCompanyId, activeTab, refreshKey, dashboardDateFrom, dashboardDateTo]
-  );
-  const { data: usageSummary } = useAsync(
-    async () => {
-      if (!activeCompanyId || activeTab !== 'dashboard') return null;
-      return await getPpeUsageSummary(activeCompanyId, {
-        dateFrom: dashboardDateFrom,
-        dateTo: dashboardDateTo
-      });
-    },
-    [activeCompanyId, activeTab, refreshKey, dashboardDateFrom, dashboardDateTo]
+    [
+      activeCompanyId,
+      activeTab,
+      canViewAnalytics,
+      analyticsScope,
+      refreshKey,
+      reportDateFrom,
+      reportDateTo
+    ]
   );
   const { data: lowStockCount } = useAsync(
     async () => {
-      if (!activeCompanyId || activeTab !== 'dashboard') return 0;
+      if (!activeCompanyId || activeTab !== 'dashboard' || !canViewAnalytics) return 0;
       return await getPpeLowStockCount(activeCompanyId);
     },
-    [activeCompanyId, activeTab, refreshKey]
+    [activeCompanyId, activeTab, canViewAnalytics, refreshKey]
   );
 
   const { data: sites } = useAsync<Site[]>(
@@ -314,6 +497,23 @@ export function PPEPage() {
       isOverdue
     };
   });
+
+  const trendChartData = useMemo(
+    () =>
+      (yearlyTrend ?? []).map((row) => ({
+        month: MONTH_LABELS[row.month - 1] ?? String(row.month),
+        totalCost: Number(row.totalCost ?? 0)
+      })),
+    [yearlyTrend]
+  );
+
+  const highestSpendCategory = useMemo(() => {
+    const top = [...(costSummary?.costByCategory ?? [])].sort((a, b) => b.totalCost - a.totalCost)[0];
+    if (!top) return null;
+    return { name: top.category ?? 'Uncategorised', totalCost: top.totalCost };
+  }, [costSummary?.costByCategory]);
+
+  const periodLabel = useMemo(() => `${reportDateFrom} to ${reportDateTo}`, [reportDateFrom, reportDateTo]);
 
   return (
     <Layout title="PPE Management">
@@ -476,7 +676,7 @@ export function PPEPage() {
                   : 'border-transparent text-charcoal-500'
               }`}
             >
-              Dashboard
+              Reports &amp; Analytics
             </button>
             <button
               type="button"
@@ -523,116 +723,311 @@ export function PPEPage() {
 
         {activeTab === 'dashboard' && (
           <motion.div variants={itemVariants} className="space-y-6">
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (costSummary) {
-                    downloadFile(
-                      exportPpeCostSummaryCSV(costSummary),
-                      `ppe-cost-summary-${new Date().toISOString().slice(0, 10)}.csv`
-                    );
-                  }
-                }}
-                disabled={!costSummary}
-                className="px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50 disabled:opacity-50"
-              >
-                Export cost CSV
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (costSummary) {
-                    const blob = await exportPpeCostSummaryPDF(costSummary);
-                    downloadFile(blob, `ppe-cost-summary-${new Date().toISOString().slice(0, 10)}.pdf`);
-                  }
-                }}
-                disabled={!costSummary}
-                className="px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50 disabled:opacity-50"
-              >
-                Export cost PDF
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (usageSummary) {
-                    downloadFile(
-                      exportPpeUsageSummaryCSV(usageSummary),
-                      `ppe-usage-summary-${new Date().toISOString().slice(0, 10)}.csv`
-                    );
-                  }
-                }}
-                disabled={!usageSummary}
-                className="px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50 disabled:opacity-50"
-              >
-                Export usage CSV
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (usageSummary) {
-                    const blob = await exportPpeUsageSummaryPDF(usageSummary);
-                    downloadFile(blob, `ppe-usage-summary-${new Date().toISOString().slice(0, 10)}.pdf`);
-                  }
-                }}
-                disabled={!usageSummary}
-                className="px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50 disabled:opacity-50"
-              >
-                Export usage PDF
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-                <p className="text-xs font-medium text-charcoal-500 uppercase tracking-wider">Total cost this month</p>
-                <p className="mt-1 text-xl font-semibold text-charcoal">
-                  R {(costSummary?.totalPpeCost ?? 0).toFixed(2)}
+            {!canViewAnalytics ? (
+              <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
+                <p className="text-sm font-semibold text-charcoal">Reports &amp; analytics are restricted</p>
+                <p className="text-sm text-charcoal-500 mt-1">
+                  Employees can only view their own PPE issuance records in the register.
                 </p>
               </div>
-              <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-                <p className="text-xs font-medium text-charcoal-500 uppercase tracking-wider">Total issues this month</p>
-                <p className="mt-1 text-xl font-semibold text-charcoal">{usageSummary?.totalQuantityIssued ?? 0}</p>
-              </div>
-              <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-                <p className="text-xs font-medium text-charcoal-500 uppercase tracking-wider">Low stock alerts</p>
-                <p className="mt-1 text-xl font-semibold text-charcoal">{lowStockCount ?? 0}</p>
-              </div>
-              <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-                <p className="text-xs font-medium text-charcoal-500 uppercase tracking-wider">Top costing item</p>
-                <p className="mt-1 text-sm font-medium text-charcoal truncate">
-                  {costSummary?.topCostingPpeItems?.[0]?.ppeItemName ?? 'â€”'}
-                </p>
-                <p className="text-xs text-charcoal-500">
-                  R {(costSummary?.topCostingPpeItems?.[0]?.totalCost ?? 0).toFixed(2)}
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-                <h4 className="text-sm font-semibold text-charcoal mb-3">Cost by category</h4>
-                <ul className="space-y-2">
-                  {(costSummary?.costByCategory ?? []).slice(0, 8).map((c) => (
-                    <li key={c.category ?? 'null'} className="flex justify-between text-sm">
-                      <span className="text-charcoal-600">{c.category ?? 'Uncategorised'}</span>
-                      <span className="font-medium">R {c.totalCost.toFixed(2)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-                <h4 className="text-sm font-semibold text-charcoal mb-3">Usage by reason</h4>
-                <ul className="space-y-2">
-                  {(usageSummary?.reasonBreakdown ?? []).slice(0, 8).map((r) => (
-                    <li key={r.reason ?? 'null'} className="flex justify-between text-sm">
-                      <span className="text-charcoal-600">{r.reason ?? 'Not specified'}</span>
-                      <span className="font-medium">{r.quantity}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+            ) : (
+              <>
+                <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const r = getQuickRange('this_month');
+                        setReportQuickFilter('this_month');
+                        setReportDateFrom(r.from);
+                        setReportDateTo(r.to);
+                        setSelectedYear(r.year);
+                        setReportView('monthly');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                        reportQuickFilter === 'this_month'
+                          ? 'bg-teal/10 text-teal border-teal/40'
+                          : 'border-surface-300 text-charcoal'
+                      }`}
+                    >
+                      This Month
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const r = getQuickRange('last_month');
+                        setReportQuickFilter('last_month');
+                        setReportDateFrom(r.from);
+                        setReportDateTo(r.to);
+                        setSelectedYear(r.year);
+                        setReportView('monthly');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                        reportQuickFilter === 'last_month'
+                          ? 'bg-teal/10 text-teal border-teal/40'
+                          : 'border-surface-300 text-charcoal'
+                      }`}
+                    >
+                      Last Month
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const r = getQuickRange('this_year');
+                        setReportQuickFilter('this_year');
+                        setReportDateFrom(r.from);
+                        setReportDateTo(r.to);
+                        setSelectedYear(r.year);
+                        setReportView('yearly');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                        reportQuickFilter === 'this_year'
+                          ? 'bg-teal/10 text-teal border-teal/40'
+                          : 'border-surface-300 text-charcoal'
+                      }`}
+                    >
+                      This Year
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const r = getQuickRange('last_year');
+                        setReportQuickFilter('last_year');
+                        setReportDateFrom(r.from);
+                        setReportDateTo(r.to);
+                        setSelectedYear(r.year);
+                        setReportView('yearly');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                        reportQuickFilter === 'last_year'
+                          ? 'bg-teal/10 text-teal border-teal/40'
+                          : 'border-surface-300 text-charcoal'
+                      }`}
+                    >
+                      Last Year
+                    </button>
+                    <div className="ml-auto flex flex-wrap items-center gap-2">
+                      <select
+                        value={reportView}
+                        onChange={(e) => setReportView(e.target.value as 'monthly' | 'yearly')}
+                        className="px-3 py-1.5 bg-white border border-surface-300 rounded-lg text-xs"
+                      >
+                        <option value="monthly">Monthly view</option>
+                        <option value="yearly">Yearly view</option>
+                      </select>
+                      <input
+                        type="date"
+                        value={reportDateFrom}
+                        onChange={(e) => {
+                          setReportQuickFilter('custom');
+                          setReportDateFrom(e.target.value);
+                        }}
+                        className="px-3 py-1.5 bg-white border border-surface-300 rounded-lg text-xs"
+                      />
+                      <span className="text-xs text-charcoal-500">to</span>
+                      <input
+                        type="date"
+                        value={reportDateTo}
+                        onChange={(e) => {
+                          setReportQuickFilter('custom');
+                          setReportDateTo(e.target.value);
+                        }}
+                        className="px-3 py-1.5 bg-white border border-surface-300 rounded-lg text-xs"
+                      />
+                      <input
+                        type="number"
+                        min={2000}
+                        max={2100}
+                        value={selectedYear}
+                        onChange={(e) =>
+                          setSelectedYear(
+                            Math.max(
+                              2000,
+                              Math.min(2100, Number(e.target.value) || new Date().getFullYear())
+                            )
+                          )
+                        }
+                        className="w-24 px-3 py-1.5 bg-white border border-surface-300 rounded-lg text-xs"
+                      />
+                      {canExportAnalytics && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            downloadFile(
+                              exportPpeAnalyticsReportCSV({
+                                periodLabel,
+                                totalCost: reportSummary?.totalCost ?? 0,
+                                totalIssuedCount: reportSummary?.totalIssuedCount ?? 0,
+                                topItemName: reportSummary?.topItemBySpend?.name ?? null,
+                                topItemCost: reportSummary?.topItemBySpend?.totalCost ?? 0,
+                                itemBreakdown: reportItems ?? [],
+                                records: reportRecords ?? []
+                              }),
+                              `ppe-analytics-${new Date().toISOString().slice(0, 10)}.csv`
+                            );
+                          }}
+                          disabled={!reportSummary}
+                          className="px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50 disabled:opacity-50"
+                        >
+                          Export CSV
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                    <p className="text-xs font-medium text-charcoal-500 uppercase tracking-wider">
+                      Total PPE Cost (Selected Month)
+                    </p>
+                    <p className="mt-1 text-xl font-semibold text-charcoal">
+                      {formatMoney(selectedMonthSummary?.totalCost ?? 0)}
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                    <p className="text-xs font-medium text-charcoal-500 uppercase tracking-wider">
+                      Total PPE Cost (Selected Year)
+                    </p>
+                    <p className="mt-1 text-xl font-semibold text-charcoal">
+                      {formatMoney(selectedYearSummary?.totalCost ?? 0)}
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                    <p className="text-xs font-medium text-charcoal-500 uppercase tracking-wider">
+                      Most Expensive PPE Item (Selected Period)
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-charcoal truncate">
+                      {reportSummary?.topItemBySpend?.name ?? '—'}
+                    </p>
+                    <p className="text-xs text-charcoal-500">
+                      {formatMoney(reportSummary?.topItemBySpend?.totalCost ?? 0)}
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                    <p className="text-xs font-medium text-charcoal-500 uppercase tracking-wider">
+                      Highest Spend Category/Type
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-charcoal truncate">
+                      {highestSpendCategory?.name ?? '—'}
+                    </p>
+                    <p className="text-xs text-charcoal-500">
+                      {formatMoney(highestSpendCategory?.totalCost ?? 0)}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                    <h4 className="text-sm font-semibold text-charcoal mb-3">PPE Cost Trend (12 months)</h4>
+                    <div className="h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        {reportView === 'yearly' ? (
+                          <BarChart data={trendChartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#E8ECF0" />
+                            <XAxis dataKey="month" />
+                            <YAxis />
+                            <Tooltip />
+                            <Bar dataKey="totalCost" fill="#0A7F7C" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        ) : (
+                          <LineChart data={trendChartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#E8ECF0" />
+                            <XAxis dataKey="month" />
+                            <YAxis />
+                            <Tooltip />
+                            <Line type="monotone" dataKey="totalCost" stroke="#0A7F7C" strokeWidth={2} />
+                          </LineChart>
+                        )}
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-charcoal">Spend by PPE Item</h4>
+                      <button
+                        type="button"
+                        onClick={() => setShowAllItemSpend((v) => !v)}
+                        className="text-xs font-medium text-teal hover:underline"
+                      >
+                        {showAllItemSpend ? 'Top 5 items' : 'View all'}
+                      </button>
+                    </div>
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-charcoal-500">
+                            <th className="py-2">Item name</th>
+                            <th className="py-2">Qty issued</th>
+                            <th className="py-2">Avg cost/unit</th>
+                            <th className="py-2">Total cost</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-surface-100">
+                          {(showAllItemSpend ? reportItems ?? [] : (reportItems ?? []).slice(0, 5)).map((item) => (
+                            <tr key={item.name}>
+                              <td className="py-2 text-charcoal">{item.name}</td>
+                              <td className="py-2 text-charcoal-500">{item.qty}</td>
+                              <td className="py-2 text-charcoal-500">{formatMoney(item.avgUnitCost)}</td>
+                              <td className="py-2 font-medium text-charcoal">{formatMoney(item.totalCost)}</td>
+                            </tr>
+                          ))}
+                          {(reportItems ?? []).length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="py-3 text-charcoal-500">
+                                No PPE spend data in selected period.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-charcoal">Report Summary</h4>
+                    <span className="text-xs text-charcoal-500">
+                      Included records: {(reportRecords ?? []).length}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-sm text-charcoal-500">
+                    Period: {periodLabel} | Total issued qty: {reportSummary?.totalIssuedCount ?? 0} | Low stock alerts: {lowStockCount ?? 0}
+                  </div>
+                  <div className="mt-2 text-sm text-charcoal-500">
+                    Legacy cost export:
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (costSummary) {
+                          downloadFile(
+                            exportPpeCostSummaryCSV(costSummary),
+                            `ppe-cost-summary-${new Date().toISOString().slice(0, 10)}.csv`
+                          );
+                        }
+                      }}
+                      disabled={!costSummary}
+                      className="ml-2 text-teal hover:underline disabled:opacity-50"
+                    >
+                      CSV
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (costSummary) {
+                          const blob = await exportPpeCostSummaryPDF(costSummary);
+                          downloadFile(blob, `ppe-cost-summary-${new Date().toISOString().slice(0, 10)}.pdf`);
+                        }
+                      }}
+                      disabled={!costSummary}
+                      className="ml-2 text-teal hover:underline disabled:opacity-50"
+                    >
+                      PDF
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </motion.div>
         )}
-
         {activeTab === 'tracker' && (
           <motion.div
             variants={itemVariants}
