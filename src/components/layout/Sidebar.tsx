@@ -60,7 +60,7 @@ const modules: NavItem[] = [
 { name: 'Environment', path: '/modules/environment', icon: LeafIcon, roles: moduleRoles, module: 'environment' },
 { name: 'Health', path: '/dashboard/health', icon: HeartIcon, roles: moduleRoles, module: 'health' },
 { name: 'Legal', path: '/modules/legal', icon: ScaleIcon, roles: moduleRoles, module: 'legal' },
-{ name: 'HR', path: '/modules/hr', icon: UsersIcon, roles: moduleRoles, module: 'hr' },
+{ name: 'HR', path: '/dashboard/hr', icon: UsersIcon, roles: moduleRoles, module: 'hr' },
 { name: 'Performance KPIs', path: '/modules/hr/kpis', icon: TrendingUpIcon, roles: moduleRoles, module: 'hr' },
 { name: 'Security', path: '/modules/security', icon: LockIcon, roles: moduleRoles, module: 'security' }
 ];
@@ -82,6 +82,11 @@ const supportingSections: NavItem[] = [
 { name: 'Environmental KPIs', path: '/analytics/environmental', icon: LeafIcon, roles: managementRoles, module: 'environment' },
 { name: 'Environment Dashboard', path: '/dashboard/environment', icon: LeafIcon, roles: managementRoles, module: 'environment' },
 { name: 'Health Dashboard', path: '/dashboard/health', icon: HeartIcon, roles: managementRoles, module: 'health' },
+{ name: 'HR Dashboard', path: '/dashboard/hr', icon: UsersIcon, roles: managementRoles, module: 'hr' },
+{ name: 'HR Employees', path: '/dashboard/hr/employees', icon: IdCardIcon, roles: managementRoles, module: 'hr' },
+{ name: 'HR Leave', path: '/dashboard/hr/leave', icon: CalendarIcon, roles: managementRoles, module: 'hr' },
+{ name: 'HR Hours', path: '/dashboard/hr/hours', icon: ClockIcon, roles: managementRoles, module: 'hr' },
+{ name: 'HR Labour', path: '/dashboard/hr/labour', icon: AlertTriangleIcon, roles: managementRoles, module: 'hr' },
 { name: 'Health Medical', path: '/dashboard/health/medical', icon: CalendarIcon, roles: managementRoles, module: 'health' },
 { name: 'Health Hygiene', path: '/dashboard/health/hygiene', icon: ClipboardCheckIcon, roles: managementRoles, module: 'health' },
 { name: 'Health Wellness', path: '/dashboard/health/wellness', icon: UsersIcon, roles: managementRoles, module: 'health' },

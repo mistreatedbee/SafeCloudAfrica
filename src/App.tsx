@@ -49,7 +49,16 @@ import { HealthMedicalPage } from './pages/health/HealthMedicalPage';
 import { HealthHygienePage } from './pages/health/HealthHygienePage';
 import { HealthWellnessPage } from './pages/health/HealthWellnessPage';
 import { LegalModulePage } from './pages/modules/LegalModulePage';
-import { HRModulePage } from './pages/modules/HRModulePage';
+import { HrDashboardPage } from './pages/hr/HrDashboardPage';
+import { HrEmployeesPage } from './pages/hr/HrEmployeesPage';
+import { HrEmployeeProfilePage } from './pages/hr/HrEmployeeProfilePage';
+import { HrDocumentsPage } from './pages/hr/HrDocumentsPage';
+import { HrRecruitmentPage } from './pages/hr/HrRecruitmentPage';
+import { HrLabourPage } from './pages/hr/HrLabourPage';
+import { HrPerformancePage } from './pages/hr/HrPerformancePage';
+import { HrHoursPage } from './pages/hr/HrHoursPage';
+import { HrLeavePage } from './pages/hr/HrLeavePage';
+import { HrSettingsPage } from './pages/hr/HrSettingsPage';
 import { SecurityModulePage } from './pages/modules/SecurityModulePage';
 import { SafetyManagementPage } from './pages/modules/SafetyManagementPage';
 import { IncidentAnalyticsPage } from './pages/IncidentAnalyticsPage';
@@ -311,7 +320,107 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <HRModulePage />
+                  <Navigate to="/dashboard/hr" replace />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HrDashboardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr/employees"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HrEmployeesPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr/employees/:id"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HrEmployeeProfilePage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr/documents"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HrDocumentsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr/recruitment"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HrRecruitmentPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr/labour"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HrLabourPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr/performance"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HrPerformancePage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr/hours"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HrHoursPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr/leave"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HrLeavePage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr/settings"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HrSettingsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
