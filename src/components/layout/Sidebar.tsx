@@ -31,6 +31,7 @@ import {
   XIcon,
   CloudIcon,
   CreditCardIcon,
+  IdCardIcon,
   PackageIcon,
   FlaskConicalIcon
 } from 'lucide-react';
