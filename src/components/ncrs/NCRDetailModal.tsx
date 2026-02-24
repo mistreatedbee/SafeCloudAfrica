@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import type { NcrEvidenceReference, QualityNcr, UUID } from '../../api/models/entities';
 import { formatAuthError } from '../../auth/authMessages';
 import { createEvidence } from '../../api/services/evidenceService';
-import { listNcrEvidence, syncNcrEvidenceFromAttachments } from '../../api/services/qualityNcrsService';
+import { listNcrEvidence, syncNcrEvidenceFromAttachments, updateQualityNcr } from '../../api/services/qualityNcrsService';
 import { insforge } from '../../api/insforge/client';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/services/documentsStorageService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
@@ -41,6 +41,11 @@ export default function NCRDetailModal({
   const [closing, setClosing] = useState(false);
   const [loadedBefore, setLoadedBefore] = useState<NcrEvidenceReference[] | null>(null);
   const [loadedAfter, setLoadedAfter] = useState<NcrEvidenceReference[] | null>(null);
+  const [linkedRequirementTypeEdit, setLinkedRequirementTypeEdit] = useState<'STANDARD' | 'POLICY' | 'PROCEDURE'>(
+    (ncr.linked_requirement_type as any) ?? 'STANDARD'
+  );
+  const [linkedRequirementEdit, setLinkedRequirementEdit] = useState(ncr.linked_requirement ?? '');
+  const [savingDetails, setSavingDetails] = useState(false);
 
   const evidenceBefore = useMemo(
     () => (loadedBefore ?? ((ncr.evidence_before ?? []) as NcrEvidenceReference[])),
@@ -72,6 +77,11 @@ export default function NCRDetailModal({
       cancelled = true;
     };
   }, [companyId, ncr.id, ncr.evidence_before, ncr.evidence_after]);
+
+  useEffect(() => {
+    setLinkedRequirementTypeEdit((ncr.linked_requirement_type as any) ?? 'STANDARD');
+    setLinkedRequirementEdit(ncr.linked_requirement ?? '');
+  }, [ncr.linked_requirement_type, ncr.linked_requirement]);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -160,14 +170,26 @@ export default function NCRDetailModal({
     }
   }
 
-  const linkedRequirementTypeLabel =
-    ncr.linked_requirement_type === 'STANDARD'
-      ? 'Standard'
-      : ncr.linked_requirement_type === 'POLICY'
-      ? 'Policy'
-      : ncr.linked_requirement_type === 'PROCEDURE'
-      ? 'Procedure'
-      : 'Not set';
+  async function handleSaveDetails() {
+    setError(null);
+    setSavingDetails(true);
+    try {
+      const updated = await updateQualityNcr(
+        ncr.id,
+        companyId,
+        {
+          linked_requirement_type: linkedRequirementTypeEdit,
+          linked_requirement: linkedRequirementEdit.trim()
+        } as any,
+        actorUserId
+      );
+      if (updated) onNcrUpdated(updated);
+    } catch (err: any) {
+      setError(formatAuthError(err));
+    } finally {
+      setSavingDetails(false);
+    }
+  }
 
   return (
     <motion.div
@@ -219,11 +241,23 @@ export default function NCRDetailModal({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
             <div>
               <p className="text-sm text-gray-600">Linked to requirement type</p>
-              <p className="font-medium text-gray-900">{linkedRequirementTypeLabel}</p>
+              <select
+                value={linkedRequirementTypeEdit}
+                onChange={(e) => setLinkedRequirementTypeEdit(e.target.value as 'STANDARD' | 'POLICY' | 'PROCEDURE')}
+                className="mt-1 w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              >
+                <option value="STANDARD">Standard</option>
+                <option value="POLICY">Policy</option>
+                <option value="PROCEDURE">Procedure</option>
+              </select>
             </div>
             <div>
               <p className="text-sm text-gray-600">Linked Requirement</p>
-              <p className="font-medium text-gray-900">{ncr.linked_requirement || 'Not set'}</p>
+              <input
+                value={linkedRequirementEdit}
+                onChange={(e) => setLinkedRequirementEdit(e.target.value)}
+                className="mt-1 w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              />
             </div>
             <div>
               <p className="text-sm text-gray-600">Before evidence uploaded</p>
@@ -233,6 +267,16 @@ export default function NCRDetailModal({
               <p className="text-sm text-gray-600">Closure evidence uploaded</p>
               <p className="font-medium text-gray-900">{evidenceAfter.length > 0 ? 'Yes' : 'No'}</p>
             </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handleSaveDetails()}
+              disabled={savingDetails}
+              className="px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700 disabled:opacity-60"
+            >
+              {savingDetails ? 'Saving...' : 'Save NCR details'}
+            </button>
           </div>
 
           {ncr.description && (
