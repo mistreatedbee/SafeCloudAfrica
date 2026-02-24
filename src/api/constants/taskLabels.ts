@@ -31,4 +31,5 @@ export const TASK_SOURCE_ENTITY_LABELS: Record<string, string> = {
   audit_finding: 'Audit Finding',
   audit: 'Audit',
   program_audit_finding: 'Program Audit Finding',
+  customer_complaint: 'Customer Complaint',
 };

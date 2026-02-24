@@ -395,6 +395,7 @@ export type TaskSourceEntityType =
   | 'audit_finding'
   | 'audit'
   | 'quality_ncr'
+  | 'customer_complaint'
   | 'program_audit_finding';
 
 export type TaskRiskLevel = 'low' | 'medium' | 'high' | 'critical';
@@ -621,6 +622,35 @@ export type QualityNcrStatus =
   | 'closed';
 
 export type LinkedRequirementType = 'STANDARD' | 'POLICY' | 'PROCEDURE';
+
+export type CustomerComplaintStatus =
+  | 'CLOSED'
+  | 'MONITORING_REQUIRED'
+  | 'ESCALATED_TO_MANAGEMENT';
+
+export type QualityCustomerComplaint = {
+  id: UUID;
+  company_id: UUID;
+  site_id: UUID | null;
+  department_id: UUID | null;
+  complaint_ref_no: string;
+  customer_name: string;
+  person_handling_user_id: UUID | null;
+  person_handling_name_snapshot: string;
+  date_received: string;
+  description: string;
+  action_taken: string | null;
+  status: CustomerComplaintStatus;
+  customer_feedback: string | null;
+  evidence_file_ids: UUID[] | null;
+  linked_ncr_id: UUID | null;
+  linked_task_id: UUID | null;
+  closed_at: string | null;
+  closed_by_user_id: UUID | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
 
 export type NcrEvidenceReference = {
   fileId: UUID;

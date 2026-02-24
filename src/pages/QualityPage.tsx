@@ -22,6 +22,8 @@ import { countOpenQualityNcrs, listQualityNcrs } from '../api/services/qualityNc
 import { countOpenCorrectiveActions } from '../api/services/correctiveActionsService';
 import { countTasksByStatus } from '../api/services/tasksService';
 import { countIncidentsByStatusForModule } from '../api/services/incidentsService';
+import { getCustomerComplaintSummary } from '../api/services/customerComplaintsService';
+import type { UUID } from '../api/models/core';
 
 const containerVariants = {
   hidden: {
@@ -47,17 +49,24 @@ const itemVariants = {
 export function QualityPage() {
   const navigate = useNavigate();
   const { user } = useUser();
-  const { activeCompanyId } = useTenant();
+  const { activeCompanyId, activeRole } = useTenant();
 
   const { data: summary } = useAsync(async () => {
-    if (!activeCompanyId) return null;
-    const [openNcrs, pendingCapas, openQualityIncidents, totalTasks, completedTasks, allNcrs] = await Promise.all([
+    if (!activeCompanyId || !user?.id) return null;
+    const [openNcrs, pendingCapas, openQualityIncidents, totalTasks, completedTasks, allNcrs, complaintSummary] = await Promise.all([
       countOpenQualityNcrs(activeCompanyId),
       countOpenCorrectiveActions(activeCompanyId, { module: 'quality' }),
       countIncidentsByStatusForModule(activeCompanyId, 'quality', 'open'),
       countTasksByStatus(activeCompanyId, { module: 'quality' }),
       countTasksByStatus(activeCompanyId, { module: 'quality', status: 'completed' }),
-      listQualityNcrs({ companyId: activeCompanyId, limit: 500 })
+      listQualityNcrs({ companyId: activeCompanyId, limit: 500 }),
+      getCustomerComplaintSummary({
+        companyId: activeCompanyId,
+        actorRole: activeRole ?? null,
+        actorUserId: user.id as UUID,
+        dateFrom: new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString().slice(0, 10),
+        dateTo: new Date().toISOString().slice(0, 10)
+      })
     ]);
 
     const efficiency = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
@@ -77,7 +86,7 @@ export function QualityPage() {
       compliance,
       openNcrs,
       pendingCapas,
-      customerComplaints: openQualityIncidents,
+      customerComplaints: complaintSummary.total,
       processEfficiency: efficiency,
       totalTasks,
       completedTasks,
@@ -87,7 +96,7 @@ export function QualityPage() {
       overdueNcrs,
       closureRate
     };
-  }, [activeCompanyId]);
+  }, [activeCompanyId, activeRole, user?.id]);
 
   const { data: recentNcrs } = useAsync(async () => {
     if (!activeCompanyId) return [];
@@ -317,6 +326,11 @@ export function QualityPage() {
               color: '#0FB9B1'
             },
             {
+              icon: AlertCircleIcon,
+              label: 'Customer Complaints',
+              color: '#F5A623'
+            },
+            {
               icon: CheckCircleIcon,
               label: 'CAPA Management',
               color: '#2ECC71'
@@ -329,6 +343,7 @@ export function QualityPage() {
                 if (item.label === 'Raise NCR') navigate('/ncrs');
                 if (item.label === 'Quality Audit') navigate('/audits/new');
                 if (item.label === 'Document Control') navigate('/documents');
+                if (item.label === 'Customer Complaints') navigate('/dashboard/quality/complaints');
                 if (item.label === 'CAPA Management') navigate('/tasks');
               }}
               className="flex flex-col items-center gap-3 p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all active:scale-[0.98]">

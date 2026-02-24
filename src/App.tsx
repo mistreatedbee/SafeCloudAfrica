@@ -26,6 +26,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { HelpSupportPage } from './pages/HelpSupportPage';
 import NCRsPage from './pages/NCRsPage';
+import QualityCustomerComplaintsPage from './pages/QualityCustomerComplaintsPage';
 import { RisksPage } from './pages/RisksPage';
 import { PPEPage } from './pages/PPEPage';
 import { LegalRegisterPage } from './pages/LegalRegisterPage';
@@ -398,6 +399,16 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <NCRsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/quality/complaints"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <QualityCustomerComplaintsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
