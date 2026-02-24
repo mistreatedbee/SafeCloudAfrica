@@ -6,7 +6,7 @@ import {
   Building2Icon,
   CreditCardIcon,
   ToggleLeftIcon,
-  UsersIcon,
+  LockIcon,
   FileTextIcon,
   HeadphonesIcon,
   XIcon,
@@ -14,12 +14,12 @@ import {
 } from 'lucide-react';
 
 const superAdminNav: { name: string; path: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { name: 'Overview', path: '/super-admin/overview', icon: LayoutDashboardIcon },
-  { name: 'Organisations', path: '/super-admin/organisations', icon: Building2Icon },
-  { name: 'Licenses & Billing', path: '/super-admin/licenses', icon: CreditCardIcon },
-  { name: 'Module Control', path: '/super-admin/module-control', icon: ToggleLeftIcon },
-  { name: 'Users', path: '/super-admin/users', icon: UsersIcon },
-  { name: 'Audit Logs', path: '/super-admin/audit-logs', icon: FileTextIcon },
+  { name: 'System Overview', path: '/super-admin/overview', icon: LayoutDashboardIcon },
+  { name: 'Organizations', path: '/super-admin/organisations', icon: Building2Icon },
+  { name: 'Licenses & Subscriptions', path: '/super-admin/licenses', icon: CreditCardIcon },
+  { name: 'Module Controls', path: '/super-admin/module-control', icon: ToggleLeftIcon },
+  { name: 'Sellable Features', path: '/super-admin/sellable-features', icon: LockIcon },
+  { name: 'Platform Audit Logs', path: '/super-admin/audit-logs', icon: FileTextIcon },
   { name: 'Support Mode', path: '/super-admin/support-mode', icon: HeadphonesIcon }
 ];
 

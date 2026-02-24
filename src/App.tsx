@@ -80,8 +80,15 @@ import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { LandingPage } from './pages/marketing/LandingPage';
-import { SuperAdminPage } from './pages/admin/SuperAdminPage';
 import { SeedDemoPage } from './pages/admin/SeedDemoPage';
+import { SuperAdminLayout } from './components/layout/SuperAdminLayout';
+import { SuperAdminOverviewPage } from './pages/admin/superadmin/SuperAdminOverviewPage';
+import { SuperAdminOrganisationsPage } from './pages/admin/superadmin/SuperAdminOrganisationsPage';
+import { SuperAdminLicensesPage } from './pages/admin/superadmin/SuperAdminLicensesPage';
+import { SuperAdminModuleControlPage } from './pages/admin/superadmin/SuperAdminModuleControlPage';
+import { SuperAdminSellableFeaturesPage } from './pages/admin/superadmin/SuperAdminSellableFeaturesPage';
+import { SuperAdminAuditLogsPage } from './pages/admin/superadmin/SuperAdminAuditLogsPage';
+import { SuperAdminSupportModePage } from './pages/admin/superadmin/SuperAdminSupportModePage';
 import { OwnerDashboardPage } from './pages/owner/OwnerDashboardPage';
 import { OwnerOnboardingWizardPage } from './pages/owner/OwnerOnboardingWizardPage';
 import { EmployeeDashboardPage } from './pages/employee/EmployeeDashboardPage';
@@ -157,15 +164,25 @@ export function App() {
 
           {/* Super Admin (platform-wide) */}
           <Route
-            path="/super-admin/*"
+            path="/super-admin"
             element={
               <RequireSignedIn>
                 <RequirePlatformAdmin>
-                  <SuperAdminPage />
+                  <SuperAdminLayout />
                 </RequirePlatformAdmin>
               </RequireSignedIn>
             }
-          />
+          >
+            <Route index element={<Navigate to="overview" replace />} />
+            <Route path="overview" element={<SuperAdminOverviewPage />} />
+            <Route path="organisations" element={<SuperAdminOrganisationsPage />} />
+            <Route path="licenses" element={<SuperAdminLicensesPage />} />
+            <Route path="module-control" element={<SuperAdminModuleControlPage />} />
+            <Route path="sellable-features" element={<SuperAdminSellableFeaturesPage />} />
+            <Route path="audit-logs" element={<SuperAdminAuditLogsPage />} />
+            <Route path="support-mode" element={<SuperAdminSupportModePage />} />
+            <Route path="*" element={<Navigate to="overview" replace />} />
+          </Route>
 
           {/* Protected app */}
           <Route
