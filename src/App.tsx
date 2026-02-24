@@ -8,6 +8,12 @@ import { DashboardPage } from './pages/DashboardPage';
 import { SafetyPage } from './pages/SafetyPage';
 import { QualityPage } from './pages/QualityPage';
 import { EnvironmentPage } from './pages/EnvironmentPage';
+import { EnvironmentDashboardPage } from './pages/environment/EnvironmentDashboardPage';
+import { EnvironmentEiaPage } from './pages/environment/EnvironmentEiaPage';
+import { EnvironmentRiskOpportunityPage } from './pages/environment/EnvironmentRiskOpportunityPage';
+import { EnvironmentWastePage } from './pages/environment/EnvironmentWastePage';
+import { EnvironmentWaterPage } from './pages/environment/EnvironmentWaterPage';
+import { EnvironmentAirPage } from './pages/environment/EnvironmentAirPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { FormsPage } from './pages/FormsPage';
 import { TasksPage } from './pages/TasksPage';
@@ -167,6 +173,66 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <EnvironmentPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/environment"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <EnvironmentDashboardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/environment/eia"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <EnvironmentEiaPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/environment/risk-opportunity"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <EnvironmentRiskOpportunityPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/environment/waste"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <EnvironmentWastePage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/environment/water"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <EnvironmentWaterPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/environment/air"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <EnvironmentAirPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
