@@ -6,6 +6,7 @@ import type { CompanyRole, ModuleKey } from '../api/models/core';
 import { ensureMeAsSuperAdmin, isPlatformAdmin as checkPlatformAdmin } from '../api/services/platformAdminService';
 import { getEnabledModuleKeys } from '../api/services/orgModulesService';
 import { upsertMyProfile } from '../api/services/profilesService';
+import { getSellableFeaturesConfig, type SellableFeaturesConfig } from '../api/services/sellableFeaturesService';
 
 type MembershipWithCompany = CompanyMembership & { company?: Company };
 
@@ -16,6 +17,7 @@ type TenantContextValue = {
   activeRole: CompanyRole | null;
   /** Module keys enabled for the active org (Super Admin control). Empty = all enabled (e.g. no config). */
   enabledModules: ModuleKey[];
+  sellableFeatures: SellableFeaturesConfig;
   isPlatformAdmin: boolean;
   /** True after first refreshTenant() has completed for the current user (so isPlatformAdmin is known). */
   isTenantLoaded: boolean;
@@ -143,6 +145,9 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const enabledModules = useMemo<ModuleKey[]>(() => {
     return getEnabledModuleKeys(activeCompany ?? null);
   }, [activeCompany]);
+  const sellableFeatures = useMemo<SellableFeaturesConfig>(() => {
+    return getSellableFeaturesConfig(activeCompany ?? null);
+  }, [activeCompany]);
 
   const value = useMemo<TenantContextValue>(
     () => ({
@@ -151,12 +156,13 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       activeCompany,
       activeRole,
       enabledModules,
+      sellableFeatures,
       isPlatformAdmin,
       isTenantLoaded,
       setActiveCompanyId,
       refreshTenant
     }),
-    [activeCompany, activeCompanyId, activeRole, enabledModules, isPlatformAdmin, isTenantLoaded, memberships, refreshTenant, setActiveCompanyId]
+    [activeCompany, activeCompanyId, activeRole, enabledModules, isPlatformAdmin, isTenantLoaded, memberships, refreshTenant, sellableFeatures, setActiveCompanyId]
   );
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;
@@ -167,4 +173,3 @@ export function useTenant(): TenantContextValue {
   if (!ctx) throw new Error('useTenant must be used within TenantProvider.');
   return ctx;
 }
-

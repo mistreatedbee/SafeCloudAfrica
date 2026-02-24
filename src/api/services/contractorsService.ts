@@ -2,8 +2,10 @@ import { insforge } from '../insforge/client';
 import { getErrorMessage } from '../insforge/errors';
 import type { Contractor, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
+import { requireSellableFeatureAccess } from './sellableFeaturesService';
 
 export async function listContractors(companyId: UUID, limit = 200): Promise<Contractor[]> {
+  await requireSellableFeatureAccess(companyId, 'contractorsVisitors');
   const { data, error } = await insforge.database
     .from('contractors')
     .select('*')
@@ -20,6 +22,7 @@ export async function createContractor(input: {
   status?: Contractor['status'];
   createdByUserId: UUID;
 }): Promise<Contractor> {
+  await requireSellableFeatureAccess(input.companyId, 'contractorsVisitors');
   const { data, error } = await insforge.database
     .from('contractors')
     .insert({

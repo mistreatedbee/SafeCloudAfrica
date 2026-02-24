@@ -37,6 +37,8 @@ import {
 } from 'lucide-react';
 import { useTenant } from '../../tenant/TenantContext';
 import type { CompanyRole, ModuleKey } from '../../api/models/core';
+import type { SellableFeatureKey } from '../../api/services/sellableFeaturesService';
+import { SELLABLE_FEATURE_ROUTE_PATHS } from '../../api/services/sellableFeaturesService';
 
 type NavItem = {
   name: string;
@@ -46,6 +48,7 @@ type NavItem = {
   roles?: CompanyRole[];
   /** If set, item is hidden when this module is disabled for the org. */
   module?: ModuleKey;
+  sellableFeatureKey?: SellableFeatureKey;
 };
 /** Roles that can see management/analytics (not employee or external). */
 const managementRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
@@ -116,12 +119,12 @@ const supportingSections: NavItem[] = [
 ];
 
 const sellableFeatures: NavItem[] = [
-{ name: 'BBS Programme', path: '/bbs', icon: EyeIcon, roles: managementRoles, module: 'safety' },
-{ name: 'Contractors & Visitors', path: '/contractors', icon: UsersIcon, roles: managementRoles },
-{ name: 'Emergency Preparedness', path: '/emergency', icon: AlertTriangleIcon, roles: managementRoles },
-{ name: 'Template Library', path: '/templates', icon: FolderIcon, roles: managementRoles },
-{ name: 'Asset Management', path: '/dashboard/sellable/asset-management', icon: PackageIcon, roles: managementRoles, module: 'asset_management' },
-{ name: 'Hazardous Chemical Management', path: '/dashboard/sellable/hazardous-chemicals', icon: FlaskConicalIcon, roles: managementRoles, module: 'hazardous_chemical_management' }
+{ name: 'BBS Programme', path: SELLABLE_FEATURE_ROUTE_PATHS.bbs, icon: EyeIcon, roles: managementRoles, sellableFeatureKey: 'bbs' },
+{ name: 'Contractors & Visitors', path: SELLABLE_FEATURE_ROUTE_PATHS.contractorsVisitors, icon: UsersIcon, roles: managementRoles, sellableFeatureKey: 'contractorsVisitors' },
+{ name: 'Emergency Preparedness', path: SELLABLE_FEATURE_ROUTE_PATHS.emergencyPreparedness, icon: AlertTriangleIcon, roles: managementRoles, sellableFeatureKey: 'emergencyPreparedness' },
+{ name: 'Template Library', path: SELLABLE_FEATURE_ROUTE_PATHS.templateLibrary, icon: FolderIcon, roles: managementRoles, sellableFeatureKey: 'templateLibrary' },
+{ name: 'Asset Management', path: SELLABLE_FEATURE_ROUTE_PATHS.assetManagement, icon: PackageIcon, roles: managementRoles, sellableFeatureKey: 'assetManagement' },
+{ name: 'Hazardous Chemical Management', path: SELLABLE_FEATURE_ROUTE_PATHS.hazardousChemicals, icon: FlaskConicalIcon, roles: managementRoles, sellableFeatureKey: 'hazardousChemicals' }
 ];
 
 const settingsItems: NavItem[] = [
@@ -168,7 +171,7 @@ function filterByEnabledModules<T extends { module?: ModuleKey }>(items: T[], en
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [modulesExpanded, setModulesExpanded] = useState(true);
   const location = useLocation();
-  const { activeRole, enabledModules } = useTenant();
+  const { activeRole, enabledModules, sellableFeatures: sellableFeatureConfig } = useTenant();
 
   const dashboardPath = useMemo(() => dashboardPathForRole(activeRole), [activeRole]);
   const filteredModules = useMemo(
@@ -180,8 +183,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     [activeRole, enabledModules]
   );
   const filteredSellable = useMemo(
-    () => filterByEnabledModules(filterByRole(sellableFeatures, activeRole), enabledModules),
-    [activeRole, enabledModules]
+    () =>
+      filterByRole(sellableFeatures, activeRole).filter((item) => {
+        if (!item.sellableFeatureKey) return true;
+        return sellableFeatureConfig[item.sellableFeatureKey].enabled;
+      }),
+    [activeRole, sellableFeatureConfig]
   );
   const filteredSettings = useMemo(() => filterByRole(settingsItems, activeRole), [activeRole]);
 
@@ -189,6 +196,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     const isActive =
       location.pathname === item.path ||
       location.pathname.startsWith(item.path + '/');
+    const isSellableLocked = item.sellableFeatureKey ? sellableFeatureConfig[item.sellableFeatureKey].locked : false;
     return (
       <NavLink
         to={item.path}
@@ -196,7 +204,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-teal/10 text-teal' : 'text-charcoal-500 hover:bg-surface-200 hover:text-charcoal'}`}
       >
         <item.icon className="w-5 h-5 flex-shrink-0" />
-        <span>{item.name}</span>
+        <span className="truncate">{item.name}</span>
+        {isSellableLocked && (
+          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning">
+            <LockIcon className="w-3 h-3" />
+            Locked
+          </span>
+        )}
       </NavLink>
     );
   };

@@ -2,8 +2,10 @@ import { insforge } from '../insforge/client';
 import { getErrorMessage } from '../insforge/errors';
 import type { BbsObservation, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
+import { requireSellableFeatureAccess } from './sellableFeaturesService';
 
 export async function listBbsObservations(companyId: UUID, limit = 200): Promise<BbsObservation[]> {
+  await requireSellableFeatureAccess(companyId, 'bbs');
   const { data, error } = await insforge.database
     .from('bbs_observations')
     .select('*')
@@ -22,6 +24,7 @@ export async function createBbsObservation(input: {
   status?: BbsObservation['status'];
   createdByUserId: UUID;
 }): Promise<BbsObservation> {
+  await requireSellableFeatureAccess(input.companyId, 'bbs');
   const { data, error } = await insforge.database
     .from('bbs_observations')
     .insert({

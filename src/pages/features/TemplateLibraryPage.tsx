@@ -9,6 +9,8 @@ import { listTemplateLibrary } from '../../api/services/templateLibraryService';
 import type { TemplateLibraryItem } from '../../api/models/entities';
 import { TemplateUploadModal } from '../../components/features/TemplateUploadModal';
 import { downloadBlob, downloadDocumentFile } from '../../api/services/documentsStorageService';
+import { isSellableFeatureAccessError } from '../../api/services/sellableFeaturesService';
+import { SellableFeatureLockedPage } from './SellableFeatureLockedPage';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -24,7 +26,7 @@ export function TemplateLibraryPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const { data } = useAsync<TemplateLibraryItem[]>(
+  const { data, error } = useAsync<TemplateLibraryItem[]>(
     async () => {
       if (!activeCompanyId) return [];
       return await listTemplateLibrary(activeCompanyId);
@@ -41,6 +43,10 @@ export function TemplateLibraryPage() {
     if (!qq) return list;
     return list.filter((t) => t.name.toLowerCase().includes(qq) || t.category.toLowerCase().includes(qq) || t.type.toLowerCase().includes(qq));
   }, [data, q]);
+
+  if (isSellableFeatureAccessError(error) && error.code === 'FEATURE_LOCKED') {
+    return <SellableFeatureLockedPage featureKey="templateLibrary" />;
+  }
 
   return (
     <Layout title="Ready‑Made Industry Templates">
@@ -129,4 +135,3 @@ export function TemplateLibraryPage() {
     </Layout>
   );
 }
-

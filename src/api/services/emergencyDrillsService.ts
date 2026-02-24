@@ -2,8 +2,10 @@ import { insforge } from '../insforge/client';
 import { getErrorMessage } from '../insforge/errors';
 import type { EmergencyDrill, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
+import { requireSellableFeatureAccess } from './sellableFeaturesService';
 
 export async function listEmergencyDrills(companyId: UUID, limit = 200): Promise<EmergencyDrill[]> {
+  await requireSellableFeatureAccess(companyId, 'emergencyPreparedness');
   const { data, error } = await insforge.database
     .from('emergency_drills')
     .select('*')
@@ -22,6 +24,7 @@ export async function createEmergencyDrill(input: {
   notes?: string;
   createdByUserId: UUID;
 }): Promise<EmergencyDrill> {
+  await requireSellableFeatureAccess(input.companyId, 'emergencyPreparedness');
   const { data, error } = await insforge.database
     .from('emergency_drills')
     .insert({

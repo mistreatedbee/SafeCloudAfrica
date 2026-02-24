@@ -3,7 +3,7 @@ import { RequirePlatformAdmin } from './auth/RequirePlatformAdmin';
 import { RequireWorkspace } from './auth/RequireWorkspace';
 import { RequireSignedIn } from './auth/RequireSignedIn';
 import { RequireCompanyRole } from './auth/RequireCompanyRole';
-import { RequireModuleEnabled } from './auth/RequireModuleEnabled';
+import { RequireSellableFeatureAccess } from './auth/RequireSellableFeatureAccess';
 import { RequireActiveSubscription } from './auth/RequireActiveSubscription';
 import { OwnerOnboardingGate } from './auth/OwnerOnboardingGate';
 import { AuthSessionListener } from './auth/AuthSessionListener';
@@ -90,6 +90,7 @@ import { ActivateLicensePage } from './pages/activate/ActivateLicensePage';
 import { BillingStatusPage } from './pages/BillingStatusPage';
 import { AccessDeniedPage } from './pages/AccessDeniedPage';
 import { WorkspaceOnboardingPage } from './pages/onboarding/WorkspaceOnboardingPage';
+import { SELLABLE_FEATURE_ROUTE_PATHS } from './api/services/sellableFeaturesService';
 export function App() {
   return (
     <BrowserRouter>
@@ -972,69 +973,81 @@ export function App() {
 
           {/* Sellable feature modules (Phase 1 placeholders) */}
           <Route
-            path="/bbs"
+            path={SELLABLE_FEATURE_ROUTE_PATHS.bbs}
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <BBSPage />
+                  <RequireSellableFeatureAccess featureKey="bbs">
+                    <BBSPage />
+                  </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
           />
           <Route
-            path="/contractors"
+            path={SELLABLE_FEATURE_ROUTE_PATHS.contractorsVisitors}
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ContractorsVisitorsPage />
+                  <RequireSellableFeatureAccess featureKey="contractorsVisitors">
+                    <ContractorsVisitorsPage />
+                  </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
           />
           <Route
-            path="/emergency"
+            path={SELLABLE_FEATURE_ROUTE_PATHS.emergencyPreparedness}
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <EmergencyPreparednessPage />
+                  <RequireSellableFeatureAccess featureKey="emergencyPreparedness">
+                    <EmergencyPreparednessPage />
+                  </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
           />
           <Route
-            path="/templates"
+            path={SELLABLE_FEATURE_ROUTE_PATHS.templateLibrary}
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <TemplateLibraryPage />
+                  <RequireSellableFeatureAccess featureKey="templateLibrary">
+                    <TemplateLibraryPage />
+                  </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
           />
           <Route
-            path="/dashboard/sellable/asset-management"
+            path={SELLABLE_FEATURE_ROUTE_PATHS.assetManagement}
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RequireModuleEnabled module="asset_management">
+                  <RequireSellableFeatureAccess featureKey="assetManagement">
                     <AssetManagementPage />
-                  </RequireModuleEnabled>
+                  </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
           />
           <Route
-            path="/dashboard/sellable/hazardous-chemicals"
+            path={SELLABLE_FEATURE_ROUTE_PATHS.hazardousChemicals}
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RequireModuleEnabled module="hazardous_chemical_management">
+                  <RequireSellableFeatureAccess featureKey="hazardousChemicals">
                     <HazardousChemicalManagementPage />
-                  </RequireModuleEnabled>
+                  </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
           />
+          <Route path="/bbs" element={<Navigate to={SELLABLE_FEATURE_ROUTE_PATHS.bbs} replace />} />
+          <Route path="/contractors" element={<Navigate to={SELLABLE_FEATURE_ROUTE_PATHS.contractorsVisitors} replace />} />
+          <Route path="/emergency" element={<Navigate to={SELLABLE_FEATURE_ROUTE_PATHS.emergencyPreparedness} replace />} />
+          <Route path="/templates" element={<Navigate to={SELLABLE_FEATURE_ROUTE_PATHS.templateLibrary} replace />} />
 
           <Route
             path="/settings"

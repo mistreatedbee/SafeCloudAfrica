@@ -10,6 +10,8 @@ import { listVisitors } from '../../api/services/visitorsService';
 import type { Contractor, Visitor } from '../../api/models/entities';
 import { ContractorCreateModal } from '../../components/features/ContractorCreateModal';
 import { VisitorCreateModal } from '../../components/features/VisitorCreateModal';
+import { isSellableFeatureAccessError } from '../../api/services/sellableFeaturesService';
+import { SellableFeatureLockedPage } from './SellableFeatureLockedPage';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -25,14 +27,14 @@ export function ContractorsVisitorsPage() {
   const [contractorOpen, setContractorOpen] = useState(false);
   const [visitorOpen, setVisitorOpen] = useState(false);
 
-  const { data: contractors } = useAsync<Contractor[]>(
+  const { data: contractors, error: contractorsError } = useAsync<Contractor[]>(
     async () => {
       if (!activeCompanyId) return [];
       return await listContractors(activeCompanyId);
     },
     [activeCompanyId, refreshKey]
   );
-  const { data: visitors } = useAsync<Visitor[]>(
+  const { data: visitors, error: visitorsError } = useAsync<Visitor[]>(
     async () => {
       if (!activeCompanyId) return [];
       return await listVisitors(activeCompanyId);
@@ -61,6 +63,13 @@ export function ContractorsVisitorsPage() {
       })),
     [visitors]
   );
+
+  if (
+    (isSellableFeatureAccessError(contractorsError) && contractorsError.code === 'FEATURE_LOCKED') ||
+    (isSellableFeatureAccessError(visitorsError) && visitorsError.code === 'FEATURE_LOCKED')
+  ) {
+    return <SellableFeatureLockedPage featureKey="contractorsVisitors" />;
+  }
 
   return (
     <Layout title="Contractor & Visitor Safety Control">
@@ -187,4 +196,3 @@ export function ContractorsVisitorsPage() {
     </Layout>
   );
 }
-

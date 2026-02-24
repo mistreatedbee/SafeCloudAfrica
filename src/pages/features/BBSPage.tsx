@@ -8,6 +8,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { listBbsObservations } from '../../api/services/bbsService';
 import type { BbsObservation } from '../../api/models/entities';
 import { BbsObservationCreateModal } from '../../components/features/BbsObservationCreateModal';
+import { isSellableFeatureAccessError } from '../../api/services/sellableFeaturesService';
+import { SellableFeatureLockedPage } from './SellableFeatureLockedPage';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -22,7 +24,7 @@ export function BBSPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const { data } = useAsync<BbsObservation[]>(
+  const { data, error } = useAsync<BbsObservation[]>(
     async () => {
       if (!activeCompanyId) return [];
       return await listBbsObservations(activeCompanyId);
@@ -42,6 +44,10 @@ export function BBSPage() {
     if (!qq) return list;
     return list.filter((o) => o.title.toLowerCase().includes(qq) || o.id.toLowerCase().includes(qq));
   }, [data, q]);
+
+  if (isSellableFeatureAccessError(error) && error.code === 'FEATURE_LOCKED') {
+    return <SellableFeatureLockedPage featureKey="bbs" />;
+  }
 
   return (
     <Layout title="Behaviour-Based Safety (BBS)">
@@ -132,4 +138,3 @@ export function BBSPage() {
     </Layout>
   );
 }
-

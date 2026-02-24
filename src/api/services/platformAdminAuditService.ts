@@ -7,6 +7,8 @@ export type AuditAction =
   | 'license_revoked'
   | 'org_suspended'
   | 'module_toggled'
+  | 'sellable_feature_locked'
+  | 'sellable_feature_unlocked'
   | 'user_role_changed'
   | 'user_disabled'
   | 'support_mode_entered'

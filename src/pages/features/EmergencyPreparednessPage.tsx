@@ -9,6 +9,8 @@ import { listEmergencyDrills } from '../../api/services/emergencyDrillsService';
 import { listDocuments } from '../../api/services/documentsService';
 import type { EmergencyDrill, Document } from '../../api/models/entities';
 import { EmergencyDrillCreateModal } from '../../components/features/EmergencyDrillCreateModal';
+import { isSellableFeatureAccessError } from '../../api/services/sellableFeaturesService';
+import { SellableFeatureLockedPage } from './SellableFeatureLockedPage';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -23,7 +25,7 @@ export function EmergencyPreparednessPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const { data: drills } = useAsync<EmergencyDrill[]>(
+  const { data: drills, error: drillsError } = useAsync<EmergencyDrill[]>(
     async () => {
       if (!activeCompanyId) return [];
       return await listEmergencyDrills(activeCompanyId);
@@ -54,6 +56,10 @@ export function EmergencyPreparednessPage() {
     const days = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
     return days;
   }, [drills]);
+
+  if (isSellableFeatureAccessError(drillsError) && drillsError.code === 'FEATURE_LOCKED') {
+    return <SellableFeatureLockedPage featureKey="emergencyPreparedness" />;
+  }
 
   return (
     <Layout title="Emergency Preparedness & Crisis Response">
@@ -171,4 +177,3 @@ export function EmergencyPreparednessPage() {
     </Layout>
   );
 }
-
