@@ -11,6 +11,7 @@ These scripts are stubs for SafeCloud Africa serverless functions. Deploy them v
 | `auditProposalRespond.js` | Auditee selects/declines date; update audit status |
 | `cronDailyComplianceReminders.js` | Daily: document review, expiring training/medical, upcoming audits |
 | `cronOverdueEscalations.js` | Overdue CAPA, NCR, missing pre-audit docs |
+| `cronReviewMeetingReminders.js` | Management review meeting reminders + action item escalations |
 | `cronPpeReorderChecks.js` | Low stock / near-expiry PPE; create reorder requests |
 
 ## Deployment

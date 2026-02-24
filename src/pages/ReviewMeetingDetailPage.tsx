@@ -10,13 +10,16 @@ import { listCompanyMemberships } from '../api/services/tenantService';
 import { useAsync } from '../api/hooks/useAsync';
 import { UserMultiSelect } from '../components/ui/UserMultiSelect';
 import {
-  buildReviewMeetingReport,
+  canEditReviewMeetingItem,
   canEditReviewMeeting,
+  canSignReviewMeeting,
   createReviewMeeting,
-  emailReviewMeetingReport,
+  emailReviewMeetingReportWithAudit,
+  generateReviewMeetingReport,
   getReviewMeeting,
   signReviewMeeting,
   unlockSignedReviewMeeting,
+  updateReviewMeetingItem,
   updateReviewMeeting
 } from '../api/services/reviewMeetingsService';
 import { listLinkedImprovements } from '../api/services/improvementService';
@@ -85,9 +88,11 @@ export function ReviewMeetingDetailPage() {
   const [autoCreateTasksFromItems, setAutoCreateTasksFromItems] = useState(false);
   const [items, setItems] = useState<FormItem[]>([createEmptyItem()]);
   const [statusLabel, setStatusLabel] = useState<'DRAFT' | 'ACTIVE' | 'SIGNED' | 'ARCHIVED'>('DRAFT');
+  const [meetingStatus, setMeetingStatus] = useState<'DRAFT' | 'ACTIVE' | 'SIGNED' | 'ARCHIVED'>('DRAFT');
   const [signatureStatus, setSignatureStatus] = useState<'SIGNED' | 'NOT_SIGNED'>('NOT_SIGNED');
   const [isLocked, setIsLocked] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [itemSavingIndex, setItemSavingIndex] = useState<number | null>(null);
   const [signing, setSigning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -175,6 +180,7 @@ export function ReviewMeetingDetailPage() {
     setAutoEmailOnUpdate(!!meeting.auto_email_on_update);
     setAutoCreateTasksFromItems(!!meeting.auto_create_tasks_from_items);
     setStatusLabel(meeting.status);
+    setMeetingStatus(meeting.status);
     setSignatureStatus(meeting.signature_status);
     setIsLocked(meeting.is_locked);
     setItems(
@@ -215,10 +221,28 @@ export function ReviewMeetingDetailPage() {
   }, [activeCompanyId, activeRole, memberships, user?.email, user?.id]);
 
   const canEdit = useMemo(() => {
-    if (isCreate) return ['owner', 'admin', 'manager', 'supervisor'].includes(String(activeRole));
+    if (isCreate) return ['admin', 'manager', 'supervisor'].includes(String(activeRole));
     if (!meetingData || !viewer) return false;
     return canEditReviewMeeting({ meeting: meetingData.meeting, items: meetingData.items, viewer });
   }, [activeRole, isCreate, meetingData, viewer]);
+
+  const canSign = useMemo(() => {
+    if (isCreate || !meetingData || !viewer) return false;
+    return canSignReviewMeeting({ meeting: meetingData.meeting, viewer });
+  }, [isCreate, meetingData, viewer]);
+
+  function canEditItem(item: FormItem): boolean {
+    if (canEdit) return true;
+    return false;
+  }
+
+  function canUpdateItemProgress(item: FormItem): boolean {
+    if (canEdit) return true;
+    if (!meetingData || !viewer || !item.id) return false;
+    const row = meetingData.items.find((entry) => entry.id === item.id);
+    if (!row) return false;
+    return canEditReviewMeetingItem({ meeting: meetingData.meeting, item: row, viewer });
+  }
 
   function updateItem(index: number, patch: Partial<FormItem>): void {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -285,6 +309,7 @@ export function ReviewMeetingDetailPage() {
         nextMeetingDate: nextMeetingDate || null,
         chairpersonUserId: (chairpersonUserId || null) as UUID | null,
         ceoApprovalRequired,
+        status: meetingStatus,
         autoEmailOnCreate,
         autoEmailOnUpdate,
         autoCreateTasksFromItems,
@@ -311,6 +336,7 @@ export function ReviewMeetingDetailPage() {
       } else {
         const updated = await updateReviewMeeting({ ...payload, meetingId: meetingId as UUID });
         setStatusLabel(updated.meeting.status);
+        setMeetingStatus(updated.meeting.status);
         setSignatureStatus(updated.meeting.signature_status);
         setIsLocked(updated.meeting.is_locked);
         setItems(
@@ -347,7 +373,7 @@ export function ReviewMeetingDetailPage() {
   }
 
   async function handleSign(): Promise<void> {
-    if (!activeCompanyId || !meetingId || !user?.id) return;
+    if (!activeCompanyId || !meetingId || !user?.id || !activeRole) return;
     const input = prompt('Type SIGN to confirm digital sign-off:');
     if (!input) return;
     setSigning(true);
@@ -356,6 +382,7 @@ export function ReviewMeetingDetailPage() {
         companyId: activeCompanyId,
         meetingId: meetingId as UUID,
         actorUserId: user.id as UUID,
+        actorRole: activeRole as CompanyRole,
         confirmationText: input
       });
       setStatusLabel(signed.meeting.status);
@@ -384,22 +411,30 @@ export function ReviewMeetingDetailPage() {
   }
 
   async function handleGenerateReport(): Promise<void> {
-    if (!meetingData) return;
+    if (!meetingData || !activeCompanyId || !user?.id) return;
     const attendeeLabels = attendeeUserIds.map((uid) => profileByUserId.get(uid)?.name ?? uid.slice(0, 8));
-    const report = await buildReviewMeetingReport({ meeting: meetingData.meeting, items: meetingData.items, attendeeLabels });
+    const report = await generateReviewMeetingReport({
+      companyId: activeCompanyId,
+      meeting: meetingData.meeting,
+      items: meetingData.items,
+      actorUserId: user.id as UUID,
+      attendeeLabels
+    });
     const htmlBlob = new Blob([report.html], { type: 'text/html' });
     openBlobInNewTab(htmlBlob);
     downloadBlob(report.csv, `review-meeting-actions-${meetingData.meeting.id.slice(0, 8)}.csv`);
   }
 
   async function handleEmailReport(): Promise<void> {
-    if (!activeCompanyId || !meetingData) return;
+    if (!activeCompanyId || !meetingData || !user?.id) return;
     const attendeeLabels = attendeeUserIds.map((uid) => profileByUserId.get(uid)?.name ?? uid.slice(0, 8));
-    await emailReviewMeetingReport({
+    await emailReviewMeetingReportWithAudit({
       companyId: activeCompanyId,
       meeting: meetingData.meeting,
       items: meetingData.items,
-      attendeeLabels
+      attendeeLabels,
+      actorUserId: user.id as UUID,
+      reason: 'manual'
     });
     alert('Report email dispatched.');
   }
@@ -424,6 +459,56 @@ export function ReviewMeetingDetailPage() {
       createdByUserId: user.id as UUID
     });
     updateItem(itemIndex, { evidenceFileIds: [...new Set([...(item.evidenceFileIds ?? []), evidence.id])] });
+  }
+
+  async function handleSaveItem(index: number): Promise<void> {
+    if (!activeCompanyId || !meetingId || !user?.id || !activeRole) return;
+    const item = items[index];
+    if (!item.id) return;
+    if (item.status === 'COMPLETED' && !item.completionDate) {
+      setError(`Item ${index + 1}: completion date is required when status is Completed.`);
+      return;
+    }
+    setItemSavingIndex(index);
+    try {
+      const updated = await updateReviewMeetingItem({
+        companyId: activeCompanyId,
+        meetingId: meetingId as UUID,
+        itemId: item.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole as CompanyRole,
+        patch: {
+          reviewItem: item.reviewItem,
+          discussionNotes: item.discussionNotes,
+          actionRequired: item.actionRequired,
+          responsibleUserId: (item.responsibleUserId || null) as UUID | null,
+          externalResponsibleName: item.externalResponsibleName || null,
+          targetDate: item.targetDate || null,
+          resourcesRequired: item.resourcesRequired || null,
+          status: item.status,
+          completionDate: item.completionDate || null,
+          evidenceFileIds: item.evidenceFileIds,
+          linkedDocumentIds: item.linkedDocumentIds,
+          linkedTaskId: item.linkedTaskId ?? null,
+          updateNote: item.draftUpdateNote
+        }
+      });
+      updateItem(index, {
+        status: updated.status,
+        completionDate: updated.completion_date ? updated.completion_date.slice(0, 10) : '',
+        draftUpdateNote: '',
+        updatesLog: (updated.updates_log ?? []).map((entry: any) => ({
+          timestamp: String(entry.timestamp ?? ''),
+          note: String(entry.note ?? ''),
+          userId: (entry.user_id ?? null) as UUID | null
+        }))
+      });
+      alert('Action item updated.');
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to update action item.');
+    } finally {
+      setItemSavingIndex(null);
+    }
   }
 
   if (!activeCompanyId) return <Layout title="Review Meeting Details"><p className="text-sm text-charcoal-500">Select an organization first.</p></Layout>;
@@ -453,7 +538,7 @@ export function ReviewMeetingDetailPage() {
                   </button>
                 )}
                 {signatureStatus !== 'SIGNED' && (
-                  <button type="button" onClick={() => void handleSign()} disabled={signing || !canEdit} className="px-3 py-2 rounded-lg bg-navy text-white text-sm font-medium disabled:opacity-60">Sign Meeting Minutes</button>
+                  <button type="button" onClick={() => void handleSign()} disabled={signing || !canSign} className="px-3 py-2 rounded-lg bg-navy text-white text-sm font-medium disabled:opacity-60">Sign Meeting Minutes</button>
                 )}
                 {signatureStatus === 'SIGNED' && ['owner', 'admin', 'manager'].includes(String(activeRole)) && (
                   <button type="button" onClick={() => void handleUnlock()} className="px-3 py-2 rounded-lg border border-warning/50 text-warning text-sm font-medium">Unlock Signed Minutes</button>
@@ -466,8 +551,32 @@ export function ReviewMeetingDetailPage() {
 
         {error && <div className="bg-critical/5 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
 
+        {!isCreate && (
+          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card space-y-1">
+            <h3 className="font-semibold text-charcoal">Minutes Summary</h3>
+            <p className="text-sm text-charcoal-600">
+              <strong>Date:</strong> {date || '-'} | <strong>Time:</strong> {time || '-'} | <strong>Place:</strong> {place || '-'}
+            </p>
+            <p className="text-sm text-charcoal-600">
+              <strong>Attendees:</strong> {attendeeUserIds.length + parseExternalLines(externalAttendeesText).length}
+            </p>
+            <p className="text-sm text-charcoal-600">
+              <strong>Open Items:</strong> {items.filter((item) => item.status !== 'COMPLETED').length} | <strong>Completed:</strong> {items.filter((item) => item.status === 'COMPLETED').length}
+            </p>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card grid gap-3 md:grid-cols-2">
           <label className="text-sm"><span className="block mb-1 text-charcoal-500">Meeting title</span><input value={title} onChange={(e) => setTitle(e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
+          <label className="text-sm">
+            <span className="block mb-1 text-charcoal-500">Meeting status</span>
+            <select value={meetingStatus} onChange={(e) => setMeetingStatus(e.target.value as 'DRAFT' | 'ACTIVE' | 'SIGNED' | 'ARCHIVED')} disabled={!canEdit} className="w-full px-3 py-2 border border-surface-300 rounded-lg">
+              <option value="DRAFT">Draft</option>
+              <option value="ACTIVE">Active</option>
+              <option value="ARCHIVED">Archived</option>
+              <option value="SIGNED" disabled>Signed</option>
+            </select>
+          </label>
           <label className="text-sm"><span className="block mb-1 text-charcoal-500">Date</span><input type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
           <label className="text-sm"><span className="block mb-1 text-charcoal-500">Time</span><input type="time" value={time} onChange={(e) => setTime(e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
           <label className="text-sm"><span className="block mb-1 text-charcoal-500">Place</span><input value={place} onChange={(e) => setPlace(e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
@@ -501,7 +610,7 @@ export function ReviewMeetingDetailPage() {
               <div className="space-y-1">
                 {linkedImprovements.map((imp: any) => (
                   <p key={imp.id} className="text-sm text-charcoal-600">
-                    <span className="font-medium">{imp.reference_number}</span> • {imp.status}
+                    <span className="font-medium">{imp.reference_number}</span> - {imp.status}
                   </p>
                 ))}
               </div>
@@ -536,24 +645,30 @@ export function ReviewMeetingDetailPage() {
             <tbody className="divide-y divide-surface-100 align-top">
               {items.map((item, index) => (
                 <tr key={item.id ?? `new-${index}`}>
-                  <td className="px-3 py-2 min-w-[180px]"><textarea rows={3} value={item.reviewItem} onChange={(e) => updateItem(index, { reviewItem: e.target.value })} disabled={!canEdit} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
-                  <td className="px-3 py-2 min-w-[180px]"><textarea rows={3} value={item.discussionNotes} onChange={(e) => updateItem(index, { discussionNotes: e.target.value })} disabled={!canEdit} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
-                  <td className="px-3 py-2 min-w-[180px]"><textarea rows={3} value={item.actionRequired} onChange={(e) => updateItem(index, { actionRequired: e.target.value })} disabled={!canEdit} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
+                  <td className="px-3 py-2 min-w-[180px]"><textarea rows={3} value={item.reviewItem} onChange={(e) => updateItem(index, { reviewItem: e.target.value })} disabled={!canEditItem(item)} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
+                  <td className="px-3 py-2 min-w-[180px]"><textarea rows={3} value={item.discussionNotes} onChange={(e) => updateItem(index, { discussionNotes: e.target.value })} disabled={!canEditItem(item)} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
+                  <td className="px-3 py-2 min-w-[180px]"><textarea rows={3} value={item.actionRequired} onChange={(e) => updateItem(index, { actionRequired: e.target.value })} disabled={!canEditItem(item)} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
                   <td className="px-3 py-2 min-w-[220px] space-y-1">
-                    <select value={item.responsibleUserId} onChange={(e) => updateItem(index, { responsibleUserId: e.target.value as UUID | '' })} disabled={!canEdit} className="w-full px-2 py-1 border border-surface-300 rounded">
+                    <select value={item.responsibleUserId} onChange={(e) => updateItem(index, { responsibleUserId: e.target.value as UUID | '' })} disabled={!canEditItem(item)} className="w-full px-2 py-1 border border-surface-300 rounded">
                       <option value="">Select user</option>{memberOptions.map((opt) => <option key={opt.userId} value={opt.userId}>{opt.label}</option>)}
                     </select>
-                    <input value={item.externalResponsibleName} onChange={(e) => updateItem(index, { externalResponsibleName: e.target.value })} disabled={!canEdit} placeholder="Or external person" className="w-full px-2 py-1 border border-surface-300 rounded" />
+                    <input value={item.externalResponsibleName} onChange={(e) => updateItem(index, { externalResponsibleName: e.target.value })} disabled={!canEditItem(item)} placeholder="Or external person" className="w-full px-2 py-1 border border-surface-300 rounded" />
                   </td>
-                  <td className="px-3 py-2"><input type="date" value={item.targetDate} onChange={(e) => updateItem(index, { targetDate: e.target.value })} disabled={!canEdit} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
-                  <td className="px-3 py-2 min-w-[180px]"><textarea rows={2} value={item.resourcesRequired} onChange={(e) => updateItem(index, { resourcesRequired: e.target.value })} disabled={!canEdit} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
-                  <td className="px-3 py-2"><select value={item.status} onChange={(e) => updateItem(index, { status: e.target.value as ReviewMeetingItemStatus })} disabled={!canEdit} className="w-full px-2 py-1 border border-surface-300 rounded">{ITEM_STATUS_OPTIONS.map((statusValue) => <option key={statusValue} value={statusValue}>{statusValue}</option>)}</select></td>
-                  <td className="px-3 py-2"><input type="date" value={item.completionDate} onChange={(e) => updateItem(index, { completionDate: e.target.value })} disabled={!canEdit} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
+                  <td className="px-3 py-2"><input type="date" value={item.targetDate} onChange={(e) => updateItem(index, { targetDate: e.target.value })} disabled={!canEditItem(item)} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
+                  <td className="px-3 py-2 min-w-[180px]"><textarea rows={2} value={item.resourcesRequired} onChange={(e) => updateItem(index, { resourcesRequired: e.target.value })} disabled={!canEditItem(item)} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
+                  <td className="px-3 py-2"><select value={item.status} onChange={(e) => updateItem(index, { status: e.target.value as ReviewMeetingItemStatus, ...(e.target.value === 'COMPLETED' ? {} : { completionDate: '' }) })} disabled={!canUpdateItemProgress(item)} className="w-full px-2 py-1 border border-surface-300 rounded">{ITEM_STATUS_OPTIONS.map((statusValue) => <option key={statusValue} value={statusValue}>{statusValue}</option>)}</select></td>
+                  <td className="px-3 py-2">
+                    {item.status === 'COMPLETED' ? (
+                      <input type="date" value={item.completionDate} onChange={(e) => updateItem(index, { completionDate: e.target.value })} disabled={!canUpdateItemProgress(item)} className="w-full px-2 py-1 border border-surface-300 rounded" />
+                    ) : (
+                      <span className="text-xs text-charcoal-400">Only required when completed</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 min-w-[190px] max-w-[190px]">
                     <div className="max-h-24 overflow-auto space-y-1">
                       {(documents ?? []).slice(0, 20).map((doc) => (
                         <label key={doc.id} className="flex items-center gap-2 text-xs">
-                          <input type="checkbox" checked={item.linkedDocumentIds.includes(doc.id)} disabled={!canEdit} onChange={(e) => e.target.checked ? updateItem(index, { linkedDocumentIds: [...item.linkedDocumentIds, doc.id] }) : updateItem(index, { linkedDocumentIds: item.linkedDocumentIds.filter((id) => id !== doc.id) })} />
+                          <input type="checkbox" checked={item.linkedDocumentIds.includes(doc.id)} disabled={!canEditItem(item)} onChange={(e) => e.target.checked ? updateItem(index, { linkedDocumentIds: [...item.linkedDocumentIds, doc.id] }) : updateItem(index, { linkedDocumentIds: item.linkedDocumentIds.filter((id) => id !== doc.id) })} />
                           <span className="truncate">{doc.title}</span>
                         </label>
                       ))}
@@ -561,15 +676,20 @@ export function ReviewMeetingDetailPage() {
                   </td>
                   <td className="px-3 py-2 min-w-[160px]">
                     <p className="text-xs text-charcoal-500">Files: {item.evidenceFileIds.length}</p>
-                    <input type="file" disabled={!canEdit || !item.id} onChange={(e) => void handleUploadEvidence(index, e.target.files?.[0] ?? null)} className="mt-1 text-xs" />
+                    <input type="file" disabled={!canEditItem(item) || !item.id} onChange={(e) => void handleUploadEvidence(index, e.target.files?.[0] ?? null)} className="mt-1 text-xs" />
                     {!item.id && <p className="text-[11px] text-charcoal-400 mt-1">Save meeting first</p>}
                   </td>
                   <td className="px-3 py-2 min-w-[230px]">
                     <div className="space-y-1 max-h-24 overflow-auto mb-1">
                       {item.updatesLog.map((entry, updateIndex) => <p key={`${entry.timestamp}-${updateIndex}`} className="text-xs bg-surface-50 rounded p-1"><strong>{new Date(entry.timestamp).toLocaleString()}:</strong> {entry.note}</p>)}
                     </div>
-                    <textarea rows={2} value={item.draftUpdateNote} disabled={!canEdit} onChange={(e) => updateItem(index, { draftUpdateNote: e.target.value })} className="w-full px-2 py-1 border border-surface-300 rounded" placeholder="Add timestamped update" />
-                    <button type="button" disabled={!canEdit || !item.draftUpdateNote.trim()} onClick={() => updateItem(index, { updatesLog: [{ timestamp: new Date().toISOString(), note: item.draftUpdateNote.trim(), userId: (user?.id as UUID) ?? null }, ...item.updatesLog], draftUpdateNote: '' })} className="mt-1 px-2 py-1 text-xs border border-surface-300 rounded">Add Update</button>
+                    <textarea rows={2} value={item.draftUpdateNote} disabled={!canUpdateItemProgress(item)} onChange={(e) => updateItem(index, { draftUpdateNote: e.target.value })} className="w-full px-2 py-1 border border-surface-300 rounded" placeholder="Add timestamped update" />
+                    {canEdit && (
+                      <button type="button" disabled={!canEditItem(item) || !item.draftUpdateNote.trim()} onClick={() => updateItem(index, { updatesLog: [{ timestamp: new Date().toISOString(), note: item.draftUpdateNote.trim(), userId: (user?.id as UUID) ?? null }, ...item.updatesLog], draftUpdateNote: '' })} className="mt-1 px-2 py-1 text-xs border border-surface-300 rounded">Add Update</button>
+                    )}
+                    {!canEdit && item.id && canUpdateItemProgress(item) && (
+                      <button type="button" disabled={itemSavingIndex === index} onClick={() => void handleSaveItem(index)} className="mt-1 px-2 py-1 text-xs border border-surface-300 rounded disabled:opacity-60">{itemSavingIndex === index ? 'Saving...' : 'Save Item'}</button>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right"><button type="button" onClick={() => removeItem(index)} disabled={!canEdit || items.length <= 1} className="px-2 py-1 text-xs border border-critical/40 text-critical rounded disabled:opacity-40">Remove</button></td>
                 </tr>
@@ -581,3 +701,4 @@ export function ReviewMeetingDetailPage() {
     </Layout>
   );
 }
+

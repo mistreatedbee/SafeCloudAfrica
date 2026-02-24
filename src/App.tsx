@@ -402,7 +402,27 @@ export function App() {
             }
           />
           <Route
+            path="/dashboard/document-reviews"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <DocumentReviewsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/document-reviews/new"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ReviewMeetingDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/document-reviews/new"
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
@@ -422,7 +442,27 @@ export function App() {
             }
           />
           <Route
+            path="/dashboard/document-reviews/actions"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ReviewMeetingActionsBoardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/document-reviews/:meetingId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ReviewMeetingDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/document-reviews/:meetingId"
             element={
               <RequireSignedIn>
                 <RequireWorkspace>

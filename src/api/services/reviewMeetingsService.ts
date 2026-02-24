@@ -12,6 +12,10 @@ export type ReviewMeetingFilters = {
   year?: number;
   status?: ReviewMeeting['status'] | 'ALL';
   timing?: 'all' | 'upcoming' | 'overdue';
+  dateFrom?: string;
+  dateTo?: string;
+  responsibleUserId?: UUID;
+  progressStatus?: ReviewMeetingItemStatus | 'ALL';
 };
 
 export type ReviewMeetingItemInput = {
@@ -45,6 +49,7 @@ export type ReviewMeetingInput = {
   nextMeetingDate?: string | null;
   chairpersonUserId?: UUID | null;
   ceoApprovalRequired?: boolean;
+  status?: ReviewMeeting['status'];
   siteId?: UUID | null;
   departmentId?: UUID | null;
   autoEmailOnCreate?: boolean;
@@ -97,6 +102,33 @@ function hasResponsibleAssignment(items: ReviewMeetingItem[], userId: UUID): boo
   return items.some((item) => item.responsible_user_id === userId);
 }
 
+function canManageReviewMeetings(role: CompanyRole): boolean {
+  return role === 'admin' || role === 'manager' || role === 'supervisor';
+}
+
+export function canSignReviewMeeting(params: {
+  meeting: ReviewMeeting;
+  viewer: ReviewMeetingViewer;
+}): boolean {
+  const { meeting, viewer } = params;
+  if (meeting.signature_status === 'SIGNED') return false;
+  const isChairperson = !!meeting.chairperson_user_id && meeting.chairperson_user_id === viewer.userId;
+  if (!isChairperson) return false;
+  return viewer.role === 'owner' || viewer.role === 'admin' || viewer.role === 'manager' || viewer.role === 'supervisor';
+}
+
+export function canEditReviewMeetingItem(params: {
+  meeting: ReviewMeeting;
+  item: ReviewMeetingItem;
+  viewer: ReviewMeetingViewer;
+}): boolean {
+  const { meeting, item, viewer } = params;
+  if (meeting.is_locked) return false;
+  if (canManageReviewMeetings(viewer.role)) return true;
+  if (viewer.role === 'employee') return item.responsible_user_id === viewer.userId;
+  return false;
+}
+
 export function canViewReviewMeeting(params: {
   meeting: ReviewMeeting;
   items: ReviewMeetingItem[];
@@ -137,8 +169,8 @@ export function canEditReviewMeeting(params: {
   viewer: ReviewMeetingViewer;
 }): boolean {
   const { meeting, items, viewer } = params;
-  if (meeting.is_locked && !['owner', 'admin', 'manager'].includes(viewer.role)) return false;
-  if (viewer.role === 'owner' || viewer.role === 'admin' || viewer.role === 'manager') return true;
+  if (meeting.is_locked) return false;
+  if (viewer.role === 'admin' || viewer.role === 'manager') return true;
   if (viewer.role === 'supervisor') {
     return hasResponsibleAssignment(items, viewer.userId) || meeting.created_by_user_id === viewer.userId;
   }
@@ -160,6 +192,12 @@ export async function listReviewMeetings(input: {
 
   if (input.filters?.year) {
     q = q.gte('date', `${input.filters.year}-01-01`).lte('date', `${input.filters.year}-12-31`);
+  }
+  if (input.filters?.dateFrom) {
+    q = q.gte('date', input.filters.dateFrom);
+  }
+  if (input.filters?.dateTo) {
+    q = q.lte('date', input.filters.dateTo);
   }
   if (input.filters?.status && input.filters.status !== 'ALL') {
     q = q.eq('status', input.filters.status);
@@ -191,6 +229,13 @@ export async function listReviewMeetings(input: {
       }
       return true;
     });
+  }
+
+  if (input.filters?.responsibleUserId) {
+    out = out.filter(({ items: rows }) => rows.some((item) => item.responsible_user_id === input.filters?.responsibleUserId));
+  }
+  if (input.filters?.progressStatus && input.filters.progressStatus !== 'ALL') {
+    out = out.filter(({ items: rows }) => rows.some((item) => item.status === input.filters?.progressStatus));
   }
 
   if (!input.viewer) return out;
@@ -351,10 +396,10 @@ export async function buildReviewMeetingReport(input: {
         <td>${idx + 1}</td>
         <td>${escapeHtml(item.review_item)}</td>
         <td>${escapeHtml(item.action_required)}</td>
-        <td>${escapeHtml(item.responsible_name_external ?? item.responsible_user_id ?? '—')}</td>
-        <td>${escapeHtml(item.target_date ?? '—')}</td>
+        <td>${escapeHtml(item.responsible_name_external ?? item.responsible_user_id ?? 'â€”')}</td>
+        <td>${escapeHtml(item.target_date ?? 'â€”')}</td>
         <td>${escapeHtml(item.status)}</td>
-        <td>${escapeHtml(item.completion_date ?? '—')}</td>
+        <td>${escapeHtml(item.completion_date ?? 'â€”')}</td>
       </tr>`
     )
     .join('');
@@ -381,7 +426,7 @@ export async function buildReviewMeetingReport(input: {
         <p><strong>Date:</strong> ${escapeHtml(input.meeting.date)}</p>
         <p><strong>Time:</strong> ${escapeHtml(input.meeting.time)}</p>
         <p><strong>Place:</strong> ${escapeHtml(input.meeting.place)}</p>
-        <p><strong>Attendees:</strong> ${escapeHtml(attendeeList.join(', ') || '—')}</p>
+        <p><strong>Attendees:</strong> ${escapeHtml(attendeeList.join(', ') || 'â€”')}</p>
       </div>
       <h2>Action Items</h2>
       <table>
@@ -392,7 +437,7 @@ export async function buildReviewMeetingReport(input: {
       </table>
       <h2>Status Summary</h2>
       <p>Outstanding: ${summary.outstanding} | In progress: ${summary.inProgress} | Completed: ${summary.completed}</p>
-      <p><strong>Next meeting date:</strong> ${escapeHtml(input.meeting.next_meeting_date ?? '—')}</p>
+      <p><strong>Next meeting date:</strong> ${escapeHtml(input.meeting.next_meeting_date ?? 'â€”')}</p>
       <p><strong>Signature:</strong> ${input.meeting.signature_status} ${input.meeting.signed_at ? `(${escapeHtml(input.meeting.signed_at)})` : ''}</p>
       <p><small>Generated ${new Date().toLocaleString()}</small></p>
     </body>
@@ -451,7 +496,56 @@ export async function emailReviewMeetingReport(input: {
   });
 }
 
+export async function generateReviewMeetingReport(input: {
+  companyId: UUID;
+  meeting: ReviewMeeting;
+  items: ReviewMeetingItem[];
+  actorUserId: UUID;
+  attendeeLabels?: string[];
+}): Promise<{ html: string; csv: Blob }> {
+  const report = await buildReviewMeetingReport({
+    meeting: input.meeting,
+    items: input.items,
+    attendeeLabels: input.attendeeLabels
+  });
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'review_meetings.report_generated',
+    entityType: 'review_meeting',
+    entityId: input.meeting.id
+  });
+  return report;
+}
+
+export async function emailReviewMeetingReportWithAudit(input: {
+  companyId: UUID;
+  meeting: ReviewMeeting;
+  items: ReviewMeetingItem[];
+  actorUserId: UUID;
+  attendeeLabels?: string[];
+  reason?: 'manual' | 'create' | 'update' | 'signed';
+}): Promise<void> {
+  await emailReviewMeetingReport({
+    companyId: input.companyId,
+    meeting: input.meeting,
+    items: input.items,
+    attendeeLabels: input.attendeeLabels
+  });
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'review_meetings.report_emailed',
+    entityType: 'review_meeting',
+    entityId: input.meeting.id,
+    metadata: { reason: input.reason ?? 'manual' }
+  });
+}
+
 export async function createReviewMeeting(input: ReviewMeetingInput): Promise<ReviewMeetingWithItems> {
+  if (!canManageReviewMeetings(input.actorRole)) {
+    throw new Error('Only admin/manager/supervisor can create review meetings.');
+  }
   if (!input.items.length) throw new Error('At least one review item is required.');
   const payload = {
     company_id: input.companyId,
@@ -465,7 +559,7 @@ export async function createReviewMeeting(input: ReviewMeetingInput): Promise<Re
     next_meeting_date: input.nextMeetingDate || null,
     chairperson_user_id: input.chairpersonUserId ?? null,
     ceo_approval_required: !!input.ceoApprovalRequired,
-    status: 'ACTIVE',
+    status: input.status ?? 'DRAFT',
     signature_status: 'NOT_SIGNED',
     is_locked: false,
     auto_email_on_create: input.autoEmailOnCreate ?? true,
@@ -510,24 +604,25 @@ export async function createReviewMeeting(input: ReviewMeetingInput): Promise<Re
   await sendMeetingNotifications({ companyId: input.companyId, meeting, items, trigger: 'created' });
 
   if (meeting.auto_email_on_create) {
-    await emailReviewMeetingReport({ companyId: input.companyId, meeting, items }).catch(() => undefined);
-    await createActivityLog({
+    await emailReviewMeetingReportWithAudit({
       companyId: input.companyId,
+      meeting,
+      items,
       actorUserId: input.actorUserId,
-      action: 'review_meetings.report_emailed',
-      entityType: 'review_meeting',
-      entityId: meeting.id,
-      metadata: { reason: 'create' }
-    });
+      reason: 'create'
+    }).catch(() => undefined);
   }
 
   return { meeting, items };
 }
 
 export async function updateReviewMeeting(input: ReviewMeetingInput & { meetingId: UUID }): Promise<ReviewMeetingWithItems> {
+  if (!canManageReviewMeetings(input.actorRole)) {
+    throw new Error('Only admin/manager/supervisor can update review meetings.');
+  }
   const existing = await getReviewMeeting(input.companyId, input.meetingId);
   if (!existing) throw new Error('Review meeting not found.');
-  if (existing.meeting.is_locked && !['owner', 'admin', 'manager'].includes(input.actorRole)) {
+  if (existing.meeting.is_locked) {
     throw new Error('Meeting minutes are signed and locked.');
   }
 
@@ -542,6 +637,7 @@ export async function updateReviewMeeting(input: ReviewMeetingInput & { meetingI
     next_meeting_date: input.nextMeetingDate || null,
     chairperson_user_id: input.chairpersonUserId ?? null,
     ceo_approval_required: !!input.ceoApprovalRequired,
+    status: input.status ?? existing.meeting.status,
     auto_email_on_create: input.autoEmailOnCreate ?? existing.meeting.auto_email_on_create,
     auto_email_on_update: input.autoEmailOnUpdate ?? existing.meeting.auto_email_on_update,
     auto_create_tasks_from_items: input.autoCreateTasksFromItems ?? existing.meeting.auto_create_tasks_from_items,
@@ -622,15 +718,13 @@ export async function updateReviewMeeting(input: ReviewMeetingInput & { meetingI
   });
 
   if (refreshed.meeting.auto_email_on_update) {
-    await emailReviewMeetingReport({ companyId: input.companyId, meeting: refreshed.meeting, items: refreshed.items }).catch(() => undefined);
-    await createActivityLog({
+    await emailReviewMeetingReportWithAudit({
       companyId: input.companyId,
+      meeting: refreshed.meeting,
+      items: refreshed.items,
       actorUserId: input.actorUserId,
-      action: 'review_meetings.report_emailed',
-      entityType: 'review_meeting',
-      entityId: input.meetingId,
-      metadata: { reason: 'update' }
-    });
+      reason: 'update'
+    }).catch(() => undefined);
   }
 
   if (refreshed.meeting.auto_create_tasks_from_items) {
@@ -643,6 +737,115 @@ export async function updateReviewMeeting(input: ReviewMeetingInput & { meetingI
   }
 
   return refreshed;
+}
+
+export async function updateReviewMeetingItem(input: {
+  companyId: UUID;
+  meetingId: UUID;
+  itemId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole;
+  patch: Partial<ReviewMeetingItemInput> & { updateNote?: string };
+}): Promise<ReviewMeetingItem> {
+  const existing = await getReviewMeeting(input.companyId, input.meetingId);
+  if (!existing) throw new Error('Review meeting not found.');
+  const item = existing.items.find((row) => row.id === input.itemId);
+  if (!item) throw new Error('Review meeting item not found.');
+
+  const viewer: ReviewMeetingViewer = {
+    userId: input.actorUserId,
+    role: input.actorRole
+  };
+  if (!canEditReviewMeetingItem({ meeting: existing.meeting, item, viewer })) {
+    throw new Error('You do not have permission to update this item.');
+  }
+  if (input.actorRole === 'employee') {
+    const disallowed = ['reviewItem', 'discussionNotes', 'actionRequired', 'responsibleUserId', 'externalResponsibleName', 'targetDate', 'resourcesRequired', 'evidenceFileIds', 'linkedDocumentIds', 'linkedTaskId']
+      .some((field) => Object.prototype.hasOwnProperty.call(input.patch, field));
+    if (disallowed) {
+      throw new Error('Employees can only update progress status, completion date, and update notes.');
+    }
+  }
+
+  const nextStatus = input.patch.status ?? item.status;
+  const nextCompletionDate =
+    nextStatus === 'COMPLETED'
+      ? input.patch.completionDate ?? item.completion_date ?? new Date().toISOString().slice(0, 10)
+      : null;
+  if (nextStatus === 'COMPLETED' && !nextCompletionDate) {
+    throw new Error('Completion date is required when status is COMPLETED.');
+  }
+
+  const prevLog = (item.updates_log ?? []).map((entry) => ({
+    timestamp: String(entry.timestamp),
+    note: String(entry.note),
+    user_id: entry.user_id ?? null
+  }));
+  const updateNote = input.patch.updateNote?.trim();
+  if (updateNote) {
+    prevLog.unshift({
+      timestamp: new Date().toISOString(),
+      note: updateNote,
+      user_id: input.actorUserId
+    });
+  }
+
+  const payload: Record<string, unknown> = {
+    review_item: input.patch.reviewItem?.trim() ?? item.review_item,
+    discussion_notes: input.patch.discussionNotes?.trim() ?? item.discussion_notes,
+    action_required: input.patch.actionRequired?.trim() ?? item.action_required,
+    responsible_user_id:
+      Object.prototype.hasOwnProperty.call(input.patch, 'responsibleUserId')
+        ? input.patch.responsibleUserId ?? null
+        : item.responsible_user_id,
+    responsible_name_external:
+      Object.prototype.hasOwnProperty.call(input.patch, 'externalResponsibleName')
+        ? input.patch.externalResponsibleName?.trim() || null
+        : item.responsible_name_external,
+    target_date: Object.prototype.hasOwnProperty.call(input.patch, 'targetDate') ? input.patch.targetDate ?? null : item.target_date,
+    resources_required:
+      Object.prototype.hasOwnProperty.call(input.patch, 'resourcesRequired')
+        ? input.patch.resourcesRequired?.trim() || null
+        : item.resources_required,
+    status: nextStatus,
+    completion_date: nextCompletionDate,
+    evidence_file_ids:
+      Object.prototype.hasOwnProperty.call(input.patch, 'evidenceFileIds') ? input.patch.evidenceFileIds ?? null : item.evidence_file_ids,
+    linked_document_ids:
+      Object.prototype.hasOwnProperty.call(input.patch, 'linkedDocumentIds')
+        ? input.patch.linkedDocumentIds ?? null
+        : item.linked_document_ids,
+    linked_task_id:
+      Object.prototype.hasOwnProperty.call(input.patch, 'linkedTaskId') ? input.patch.linkedTaskId ?? null : item.linked_task_id,
+    updates_log: prevLog,
+    updated_at: new Date().toISOString()
+  };
+
+  const { data, error } = await insforge.database
+    .from('review_meeting_items')
+    .update(payload)
+    .eq('company_id', input.companyId)
+    .eq('meeting_id', input.meetingId)
+    .eq('id', input.itemId)
+    .select('*')
+    .single();
+
+  if (error) throw new Error(getErrorMessage(error));
+  const updated = data as ReviewMeetingItem;
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'review_meeting_items.update',
+    entityType: 'review_meeting_item',
+    entityId: input.itemId,
+    metadata: {
+      meetingId: input.meetingId,
+      statusFrom: item.status,
+      statusTo: updated.status
+    }
+  });
+  return updated;
 }
 
 export async function deleteReviewMeeting(input: {
@@ -676,6 +879,7 @@ export async function signReviewMeeting(input: {
   companyId: UUID;
   meetingId: UUID;
   actorUserId: UUID;
+  actorRole: CompanyRole;
   confirmationText: string;
 }): Promise<ReviewMeetingWithItems> {
   if (input.confirmationText.trim().toUpperCase() !== 'SIGN') {
@@ -684,6 +888,9 @@ export async function signReviewMeeting(input: {
 
   const existing = await getReviewMeeting(input.companyId, input.meetingId);
   if (!existing) throw new Error('Review meeting not found.');
+  if (!canSignReviewMeeting({ meeting: existing.meeting, viewer: { userId: input.actorUserId, role: input.actorRole } })) {
+    throw new Error('Only the assigned chairperson/CEO can sign this meeting.');
+  }
 
   const nowIso = new Date().toISOString();
   const { data, error } = await insforge.database
@@ -713,23 +920,19 @@ export async function signReviewMeeting(input: {
     metadata: { signedAt: nowIso }
   });
 
-  await createActivityLog({
+  await generateReviewMeetingReport({
     companyId: input.companyId,
-    actorUserId: input.actorUserId,
-    action: 'review_meetings.report_generated',
-    entityType: 'review_meeting',
-    entityId: input.meetingId
+    meeting,
+    items: existing.items,
+    actorUserId: input.actorUserId
   });
-
-  await emailReviewMeetingReport({ companyId: input.companyId, meeting, items: existing.items }).catch(() => undefined);
-  await createActivityLog({
+  await emailReviewMeetingReportWithAudit({
     companyId: input.companyId,
+    meeting,
+    items: existing.items,
     actorUserId: input.actorUserId,
-    action: 'review_meetings.report_emailed',
-    entityType: 'review_meeting',
-    entityId: input.meetingId,
-    metadata: { reason: 'signed' }
-  });
+    reason: 'signed'
+  }).catch(() => undefined);
 
   await sendMeetingNotifications({ companyId: input.companyId, meeting, items: existing.items, trigger: 'signed' });
 
@@ -743,7 +946,7 @@ export async function unlockSignedReviewMeeting(input: {
   actorRole: CompanyRole;
   reason?: string;
 }): Promise<ReviewMeetingWithItems> {
-  if (!['owner', 'admin', 'manager'].includes(input.actorRole)) {
+  if (!['owner', 'admin'].includes(input.actorRole)) {
     throw new Error('Only owner/admin can unlock signed meetings.');
   }
 
@@ -805,37 +1008,100 @@ export async function listReviewActionItems(input: {
     .filter((item) => !!item.meeting);
 }
 
+const OVERDUE_ADMIN_ESCALATION_DAYS = 3;
+
 function daysBetween(from: Date, to: Date): number {
   const a = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
   const b = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime();
   return Math.round((b - a) / (1000 * 60 * 60 * 24));
 }
 
-async function listAdminOwnerUserIds(companyId: UUID): Promise<UUID[]> {
+async function listRoleUserIds(companyId: UUID, roles: CompanyRole[]): Promise<UUID[]> {
   const { data } = await insforge.database
     .from('company_memberships')
     .select('user_id, role')
     .eq('company_id', companyId)
-    .in('role', ['owner', 'admin']);
+    .in('role', roles);
   return (data ?? []).map((row: any) => row.user_id as UUID);
+}
+
+async function wasReminderSent(input: {
+  companyId: UUID;
+  meetingId: UUID;
+  itemId?: UUID;
+  reminderType: string;
+}): Promise<boolean> {
+  const query = insforge.database
+    .from('review_meeting_reminder_events')
+    .select('id')
+    .eq('company_id', input.companyId)
+    .eq('meeting_id', input.meetingId)
+    .eq('reminder_type', input.reminderType);
+
+  const { data } = input.itemId
+    ? await query.eq('meeting_item_id', input.itemId).maybeSingle()
+    : await query.is('meeting_item_id', null).maybeSingle();
+
+  return !!data;
+}
+
+async function markReminderSent(input: {
+  companyId: UUID;
+  meetingId: UUID;
+  itemId?: UUID;
+  reminderType: string;
+}): Promise<void> {
+  await insforge.database
+    .from('review_meeting_reminder_events')
+    .insert({
+      company_id: input.companyId,
+      meeting_id: input.meetingId,
+      meeting_item_id: input.itemId ?? null,
+      reminder_type: input.reminderType
+    });
+}
+
+async function listSupervisorForUser(companyId: UUID, userId: UUID): Promise<UUID | null> {
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('supervisor_user_id')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  return (data?.supervisor_user_id as UUID | null) ?? null;
 }
 
 export async function runReviewMeetingReminderJobs(companyId: UUID): Promise<void> {
   const all = await listReviewMeetings({ companyId });
   const now = new Date();
+  const managerAndSupervisors = await listRoleUserIds(companyId, ['manager', 'supervisor']);
+  const adminOwners = await listRoleUserIds(companyId, ['owner', 'admin']);
 
   for (const { meeting, items } of all) {
     if (meeting.next_meeting_date) {
       const days = daysBetween(now, new Date(meeting.next_meeting_date));
       const isMorningOf = days === 0 && now.getHours() < 12;
       if (days === 7 || days === 1 || isMorningOf) {
-        await sendMeetingNotifications({
+        const reminderType = isMorningOf ? 'meeting_0d_morning' : `meeting_${days}d`;
+        const sent = await wasReminderSent({
           companyId,
-          meeting,
-          items,
-          trigger: 'next_meeting_reminder',
-          customMessage: `Reminder: next management review meeting is on ${meeting.next_meeting_date}.`
+          meetingId: meeting.id,
+          reminderType
         });
+        if (!sent) {
+          await sendMeetingNotifications({
+            companyId,
+            meeting,
+            items,
+            trigger: 'next_meeting_reminder',
+            customMessage: `Reminder: next management review meeting is on ${meeting.next_meeting_date}.`
+          });
+          await markReminderSent({
+            companyId,
+            meetingId: meeting.id,
+            reminderType
+          });
+        }
       }
     }
 
@@ -843,6 +1109,14 @@ export async function runReviewMeetingReminderJobs(companyId: UUID): Promise<voi
       if (!item.target_date || item.status === 'COMPLETED') continue;
       const days = daysBetween(now, new Date(item.target_date));
       if (days === 7 || days === 1) {
+        const reminderType = `action_due_${days}d`;
+        const sent = await wasReminderSent({
+          companyId,
+          meetingId: meeting.id,
+          itemId: item.id,
+          reminderType
+        });
+        if (sent) continue;
         await sendMeetingNotifications({
           companyId,
           meeting,
@@ -850,11 +1124,37 @@ export async function runReviewMeetingReminderJobs(companyId: UUID): Promise<voi
           trigger: 'action_reminder',
           customMessage: `Action reminder: "${item.review_item}" is due on ${item.target_date}.`
         });
+        await markReminderSent({
+          companyId,
+          meetingId: meeting.id,
+          itemId: item.id,
+          reminderType
+        });
       }
       if (days < 0) {
-        const escalationTargets = await listAdminOwnerUserIds(companyId);
+        const overdueDays = Math.abs(days);
+        const reminderType = `action_overdue_${overdueDays}d`;
+        const alreadySent = await wasReminderSent({
+          companyId,
+          meetingId: meeting.id,
+          itemId: item.id,
+          reminderType
+        });
+        if (alreadySent) continue;
+
+        const escalationTargets = new Set<UUID>();
+        if (item.responsible_user_id) {
+          escalationTargets.add(item.responsible_user_id);
+          const supervisorId = await listSupervisorForUser(companyId, item.responsible_user_id);
+          if (supervisorId) escalationTargets.add(supervisorId);
+        }
+        managerAndSupervisors.forEach((userId) => escalationTargets.add(userId));
+        if (overdueDays >= OVERDUE_ADMIN_ESCALATION_DAYS) {
+          adminOwners.forEach((userId) => escalationTargets.add(userId));
+        }
+
         await Promise.all(
-          escalationTargets.map((userId) =>
+          [...escalationTargets].map((userId) =>
             createNotification(
               companyId,
               userId,
@@ -873,7 +1173,14 @@ export async function runReviewMeetingReminderJobs(companyId: UUID): Promise<voi
           trigger: 'action_overdue',
           customMessage: `Escalation: action "${item.review_item}" is overdue.`
         });
+        await markReminderSent({
+          companyId,
+          meetingId: meeting.id,
+          itemId: item.id,
+          reminderType
+        });
       }
     }
   }
 }
+
