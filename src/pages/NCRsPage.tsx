@@ -25,7 +25,7 @@ const itemVariants = {
 
 export default function NCRsPage() {
   const navigate = useNavigate();
-  const { activeCompanyId } = useTenant();
+  const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
   const [ncrs, setNcrs] = useState<QualityNcr[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -34,6 +34,27 @@ export default function NCRsPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const canCreateNcr =
+    activeRole === 'admin' ||
+    activeRole === 'manager' ||
+    activeRole === 'supervisor' ||
+    activeRole === 'consultant';
+  const canCloseNcr = activeRole === 'admin' || activeRole === 'supervisor';
+
+  const canUploadEvidenceForNcr = (ncr: QualityNcr): boolean => {
+    if (!user?.id) return false;
+    if (activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor') return true;
+    if (activeRole === 'employee') return false;
+    if (activeRole === 'consultant' || activeRole === 'auditor') {
+      const isAssigned =
+        ncr.auditor_user_id === user.id ||
+        ncr.auditee_user_id === user.id ||
+        ncr.corrective_action_owner_user_id === user.id;
+      return isAssigned;
+    }
+    return false;
+  };
 
   useEffect(() => {
     if (activeCompanyId && user?.id) {
@@ -58,7 +79,7 @@ export default function NCRsPage() {
   }
 
   async function handleCloseNCR(ncrId: UUID) {
-    if (!user?.id) return;
+    if (!user?.id || !canCloseNcr) return;
     try {
       const updated = await closeQualityNcr(ncrId, activeCompanyId, user.id, user.id);
       if (updated) {
@@ -121,6 +142,7 @@ export default function NCRsPage() {
             </div>
             <button
               onClick={() => setIsCreateModalOpen(true)}
+              disabled={!canCreateNcr}
               className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
             >
               <Plus className="w-5 h-5" />
@@ -265,11 +287,19 @@ export default function NCRsPage() {
             }}
           />
         )}
-        {isDetailModalOpen && selectedNCR && (
+        {isDetailModalOpen && selectedNCR && activeCompanyId && user?.id && (
           <NCRDetailModal
             ncr={selectedNCR}
+            companyId={activeCompanyId}
+            actorUserId={user.id as UUID}
+            canCloseNcr={canCloseNcr}
+            canUploadEvidence={canUploadEvidenceForNcr(selectedNCR)}
             onClose={() => setIsDetailModalOpen(false)}
             onCloseNCR={handleCloseNCR}
+            onNcrUpdated={(updated) => {
+              setNcrs((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+              setSelectedNCR(updated);
+            }}
           />
         )}
       </AnimatePresence>

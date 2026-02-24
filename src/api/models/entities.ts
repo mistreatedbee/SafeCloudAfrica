@@ -620,6 +620,18 @@ export type QualityNcrStatus =
   | 'overdue'
   | 'closed';
 
+export type LinkedRequirementType = 'STANDARD' | 'POLICY' | 'PROCEDURE';
+
+export type NcrEvidenceReference = {
+  fileId: UUID;
+  url: string;
+  name: string;
+  uploadedAt: string;
+  uploadedBy: UUID;
+  storageBucket?: string;
+  storageKey?: string;
+};
+
 export type QualityNcr = {
   id: UUID;
   company_id: UUID;
@@ -644,6 +656,7 @@ export type QualityNcr = {
   process_involved: string | null;
   activity_involved: string | null;
   responsible_role: string | null;
+  linked_requirement_type?: LinkedRequirementType | null;
   linked_requirement: string | null;
   risk_classification: string | null;
   risk_rating?: string | null;
@@ -655,6 +668,8 @@ export type QualityNcr = {
   corrective_action_completed_date?: string | null;
   progress_updates?: Record<string, unknown>[] | null;
   evidence_uploads?: Record<string, unknown>[] | null;
+  evidence_before?: NcrEvidenceReference[] | null;
+  evidence_after?: NcrEvidenceReference[] | null;
   evidence_documents?: Record<string, unknown>[] | null;
   evidence_photos?: Record<string, unknown>[] | null;
   evidence_interviews?: Record<string, unknown>[] | null;

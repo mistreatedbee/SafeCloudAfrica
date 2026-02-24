@@ -1,7 +1,9 @@
 import { insforge } from '../insforge/client';
-import type { QualityNcr, UUID } from '../models/entities';
+import type { NcrEvidenceReference, QualityNcr, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { listEvidence } from './evidenceService';
+import { getPublicUrl } from './storageService';
 
 // Auto-generate NCR number
 function generateNCRNumber(): string {
@@ -12,7 +14,13 @@ function generateNCRNumber(): string {
   return `NCR-${year}${month}-${random}`;
 }
 
-export async function listQualityNcrs(input: { companyId: UUID; limit?: number; status?: string }): Promise<QualityNcr[]> {
+export async function listQualityNcrs(input: {
+  companyId: UUID;
+  limit?: number;
+  status?: string;
+  sourceEntityType?: string;
+  sourceEntityId?: UUID;
+}): Promise<QualityNcr[]> {
   let query = insforge.database
     .from('quality_ncrs')
     .select('*')
@@ -20,6 +28,12 @@ export async function listQualityNcrs(input: { companyId: UUID; limit?: number; 
 
   if (input.status) {
     query = query.eq('status', input.status);
+  }
+  if (input.sourceEntityType) {
+    query = query.eq('source_entity_type', input.sourceEntityType);
+  }
+  if (input.sourceEntityId) {
+    query = query.eq('source_entity_id', input.sourceEntityId);
   }
 
   const { data, error } = await query
@@ -39,12 +53,15 @@ export async function countOpenQualityNcrs(companyId: UUID): Promise<number> {
   return count ?? 0;
 }
 
-export async function getQualityNcr(ncrId: UUID): Promise<QualityNcr | null> {
-  const { data, error } = await insforge.database
+export async function getQualityNcr(ncrId: UUID, companyId?: UUID): Promise<QualityNcr | null> {
+  const query = insforge.database
     .from('quality_ncrs')
     .select('*')
-    .eq('id', ncrId)
-    .single();
+    .eq('id', ncrId);
+
+  if (companyId) query.eq('company_id', companyId);
+
+  const { data, error } = await query.single();
 
   if (error && error.code !== 'PGRST116') {
     throw new Error(getErrorMessage(error));
@@ -60,6 +77,7 @@ export async function createQualityNcr(input: {
   process_involved?: string;
   activity_involved?: string;
   responsible_role?: string;
+  linked_requirement_type?: 'STANDARD' | 'POLICY' | 'PROCEDURE';
   linked_requirement?: string;
   risk_classification?: string;
   root_cause?: string;
@@ -84,6 +102,7 @@ export async function createQualityNcr(input: {
       process_involved: input.process_involved ?? null,
       activity_involved: input.activity_involved ?? null,
       responsible_role: input.responsible_role ?? null,
+      linked_requirement_type: input.linked_requirement_type ?? null,
       linked_requirement: input.linked_requirement ?? null,
       risk_classification: input.risk_classification ?? null,
       root_cause: input.root_cause ?? null,
@@ -128,6 +147,7 @@ export async function updateQualityNcr(
       updated_at: new Date().toISOString()
     })
     .eq('id', ncrId)
+    .eq('company_id', companyId)
     .select('*')
     .single();
 
@@ -154,16 +174,80 @@ export async function closeQualityNcr(
   signedByUserId: UUID,
   actorUserId: UUID
 ): Promise<QualityNcr | null> {
-  return updateQualityNcr(
+  const { evidenceAfter } = await listNcrEvidence(companyId, ncrId);
+  if (evidenceAfter.length < 1) {
+    throw new Error('Evidence of Closure is required before closing this NCR.');
+  }
+
+  const closedAt = new Date().toISOString();
+  const updated = await updateQualityNcr(
     ncrId,
     companyId,
     {
       status: 'closed',
       signed_by_user_id: signedByUserId,
-      signed_at: new Date().toISOString()
+      signed_at: closedAt,
+      closed_by_user_id: actorUserId,
+      closed_at: closedAt,
+      date_closed: closedAt
     },
     actorUserId
   );
+
+  await createActivityLog({
+    companyId,
+    actorUserId,
+    action: 'quality_ncrs.closed_with_closure_evidence',
+    entityType: 'quality_ncr',
+    entityId: ncrId,
+    metadata: { evidenceAfterCount: evidenceAfter.length }
+  });
+
+  return updated;
+}
+
+function mapEvidenceRef(row: any): NcrEvidenceReference {
+  return {
+    fileId: row.id as UUID,
+    url: getPublicUrl(row.storage_bucket as any, row.storage_key),
+    name: String(row.display_title ?? row.title ?? row.original_filename ?? row.storage_key.split('/').pop() ?? 'file'),
+    uploadedAt: row.created_at as string,
+    uploadedBy: row.created_by_user_id as UUID,
+    storageBucket: row.storage_bucket as string,
+    storageKey: row.storage_key as string
+  };
+}
+
+function isFileKind(row: any, kind: 'BEFORE' | 'AFTER'): boolean {
+  return String(row.file_kind ?? '').toUpperCase() === kind;
+}
+
+export async function listNcrEvidence(companyId: UUID, ncrId: UUID): Promise<{
+  evidenceBefore: NcrEvidenceReference[];
+  evidenceAfter: NcrEvidenceReference[];
+}> {
+  const evidence = await listEvidence(companyId, { entityType: 'ncr', entityId: ncrId, limit: 500 });
+  const evidenceBefore = evidence.filter((row) => isFileKind(row, 'BEFORE')).map(mapEvidenceRef);
+  const evidenceAfter = evidence.filter((row) => isFileKind(row, 'AFTER')).map(mapEvidenceRef);
+  return { evidenceBefore, evidenceAfter };
+}
+
+export async function syncNcrEvidenceFromAttachments(companyId: UUID, ncrId: UUID): Promise<QualityNcr> {
+  const { evidenceBefore, evidenceAfter } = await listNcrEvidence(companyId, ncrId);
+  const { data, error } = await insforge.database
+    .from('quality_ncrs')
+    .update({
+      evidence_before: evidenceBefore,
+      evidence_after: evidenceAfter,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', ncrId)
+    .eq('company_id', companyId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to sync NCR evidence.');
+  return data as QualityNcr;
 }
 
 export async function createQualityNcrFromInspectionItem(input: {
@@ -186,4 +270,3 @@ export async function createQualityNcrFromInspectionItem(input: {
     source_entity_id: input.sourceEntityId
   });
 }
-

@@ -1,27 +1,27 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { XIcon, FileIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
-import type { ModuleKey, UUID, Severity } from '../../api/models/core';
-import { createQualityNcr } from '../../api/services/qualityNcrsService';
-import { getMergedOptions, getBuiltInOptions } from '../../api/services/dynamicOptionsService';
-import type { OptionItem } from '../../api/services/dynamicOptionsService';
-import { SelectOrType } from '../ui/SelectOrType';
+import type { UUID, Severity } from '../../api/models/core';
+import { createQualityNcr, syncNcrEvidenceFromAttachments } from '../../api/services/qualityNcrsService';
+import { createEvidence } from '../../api/services/evidenceService';
+import { insforge } from '../../api/insforge/client';
 
-type NcrSource = 'audit' | 'incident' | 'complaint' | 'risk_assessment' | 'inspection' | 'management_review' | 'other';
-type LinkedRequirementType = 'iso' | 'legal' | 'internal';
+type NcrSource = 'audit' | 'incident' | 'near_miss' | 'complaint' | 'risk_assessment' | 'inspection';
+type LinkedRequirementType = 'STANDARD' | 'POLICY' | 'PROCEDURE';
 type RiskClassification = 'Low' | 'Medium' | 'High' | 'Critical';
+
+const EVIDENCE_BUCKET = 'sca-evidence';
 
 export function NcrCreateModal(props: {
   open: boolean;
   onClose: () => void;
   companyId: UUID;
   createdByUserId: UUID;
-  defaultModule?: ModuleKey;
+  defaultModule?: string;
   linkedSource?: { type: NcrSource; id?: string };
   onCreated?: () => void;
 }) {
-  const [module, setModule] = useState<ModuleKey>(props.defaultModule ?? 'general');
   const [ncrNumber, setNcrNumber] = useState('');
   const [ncrDate, setNcrDate] = useState(new Date().toISOString().slice(0, 10));
   const [ncrTime, setNcrTime] = useState(new Date().toTimeString().slice(0, 5));
@@ -30,69 +30,97 @@ export function NcrCreateModal(props: {
   const [process, setProcess] = useState('');
   const [activity, setActivity] = useState('');
   const [responsibleRole, setResponsibleRole] = useState('');
-  const [linkedRequirementType, setLinkedRequirementType] = useState<LinkedRequirementType>('iso');
+  const [linkedRequirementType, setLinkedRequirementType] = useState<LinkedRequirementType>('STANDARD');
   const [linkedRequirement, setLinkedRequirement] = useState('');
   const [riskClassification, setRiskClassification] = useState<RiskClassification>('Medium');
   const [rootCause, setRootCause] = useState('');
   const [correctiveActions, setCorrectiveActions] = useState('');
   const [responsiblePerson, setResponsiblePerson] = useState('');
   const [source, setSource] = useState<NcrSource>(props.linkedSource?.type || 'audit');
-  const [sourceCustom, setSourceCustom] = useState('');
-  const [sourceOptions, setSourceOptions] = useState<OptionItem[]>([]);
   const [title, setTitle] = useState('');
   const [severity, setSeverity] = useState<Severity>('medium');
-  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [evidenceBeforeFiles, setEvidenceBeforeFiles] = useState<File[]>([]);
+  const [evidenceAfterFiles, setEvidenceAfterFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!props.open || !props.companyId) return;
-    const builtIn = getBuiltInOptions('ncrs', 'ncrSource').map((v) => ({ id: `builtin:${v}`, value: v, label: v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }));
-    getMergedOptions(
-      { companyId: props.companyId, moduleKey: 'ncrs', fieldKey: 'ncrSource' },
-      getBuiltInOptions('ncrs', 'ncrSource')
-    ).then(setSourceOptions).catch(() => setSourceOptions(builtIn));
-  }, [props.open, props.companyId]);
-
-  // Auto-generate NCR number if not provided
   const finalNcrNumber = useMemo(() => {
     if (ncrNumber.trim()) return ncrNumber.trim();
     return `NCR-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
   }, [ncrNumber]);
 
   const canSubmit = useMemo(() => {
-    return title.trim().length > 2 &&
-           location.trim().length > 0 &&
-           department.trim().length > 0 &&
-           activity.trim().length > 0 &&
-           responsibleRole.trim().length > 0 &&
-           linkedRequirement.trim().length > 0 &&
-           rootCause.trim().length > 0 &&
-           correctiveActions.trim().length > 0 &&
-           responsiblePerson.trim().length > 0;
-  }, [title, location, department, activity, responsibleRole, linkedRequirement, rootCause, correctiveActions, responsiblePerson]);
+    return (
+      title.trim().length > 2 &&
+      location.trim().length > 0 &&
+      department.trim().length > 0 &&
+      activity.trim().length > 0 &&
+      responsibleRole.trim().length > 0 &&
+      linkedRequirement.trim().length > 0 &&
+      rootCause.trim().length > 0 &&
+      correctiveActions.trim().length > 0 &&
+      responsiblePerson.trim().length > 0 &&
+      evidenceBeforeFiles.length > 0
+    );
+  }, [
+    title,
+    location,
+    department,
+    activity,
+    responsibleRole,
+    linkedRequirement,
+    rootCause,
+    correctiveActions,
+    responsiblePerson,
+    evidenceBeforeFiles.length
+  ]);
 
-  const handleFileUpload = (files: FileList | null) => {
+  const appendFiles = (
+    files: FileList | null,
+    setter: React.Dispatch<React.SetStateAction<File[]>>
+  ) => {
     if (!files) return;
-    const fileArray = Array.from(files);
-    setEvidenceFiles(prev => [...prev, ...fileArray]);
+    setter((prev) => [...prev, ...Array.from(files)]);
   };
 
-  const removeFile = (index: number) => {
-    setEvidenceFiles(prev => prev.filter((_, i) => i !== index));
+  const removeFileAtIndex = (
+    index: number,
+    setter: React.Dispatch<React.SetStateAction<File[]>>
+  ) => {
+    setter((prev) => prev.filter((_, i) => i !== index));
   };
+
+  async function uploadEvidenceFiles(ncrId: UUID, files: File[], kind: 'BEFORE' | 'AFTER') {
+    for (const file of files) {
+      const key = `${props.companyId}/ncr/${ncrId}/${kind.toLowerCase()}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
+      const { data: uploaded, error: uploadError } = await insforge.storage.from(EVIDENCE_BUCKET).upload(key, file);
+      if (uploadError) throw uploadError;
+      await createEvidence({
+        companyId: props.companyId,
+        entityType: 'ncr',
+        entityId: ncrId,
+        storageBucket: EVIDENCE_BUCKET,
+        storageKey: uploaded?.path ?? key,
+        createdByUserId: props.createdByUserId,
+        originalFilename: file.name,
+        displayTitle: file.name,
+        fileKind: kind
+      });
+    }
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
+    if (evidenceBeforeFiles.length < 1) {
+      setError('Evidence of Non-Conformance is required before creating an NCR.');
+      return;
+    }
+
     setError(null);
     try {
       setLoading(true);
-      
-      // Combine date and time
-      const occurredAt = new Date(`${ncrDate}T${ncrTime}`).toISOString();
-      
-      // Build comprehensive description with all NCR fields
+
       const descriptionParts: string[] = [];
       descriptionParts.push(`NCR Number: ${finalNcrNumber}`);
       descriptionParts.push(`Date & Time: ${ncrDate} ${ncrTime}`);
@@ -100,45 +128,45 @@ export function NcrCreateModal(props: {
       descriptionParts.push(`Department / Process: ${department} / ${process}`);
       descriptionParts.push(`Activity Involved: ${activity}`);
       descriptionParts.push(`Responsible Role: ${responsibleRole}`);
-      descriptionParts.push(`Linked Requirement Type: ${linkedRequirementType.toUpperCase()}`);
+      descriptionParts.push(`Linked Requirement Type: ${linkedRequirementType}`);
       descriptionParts.push(`Linked Requirement: ${linkedRequirement}`);
       descriptionParts.push(`Risk Classification: ${riskClassification}`);
       descriptionParts.push(`Root Cause: ${rootCause}`);
       descriptionParts.push(`Corrective Actions: ${correctiveActions}`);
       descriptionParts.push(`Responsible Person: ${responsiblePerson}`);
-      descriptionParts.push(`Source: ${source === 'other' ? sourceCustom.trim() : source}`);
+      descriptionParts.push(`Source: ${source}`);
+      descriptionParts.push(`Evidence of Non-Conformance files: ${evidenceBeforeFiles.length}`);
+      descriptionParts.push(`Evidence of Closure files: ${evidenceAfterFiles.length}`);
       if (props.linkedSource?.id) {
         descriptionParts.push(`Linked Source ID: ${props.linkedSource.id}`);
       }
-      
-      if (evidenceFiles.length > 0) {
-        descriptionParts.push(`\nEvidence Files: ${evidenceFiles.length} file(s) uploaded`);
-        evidenceFiles.forEach((f, i) => {
-          descriptionParts.push(`  - File ${i + 1}: ${f.name} (${(f.size / 1024).toFixed(2)} KB)`);
-        });
-      }
 
-      const fullDescription = descriptionParts.join('\n\n');
-
-      await createQualityNcr({
+      const created = await createQualityNcr({
         companyId: props.companyId,
         title: title.trim(),
-        description: fullDescription,
+        description: descriptionParts.join('\n\n'),
         severity,
         createdByUserId: props.createdByUserId,
         location: location.trim(),
         process_involved: department.trim(),
         activity_involved: activity.trim(),
         responsible_role: responsibleRole.trim(),
+        linked_requirement_type: linkedRequirementType,
         linked_requirement: linkedRequirement.trim(),
         risk_classification: riskClassification.toLowerCase(),
         root_cause: rootCause.trim(),
         corrective_action: correctiveActions.trim(),
         corrective_action_due_date: new Date(ncrDate).toISOString().split('T')[0],
-        source_entity_type: source === 'other' ? (sourceCustom.trim() || 'other') : source,
-        source_entity_id: props.linkedSource?.id ? props.linkedSource.id as UUID : undefined
+        source_entity_type: source,
+        source_entity_id: props.linkedSource?.id ? (props.linkedSource.id as UUID) : undefined
       });
-      
+
+      await uploadEvidenceFiles(created.id, evidenceBeforeFiles, 'BEFORE');
+      if (evidenceAfterFiles.length > 0) {
+        await uploadEvidenceFiles(created.id, evidenceAfterFiles, 'AFTER');
+      }
+      await syncNcrEvidenceFromAttachments(props.companyId, created.id);
+
       props.onCreated?.();
       props.onClose();
       resetForm();
@@ -158,18 +186,17 @@ export function NcrCreateModal(props: {
     setProcess('');
     setActivity('');
     setResponsibleRole('');
-    setLinkedRequirementType('iso');
+    setLinkedRequirementType('STANDARD');
     setLinkedRequirement('');
     setRiskClassification('Medium');
     setRootCause('');
     setCorrectiveActions('');
     setResponsiblePerson('');
     setSource(props.linkedSource?.type || 'audit');
-    setSourceCustom('');
     setTitle('');
     setSeverity('medium');
-    setEvidenceFiles([]);
-    setModule(props.defaultModule ?? 'general');
+    setEvidenceBeforeFiles([]);
+    setEvidenceAfterFiles([]);
   }
 
   if (!props.open) return null;
@@ -196,36 +223,29 @@ export function NcrCreateModal(props: {
             </div>
           )}
 
-          {/* Basic Information */}
           <div className="border-b border-surface-200 pb-4">
             <h3 className="text-sm font-semibold text-charcoal mb-4">Basic Information</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Module</label>
-                <select
-                  value={module}
-                  onChange={(e) => setModule(e.target.value as ModuleKey)}
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Unique NC Number</label>
+                <input
+                  value={ncrNumber}
+                  onChange={(e) => setNcrNumber(e.target.value)}
+                  placeholder={`Auto: ${finalNcrNumber}`}
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                >
-                  <option value="safety">Safety</option>
-                  <option value="quality">Quality</option>
-                  <option value="environment">Environment</option>
-                  <option value="health">Health</option>
-                  <option value="legal">Legal</option>
-                  <option value="hr">HR</option>
-                  <option value="general">General</option>
-                  <option value="security">Security</option>
-                </select>
+                />
+                <p className="text-xs text-charcoal-500 mt-1">Leave empty to auto-generate: {finalNcrNumber}</p>
               </div>
-      <div>
-        <label className="block text-sm font-medium text-charcoal mb-1.5">Unique NC Number</label>
-        <input
-          value={finalNcrNumber}
-          readOnly
-          className="w-full px-4 py-2.5 bg-surface-100 border border-surface-300 rounded-lg text-sm text-charcoal-500 cursor-not-allowed"
-        />
-        <p className="text-xs text-charcoal-500 mt-1">NCR numbers are auto-generated by the system.</p>
-      </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Title *</label>
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Brief description of non-conformance"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  required
+                />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Date *</label>
                 <input
@@ -247,16 +267,6 @@ export function NcrCreateModal(props: {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Title *</label>
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Brief description of non-conformance"
-                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                  required
-                />
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Severity</label>
                 <select
                   value={severity}
@@ -272,7 +282,6 @@ export function NcrCreateModal(props: {
             </div>
           </div>
 
-          {/* Location & Process Information */}
           <div className="border-b border-surface-200 pb-4">
             <h3 className="text-sm font-semibold text-charcoal mb-4">Location & Process (All Mandatory)</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -318,7 +327,6 @@ export function NcrCreateModal(props: {
             </div>
           </div>
 
-          {/* Responsibility & Requirements */}
           <div className="border-b border-surface-200 pb-4">
             <h3 className="text-sm font-semibold text-charcoal mb-4">Responsibility & Linked Requirements (All Mandatory)</h3>
             <div className="space-y-4">
@@ -334,15 +342,16 @@ export function NcrCreateModal(props: {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-charcoal mb-1.5">Linked Requirement Type</label>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Linked to requirement type *</label>
                   <select
                     value={linkedRequirementType}
                     onChange={(e) => setLinkedRequirementType(e.target.value as LinkedRequirementType)}
                     className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                    required
                   >
-                    <option value="iso">ISO</option>
-                    <option value="legal">Legal</option>
-                    <option value="internal">Internal</option>
+                    <option value="STANDARD">Standard</option>
+                    <option value="POLICY">Policy</option>
+                    <option value="PROCEDURE">Procedure</option>
                   </select>
                 </div>
                 <div>
@@ -350,7 +359,7 @@ export function NcrCreateModal(props: {
                   <input
                     value={linkedRequirement}
                     onChange={(e) => setLinkedRequirement(e.target.value)}
-                    placeholder={linkedRequirementType === 'iso' ? 'e.g. ISO 45001:2018 Clause 8.2' : linkedRequirementType === 'legal' ? 'e.g. OHS Act Section 8' : 'e.g. Company Procedure PRO-001'}
+                    placeholder="Reference for the linked requirement"
                     className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                     required
                   />
@@ -359,7 +368,6 @@ export function NcrCreateModal(props: {
             </div>
           </div>
 
-          {/* Risk & Root Cause */}
           <div className="border-b border-surface-200 pb-4">
             <h3 className="text-sm font-semibold text-charcoal mb-4">Risk Classification & Root Cause (All Mandatory)</h3>
             <div className="space-y-4">
@@ -391,7 +399,6 @@ export function NcrCreateModal(props: {
             </div>
           </div>
 
-          {/* Corrective Actions */}
           <div className="border-b border-surface-200 pb-4">
             <h3 className="text-sm font-semibold text-charcoal mb-4">Corrective Actions (All Mandatory)</h3>
             <div className="space-y-4">
@@ -419,61 +426,51 @@ export function NcrCreateModal(props: {
             </div>
           </div>
 
-          {/* Source */}
           <div className="border-b border-surface-200 pb-4">
-            <h3 className="text-sm font-semibold text-charcoal mb-4">Source</h3>
+            <h3 className="text-sm font-semibold text-charcoal mb-4">1. Written Source</h3>
             <div>
-              <SelectOrType
-                label="Source *"
-                value={source === 'other' ? (sourceCustom.trim() || 'other') : source}
-                onChange={(v, isCustom) => {
-                  if (isCustom) {
-                    setSource('other');
-                    setSourceCustom(v);
-                  } else {
-                    setSource(v as NcrSource);
-                    setSourceCustom('');
-                  }
-                }}
-                options={sourceOptions.map((o) => ({ ...o, label: o.label.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }))}
-                placeholder="Select source"
-                otherLabel="Other / Type manually"
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Source *</label>
+              <select
+                value={source}
+                onChange={(e) => setSource(e.target.value as NcrSource)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                 required
-                allowCreate
-                companyId={props.companyId}
-                moduleKey="ncrs"
-                fieldKey="ncrSource"
-                createdByUserId={props.createdByUserId}
-              />
+              >
+                <option value="audit">Audit</option>
+                <option value="incident">Incident</option>
+                <option value="near_miss">Near Miss</option>
+                <option value="complaint">Complaint</option>
+                <option value="risk_assessment">Risk Assessment</option>
+                <option value="inspection">Inspection</option>
+              </select>
               {props.linkedSource?.id && (
                 <p className="text-xs text-charcoal-500 mt-1">Linked to: {props.linkedSource.type} (ID: {props.linkedSource.id})</p>
               )}
             </div>
           </div>
 
-          {/* Evidence Uploads */}
-          <div className="border-b border-surface-200 pb-4">
-            <h3 className="text-sm font-semibold text-charcoal mb-4">Evidence Uploads</h3>
+          <div className="border-b border-surface-200 pb-4 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Upload Evidence (photos/docs)</label>
+              <h3 className="text-sm font-semibold text-charcoal">Evidence of Non-Conformance *</h3>
+              <p className="text-xs text-charcoal-500 mt-1">Upload proof showing the non-conformance before corrective action.</p>
               <input
                 type="file"
                 multiple
-                onChange={(e) => handleFileUpload(e.target.files)}
-                className="w-full text-sm"
+                onChange={(e) => appendFiles(e.target.files, setEvidenceBeforeFiles)}
+                className="w-full text-sm mt-2"
+                required
               />
-              {evidenceFiles.length > 0 && (
+              {evidenceBeforeFiles.length > 0 && (
                 <div className="mt-2 space-y-1">
-                  {evidenceFiles.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 bg-surface-50 rounded-lg">
+                  {evidenceBeforeFiles.map((file, index) => (
+                    <div key={`before-${index}`} className="flex items-center justify-between p-2 bg-surface-50 rounded-lg">
                       <div className="flex items-center gap-2">
                         <FileIcon className="w-4 h-4 text-charcoal-400" />
                         <span className="text-sm text-charcoal-600">{file.name}</span>
-                        <span className="text-xs text-charcoal-400">({(file.size / 1024).toFixed(2)} KB)</span>
                       </div>
                       <button
                         type="button"
-                        onClick={() => removeFile(index)}
+                        onClick={() => removeFileAtIndex(index, setEvidenceBeforeFiles)}
                         className="text-xs text-critical hover:text-critical-600"
                       >
                         Remove
@@ -483,14 +480,36 @@ export function NcrCreateModal(props: {
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Auto Close-Out Info */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="text-sm font-semibold text-charcoal mb-2">Auto Close-Out Conditions</h4>
-            <p className="text-xs text-charcoal-600">
-              NCR will automatically close when: Corrective actions completed, Evidence attached, and Sign-off done by authority.
-            </p>
+            <div>
+              <h3 className="text-sm font-semibold text-charcoal">Evidence of Closure</h3>
+              <p className="text-xs text-charcoal-500 mt-1">Upload proof showing the issue has been corrected (after corrective action).</p>
+              <input
+                type="file"
+                multiple
+                onChange={(e) => appendFiles(e.target.files, setEvidenceAfterFiles)}
+                className="w-full text-sm mt-2"
+              />
+              {evidenceAfterFiles.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {evidenceAfterFiles.map((file, index) => (
+                    <div key={`after-${index}`} className="flex items-center justify-between p-2 bg-surface-50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <FileIcon className="w-4 h-4 text-charcoal-400" />
+                        <span className="text-sm text-charcoal-600">{file.name}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFileAtIndex(index, setEvidenceAfterFiles)}
+                        className="text-xs text-critical hover:text-critical-600"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-surface-200">
@@ -515,4 +534,3 @@ export function NcrCreateModal(props: {
     </div>
   );
 }
-
