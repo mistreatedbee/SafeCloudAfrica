@@ -33,7 +33,6 @@ type ComplaintBase = {
 };
 
 export type ComplaintLinkingInput = {
-  createLinkedNcr?: boolean;
   createLinkedTask?: boolean;
   linkedTaskAssigneeUserId?: UUID | null;
 };
@@ -234,6 +233,14 @@ export async function createCustomerComplaint(input: {
   const complaintRefNo = input.complaintRefNo?.trim() || (await getOrCreateNextComplaintRef(input.companyId));
   const status = input.status ?? 'MONITORING_REQUIRED';
   const nowIso = new Date().toISOString();
+  const linkedNcr = await createQualityNcr({
+    companyId: input.companyId,
+    createdByUserId: input.actorUserId,
+    title: `Customer Complaint: ${input.customerName.trim()}`,
+    description: input.description.trim(),
+    severity: 'medium',
+    source_entity_type: 'customer_complaint'
+  });
 
   const insertPayload: Record<string, unknown> = {
     company_id: input.companyId,
@@ -249,6 +256,7 @@ export async function createCustomerComplaint(input: {
     status,
     customer_feedback: input.customerFeedback?.trim() || null,
     evidence_file_ids: input.evidenceFileIds ?? null,
+    linked_ncr_id: linkedNcr.id,
     created_by_user_id: input.actorUserId,
     updated_at: nowIso
   };
@@ -267,25 +275,11 @@ export async function createCustomerComplaint(input: {
   if (!data) throw new Error('Failed to create complaint.');
   let created = data as QualityCustomerComplaint;
 
-  if (input.createLinkedNcr) {
-    const ncr = await createQualityNcr({
-      companyId: input.companyId,
-      createdByUserId: input.actorUserId,
-      title: `Customer Complaint: ${created.customer_name}`,
-      description: created.description,
-      severity: 'medium',
-      source_entity_type: 'customer_complaint',
-      source_entity_id: created.id
-    });
-    const { data: linked } = await insforge.database
-      .from('quality_customer_complaints')
-      .update({ linked_ncr_id: ncr.id, updated_at: new Date().toISOString() })
-      .eq('company_id', input.companyId)
-      .eq('id', created.id)
-      .select('*')
-      .single();
-    if (linked) created = linked as QualityCustomerComplaint;
-  }
+  await insforge.database
+    .from('quality_ncrs')
+    .update({ source_entity_id: created.id, updated_at: new Date().toISOString() })
+    .eq('company_id', input.companyId)
+    .eq('id', linkedNcr.id);
 
   if (input.createLinkedTask) {
     const task = await createTask({

@@ -30,7 +30,6 @@ type ComplaintFormState = {
   actionTaken: string;
   status: CustomerComplaintStatus;
   customerFeedback: string;
-  createLinkedNcr: boolean;
   createLinkedTask: boolean;
   linkedTaskAssigneeUserId: UUID | '';
 };
@@ -82,7 +81,6 @@ function toForm(row?: QualityCustomerComplaint): ComplaintFormState {
     actionTaken: row?.action_taken ?? '',
     status: row?.status ?? 'MONITORING_REQUIRED',
     customerFeedback: row?.customer_feedback ?? '',
-    createLinkedNcr: false,
     createLinkedTask: false,
     linkedTaskAssigneeUserId: (row?.person_handling_user_id as UUID | null) ?? ''
   };
@@ -202,7 +200,6 @@ export default function QualityCustomerComplaintsPage() {
       if (formMode === 'create') {
         await createCustomerComplaint({
           ...payload,
-          createLinkedNcr: form.createLinkedNcr,
           createLinkedTask: form.createLinkedTask,
           linkedTaskAssigneeUserId: form.linkedTaskAssigneeUserId || undefined
         });
@@ -408,6 +405,15 @@ export default function QualityCustomerComplaintsPage() {
                         >
                           Export
                         </button>
+                        {row.linked_ncr_id && (
+                          <button
+                            type="button"
+                            onClick={() => navigate('/ncrs')}
+                            className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50"
+                          >
+                            View NCR
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -561,15 +567,7 @@ export default function QualityCustomerComplaintsPage() {
 
               {(formMode === 'create' || formMode === 'edit') && canEdit && (
                 <div className="bg-surface-50 border border-surface-200 rounded-xl p-3 space-y-3">
-                  <label className="flex items-center gap-2 text-sm text-charcoal">
-                    <input
-                      type="checkbox"
-                      checked={form.createLinkedNcr}
-                      onChange={(e) => setForm((s) => ({ ...s, createLinkedNcr: e.target.checked }))}
-                      disabled={formMode !== 'create'}
-                    />
-                    Create NCR/CAPA from this complaint
-                  </label>
+                  <p className="text-sm text-charcoal">An NCR is automatically created and linked for every complaint.</p>
                   <label className="flex items-center gap-2 text-sm text-charcoal">
                     <input
                       type="checkbox"
