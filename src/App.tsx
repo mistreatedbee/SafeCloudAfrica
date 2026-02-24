@@ -4,7 +4,11 @@ import { RequireWorkspace } from './auth/RequireWorkspace';
 import { RequireSignedIn } from './auth/RequireSignedIn';
 import { RequireCompanyRole } from './auth/RequireCompanyRole';
 import { RequireModuleEnabled } from './auth/RequireModuleEnabled';
+import { RequireActiveSubscription } from './auth/RequireActiveSubscription';
+import { OwnerOnboardingGate } from './auth/OwnerOnboardingGate';
+import { AuthSessionListener } from './auth/AuthSessionListener';
 import { TenantProvider } from './tenant/TenantContext';
+import { AppDashboardRedirect } from './components/AppDashboardRedirect';
 import { DashboardPage } from './pages/DashboardPage';
 import { SafetyPage } from './pages/SafetyPage';
 import { QualityPage } from './pages/QualityPage';
@@ -78,11 +82,19 @@ import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { LandingPage } from './pages/marketing/LandingPage';
 import { SuperAdminPage } from './pages/admin/SuperAdminPage';
 import { SeedDemoPage } from './pages/admin/SeedDemoPage';
+import { OwnerDashboardPage } from './pages/owner/OwnerDashboardPage';
+import { OwnerOnboardingWizardPage } from './pages/owner/OwnerOnboardingWizardPage';
+import { EmployeeDashboardPage } from './pages/employee/EmployeeDashboardPage';
+import { ExternalDashboardPage } from './pages/external/ExternalDashboardPage';
+import { ActivateLicensePage } from './pages/activate/ActivateLicensePage';
+import { BillingStatusPage } from './pages/BillingStatusPage';
+import { AccessDeniedPage } from './pages/AccessDeniedPage';
 import { WorkspaceOnboardingPage } from './pages/onboarding/WorkspaceOnboardingPage';
 export function App() {
   return (
     <BrowserRouter>
       <TenantProvider>
+        <AuthSessionListener />
         <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
@@ -93,6 +105,38 @@ export function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/logout" element={<LogoutPage />} />
+          <Route path="/activate" element={<ActivateLicensePage />} />
+
+          <Route
+            path="/billing"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <BillingStatusPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/billing/status"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <BillingStatusPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/access-denied"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <AccessDeniedPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
 
           {/* Post-login onboarding (create workspace) */}
           <Route
@@ -112,7 +156,7 @@ export function App() {
 
           {/* Super Admin (platform-wide) */}
           <Route
-            path="/super-admin"
+            path="/super-admin/*"
             element={
               <RequireSignedIn>
                 <RequirePlatformAdmin>
@@ -128,7 +172,95 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DashboardPage />
+                  <RequireActiveSubscription>
+                    <AppDashboardRedirect />
+                  </RequireActiveSubscription>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/owner"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireActiveSubscription>
+                    <RequireCompanyRole allowed={['owner']}>
+                      <OwnerOnboardingGate>
+                        <OwnerDashboardPage />
+                      </OwnerOnboardingGate>
+                    </RequireCompanyRole>
+                  </RequireActiveSubscription>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/owner/onboarding"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireActiveSubscription>
+                    <RequireCompanyRole allowed={['owner']}>
+                      <OwnerOnboardingWizardPage />
+                    </RequireCompanyRole>
+                  </RequireActiveSubscription>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireActiveSubscription>
+                    <RequireCompanyRole allowed={['admin']}>
+                      <DashboardPage />
+                    </RequireCompanyRole>
+                  </RequireActiveSubscription>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/manager"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireActiveSubscription>
+                    <RequireCompanyRole allowed={['manager', 'supervisor']}>
+                      <DashboardPage />
+                    </RequireCompanyRole>
+                  </RequireActiveSubscription>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/employee"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireActiveSubscription>
+                    <RequireCompanyRole allowed={['employee']}>
+                      <EmployeeDashboardPage />
+                    </RequireCompanyRole>
+                  </RequireActiveSubscription>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/external"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireActiveSubscription>
+                    <RequireCompanyRole allowed={['consultant', 'auditor']}>
+                      <ExternalDashboardPage />
+                    </RequireCompanyRole>
+                  </RequireActiveSubscription>
                 </RequireWorkspace>
               </RequireSignedIn>
             }

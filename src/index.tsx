@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { InsforgeProvider } from '@insforge/react';
 import { App } from './App';
 import { insforge } from './api/insforge/client';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 createRoot(document.getElementById('root')!).render(
   <InsforgeProvider
@@ -20,6 +21,8 @@ createRoot(document.getElementById('root')!).render(
       insforge.getHttpClient().setAuthToken(null);
     }}
   >
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </InsforgeProvider>
 );
