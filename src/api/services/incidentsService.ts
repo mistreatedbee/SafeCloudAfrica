@@ -103,6 +103,78 @@ export async function countMyIncidents(companyId: UUID, userId: UUID): Promise<n
   return count ?? 0;
 }
 
+export type GetIncidentCountsForKpiInput = {
+  companyId: UUID;
+  dateFrom: string;
+  dateTo: string;
+  siteId?: UUID | null;
+  departmentId?: UUID | null;
+};
+
+export type IncidentCountsForKpi = {
+  recordableInjuries: number;
+  lostTimeInjuries: number;
+  fatalities: number;
+  totalLostDays: number;
+  nearMisses: number;
+  accidents: number;
+  spills: number;
+  environmentalIncidents: number;
+  totalIncidents: number;
+};
+
+export async function getIncidentCountsForKpi(input: GetIncidentCountsForKpiInput): Promise<IncidentCountsForKpi> {
+  let q = insforge.database
+    .from('incidents')
+    .select('id, lost_days, is_recordable_injury, is_lost_time_injury, is_fatality, is_near_miss, is_accident, is_spill, is_environmental_incident')
+    .eq('company_id', input.companyId)
+    .gte('occurred_at', input.dateFrom)
+    .lte('occurred_at', input.dateTo);
+
+  if (input.siteId != null) q = q.eq('site_id', input.siteId);
+  if (input.departmentId != null) q = q.eq('department_id', input.departmentId);
+
+  const { data, error } = await q;
+  if (error) throw new Error(getErrorMessage(error));
+
+  const rows = (data ?? []) as Array<{
+    id: UUID;
+    lost_days: number | null;
+    is_recordable_injury?: boolean | null;
+    is_lost_time_injury?: boolean | null;
+    is_fatality?: boolean | null;
+    is_near_miss?: boolean | null;
+    is_accident?: boolean | null;
+    is_spill?: boolean | null;
+    is_environmental_incident?: boolean | null;
+  }>;
+
+  const totals: IncidentCountsForKpi = {
+    recordableInjuries: 0,
+    lostTimeInjuries: 0,
+    fatalities: 0,
+    totalLostDays: 0,
+    nearMisses: 0,
+    accidents: 0,
+    spills: 0,
+    environmentalIncidents: 0,
+    totalIncidents: rows.length
+  };
+
+  for (const row of rows) {
+    if (row.is_recordable_injury) totals.recordableInjuries += 1;
+    if (row.is_lost_time_injury) totals.lostTimeInjuries += 1;
+    if (row.is_fatality) totals.fatalities += 1;
+    if (row.is_near_miss) totals.nearMisses += 1;
+    if (row.is_accident) totals.accidents += 1;
+    if (row.is_spill) totals.spills += 1;
+    if (row.is_environmental_incident) totals.environmentalIncidents += 1;
+    totals.totalLostDays += Number(row.lost_days) || 0;
+  }
+
+  return totals;
+}
+
 export type CreateIncidentInput = {
   companyId: UUID;
   module: ModuleKey;
