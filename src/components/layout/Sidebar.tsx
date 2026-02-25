@@ -29,6 +29,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   XIcon,
+  PanelLeftCloseIcon,
   CloudIcon,
   CreditCardIcon,
   IdCardIcon,
@@ -137,6 +138,8 @@ const settingsItems: NavItem[] = [
 type SidebarProps = {
   isOpen: boolean;
   onClose: () => void;
+  isCollapsed: boolean;
+  onToggleCollapsed: () => void;
 };
 function dashboardPathForRole(role: CompanyRole | null): string {
   if (!role) return '/app';
@@ -168,7 +171,7 @@ function filterByEnabledModules<T extends { module?: ModuleKey }>(items: T[], en
   });
 }
 
-export function Sidebar({ isOpen, onClose }: SidebarProps) {
+export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapsed }: SidebarProps) {
   const [modulesExpanded, setModulesExpanded] = useState(true);
   const location = useLocation();
   const { activeRole, enabledModules, sellableFeatures: sellableFeatureConfig } = useTenant();
@@ -201,11 +204,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       <NavLink
         to={item.path}
         onClick={() => window.innerWidth < 1024 && onClose()}
-        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-teal/10 text-teal' : 'text-charcoal-500 hover:bg-surface-200 hover:text-charcoal'}`}
+        title={isCollapsed ? item.name : undefined}
+        className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isCollapsed ? 'justify-center' : 'gap-3'} ${isActive ? 'bg-teal/10 text-teal' : 'text-charcoal-500 hover:bg-surface-200 hover:text-charcoal'}`}
       >
         <item.icon className="w-5 h-5 flex-shrink-0" />
-        <span className="truncate">{item.name}</span>
-        {isSellableLocked && (
+        {!isCollapsed && <span className="truncate">{item.name}</span>}
+        {!isCollapsed && isSellableLocked && (
           <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning">
             <LockIcon className="w-3 h-3" />
             Locked
@@ -216,18 +220,28 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   };
 
   const sidebarContent =
-  <div className="flex flex-col h-full bg-white border-r border-surface-300">
+  <div className="flex flex-col h-full bg-white border-r border-surface-300 min-w-0">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-surface-200">
+      <div className={`flex items-center px-5 py-4 border-b border-surface-200 ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
         <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-navy to-navy-700">
           <CloudIcon className="w-6 h-6 text-white" />
         </div>
-        <div>
+        {!isCollapsed && <div>
           <h1 className="font-bold text-navy text-lg leading-tight">
             Safe Cloud
           </h1>
           <p className="text-xs text-teal font-medium">Africa</p>
-        </div>
+        </div>}
+        {!isCollapsed && (
+          <button
+          onClick={onToggleCollapsed}
+          className="hidden lg:inline-flex ml-auto p-2 rounded-lg hover:bg-surface-100 text-charcoal-400"
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar">
+
+            <PanelLeftCloseIcon className="w-5 h-5" />
+          </button>
+        )}
         <button
         onClick={onClose}
         className="lg:hidden ml-auto p-2 rounded-lg hover:bg-surface-100 text-charcoal-400"
@@ -254,7 +268,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="mb-4">
           <button
           onClick={() => setModulesExpanded(!modulesExpanded)}
-          className="flex items-center justify-between w-full px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider hover:text-charcoal transition-colors">
+          className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider hover:text-charcoal transition-colors ${isCollapsed ? 'hidden' : ''}`}>
 
             <span>Modules</span>
             {modulesExpanded ?
@@ -264,7 +278,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           }
           </button>
           <AnimatePresence>
-            {modulesExpanded &&
+            {(isCollapsed || modulesExpanded) &&
           <motion.div
             initial={{
               height: 0,
@@ -295,7 +309,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Supporting Sections */}
         <div className="mb-4">
-          <div className="px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider">
+          <div className={`px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider ${isCollapsed ? 'hidden' : ''}`}>
             Management
           </div>
           <div className="mt-1 space-y-0.5">
@@ -308,7 +322,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Sellable Features */}
         {filteredSellable.length > 0 && (
           <div className="mb-4">
-            <div className="px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider">
+            <div className={`px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider ${isCollapsed ? 'hidden' : ''}`}>
               Sellable Features
             </div>
             <div className="mt-1 space-y-0.5">
@@ -331,16 +345,20 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Footer */}
       <div className="px-4 py-3 border-t border-surface-200 bg-surface-50">
-        <p className="text-xs text-charcoal-400 text-center">
-          © 2024 Safe Cloud Africa
-        </p>
+        {!isCollapsed && (
+          <p className="text-xs text-charcoal-400 text-center">
+            (c) 2024 Safe Cloud Africa
+          </p>
+        )}
       </div>
     </div>;
 
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex lg:flex-shrink-0 lg:w-[280px] lg:relative lg:z-40">
+      <aside
+        className={`hidden lg:flex lg:flex-shrink-0 lg:relative lg:z-40 transition-[width] duration-300 ease-in-out ${isCollapsed ? 'lg:w-[88px]' : 'lg:w-[280px]'}`}
+      >
         {sidebarContent}
       </aside>
 
@@ -388,3 +406,4 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     </>);
 
 }
+

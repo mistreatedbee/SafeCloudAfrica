@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MenuIcon, SearchIcon, UsersIcon } from 'lucide-react';
+import { MenuIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SearchIcon, UsersIcon } from 'lucide-react';
 import { NotificationBell, type NotificationItem } from '../ui/NotificationBell';
 import { UserMenu } from '../ui/UserMenu';
 import { useTenant } from '../../tenant/TenantContext';
@@ -11,6 +11,8 @@ import type { Notification } from '../../api/models/entities';
 
 type HeaderProps = {
   onMenuClick: () => void;
+  onSidebarToggle: () => void;
+  isSidebarCollapsed: boolean;
   title?: string;
 };
 
@@ -35,7 +37,7 @@ function SeatsRemainingBadge() {
   );
 }
 
-export function Header({ onMenuClick, title }: HeaderProps) {
+export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed, title }: HeaderProps) {
   const { activeCompanyId } = useTenant();
   const { user } = useUser();
   const { organisationName, roleLabel } = useIdentity();
@@ -77,6 +79,14 @@ export function Header({ onMenuClick, title }: HeaderProps) {
             aria-label="Open menu"
           >
             <MenuIcon className="w-5 h-5" />
+          </button>
+          <button
+            onClick={onSidebarToggle}
+            className="hidden lg:inline-flex p-2 rounded-lg text-charcoal-500 hover:bg-surface-100 hover:text-charcoal transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal"
+            aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isSidebarCollapsed ? <PanelLeftOpenIcon className="w-5 h-5" /> : <PanelLeftCloseIcon className="w-5 h-5" />}
           </button>
 
           {title && (
