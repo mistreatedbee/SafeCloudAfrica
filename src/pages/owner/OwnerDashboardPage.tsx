@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { Link, useLocation } from 'react-router-dom';
 import {
   ShieldCheckIcon,
   TrendingUpIcon,
   BarChart3Icon,
   AlertOctagonIcon,
   ScaleIcon,
-  GraduationCapIcon,
   Building2Icon,
   ArrowRightIcon,
 } from 'lucide-react';
@@ -16,7 +16,6 @@ import { StatCard } from '../../components/ui/StatCard';
 import { RiskHeatMap } from '../../components/ui/RiskHeatMap';
 import { TrendChart } from '../../components/ui/TrendChart';
 import { useTenant } from '../../tenant/TenantContext';
-import { useUser } from '@insforge/react';
 import { useIdentity } from '../../hooks/useIdentity';
 import { useAsync } from '../../api/hooks/useAsync';
 import { getLicenseInfo } from '../../api/services/licensingService';
@@ -26,13 +25,16 @@ import { listModuleTargets } from '../../api/services/moduleTargetsService';
 import { countOverdueCorrectiveActions } from '../../api/services/correctiveActionsService';
 import { countExpiringTraining } from '../../api/services/trainingService';
 import { listAudits } from '../../api/services/auditsService';
+import { listSites } from '../../api/services/sitesService';
+import { listDepartments } from '../../api/services/departmentsService';
 
 export function OwnerDashboardPage() {
-  const { activeCompanyId, activeRole } = useTenant();
-  const { user } = useUser();
+  const { activeCompanyId, activeCompany } = useTenant();
+  const location = useLocation();
   const { organisationName } = useIdentity();
   const firstName = String(useIdentity().fullName).split(' ')[0];
   const [refreshKey, setRefreshKey] = useState(0);
+  const showOnboardingComplete = new URLSearchParams(location.search).get('onboarding') === 'complete';
 
   const { data: summary, loading, error } = useAsync(
     async () => {
@@ -124,10 +126,38 @@ export function OwnerDashboardPage() {
     () => (activeCompanyId ? getLicenseInfo(activeCompanyId) : null),
     [activeCompanyId, refreshKey]
   );
+  const { data: siteCount } = useAsync(
+    async () => {
+      if (!activeCompanyId) return 0;
+      const rows = await listSites(activeCompanyId, 2000);
+      return rows.length;
+    },
+    [activeCompanyId, refreshKey]
+  );
+  const { data: departmentCount } = useAsync(
+    async () => {
+      if (!activeCompanyId) return 0;
+      const rows = await listDepartments(activeCompanyId, 2000);
+      return rows.length;
+    },
+    [activeCompanyId, refreshKey]
+  );
+
+  const meta = (activeCompany?.metadata ?? {}) as Record<string, any>;
+  const onboardingSummary = (meta.onboarding_summary ?? {}) as Record<string, any>;
+  const summaryModules: string[] = Array.isArray(onboardingSummary.modules_enabled)
+    ? onboardingSummary.modules_enabled
+    : [];
 
   return (
     <Layout title="Owner Dashboard">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+        {showOnboardingComplete && (
+          <div className="bg-success/5 border border-success/20 rounded-xl p-4">
+            <p className="text-sm font-semibold text-success">Organization setup complete</p>
+            <p className="text-sm text-charcoal-600 mt-1">Your system is ready.</p>
+          </div>
+        )}
         <div className="bg-gradient-to-r from-navy to-navy-700 rounded-2xl p-6 text-white">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
@@ -171,6 +201,37 @@ export function OwnerDashboardPage() {
             </p>
           </div>
         )}
+
+        <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-charcoal">Organization summary</p>
+              <p className="text-sm text-charcoal-500 mt-1">
+                Org Name: {activeCompany?.name ?? organisationName}
+                {' • '}
+                Plan/Seats: {licenseInfo?.type ?? activeCompany?.license_type ?? '-'} / {licenseInfo?.employeeLimit ?? activeCompany?.employee_limit ?? 0}
+                {' • '}
+                Modules: {summaryModules.length ? summaryModules.join(', ') : 'Not captured'}
+                {' • '}
+                Sites/Departments: {siteCount ?? 0}/{departmentCount ?? 0}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                to="/settings"
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+              >
+                Edit Organization Profile
+              </Link>
+              <Link
+                to="/users"
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
+              >
+                Manage Users
+              </Link>
+            </div>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card flex flex-col items-center">

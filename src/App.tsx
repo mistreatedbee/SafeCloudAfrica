@@ -1148,7 +1148,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RequireCompanyRole allowed={['admin', 'manager']}>
+                  <RequireCompanyRole allowed={['owner', 'admin', 'manager']}>
                     <SettingsPage />
                   </RequireCompanyRole>
                 </RequireWorkspace>
@@ -1180,7 +1180,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RequireCompanyRole allowed={['admin', 'manager']}>
+                  <RequireCompanyRole allowed={['owner', 'admin', 'manager']}>
                     <UsersPage />
                   </RequireCompanyRole>
                 </RequireWorkspace>

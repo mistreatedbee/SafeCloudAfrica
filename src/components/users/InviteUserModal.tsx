@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import type { Company, CompanyInvite, UUID } from '../../api/models/entities';
 import type { CompanyRole } from '../../api/models/core';
-import { createInvite } from '../../api/services/tenantService';
+import { createInvite, type InviteCreateResult } from '../../api/services/tenantService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 
@@ -13,6 +13,7 @@ export function InviteUserModal(props: {
   actorUserId: UUID;
   allowedRoles: CompanyRole[];
   onInvited?: (invite: CompanyInvite) => void;
+  onInviteResult?: (result: InviteCreateResult, email: string) => void;
 }) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<CompanyRole>(props.allowedRoles[0] ?? 'employee');
@@ -26,15 +27,21 @@ export function InviteUserModal(props: {
     setError(null);
     try {
       setLoading(true);
-      const invite = await createInvite({
+      const normalizedEmail = email.trim().toLowerCase();
+      const result = await createInvite({
         company: props.company,
         actorUserId: props.actorUserId,
         email,
         role
       });
-      props.onInvited?.(invite);
-      setEmail('');
-      props.onClose();
+      props.onInviteResult?.(result, normalizedEmail);
+      if (result.ok) {
+        props.onInvited?.(result.invite);
+        setEmail('');
+        props.onClose();
+        return;
+      }
+      setError(result.message);
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {
@@ -112,7 +119,7 @@ export function InviteUserModal(props: {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading && <LoadingSpinner size={16} />}
-              Send invite
+              {loading ? 'Sending...' : 'Send invite'}
             </button>
           </div>
         </form>

@@ -16,7 +16,6 @@ import { useUser } from '@insforge/react';
 import { updateCompanyProfile } from '../api/services/tenantService';
 import { insforge } from '../api/insforge/client';
 import { formatAuthError } from '../auth/authMessages';
-import { getMyUserSettings, upsertMyUserSettings } from '../api/services/userSettingsService';
 const settingsSections = [
 {
   id: 'company',
@@ -80,7 +79,7 @@ export function SettingsPage() {
   const [activeSection, setActiveSection] = useState('company');
   const { user } = useUser();
   const { activeCompany, activeCompanyId, activeRole, refreshTenant } = useTenant();
-  const canManage = activeRole === 'admin' || activeRole === 'manager';
+  const canManage = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager';
 
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [saving, setSaving] = useState(false);
@@ -175,57 +174,6 @@ export function SettingsPage() {
     }
   }
 
-  const [userNotificationSettings, setUserNotificationSettings] = useState<{
-    email: boolean;
-    inApp: boolean;
-    loading: boolean;
-  }>({
-    email: true,
-    inApp: true,
-    loading: true
-  });
-
-  React.useEffect(() => {
-    let isMounted = true;
-    async function loadUserSettings() {
-      if (!activeCompanyId || !user?.id) {
-        setUserNotificationSettings((prev) => ({ ...prev, loading: false }));
-        return;
-      }
-      try {
-        const settings = await getMyUserSettings(activeCompanyId as any, user.id as any);
-        if (!isMounted) return;
-        setUserNotificationSettings({
-          email: settings.email_notifications_enabled,
-          inApp: settings.inapp_notifications_enabled,
-          loading: false
-        });
-      } catch {
-        if (!isMounted) return;
-        setUserNotificationSettings((prev) => ({ ...prev, loading: false }));
-      }
-    }
-    void loadUserSettings();
-    return () => {
-      isMounted = false;
-    };
-  }, [activeCompanyId, user?.id]);
-
-  async function saveUserNotificationSettings(next: { email: boolean; inApp: boolean }) {
-    if (!activeCompanyId || !user?.id) return;
-    setUserNotificationSettings((prev) => ({ ...prev, ...next, loading: true }));
-    try {
-      await upsertMyUserSettings({
-        companyId: activeCompanyId as any,
-        userId: user.id as any,
-        emailNotificationsEnabled: next.email,
-        inappNotificationsEnabled: next.inApp
-      });
-    } finally {
-      setUserNotificationSettings((prev) => ({ ...prev, loading: false }));
-    }
-  }
-
   return (
     <Layout title="Settings">
       <motion.div
@@ -279,7 +227,7 @@ export function SettingsPage() {
               {!canManage && (
                 <div className="mb-4 bg-warning/5 border border-warning/20 rounded-xl p-3">
                   <p className="text-sm font-semibold text-warning">Read-only</p>
-                  <p className="text-sm text-charcoal-600 mt-1">Only Company Admins and Managers can change settings.</p>
+                  <p className="text-sm text-charcoal-600 mt-1">Only Company Owners, Admins, and Managers can change settings.</p>
                 </div>
               )}
               {activeSection === 'company' &&
@@ -428,44 +376,6 @@ export function SettingsPage() {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="bg-surface-50 border border-surface-200 rounded-xl p-4">
-                      <h4 className="text-sm font-semibold text-charcoal mb-2">Your notification delivery</h4>
-                      <p className="text-xs text-charcoal-400 mb-3">
-                        Control how SafeCloud Africa delivers alerts to you.
-                      </p>
-                      <div className="flex flex-wrap gap-6">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={userNotificationSettings.email}
-                            disabled={userNotificationSettings.loading}
-                            onChange={(e) =>
-                              void saveUserNotificationSettings({
-                                email: e.target.checked,
-                                inApp: userNotificationSettings.inApp
-                              })
-                            }
-                            className="w-4 h-4 rounded border-surface-300 text-teal focus:ring-teal"
-                          />
-                          <span className="text-sm text-charcoal-500">Email notifications</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={userNotificationSettings.inApp}
-                            disabled={userNotificationSettings.loading}
-                            onChange={(e) =>
-                              void saveUserNotificationSettings({
-                                email: userNotificationSettings.email,
-                                inApp: e.target.checked
-                              })
-                            }
-                            className="w-4 h-4 rounded border-surface-300 text-teal focus:ring-teal"
-                          />
-                          <span className="text-sm text-charcoal-500">In-app notifications</span>
-                        </label>
-                      </div>
-                    </div>
                     {[
                   {
                     label: 'Incident Alerts',

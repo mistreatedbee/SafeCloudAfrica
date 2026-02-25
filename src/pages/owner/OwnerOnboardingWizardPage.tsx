@@ -7,11 +7,10 @@ import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listSites, createSite } from '../../api/services/sitesService';
 import { listDepartments, createDepartment } from '../../api/services/departmentsService';
-import { listCompanyMemberships, listCompanyInvites, createInvite, updateCompanyProfile } from '../../api/services/tenantService';
+import { listCompanyMemberships, updateCompanyProfile, type InviteCreateResult } from '../../api/services/tenantService';
 import { insforge } from '../../api/insforge/client';
 import { InviteUserModal } from '../../components/users/InviteUserModal';
-import type { UUID } from '../../api/models/entities';
-import type { CompanyRole } from '../../api/models/core';
+import type { UUID } from '../../api/models/core';
 
 const STEPS = [
   { id: 'setup', title: 'Organisation setup', icon: Building2Icon },
@@ -27,10 +26,9 @@ export function OwnerOnboardingWizardPage() {
   const [stepIndex, setStepIndex] = useState(0);
   const [refresh, setRefresh] = useState(0);
 
-  const { data: sites } = useAsync(() => (activeCompanyId ? listSites(activeCompanyId) : []), [activeCompanyId, refresh]);
-  const { data: departments } = useAsync(() => (activeCompanyId ? listDepartments(activeCompanyId) : []), [activeCompanyId, refresh]);
-  const { data: members } = useAsync(() => (activeCompanyId ? listCompanyMemberships(activeCompanyId) : []), [activeCompanyId, refresh]);
-  const { data: invites } = useAsync(() => (activeCompanyId ? listCompanyInvites(activeCompanyId) : []), [activeCompanyId, refresh]);
+  const { data: sites } = useAsync(async () => (activeCompanyId ? listSites(activeCompanyId) : []), [activeCompanyId, refresh]);
+  const { data: departments } = useAsync(async () => (activeCompanyId ? listDepartments(activeCompanyId) : []), [activeCompanyId, refresh]);
+  const { data: members } = useAsync(async () => (activeCompanyId ? listCompanyMemberships(activeCompanyId) : []), [activeCompanyId, refresh]);
 
   const [newSiteName, setNewSiteName] = useState('');
   const [newSiteAddress, setNewSiteAddress] = useState('');
@@ -39,6 +37,8 @@ export function OwnerOnboardingWizardPage() {
   const [inviteStep, setInviteStep] = useState<'admin' | 'users'>('admin');
   const [moduleToggles, setModuleToggles] = useState<Record<string, boolean>>({});
   const [finishing, setFinishing] = useState(false);
+  const [completionMessage, setCompletionMessage] = useState<string | null>(null);
+  const [inviteFeedback, setInviteFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const { data: licenseRow } = useAsync(
     async () => {
@@ -78,12 +78,34 @@ export function OwnerOnboardingWizardPage() {
   };
 
   const handleFinish = async () => {
-    if (!activeCompanyId) return;
+    if (!activeCompanyId || !activeCompany) return;
     setFinishing(true);
     try {
       const meta = (activeCompany?.metadata ?? {}) as Record<string, unknown>;
-      await updateCompanyProfile({ companyId: activeCompanyId, metadata: { ...meta, onboarding_completed_at: new Date().toISOString() } });
-      navigate('/owner', { replace: true });
+      const enabledModules = subscriptionModules.filter((m) => moduleToggles[m] !== false);
+      const onboardingCompletedAt = new Date().toISOString();
+      await updateCompanyProfile({
+        companyId: activeCompanyId,
+        metadata: {
+          ...meta,
+          onboarding_completed_at: onboardingCompletedAt,
+          onboarding_summary: {
+            organization_name: activeCompany.name,
+            logo_bucket: (meta as any)?.logo_bucket ?? null,
+            logo_key: (meta as any)?.logo_key ?? null,
+            sites: (sites ?? []).map((s: any) => ({ id: s.id, name: s.name })),
+            departments: (departments ?? []).map((d: any) => ({ id: d.id, name: d.name })),
+            modules_enabled: enabledModules,
+            seats_total: seatsTotal,
+            seats_used: seatsUsed,
+            completed_at: onboardingCompletedAt
+          }
+        }
+      });
+      setCompletionMessage('Organization setup complete. Your system is ready.');
+      window.setTimeout(() => {
+        navigate('/owner?onboarding=complete', { replace: true });
+      }, 1200);
     } finally {
       setFinishing(false);
     }
@@ -115,6 +137,21 @@ export function OwnerOnboardingWizardPage() {
             </React.Fragment>
           ))}
         </div>
+
+        {completionMessage && (
+          <div className="bg-success/5 border border-success/20 rounded-xl p-4">
+            <p className="text-sm font-semibold text-success">Setup complete</p>
+            <p className="text-sm text-charcoal-600 mt-1">{completionMessage}</p>
+          </div>
+        )}
+        {inviteFeedback && (
+          <div className={`rounded-xl p-4 border ${inviteFeedback.type === 'success' ? 'bg-success/5 border-success/20' : 'bg-critical/5 border-critical/20'}`}>
+            <p className={`text-sm font-semibold ${inviteFeedback.type === 'success' ? 'text-success' : 'text-critical'}`}>
+              {inviteFeedback.type === 'success' ? 'Success' : 'Error'}
+            </p>
+            <p className="text-sm text-charcoal-600 mt-1">{inviteFeedback.text}</p>
+          </div>
+        )}
 
         {stepIndex === 0 && (
           <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5 space-y-6">
@@ -158,6 +195,13 @@ export function OwnerOnboardingWizardPage() {
               actorUserId={user!.id as UUID}
               allowedRoles={['admin']}
               onInvited={() => setRefresh((r) => r + 1)}
+              onInviteResult={(result: InviteCreateResult, email: string) => {
+                if (result.ok) {
+                  setInviteFeedback({ type: 'success', text: `Invite sent successfully to ${email}.` });
+                } else {
+                  setInviteFeedback({ type: 'error', text: result.message || 'Invite failed to send. Please try again or contact support.' });
+                }
+              }}
             />
           </div>
         )}
@@ -180,6 +224,13 @@ export function OwnerOnboardingWizardPage() {
               actorUserId={user!.id as UUID}
               allowedRoles={['admin', 'manager', 'supervisor', 'consultant', 'employee', 'auditor']}
               onInvited={() => setRefresh((r) => r + 1)}
+              onInviteResult={(result: InviteCreateResult, email: string) => {
+                if (result.ok) {
+                  setInviteFeedback({ type: 'success', text: `Invite sent successfully to ${email}.` });
+                } else {
+                  setInviteFeedback({ type: 'error', text: result.message || 'Invite failed to send. Please try again or contact support.' });
+                }
+              }}
             />
           </div>
         )}

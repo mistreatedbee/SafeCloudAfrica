@@ -93,7 +93,7 @@ export function InviteAcceptPage() {
 
   if (!invite) return null;
 
-  const emailMatches = user?.email === invite.email;
+  const emailMatches = String(user?.email ?? '').toLowerCase() === String(invite.email ?? '').toLowerCase();
 
   return (
     <>

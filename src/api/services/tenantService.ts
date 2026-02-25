@@ -50,7 +50,7 @@ export async function createMembership(input: { companyId: UUID; userId: UUID; r
   if (!company) throw new Error('Company not found.');
   
   const memberCount = await countActiveMembers(input.companyId);
-  if (memberCount >= company.employee_limit) {
+  if (company.employee_limit > 0 && memberCount >= company.employee_limit) {
     throw new Error(`Your licence limit is ${company.employee_limit} users. Please upgrade to add more employees.`);
   }
   
@@ -154,17 +154,167 @@ export async function getSeatLimitForCompany(companyId: UUID): Promise<number> {
   return company?.employee_limit ?? 0;
 }
 
+export type InviteCreateErrorCode =
+  | 'NOT_IN_ORGANISATION'
+  | 'PERMISSION_DENIED'
+  | 'ALREADY_INVITED'
+  | 'USER_ALREADY_EXISTS'
+  | 'LICENSE_LIMIT_REACHED'
+  | 'INVITE_CREATE_FAILED'
+  | 'UNKNOWN';
+
+export type InviteCreateResult =
+  | {
+      ok: true;
+      status: 'SENT';
+      invite: CompanyInvite;
+    }
+  | {
+      ok: false;
+      status: 'FAILED';
+      code: InviteCreateErrorCode;
+      message: string;
+    };
+
+function normalizeInviteStatus(status: string | null | undefined): string {
+  return String(status ?? '').trim().toUpperCase();
+}
+
+function mapInviteCreateError(message: string): { code: InviteCreateErrorCode; message: string } {
+  const lowered = message.toLowerCase();
+  if (lowered.includes('already invited') || lowered.includes('duplicate') || lowered.includes('unique')) {
+    return { code: 'ALREADY_INVITED', message: 'This user is already invited.' };
+  }
+  if (lowered.includes('already exists') || lowered.includes('already in this organization') || lowered.includes('already in this organisation')) {
+    return { code: 'USER_ALREADY_EXISTS', message: 'User already exists in this organization.' };
+  }
+  if (lowered.includes('licence limit') || lowered.includes('license limit') || lowered.includes('seat limit')) {
+    return { code: 'LICENSE_LIMIT_REACHED', message: 'License limit reached. Upgrade to add more users.' };
+  }
+  if (lowered.includes('permission') || lowered.includes('not allowed') || lowered.includes('forbidden') || lowered.includes('rls')) {
+    return { code: 'PERMISSION_DENIED', message: 'Only organization owners or admins can send invites.' };
+  }
+  return { code: 'UNKNOWN', message: 'Invite failed to send. Please try again or contact support.' };
+}
+
 export async function createInvite(input: {
   company: Company;
   actorUserId: UUID;
   email: string;
   role: CompanyRole;
-}): Promise<CompanyInvite> {
-  await ensureInsforgeSession();
-  const memberCount = await countActiveMembers(input.company.id);
-  if (memberCount >= input.company.employee_limit) {
-    throw new Error(`Your licence limit is ${input.company.employee_limit} users. Please upgrade to add more employees.`);
+}): Promise<InviteCreateResult> {
+  try {
+    await ensureInsforgeSession();
+  } catch {
+    return {
+      ok: false,
+      status: 'FAILED',
+      code: 'UNKNOWN',
+      message: 'Invite failed to send. Please try again or contact support.'
+    };
   }
+  const normalizedEmail = input.email.trim().toLowerCase();
+
+  try {
+    const { data: inviterMembership, error: inviterError } = await insforge.database
+      .from('company_memberships')
+      .select('role')
+      .eq('company_id', input.company.id)
+      .eq('user_id', input.actorUserId)
+      .maybeSingle();
+
+    if (inviterError) {
+      return {
+        ok: false,
+        status: 'FAILED',
+        code: 'PERMISSION_DENIED',
+        message: 'Only organization owners or admins can send invites.'
+      };
+    }
+    if (!inviterMembership) {
+      return {
+        ok: false,
+        status: 'FAILED',
+        code: 'NOT_IN_ORGANISATION',
+        message: 'Inviter must belong to this organization.'
+      };
+    }
+
+    const inviterRole = normalizeInviteStatus((inviterMembership as any).role);
+    if (inviterRole !== 'OWNER' && inviterRole !== 'ADMIN') {
+      return {
+        ok: false,
+        status: 'FAILED',
+        code: 'PERMISSION_DENIED',
+        message: 'Only organization owners or admins can send invites.'
+      };
+    }
+
+    const { data: existingInvite, error: existingInviteError } = await insforge.database
+      .from('company_invites')
+      .select('id, status')
+      .eq('company_id', input.company.id)
+      .eq('email', normalizedEmail)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!existingInviteError && existingInvite) {
+      const existingStatus = normalizeInviteStatus((existingInvite as any).status);
+      if (existingStatus === 'PENDING' || existingStatus === 'SENT') {
+        return {
+          ok: false,
+          status: 'FAILED',
+          code: 'ALREADY_INVITED',
+          message: 'This user is already invited.'
+        };
+      }
+    }
+
+    const { data: existingProfile, error: existingProfileError } = await insforge.database
+      .from('user_profiles')
+      .select('id')
+      .eq('company_id', input.company.id)
+      .eq('email', normalizedEmail)
+      .limit(1)
+      .maybeSingle();
+    if (!existingProfileError && existingProfile) {
+      return {
+        ok: false,
+        status: 'FAILED',
+        code: 'USER_ALREADY_EXISTS',
+        message: 'User already exists in this organization.'
+      };
+    }
+
+    const memberCount = await countActiveMembers(input.company.id);
+    const { count: pendingInviteCount, error: pendingCountError } = await insforge.database
+      .from('company_invites')
+      .select('*', { count: 'exact', head: true })
+      .eq('company_id', input.company.id)
+      .in('status', ['PENDING', 'SENT', 'pending', 'sent']);
+    if (pendingCountError) {
+      return {
+        ok: false,
+        status: 'FAILED',
+        code: 'INVITE_CREATE_FAILED',
+        message: 'Invite failed to send. Please try again or contact support.'
+      };
+    }
+    const projectedSeats = memberCount + (pendingInviteCount ?? 0);
+    if (input.company.employee_limit > 0 && projectedSeats >= input.company.employee_limit) {
+      return {
+        ok: false,
+        status: 'FAILED',
+        code: 'LICENSE_LIMIT_REACHED',
+        message: 'License limit reached. Upgrade to add more users.'
+      };
+    }
+  } catch (err: any) {
+    const mapped = mapInviteCreateError(getErrorMessage(err));
+    return { ok: false, status: 'FAILED', code: mapped.code, message: mapped.message };
+  }
+
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
@@ -172,30 +322,42 @@ export async function createInvite(input: {
     .from('company_invites')
     .insert({
       company_id: input.company.id,
-      email: input.email.trim().toLowerCase(),
+      email: normalizedEmail,
       role: input.role,
       created_by_user_id: input.actorUserId,
       token: generateInviteToken(),
       expires_at: expiresAt.toISOString(),
-      status: 'pending'
+      status: 'SENT',
+      sent_at: now.toISOString(),
+      error_message: null
     })
     .select('*')
     .single();
 
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to create invite.');
+  if (error || !data) {
+    const mapped = mapInviteCreateError(getErrorMessage(error));
+    return { ok: false, status: 'FAILED', code: mapped.code, message: mapped.message };
+  }
 
   // Always log consultant/admin activity (and all actions generally).
-  await createActivityLog({
-    companyId: input.company.id,
-    actorUserId: input.actorUserId,
-    action: 'company_invites.create',
-    entityType: 'company_invite',
-    entityId: (data as any).id as UUID,
-    metadata: { email: input.email, role: input.role }
-  });
+  try {
+    await createActivityLog({
+      companyId: input.company.id,
+      actorUserId: input.actorUserId,
+      action: 'company_invites.create',
+      entityType: 'company_invite',
+      entityId: (data as any).id as UUID,
+      metadata: { email: normalizedEmail, role: input.role }
+    });
+  } catch {
+    // Do not fail invite creation when activity logging fails.
+  }
 
-  return data as CompanyInvite;
+  return {
+    ok: true,
+    status: 'SENT',
+    invite: data as CompanyInvite
+  };
 }
 
 export async function acceptInvite(input: { inviteId: UUID; userId: UUID }): Promise<CompanyMembership> {
@@ -206,7 +368,7 @@ export async function acceptInvite(input: { inviteId: UUID; userId: UUID }): Pro
     .update({
       accepted_at: new Date().toISOString(),
       accepted_user_id: input.userId,
-      status: 'accepted'
+      status: 'ACCEPTED'
     })
     .eq('id', input.inviteId)
     .select('*')
@@ -229,6 +391,42 @@ export async function acceptInvite(input: { inviteId: UUID; userId: UUID }): Pro
   });
 
   return membership;
+}
+
+export async function getInviteIdByToken(token: string): Promise<UUID | null> {
+  const cleanToken = token.trim();
+  if (!cleanToken) return null;
+
+  const { data, error } = await insforge.database.rpc('get_invite_id_by_token', { p_token: cleanToken });
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) return null;
+  return data as UUID;
+}
+
+export async function updateMembershipRole(input: {
+  companyId: UUID;
+  membershipId: UUID;
+  role: CompanyRole;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('company_memberships')
+    .update({ role })
+    .eq('company_id', input.companyId)
+    .eq('id', input.membershipId);
+  if (error) throw new Error(getErrorMessage(error));
+}
+
+export async function updateMembershipStatus(input: {
+  companyId: UUID;
+  membershipId: UUID;
+  status: 'INVITED' | 'ACTIVE' | 'DISABLED';
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('company_memberships')
+    .update({ status })
+    .eq('company_id', input.companyId)
+    .eq('id', input.membershipId);
+  if (error) throw new Error(getErrorMessage(error));
 }
 
 export function getDefaultEmployeeLimit(licenseType: LicenseType): number {
