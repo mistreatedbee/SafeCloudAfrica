@@ -5,6 +5,14 @@ import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { ensureInsforgeSession } from '../insforge/ensureSession';
 
+function generateInviteToken(): string {
+  // Browser-safe unique token for invite links.
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 export type CreateCompanyInput = {
   name: string;
   licenseType: LicenseType;
@@ -157,6 +165,8 @@ export async function createInvite(input: {
   if (memberCount >= input.company.employee_limit) {
     throw new Error(`Your licence limit is ${input.company.employee_limit} users. Please upgrade to add more employees.`);
   }
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   const { data, error } = await insforge.database
     .from('company_invites')
@@ -164,7 +174,10 @@ export async function createInvite(input: {
       company_id: input.company.id,
       email: input.email.trim().toLowerCase(),
       role: input.role,
-      created_by_user_id: input.actorUserId
+      created_by_user_id: input.actorUserId,
+      token: generateInviteToken(),
+      expires_at: expiresAt.toISOString(),
+      status: 'pending'
     })
     .select('*')
     .single();
@@ -192,7 +205,8 @@ export async function acceptInvite(input: { inviteId: UUID; userId: UUID }): Pro
     .from('company_invites')
     .update({
       accepted_at: new Date().toISOString(),
-      accepted_user_id: input.userId
+      accepted_user_id: input.userId,
+      status: 'accepted'
     })
     .eq('id', input.inviteId)
     .select('*')
