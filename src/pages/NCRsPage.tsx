@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, AlertTriangle, CheckCircle, Clock, Filter } from 'lucide-react';
-import { Helmet } from 'react-helmet';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
@@ -9,6 +8,7 @@ import { listQualityNcrs, createQualityNcr, closeQualityNcr } from '../api/servi
 import type { QualityNcr, UUID } from '../api/models/entities';
 import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
 import NCRDetailModal from '../components/ncrs/NCRDetailModal';
+import { Layout } from '../components/layout/Layout';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -124,26 +124,22 @@ export default function NCRsPage() {
 
   return (
     <>
-      <Helmet>
-        <title>Non-Conformance Reports - SafeCloud Africa</title>
-      </Helmet>
-
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <Layout title="Non-Conformances (NCR)">
+        <div className="space-y-6">
           {/* Header */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-between mb-8"
+            className="flex items-center justify-between"
           >
             <div>
-              <h1 className="text-3xl font-bold text-navy-900">Non-Conformance Reports</h1>
-              <p className="text-gray-600 mt-1">Manage quality non-conformances and corrective actions</p>
+              <h1 className="text-2xl font-bold text-charcoal">Non-Conformance Reports</h1>
+              <p className="text-charcoal-500 mt-1">Manage quality non-conformances and corrective actions</p>
             </div>
             <button
               onClick={() => setIsCreateModalOpen(true)}
               disabled={!canCreateNcr}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Plus className="w-5 h-5" />
               New NCR
@@ -154,7 +150,7 @@ export default function NCRsPage() {
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200"
+              className="p-4 bg-critical/10 text-critical rounded-lg border border-critical/30"
             >
               {error}
             </motion.div>
@@ -164,14 +160,14 @@ export default function NCRsPage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="mb-6 flex gap-2 flex-wrap"
+            className="flex gap-2 flex-wrap"
           >
             <button
               onClick={() => setSelectedStatus('all')}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
                 selectedStatus === 'all'
-                  ? 'bg-teal-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  ? 'bg-teal text-white'
+                  : 'bg-white text-charcoal-600 border border-surface-300 hover:bg-surface-50'
               }`}
             >
               <Filter className="w-4 h-4" />
@@ -185,8 +181,8 @@ export default function NCRsPage() {
                   onClick={() => setSelectedStatus(status)}
                   className={`px-3 py-2 rounded-lg transition-colors capitalize ${
                     selectedStatus === status
-                      ? 'bg-teal-600 text-white'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      ? 'bg-teal text-white'
+                      : 'bg-white text-charcoal-600 border border-surface-300 hover:bg-surface-50'
                   }`}
                 >
                   {status} ({count})
@@ -209,10 +205,10 @@ export default function NCRsPage() {
             ) : filteredNCRs.length === 0 ? (
               <motion.div
                 variants={itemVariants}
-                className="text-center py-12 bg-white rounded-lg border border-gray-200"
+                className="text-center py-12 bg-white rounded-xl border border-surface-300 shadow-card"
               >
-                <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600">No non-conformance reports found</p>
+                <AlertTriangle className="w-12 h-12 text-charcoal-400 mx-auto mb-3" />
+                <p className="text-charcoal-600">No non-conformance reports found</p>
               </motion.div>
             ) : (
               filteredNCRs.map((ncr) => (
@@ -223,19 +219,19 @@ export default function NCRsPage() {
                     setSelectedNCR(ncr);
                     setIsDetailModalOpen(true);
                   }}
-                  className={`p-6 rounded-lg border cursor-pointer transition-all hover:shadow-lg ${getStatusColor(ncr.status)}`}
+                  className={`p-6 rounded-xl border cursor-pointer transition-all hover:shadow-card-hover ${getStatusColor(ncr.status)}`}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         {getStatusIcon(ncr.status)}
-                        <h3 className="text-lg font-semibold text-gray-900">{ncr.nc_number}</h3>
+                        <h3 className="text-lg font-semibold text-charcoal">{ncr.nc_number}</h3>
                         <span className={`text-xs px-2 py-1 rounded border ${getSeverityColor(ncr.severity)}`}>
                           {ncr.severity.toUpperCase()}
                         </span>
                       </div>
-                      <p className="text-gray-700 font-medium mb-2">{ncr.title}</p>
-                      <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+                      <p className="text-charcoal font-medium mb-2">{ncr.title}</p>
+                      <div className="flex flex-wrap gap-4 text-sm text-charcoal-500">
                         {ncr.location && <span>📍 {ncr.location}</span>}
                         {ncr.process_involved && <span>⚙️ {ncr.process_involved}</span>}
                         {ncr.occurrence_date && (
@@ -244,7 +240,7 @@ export default function NCRsPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <span className="inline-block px-3 py-1 bg-gray-200 text-gray-800 rounded text-sm font-medium capitalize">
+                      <span className="inline-block px-3 py-1 bg-surface-200 text-charcoal rounded text-sm font-medium capitalize">
                         {ncr.status}
                       </span>
                       <div className="mt-2">
@@ -260,7 +256,7 @@ export default function NCRsPage() {
                         </button>
                       </div>
                       {ncr.corrective_action_due_date && (
-                        <p className="text-xs text-gray-600 mt-2">
+                        <p className="text-xs text-charcoal-500 mt-2">
                           Due: {new Date(ncr.corrective_action_due_date).toLocaleDateString()}
                         </p>
                       )}
@@ -271,7 +267,7 @@ export default function NCRsPage() {
             )}
           </motion.div>
         </div>
-      </div>
+      </Layout>
 
       {/* Modals */}
       <AnimatePresence>

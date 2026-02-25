@@ -66,7 +66,11 @@ import { HrSettingsPage } from './pages/hr/HrSettingsPage';
 import { SecurityModulePage } from './pages/modules/SecurityModulePage';
 import { SafetyManagementPage } from './pages/modules/SafetyManagementPage';
 import { IncidentAnalyticsPage } from './pages/IncidentAnalyticsPage';
+import { SafetyStatisticsPage } from './pages/analytics/SafetyStatisticsPage';
+import { ComplianceAnalyticsPage } from './pages/analytics/ComplianceAnalyticsPage';
+import { QualityAnalyticsPage } from './pages/analytics/QualityAnalyticsPage';
 import { HCSModulePage } from './pages/modules/HCSModulePage';
+import { PjoPage } from './pages/PjoPage';
 import { BBSPage } from './pages/features/BBSPage';
 import { ContractorsVisitorsPage } from './pages/features/ContractorsVisitorsPage';
 import { EmergencyPreparednessPage } from './pages/features/EmergencyPreparednessPage';
@@ -81,6 +85,7 @@ import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { LandingPage } from './pages/marketing/LandingPage';
 import { SeedDemoPage } from './pages/admin/SeedDemoPage';
+import { AdminLicensePage } from './pages/admin/AdminLicensePage';
 import { SuperAdminLayout } from './components/layout/SuperAdminLayout';
 import { SuperAdminOverviewPage } from './pages/admin/superadmin/SuperAdminOverviewPage';
 import { SuperAdminOrganisationsPage } from './pages/admin/superadmin/SuperAdminOrganisationsPage';
@@ -97,6 +102,8 @@ import { ActivateLicensePage } from './pages/activate/ActivateLicensePage';
 import { BillingStatusPage } from './pages/BillingStatusPage';
 import { AccessDeniedPage } from './pages/AccessDeniedPage';
 import { WorkspaceOnboardingPage } from './pages/onboarding/WorkspaceOnboardingPage';
+import { HoursWorkedPage } from './pages/management/HoursWorkedPage';
+import { OperationalInputsPage } from './pages/management/OperationalInputsPage';
 import { SELLABLE_FEATURE_ROUTE_PATHS } from './api/services/sellableFeaturesService';
 export function App() {
   return (
@@ -321,6 +328,36 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <IncidentAnalyticsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/analytics/safety-statistics"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <SafetyStatisticsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/analytics/compliance"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ComplianceAnalyticsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/analytics/quality"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <QualityAnalyticsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -738,6 +775,16 @@ export function App() {
             }
           />
           <Route
+            path="/pjo"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <PjoPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/audits"
             element={
               <RequireSignedIn>
@@ -783,6 +830,16 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RisksPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/risks/dashboard"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <Navigate to="/risks" replace />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -987,6 +1044,26 @@ export function App() {
               </RequireSignedIn>
             }
           />
+          <Route
+            path="/management/hours-worked"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HoursWorkedPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/management/operational-inputs"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <OperationalInputsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
 
           {/* Sellable feature modules (Phase 1 placeholders) */}
           <Route
@@ -1105,6 +1182,18 @@ export function App() {
                 <RequireWorkspace>
                   <RequireCompanyRole allowed={['admin', 'manager']}>
                     <UsersPage />
+                  </RequireCompanyRole>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/admin/license"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireCompanyRole allowed={['owner', 'admin']}>
+                    <AdminLicensePage />
                   </RequireCompanyRole>
                 </RequireWorkspace>
               </RequireSignedIn>

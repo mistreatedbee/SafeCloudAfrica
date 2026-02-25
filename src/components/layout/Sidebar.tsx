@@ -105,7 +105,7 @@ const supportingSections: NavItem[] = [
 { name: 'Training', path: '/training', icon: GraduationCapIcon },
 { name: 'Audits', path: '/audits', icon: SearchIcon },
 { name: 'Inspections', path: '/inspections', icon: ClipboardCheckIcon, roles: managementRoles },
-{ name: 'Risk Management', path: '/risks/dashboard', icon: AlertOctagonIcon },
+{ name: 'Risk Management', path: '/risks', icon: AlertOctagonIcon },
 { name: 'PPE Management', path: '/ppe', icon: HardHatIcon },
 { name: 'Legal Register', path: '/dashboard/legal/register', icon: BookOpenIcon, roles: managementRoles, module: 'legal' },
 { name: 'Legal Updates', path: '/dashboard/legal/updates', icon: CalendarIcon, roles: managementRoles, module: 'legal' },

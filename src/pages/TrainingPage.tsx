@@ -93,11 +93,11 @@ export function TrainingPage() {
   );
 
   const { data: profiles } = useAsync(
-    () => (activeCompanyId ? listUserProfiles(activeCompanyId) : []),
+    async () => (activeCompanyId ? listUserProfiles(activeCompanyId) : []),
     [activeCompanyId]
   );
   const { data: providers } = useAsync(
-    () => (activeCompanyId && canManage ? listTrainingProviders(activeCompanyId) : []),
+    async () => (activeCompanyId && canManage ? listTrainingProviders(activeCompanyId) : []),
     [activeCompanyId, canManage]
   );
   const profileByUserId = useMemo(() => new Map((profiles ?? []).map((p) => [p.user_id, p])), [profiles]);
