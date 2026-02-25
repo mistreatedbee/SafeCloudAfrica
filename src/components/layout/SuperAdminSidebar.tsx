@@ -69,7 +69,7 @@ export function SuperAdminSidebar({ isOpen, onClose }: { isOpen: boolean; onClos
 
   return (
     <>
-      <aside className="hidden lg:flex lg:flex-shrink-0 lg:w-[260px] lg:flex-col border-r border-surface-200 bg-white">
+      <aside className="hidden lg:flex lg:flex-shrink-0 lg:w-[260px] lg:flex-col lg:relative lg:z-40 border-r border-surface-200 bg-white">
         {sidebarContent}
       </aside>
       <AnimatePresence>

@@ -340,7 +340,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex lg:flex-shrink-0 lg:w-[280px]">
+      <aside className="hidden lg:flex lg:flex-shrink-0 lg:w-[280px] lg:relative lg:z-40">
         {sidebarContent}
       </aside>
 
