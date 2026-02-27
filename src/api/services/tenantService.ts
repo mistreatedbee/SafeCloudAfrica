@@ -614,15 +614,23 @@ export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID })
   if (updateError || !updated) throw new Error(getErrorMessage(updateError));
 
   const inviter = await getInviterInfo((invite as any).company_id, input.actorUserId);
-  await sendOrganizationInviteEmail({
-    to: (updated as any).email,
-    orgName: (invite as any).companies?.name ?? 'Organization',
-    role: (updated as any).role,
-    inviterName: inviter.inviterName,
-    inviterEmail: inviter.inviterEmail,
-    inviteToken: token,
-    expiresAtIso
-  });
+  try {
+    await sendOrganizationInviteEmail({
+      to: (updated as any).email,
+      orgName: (invite as any).companies?.name ?? 'Organization',
+      role: (updated as any).role,
+      inviterName: inviter.inviterName,
+      inviterEmail: inviter.inviterEmail,
+      inviteToken: token,
+      expiresAtIso
+    });
+  } catch (emailErr: any) {
+    await insforge.database
+      .from('company_invites')
+      .update({ status: 'FAILED', error_message: getErrorMessage(emailErr) })
+      .eq('id', input.inviteId);
+    throw new Error('Invite updated, but email delivery failed. Use Copy link to share manually.');
+  }
 
   await createActivityLog({
     companyId: (invite as any).company_id,

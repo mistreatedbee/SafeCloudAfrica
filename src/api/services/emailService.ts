@@ -79,12 +79,36 @@ const emailTemplates: Record<string, EmailTemplate> = {
  * Send email using InsForge's edge function
  */
 export async function sendEmail(payload: EmailPayload): Promise<void> {
-  await ensureInsforgeSession();
-  const { data, error } = await insforge.functions.invoke('emailSend', { method: 'POST', body: payload });
-  if (error) throw new Error(error.message);
-  if (data && typeof data === 'object' && 'ok' in (data as Record<string, unknown>) && !(data as any).ok) {
-    throw new Error(((data as any).error as string) || 'Failed to send email.');
+  const session = await ensureInsforgeSession();
+
+  const sdkResult = await insforge.functions.invoke('emailSend', { method: 'POST', body: payload });
+  if (!sdkResult.error) {
+    const data = sdkResult.data as any;
+    if (!data || typeof data !== 'object' || data.ok !== false) return;
   }
+
+  const endpoints = ['/api/functions/emailSend', '/functions/emailSend'];
+  let lastError = sdkResult.error?.message || 'Email function invocation failed.';
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.accessToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json().catch(() => null as any);
+      if (response.ok && (!data || data.ok !== false)) return;
+      lastError = data?.error || `${response.status} ${response.statusText}`;
+    } catch (err: any) {
+      lastError = err?.message || lastError;
+    }
+  }
+
+  throw new Error(`Email delivery failed. ${lastError}`);
 }
 
 /**
