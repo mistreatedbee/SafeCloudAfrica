@@ -231,6 +231,12 @@ export type Incident = {
   loss_reputational_value?: number | null;
   loss_damage_asset_value?: number | null;
   loss_illness_injury_value?: number | null;
+  loss_illness_value?: number | null;
+  loss_injury_value?: number | null;
+  loss_civil_liability_value?: number | null;
+  loss_criminal_liability_value?: number | null;
+  loss_vicarious_liability_value?: number | null;
+  loss_substandard_quality_value?: number | null;
   loss_other_text?: string | null;
   loss_notes?: string | null;
   nature_of_incident?: string | null;

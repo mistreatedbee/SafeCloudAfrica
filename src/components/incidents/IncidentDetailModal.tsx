@@ -283,6 +283,10 @@ export function IncidentDetailModal(props: {
                       <p className="text-charcoal">{riskSummary}</p>
                     </div>
                     <div>
+                      <p className="text-xs text-charcoal-500">Risk category (core)</p>
+                      <p className="text-charcoal">{(incident as any).risk_category ?? '—'}</p>
+                    </div>
+                    <div>
                       <p className="text-xs text-charcoal-500">Likelihood x Severity</p>
                       <p className="text-charcoal">{(incident as any).risk_likelihood_1_5 ?? '—'} x {(incident as any).risk_severity_1_5 ?? '—'}</p>
                     </div>
@@ -401,6 +405,13 @@ export function IncidentDetailModal(props: {
                     <p>Reputational: {(incident as any).loss_reputational_value ?? '—'}</p>
                     <p>Damage/Asset: {(incident as any).loss_damage_asset_value ?? '—'}</p>
                     <p>Illness/Injury: {(incident as any).loss_illness_injury_value ?? '—'}</p>
+                    <p>Illness: {(incident as any).loss_illness_value ?? '—'}</p>
+                    <p>Injury: {(incident as any).loss_injury_value ?? '—'}</p>
+                    <p>Civil liability: {(incident as any).loss_civil_liability_value ?? '—'}</p>
+                    <p>Criminal liability: {(incident as any).loss_criminal_liability_value ?? '—'}</p>
+                    <p>Vicarious liability: {(incident as any).loss_vicarious_liability_value ?? '—'}</p>
+                    <p>Sub-standard quality: {(incident as any).loss_substandard_quality_value ?? '—'}</p>
+                    <p>Loss types: {Array.isArray((incident as any).loss_types) ? (incident as any).loss_types.join(', ') : '—'}</p>
                     <p>Other: {(incident as any).loss_other_text ?? '—'}</p>
                   </div>
                 </div>

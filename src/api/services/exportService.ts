@@ -279,6 +279,13 @@ function generateIncidentHTML(
         <div class="field"><span class="field-label">Reputational:</span><span class="field-value">${incident.loss_reputational_value ?? '-'}</span></div>
         <div class="field"><span class="field-label">Damage/Asset:</span><span class="field-value">${incident.loss_damage_asset_value ?? '-'}</span></div>
         <div class="field"><span class="field-label">Illness/Injury:</span><span class="field-value">${incident.loss_illness_injury_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Illness:</span><span class="field-value">${(incident as any).loss_illness_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Injury:</span><span class="field-value">${(incident as any).loss_injury_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Civil liability:</span><span class="field-value">${(incident as any).loss_civil_liability_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Criminal liability:</span><span class="field-value">${(incident as any).loss_criminal_liability_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Vicarious liability:</span><span class="field-value">${(incident as any).loss_vicarious_liability_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Sub-standard quality:</span><span class="field-value">${(incident as any).loss_substandard_quality_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Loss types:</span><span class="field-value">${Array.isArray((incident as any).loss_types) ? (incident as any).loss_types.join(', ') : '-'}</span></div>
         <div class="field"><span class="field-label">Other:</span><span class="field-value">${incident.loss_other_text ?? '-'}</span></div>
         <div class="field"><span class="field-label">Loss Notes:</span><span class="field-value">${incident.loss_notes ?? '-'}</span></div>
       </div>

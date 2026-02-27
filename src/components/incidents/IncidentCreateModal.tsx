@@ -6,20 +6,33 @@ import { formatAuthError } from '../../auth/authMessages';
 import type { UUID } from '../../api/models/core';
 import type { IncidentCategory, ModuleKey, Severity } from '../../api/models/core';
 import {
+  INCIDENT_TYPES,
   INCIDENT_CATEGORIES,
   INCIDENT_SUBCATEGORIES,
   IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS,
   IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS,
+  ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES,
+  ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES,
+  SYSTEM_FAILURE_OPTIONS,
   getIncidentRiskCategory
 } from '../../api/models/core';
 import type { Incident } from '../../api/models/entities';
 import { createIncident, updateIncident } from '../../api/services/incidentsService';
+import { getIncidentInvestigation, upsertIncidentInvestigation } from '../../api/services/incidentInvestigationsService';
 import { createEvidence } from '../../api/services/evidenceService';
 import { uploadFile } from '../../api/services/storageService';
+import { AffectedPersonSelector } from './AffectedPersonSelector';
+import { IncidentTimelineBuilder, type TimelineEvent } from './IncidentTimelineBuilder';
 
 const EVIDENCE_BUCKET = 'sca-evidence';
 
 type UnsafeCauseEntry = {
+  group: string;
+  item: string;
+  note: string;
+};
+
+type CauseDetailEntry = {
   group: string;
   item: string;
   note: string;
@@ -68,24 +81,26 @@ export function IncidentCreateModal(props: {
   const editingIncident = props.incident ?? null;
   const isEditing = Boolean(editingIncident);
   const [module, setModule] = useState<ModuleKey>(props.defaultModule ?? 'safety');
-  const [incidentType, setIncidentType] = useState('Accident');
+  const [incidentType, setIncidentType] = useState(INCIDENT_TYPES[0]);
+  const [incidentTypeManual, setIncidentTypeManual] = useState('');
+  const [useManualIncidentType, setUseManualIncidentType] = useState(false);
   const [category, setCategory] = useState<IncidentCategory>(INCIDENT_CATEGORIES[0]);
   const [subcategory, setSubcategory] = useState('');
   const [subcategoryManual, setSubcategoryManual] = useState('');
   const [useManualSubcategory, setUseManualSubcategory] = useState(false);
 
   const [title, setTitle] = useState('');
-  const [projectClient, setProjectClient] = useState('');
-  const [incidentDate, setIncidentDate] = useState(new Date().toISOString().slice(0, 10));
-  const [incidentTime, setIncidentTime] = useState(new Date().toTimeString().slice(0, 5));
+  const [occurredAtInput, setOccurredAtInput] = useState(new Date().toISOString().slice(0, 16));
   const [location, setLocation] = useState('');
   const [natureOfIncident, setNatureOfIncident] = useState('');
   const [causeOfIncident, setCauseOfIncident] = useState('');
-  const [affectedPerson, setAffectedPerson] = useState('');
+  const [affectedPersonId, setAffectedPersonId] = useState<UUID | null>(null);
+  const [affectedPersonName, setAffectedPersonName] = useState('');
 
   const [reportedBy, setReportedBy] = useState('');
   const [reportedTo, setReportedTo] = useState('');
   const [copyTo, setCopyTo] = useState('');
+  const [riskCategorySimple, setRiskCategorySimple] = useState<'Low' | 'Medium' | 'High'>('Medium');
 
   const [riskLikelihood, setRiskLikelihood] = useState<1 | 2 | 3 | 4 | 5>(3);
   const [riskSeverity, setRiskSeverity] = useState<1 | 2 | 3 | 4 | 5>(3);
@@ -97,11 +112,46 @@ export function IncidentCreateModal(props: {
   const [lossReputational, setLossReputational] = useState('');
   const [lossDamageAsset, setLossDamageAsset] = useState('');
   const [lossIllnessInjury, setLossIllnessInjury] = useState('');
+  const [lossIllness, setLossIllness] = useState('');
+  const [lossInjury, setLossInjury] = useState('');
+  const [lossCivilLiability, setLossCivilLiability] = useState('');
+  const [lossCriminalLiability, setLossCriminalLiability] = useState('');
+  const [lossVicariousLiability, setLossVicariousLiability] = useState('');
+  const [lossSubstandardQuality, setLossSubstandardQuality] = useState('');
   const [lossOther, setLossOther] = useState('');
   const [lossNotes, setLossNotes] = useState('');
+  const [lossTypes, setLossTypes] = useState<Record<string, boolean>>({
+    'production loss': false,
+    'financial loss': false,
+    'reputational loss': false,
+    damage: false,
+    illness: false,
+    injury: false,
+    'asset loss': false,
+    'civil liability': false,
+    'criminal liability': false,
+    'vicarious liability': false,
+    'sub-standard quality product/service': false
+  });
 
   const [unsafeActs, setUnsafeActs] = useState<Record<string, UnsafeCauseEntry>>({});
   const [unsafeConditions, setUnsafeConditions] = useState<Record<string, UnsafeCauseEntry>>({});
+  const [immediateCauseCategories, setImmediateCauseCategories] = useState<Record<string, CauseDetailEntry>>({});
+  const [rootCauseHuman, setRootCauseHuman] = useState<Record<string, CauseDetailEntry>>({});
+  const [rootCauseWorkplace, setRootCauseWorkplace] = useState<Record<string, CauseDetailEntry>>({});
+  const [systemFailures, setSystemFailures] = useState<Record<string, CauseDetailEntry>>({});
+  const [instructionBreakdown, setInstructionBreakdown] = useState('');
+  const [taskSequence, setTaskSequence] = useState('');
+  const [incidentTimelineEvents, setIncidentTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [riskProfile, setRiskProfile] = useState('');
+  const [potentialConsequence, setPotentialConsequence] = useState('');
+  const [contributingFactors, setContributingFactors] = useState('');
+  const [correctiveActionsText, setCorrectiveActionsText] = useState('');
+  const [lessonsLearnt, setLessonsLearnt] = useState('');
+  const [investigationTeam, setInvestigationTeam] = useState('');
+  const [conclusion, setConclusion] = useState('');
+  const [preparedBy, setPreparedBy] = useState('');
+  const [distributionList, setDistributionList] = useState('');
 
   const [evidenceUploads, setEvidenceUploads] = useState<UploadDraft[]>([]);
   const [investigationUploads, setInvestigationUploads] = useState<UploadDraft[]>([]);
@@ -114,6 +164,10 @@ export function IncidentCreateModal(props: {
     () => (useManualSubcategory ? subcategoryManual.trim() : subcategory.trim()),
     [useManualSubcategory, subcategory, subcategoryManual]
   );
+  const finalIncidentType = useMemo(
+    () => (useManualIncidentType ? incidentTypeManual.trim() : incidentType.trim()),
+    [useManualIncidentType, incidentTypeManual, incidentType]
+  );
 
   const calculatedRisk = riskLikelihood * riskSeverity;
   const calculatedRiskCategory = useMemo(() => getIncidentRiskCategory(calculatedRisk), [calculatedRisk]);
@@ -121,13 +175,14 @@ export function IncidentCreateModal(props: {
   const canSubmit = useMemo(() => {
     return (
       title.trim().length > 0 &&
+      finalIncidentType.length > 0 &&
       finalSubcategory.length > 0 &&
       natureOfIncident.trim().length > 0 &&
       causeOfIncident.trim().length > 0 &&
       reportedBy.trim().length > 0 &&
       reportedTo.trim().length > 0
     );
-  }, [title, finalSubcategory, natureOfIncident, causeOfIncident, reportedBy, reportedTo]);
+  }, [title, finalIncidentType, finalSubcategory, natureOfIncident, causeOfIncident, reportedBy, reportedTo]);
 
   function parseOptionalNumber(value: string): number | null {
     const trimmed = value.trim();
@@ -146,22 +201,24 @@ export function IncidentCreateModal(props: {
     releasePreviews(evidenceUploads);
     releasePreviews(investigationUploads);
     setModule(props.defaultModule ?? 'safety');
-    setIncidentType('Accident');
+    setIncidentType(INCIDENT_TYPES[0]);
+    setIncidentTypeManual('');
+    setUseManualIncidentType(false);
     setCategory(INCIDENT_CATEGORIES[0]);
     setSubcategory('');
     setSubcategoryManual('');
     setUseManualSubcategory(false);
     setTitle('');
-    setProjectClient('');
-    setIncidentDate(new Date().toISOString().slice(0, 10));
-    setIncidentTime(new Date().toTimeString().slice(0, 5));
+    setOccurredAtInput(new Date().toISOString().slice(0, 16));
     setLocation('');
     setNatureOfIncident('');
     setCauseOfIncident('');
-    setAffectedPerson('');
+    setAffectedPersonId(null);
+    setAffectedPersonName('');
     setReportedBy('');
     setReportedTo('');
     setCopyTo('');
+    setRiskCategorySimple('Medium');
     setRiskLikelihood(3);
     setRiskSeverity(3);
     setInvestigationRequired(false);
@@ -170,10 +227,45 @@ export function IncidentCreateModal(props: {
     setLossReputational('');
     setLossDamageAsset('');
     setLossIllnessInjury('');
+    setLossIllness('');
+    setLossInjury('');
+    setLossCivilLiability('');
+    setLossCriminalLiability('');
+    setLossVicariousLiability('');
+    setLossSubstandardQuality('');
     setLossOther('');
     setLossNotes('');
+    setLossTypes({
+      'production loss': false,
+      'financial loss': false,
+      'reputational loss': false,
+      damage: false,
+      illness: false,
+      injury: false,
+      'asset loss': false,
+      'civil liability': false,
+      'criminal liability': false,
+      'vicarious liability': false,
+      'sub-standard quality product/service': false
+    });
     setUnsafeActs({});
     setUnsafeConditions({});
+    setImmediateCauseCategories({});
+    setRootCauseHuman({});
+    setRootCauseWorkplace({});
+    setSystemFailures({});
+    setInstructionBreakdown('');
+    setTaskSequence('');
+    setIncidentTimelineEvents([]);
+    setRiskProfile('');
+    setPotentialConsequence('');
+    setContributingFactors('');
+    setCorrectiveActionsText('');
+    setLessonsLearnt('');
+    setInvestigationTeam('');
+    setConclusion('');
+    setPreparedBy('');
+    setDistributionList('');
     setEvidenceUploads([]);
     setInvestigationUploads([]);
     setError(null);
@@ -189,26 +281,42 @@ export function IncidentCreateModal(props: {
     releasePreviews(investigationUploads);
     const occurred = new Date(editingIncident.occurred_at);
     const isValidOccurred = !Number.isNaN(occurred.getTime());
-    const datePart = isValidOccurred ? occurred.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-    const timePart = isValidOccurred ? `${String(occurred.getHours()).padStart(2, '0')}:${String(occurred.getMinutes()).padStart(2, '0')}` : '08:00';
+    const occurredAtValue = isValidOccurred ? occurred.toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16);
 
     setModule((editingIncident.module as ModuleKey) ?? (props.defaultModule ?? 'safety'));
-    setIncidentType((editingIncident as any).incident_type ?? (editingIncident as any).type_of_incident ?? 'Accident');
+    const existingIncidentType = String((editingIncident as any).incident_type ?? (editingIncident as any).type_of_incident ?? INCIDENT_TYPES[0]);
+    if ((INCIDENT_TYPES as readonly string[]).includes(existingIncidentType)) {
+      setIncidentType(existingIncidentType);
+      setIncidentTypeManual('');
+      setUseManualIncidentType(false);
+    } else {
+      setIncidentType(INCIDENT_TYPES[0]);
+      setIncidentTypeManual(existingIncidentType);
+      setUseManualIncidentType(true);
+    }
     setCategory(editingIncident.category ?? INCIDENT_CATEGORIES[0]);
-    setSubcategory(editingIncident.subcategory ?? '');
-    setSubcategoryManual('');
-    setUseManualSubcategory(false);
+    const existingSubcategory = String(editingIncident.subcategory ?? '');
+    const validSubcategories = INCIDENT_SUBCATEGORIES[editingIncident.category as IncidentCategory] ?? [];
+    if (validSubcategories.includes(existingSubcategory)) {
+      setSubcategory(existingSubcategory);
+      setSubcategoryManual('');
+      setUseManualSubcategory(false);
+    } else {
+      setSubcategory('');
+      setSubcategoryManual(existingSubcategory);
+      setUseManualSubcategory(true);
+    }
     setTitle(editingIncident.title ?? '');
-    setProjectClient((editingIncident as any).project_client ?? '');
-    setIncidentDate(datePart);
-    setIncidentTime(timePart);
+    setOccurredAtInput(occurredAtValue);
     setLocation(editingIncident.location ?? '');
     setNatureOfIncident((editingIncident as any).nature_of_incident ?? '');
     setCauseOfIncident((editingIncident as any).cause_of_incident ?? (editingIncident as any).cause ?? '');
-    setAffectedPerson((editingIncident as any).affected_person ?? '');
+    setAffectedPersonId((editingIncident as any).affected_person_id ?? null);
+    setAffectedPersonName((editingIncident as any).affected_person ?? '');
     setReportedBy((editingIncident as any).reported_by ?? '');
     setReportedTo((editingIncident as any).reported_to ?? '');
     setCopyTo(Array.isArray((editingIncident as any).copy_to_emails) ? (editingIncident as any).copy_to_emails.join(', ') : '');
+    setRiskCategorySimple(((editingIncident as any).risk_category ?? 'Medium') as 'Low' | 'Medium' | 'High');
     setRiskLikelihood(Math.max(1, Math.min(5, Number((editingIncident as any).risk_likelihood_1_5 ?? 3))) as 1 | 2 | 3 | 4 | 5);
     setRiskSeverity(Math.max(1, Math.min(5, Number((editingIncident as any).risk_severity_1_5 ?? 3))) as 1 | 2 | 3 | 4 | 5);
     setInvestigationRequired(Boolean((editingIncident as any).investigation_required));
@@ -217,8 +325,28 @@ export function IncidentCreateModal(props: {
     setLossReputational((editingIncident as any).loss_reputational_value != null ? String((editingIncident as any).loss_reputational_value) : '');
     setLossDamageAsset((editingIncident as any).loss_damage_asset_value != null ? String((editingIncident as any).loss_damage_asset_value) : '');
     setLossIllnessInjury((editingIncident as any).loss_illness_injury_value != null ? String((editingIncident as any).loss_illness_injury_value) : '');
+    setLossIllness((editingIncident as any).loss_illness_value != null ? String((editingIncident as any).loss_illness_value) : '');
+    setLossInjury((editingIncident as any).loss_injury_value != null ? String((editingIncident as any).loss_injury_value) : '');
+    setLossCivilLiability((editingIncident as any).loss_civil_liability_value != null ? String((editingIncident as any).loss_civil_liability_value) : '');
+    setLossCriminalLiability((editingIncident as any).loss_criminal_liability_value != null ? String((editingIncident as any).loss_criminal_liability_value) : '');
+    setLossVicariousLiability((editingIncident as any).loss_vicarious_liability_value != null ? String((editingIncident as any).loss_vicarious_liability_value) : '');
+    setLossSubstandardQuality((editingIncident as any).loss_substandard_quality_value != null ? String((editingIncident as any).loss_substandard_quality_value) : '');
     setLossOther((editingIncident as any).loss_other_text ?? '');
     setLossNotes((editingIncident as any).loss_notes ?? '');
+    const selectedLossTypes = Array.isArray((editingIncident as any).loss_types) ? (editingIncident as any).loss_types : [];
+    setLossTypes({
+      'production loss': selectedLossTypes.includes('production loss'),
+      'financial loss': selectedLossTypes.includes('financial loss'),
+      'reputational loss': selectedLossTypes.includes('reputational loss'),
+      damage: selectedLossTypes.includes('damage'),
+      illness: selectedLossTypes.includes('illness'),
+      injury: selectedLossTypes.includes('injury'),
+      'asset loss': selectedLossTypes.includes('asset loss'),
+      'civil liability': selectedLossTypes.includes('civil liability'),
+      'criminal liability': selectedLossTypes.includes('criminal liability'),
+      'vicarious liability': selectedLossTypes.includes('vicarious liability'),
+      'sub-standard quality product/service': selectedLossTypes.includes('sub-standard quality product/service')
+    });
 
     const mapCauseEntries = (value: unknown) => {
       const next: Record<string, UnsafeCauseEntry> = {};
@@ -236,11 +364,103 @@ export function IncidentCreateModal(props: {
 
     setUnsafeActs(mapCauseEntries((editingIncident as any).immediate_causes_unsafe_acts));
     setUnsafeConditions(mapCauseEntries((editingIncident as any).immediate_causes_unsafe_conditions));
+    setImmediateCauseCategories({});
+    setRootCauseHuman({});
+    setRootCauseWorkplace({});
+    setSystemFailures({});
+    setInstructionBreakdown('');
+    setTaskSequence('');
+    setIncidentTimelineEvents([]);
+    setRiskProfile('');
+    setPotentialConsequence('');
+    setContributingFactors('');
+    setCorrectiveActionsText('');
+    setLessonsLearnt('');
+    setInvestigationTeam('');
+    setConclusion('');
+    setPreparedBy('');
+    setDistributionList('');
     setEvidenceUploads([]);
     setInvestigationUploads([]);
     setError(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.open, editingIncident?.id]);
+
+  useEffect(() => {
+    if (!props.open || !editingIncident?.id) return;
+    (async () => {
+      try {
+        const inv = await getIncidentInvestigation(props.companyId, editingIncident.id);
+        if (!inv) return;
+        setInstructionBreakdown(inv.instruction_breakdown ?? '');
+        setTaskSequence(inv.task_sequence ?? '');
+        setRiskProfile(inv.risk_profile ?? '');
+        setPotentialConsequence(inv.potential_consequence ?? '');
+        setContributingFactors(inv.contributing_factors ?? '');
+        setLessonsLearnt(inv.lessons_learnt ?? '');
+        setConclusion(inv.conclusion ?? '');
+        setPreparedBy(inv.prepared_by ?? '');
+        setInvestigationTeam(Array.isArray(inv.investigation_team) ? inv.investigation_team.join(', ') : '');
+        setDistributionList(Array.isArray(inv.distributions) ? inv.distributions.join(', ') : '');
+        setCorrectiveActionsText(inv.notes ?? '');
+        if (typeof inv.event_timeline === 'string' && inv.event_timeline.trim()) {
+          const events = inv.event_timeline
+            .split('\n')
+            .map((line) => {
+              const [timestamp, ...rest] = line.split(' - ');
+              return { timestamp: timestamp?.trim() ?? '', notes: rest.join(' - ').trim() };
+            })
+            .filter((e) => e.timestamp || e.notes);
+          setIncidentTimelineEvents(events);
+        }
+        if (Array.isArray(inv.immediate_causes)) {
+          const next: Record<string, CauseDetailEntry> = {};
+          for (const entry of inv.immediate_causes as any[]) {
+            const group = String(entry?.group ?? '').trim();
+            const item = String(entry?.item ?? '').trim();
+            if (!group || !item) continue;
+            next[makeCauseKey(group, item)] = { group, item, note: String(entry?.note ?? '') };
+          }
+          setImmediateCauseCategories(next);
+        }
+        if (Array.isArray(inv.root_causes_human)) {
+          const next: Record<string, CauseDetailEntry> = {};
+          for (const entry of inv.root_causes_human as any[]) {
+            const group = String(entry?.group ?? '').trim();
+            const item = String(entry?.item ?? '').trim();
+            if (!group || !item) continue;
+            next[makeCauseKey(group, item)] = { group, item, note: String(entry?.note ?? '') };
+          }
+          setRootCauseHuman(next);
+        }
+        if (Array.isArray(inv.root_causes_workplace)) {
+          const next: Record<string, CauseDetailEntry> = {};
+          for (const entry of inv.root_causes_workplace as any[]) {
+            const group = String(entry?.group ?? '').trim();
+            const item = String(entry?.item ?? '').trim();
+            if (!group || !item) continue;
+            next[makeCauseKey(group, item)] = { group, item, note: String(entry?.note ?? '') };
+          }
+          setRootCauseWorkplace(next);
+        }
+        if (Array.isArray(inv.system_failures)) {
+          const next: Record<string, CauseDetailEntry> = {};
+          for (const entry of inv.system_failures as any[]) {
+            const item = String(entry?.item ?? entry ?? '').trim();
+            if (!item) continue;
+            next[makeCauseKey('System Failure', item)] = {
+              group: 'System Failure',
+              item,
+              note: String(entry?.note ?? '')
+            };
+          }
+          setSystemFailures(next);
+        }
+      } catch (_) {
+        // Investigation data is optional in create/edit flow.
+      }
+    })();
+  }, [props.open, props.companyId, editingIncident?.id]);
 
   useEffect(() => {
     return () => {
@@ -250,9 +470,16 @@ export function IncidentCreateModal(props: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function addUploads(files: FileList | null, section: 'evidence' | 'investigation') {
+  function addUploads(files: FileList | null, section: 'evidence' | 'investigation', displayPrefix?: string) {
     if (!files) return;
-    const drafts = Array.from(files).map(buildUploadDraft);
+    const drafts = Array.from(files).map((file) => {
+      const draft = buildUploadDraft(file);
+      if (!displayPrefix) return draft;
+      return {
+        ...draft,
+        displayName: `${displayPrefix} - ${draft.displayName}`
+      };
+    });
     if (section === 'evidence') {
       setEvidenceUploads((prev) => [...prev, ...drafts]);
       return;
@@ -309,6 +536,48 @@ export function IncidentCreateModal(props: {
     });
   }
 
+  function toggleDetailedCause(
+    setter: React.Dispatch<React.SetStateAction<Record<string, CauseDetailEntry>>>,
+    group: string,
+    item: string,
+    checked: boolean
+  ) {
+    const key = makeCauseKey(group, item);
+    setter((prev) => {
+      if (!checked) {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return {
+        ...prev,
+        [key]: {
+          group,
+          item,
+          note: prev[key]?.note ?? ''
+        }
+      };
+    });
+  }
+
+  function updateDetailedCauseNote(
+    setter: React.Dispatch<React.SetStateAction<Record<string, CauseDetailEntry>>>,
+    key: string,
+    note: string
+  ) {
+    setter((prev) => {
+      const entry = prev[key];
+      if (!entry) return prev;
+      return {
+        ...prev,
+        [key]: {
+          ...entry,
+          note
+        }
+      };
+    });
+  }
+
   async function uploadEvidenceForIncident(incidentId: UUID, entries: UploadDraft[], entityType: string) {
     for (const entry of entries) {
       const safeName = entry.file.name.replace(/\s+/g, '_');
@@ -335,7 +604,7 @@ export function IncidentCreateModal(props: {
     setError(null);
     try {
       setLoading(true);
-      const occurredAt = new Date(`${incidentDate}T${incidentTime}`).toISOString();
+      const occurredAt = new Date(occurredAtInput).toISOString();
 
       const copyToEmails = copyTo
         .split(',')
@@ -343,19 +612,25 @@ export function IncidentCreateModal(props: {
         .filter(Boolean);
       const unsafeActsData = Object.values(unsafeActs);
       const unsafeConditionsData = Object.values(unsafeConditions);
+      const selectedLossTypes = Object.entries(lossTypes)
+        .filter(([, selected]) => selected)
+        .map(([type]) => type);
+      const incidentTitle = title.trim();
+      const affectedPersonValue = affectedPersonName.trim() || undefined;
+      const incidentTypeValue = finalIncidentType;
 
       if (isEditing && editingIncident) {
         const updated = await updateIncident(editingIncident.id, {
           module,
           category,
           subcategory: finalSubcategory,
-          title: title.trim(),
+          title: incidentTitle,
           description: null,
-          incidentType: incidentType.trim() || null,
-          projectClient: projectClient.trim() || null,
+          incidentType: incidentTypeValue || null,
+          projectClient: incidentTitle || null,
           natureOfIncident: natureOfIncident.trim() || null,
           causeOfIncident: causeOfIncident.trim() || null,
-          affectedPerson: affectedPerson.trim() || null,
+          affectedPerson: affectedPersonValue || null,
           reportedBy: reportedBy.trim() || null,
           reportedTo: reportedTo.trim() || null,
           copyToEmails: copyToEmails.length > 0 ? copyToEmails : null,
@@ -367,18 +642,60 @@ export function IncidentCreateModal(props: {
           lossReputationalValue: parseOptionalNumber(lossReputational),
           lossDamageAssetValue: parseOptionalNumber(lossDamageAsset),
           lossIllnessInjuryValue: parseOptionalNumber(lossIllnessInjury),
+          lossIllnessValue: parseOptionalNumber(lossIllness),
+          lossInjuryValue: parseOptionalNumber(lossInjury),
+          lossCivilLiabilityValue: parseOptionalNumber(lossCivilLiability),
+          lossCriminalLiabilityValue: parseOptionalNumber(lossCriminalLiability),
+          lossVicariousLiabilityValue: parseOptionalNumber(lossVicariousLiability),
+          lossSubstandardQualityValue: parseOptionalNumber(lossSubstandardQuality),
+          lossTypes: selectedLossTypes.length > 0 ? selectedLossTypes : null,
           lossOtherText: lossOther.trim() || null,
           lossNotes: lossNotes.trim() || null,
           riskSeverity1To5: riskSeverity,
           riskLikelihood1To5: riskLikelihood,
           riskRatingProduct: calculatedRisk,
           riskClassification: calculatedRiskCategory,
+          riskCategorySimple,
           severity: toLegacySeverity(riskSeverity),
           occurredAt,
           location: location.trim() || null
         } as any);
         await uploadEvidenceForIncident(updated.id, evidenceUploads, 'incident');
         await uploadEvidenceForIncident(updated.id, investigationUploads, 'incident_investigation');
+        if (investigationRequired) {
+          await upsertIncidentInvestigation({
+            companyId: props.companyId,
+            incidentId: updated.id,
+            actorUserId: props.createdByUserId,
+            patch: {
+              notes: correctiveActionsText.trim() || null,
+              instruction_breakdown: instructionBreakdown.trim() || null,
+              task_sequence: taskSequence.trim() || null,
+              event_timeline: incidentTimelineEvents
+                .map((event) => `${event.timestamp} - ${event.notes}`.trim())
+                .join('\n') || null,
+              risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
+              risk_profile: riskProfile.trim() || null,
+              potential_consequence: potentialConsequence.trim() || null,
+              immediate_causes: Object.values(immediateCauseCategories),
+              root_causes_human: Object.values(rootCauseHuman),
+              root_causes_workplace: Object.values(rootCauseWorkplace),
+              system_failures: Object.values(systemFailures),
+              contributing_factors: contributingFactors.trim() || null,
+              lessons_learnt: lessonsLearnt.trim() || null,
+              conclusion: conclusion.trim() || null,
+              prepared_by: preparedBy.trim() || null,
+              investigation_team: investigationTeam
+                .split(',')
+                .map((entry) => entry.trim())
+                .filter(Boolean),
+              distributions: distributionList
+                .split(',')
+                .map((entry) => entry.trim())
+                .filter(Boolean)
+            } as any
+          });
+        }
         props.onUpdated?.(updated);
       } else {
         const incident = await createIncident({
@@ -386,13 +703,13 @@ export function IncidentCreateModal(props: {
           module,
           category,
           subcategory: finalSubcategory,
-          title: title.trim(),
+          title: incidentTitle,
           description: null,
-          incidentType: incidentType.trim() || undefined,
-          projectClient: projectClient.trim() || undefined,
+          incidentType: incidentTypeValue || undefined,
+          projectClient: incidentTitle || undefined,
           natureOfIncident: natureOfIncident.trim(),
           causeOfIncident: causeOfIncident.trim(),
-          affectedPerson: affectedPerson.trim() || undefined,
+          affectedPerson: affectedPersonValue || undefined,
           reportedBy: reportedBy.trim(),
           reportedTo: reportedTo.trim(),
           copyToEmails,
@@ -405,6 +722,13 @@ export function IncidentCreateModal(props: {
             reputationalLoss: parseOptionalNumber(lossReputational),
             damageAssetLoss: parseOptionalNumber(lossDamageAsset),
             illnessInjuryImpact: parseOptionalNumber(lossIllnessInjury),
+            illnessLoss: parseOptionalNumber(lossIllness),
+            injuryLoss: parseOptionalNumber(lossInjury),
+            civilLiabilityLoss: parseOptionalNumber(lossCivilLiability),
+            criminalLiabilityLoss: parseOptionalNumber(lossCriminalLiability),
+            vicariousLiabilityLoss: parseOptionalNumber(lossVicariousLiability),
+            substandardQualityLoss: parseOptionalNumber(lossSubstandardQuality),
+            types: selectedLossTypes,
             other: lossOther.trim() || null,
             notes: lossNotes.trim() || null
           },
@@ -412,6 +736,7 @@ export function IncidentCreateModal(props: {
           riskLikelihood1To5: riskLikelihood,
           riskRatingProduct: calculatedRisk,
           riskClassification: calculatedRiskCategory,
+          riskCategorySimple,
           severity: toLegacySeverity(riskSeverity),
           occurredAt,
           location: location.trim() || undefined,
@@ -420,6 +745,40 @@ export function IncidentCreateModal(props: {
 
         await uploadEvidenceForIncident(incident.id, evidenceUploads, 'incident');
         await uploadEvidenceForIncident(incident.id, investigationUploads, 'incident_investigation');
+        if (investigationRequired) {
+          await upsertIncidentInvestigation({
+            companyId: props.companyId,
+            incidentId: incident.id,
+            actorUserId: props.createdByUserId,
+            patch: {
+              notes: correctiveActionsText.trim() || null,
+              instruction_breakdown: instructionBreakdown.trim() || null,
+              task_sequence: taskSequence.trim() || null,
+              event_timeline: incidentTimelineEvents
+                .map((event) => `${event.timestamp} - ${event.notes}`.trim())
+                .join('\n') || null,
+              risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
+              risk_profile: riskProfile.trim() || null,
+              potential_consequence: potentialConsequence.trim() || null,
+              immediate_causes: Object.values(immediateCauseCategories),
+              root_causes_human: Object.values(rootCauseHuman),
+              root_causes_workplace: Object.values(rootCauseWorkplace),
+              system_failures: Object.values(systemFailures),
+              contributing_factors: contributingFactors.trim() || null,
+              lessons_learnt: lessonsLearnt.trim() || null,
+              conclusion: conclusion.trim() || null,
+              prepared_by: preparedBy.trim() || null,
+              investigation_team: investigationTeam
+                .split(',')
+                .map((entry) => entry.trim())
+                .filter(Boolean),
+              distributions: distributionList
+                .split(',')
+                .map((entry) => entry.trim())
+                .filter(Boolean)
+            } as any
+          });
+        }
         props.onCreated?.();
       }
       props.onClose();
@@ -541,6 +900,57 @@ export function IncidentCreateModal(props: {
     );
   }
 
+  function renderDetailedCauseGroups(
+    titleText: string,
+    groups: Record<string, readonly string[]>,
+    selected: Record<string, CauseDetailEntry>,
+    setter: React.Dispatch<React.SetStateAction<Record<string, CauseDetailEntry>>>
+  ) {
+    return (
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold text-charcoal">{titleText}</h4>
+        {Object.entries(groups).map(([groupName, options]) => (
+          <div key={groupName} className="rounded-lg border border-surface-200 p-3">
+            <p className="text-xs font-semibold text-charcoal-500 uppercase tracking-wide mb-2">{groupName}</p>
+            <div className="space-y-2">
+              {options.map((item) => {
+                const key = makeCauseKey(groupName, item);
+                const isSelected = Boolean(selected[key]);
+                return (
+                  <div key={key} className="space-y-2 rounded border border-surface-100 p-2">
+                    <label className="flex items-center gap-2 text-sm text-charcoal">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => toggleDetailedCause(setter, groupName, item, e.target.checked)}
+                        className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
+                      />
+                      <span>{item}</span>
+                    </label>
+                    <input
+                      value={selected[key]?.note ?? ''}
+                      onChange={(e) => updateDetailedCauseNote(setter, key, e.target.value)}
+                      disabled={!isSelected}
+                      placeholder="Explanation / notes"
+                      className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal disabled:bg-surface-100 disabled:text-charcoal-400"
+                    />
+                    <input
+                      type="file"
+                      multiple
+                      disabled={!isSelected}
+                      onChange={(e) => addUploads(e.target.files, 'investigation', `${groupName}: ${item}`)}
+                      className="w-full text-xs disabled:opacity-60"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   if (!props.open) return null;
   return createPortal(
     <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-3 pt-16 sm:p-6 sm:pt-20">
@@ -566,20 +976,12 @@ export function IncidentCreateModal(props: {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Title *</label>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Project / Client *</label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
                 required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Project / Client</label>
-              <input
-                value={projectClient}
-                onChange={(e) => setProjectClient(e.target.value)}
-                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
               />
             </div>
             <div>
@@ -600,12 +1002,37 @@ export function IncidentCreateModal(props: {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Incident Type</label>
-              <input
-                value={incidentType}
-                onChange={(e) => setIncidentType(e.target.value)}
-                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
-              />
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Type of incident *</label>
+              <div className="space-y-2">
+                <select
+                  value={useManualIncidentType ? '__manual__' : incidentType}
+                  onChange={(e) => {
+                    if (e.target.value === '__manual__') {
+                      setUseManualIncidentType(true);
+                      return;
+                    }
+                    setUseManualIncidentType(false);
+                    setIncidentType(e.target.value);
+                  }}
+                  className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                >
+                  {INCIDENT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                  <option value="__manual__">Other (Type manually)</option>
+                </select>
+                {useManualIncidentType && (
+                  <input
+                    value={incidentTypeManual}
+                    onChange={(e) => setIncidentTypeManual(e.target.value)}
+                    placeholder="Type incident type"
+                    className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                    required
+                  />
+                )}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Category *</label>
@@ -629,21 +1056,16 @@ export function IncidentCreateModal(props: {
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Subcategory *</label>
               <div className="space-y-2">
-                {availableSubcategories.length > 0 && (
-                  <label className="flex items-center gap-2 text-xs text-charcoal-500">
-                    <input
-                      type="checkbox"
-                      checked={useManualSubcategory}
-                      onChange={(e) => setUseManualSubcategory(e.target.checked)}
-                      className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
-                    />
-                    Type manually
-                  </label>
-                )}
                 {!useManualSubcategory && availableSubcategories.length > 0 ? (
                   <select
                     value={subcategory}
-                    onChange={(e) => setSubcategory(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__manual__') {
+                        setUseManualSubcategory(true);
+                        return;
+                      }
+                      setSubcategory(e.target.value);
+                    }}
                     className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
                     required
                   >
@@ -653,33 +1075,37 @@ export function IncidentCreateModal(props: {
                         {s}
                       </option>
                     ))}
+                    <option value="__manual__">Other (Type manually)</option>
                   </select>
                 ) : (
-                  <input
-                    value={subcategoryManual}
-                    onChange={(e) => setSubcategoryManual(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
-                    required
-                  />
+                  <div className="space-y-2">
+                    <input
+                      value={subcategoryManual}
+                      onChange={(e) => setSubcategoryManual(e.target.value)}
+                      placeholder="Type subcategory"
+                      className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUseManualSubcategory(false);
+                        setSubcategory('');
+                      }}
+                      className="text-xs text-teal hover:text-teal-700"
+                    >
+                      Select from category list
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Date *</label>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Date & Time *</label>
               <input
-                type="date"
-                value={incidentDate}
-                onChange={(e) => setIncidentDate(e.target.value)}
-                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Time *</label>
-              <input
-                type="time"
-                value={incidentTime}
-                onChange={(e) => setIncidentTime(e.target.value)}
+                type="datetime-local"
+                value={occurredAtInput}
+                onChange={(e) => setOccurredAtInput(e.target.value)}
                 className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
                 required
               />
@@ -691,6 +1117,30 @@ export function IncidentCreateModal(props: {
                 onChange={(e) => setLocation(e.target.value)}
                 className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Affected person</label>
+              <AffectedPersonSelector
+                companyId={props.companyId}
+                selectedPersonId={affectedPersonId}
+                selectedPersonName={affectedPersonName}
+                onChange={(personId, personName) => {
+                  setAffectedPersonId(personId);
+                  setAffectedPersonName(personName ?? '');
+                }}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Risk category (core)</label>
+              <select
+                value={riskCategorySimple}
+                onChange={(e) => setRiskCategorySimple(e.target.value as 'Low' | 'Medium' | 'High')}
+                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
             </div>
           </div>
 
@@ -713,14 +1163,6 @@ export function IncidentCreateModal(props: {
                 rows={3}
                 className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
                 required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Affected person</label>
-              <input
-                value={affectedPerson}
-                onChange={(e) => setAffectedPerson(e.target.value)}
-                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
               />
             </div>
             <div>
@@ -751,47 +1193,21 @@ export function IncidentCreateModal(props: {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 border-t border-surface-200 pt-6">
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Likelihood (1-5)</label>
-              <select
-                value={riskLikelihood}
-                onChange={(e) => setRiskLikelihood(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
-                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
-              >
-                <option value={1}>1 - Rare</option>
-                <option value={2}>2 - Unlikely</option>
-                <option value={3}>3 - Possible</option>
-                <option value={4}>4 - Likely</option>
-                <option value={5}>5 - Almost Certain</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Severity (1-5)</label>
-              <select
-                value={riskSeverity}
-                onChange={(e) => setRiskSeverity(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
-                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
-              >
-                <option value={1}>1 - Insignificant</option>
-                <option value={2}>2 - Minor</option>
-                <option value={3}>3 - Moderate</option>
-                <option value={4}>4 - Major</option>
-                <option value={5}>5 - Catastrophic</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated risk</label>
-              <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm font-semibold bg-surface-50">{calculatedRisk}</div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Risk category</label>
-              <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm font-semibold bg-surface-50">{calculatedRiskCategory}</div>
-            </div>
-          </div>
-
           <div className="border-t border-surface-200 pt-6 space-y-4">
             <h3 className="text-sm font-semibold text-charcoal">Losses</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {Object.keys(lossTypes).map((type) => (
+                <label key={type} className="flex items-center gap-2 text-sm text-charcoal">
+                  <input
+                    type="checkbox"
+                    checked={lossTypes[type]}
+                    onChange={(e) => setLossTypes((prev) => ({ ...prev, [type]: e.target.checked }))}
+                    className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
+                  />
+                  <span className="capitalize">{type}</span>
+                </label>
+              ))}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Production loss</label>
@@ -814,6 +1230,30 @@ export function IncidentCreateModal(props: {
                 <input value={lossIllnessInjury} onChange={(e) => setLossIllnessInjury(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
               </div>
               <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Illness</label>
+                <input value={lossIllness} onChange={(e) => setLossIllness(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Injury</label>
+                <input value={lossInjury} onChange={(e) => setLossInjury(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Civil liability</label>
+                <input value={lossCivilLiability} onChange={(e) => setLossCivilLiability(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Criminal liability</label>
+                <input value={lossCriminalLiability} onChange={(e) => setLossCriminalLiability(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Vicarious liability</label>
+                <input value={lossVicariousLiability} onChange={(e) => setLossVicariousLiability(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Sub-standard quality product/service</label>
+                <input value={lossSubstandardQuality} onChange={(e) => setLossSubstandardQuality(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Other loss</label>
                 <input value={lossOther} onChange={(e) => setLossOther(e.target.value)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
               </div>
@@ -825,22 +1265,129 @@ export function IncidentCreateModal(props: {
           </div>
 
           <div className="border-t border-surface-200 pt-6 space-y-4">
-            {renderCauseGroups('Unsafe Acts (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, 'acts', unsafeActs)}
-            {renderCauseGroups('Unsafe Conditions (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS, 'conditions', unsafeConditions)}
-          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-charcoal mb-1.5">Investigation required?</label>
+                <select
+                  value={investigationRequired ? 'yes' : 'no'}
+                  onChange={(e) => setInvestigationRequired(e.target.value === 'yes')}
+                  className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+            </div>
 
-          <div className="border-t border-surface-200 pt-6 space-y-4">
-            <label className="flex items-center gap-2 text-sm font-semibold text-charcoal">
-              <input
-                type="checkbox"
-                checked={investigationRequired}
-                onChange={(e) => setInvestigationRequired(e.target.checked)}
-                className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
-              />
-              Investigation required
-            </label>
             {renderUploadSection('Upload evidence', 'evidence', evidenceUploads)}
-            {renderUploadSection('Upload investigation files', 'investigation', investigationUploads)}
+            {!investigationRequired && renderUploadSection('Upload investigation files', 'investigation', investigationUploads)}
+
+            {investigationRequired && (
+              <div className="space-y-5">
+                <div className="rounded-xl border border-surface-200 p-4 space-y-4">
+                  <h4 className="text-sm font-semibold text-charcoal">Task & Event Breakdown</h4>
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Instruction breakdown / flow</label>
+                    <textarea value={instructionBreakdown} onChange={(e) => setInstructionBreakdown(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Task sequence</label>
+                    <textarea value={taskSequence} onChange={(e) => setTaskSequence(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                  </div>
+                  <IncidentTimelineBuilder events={incidentTimelineEvents} onChange={setIncidentTimelineEvents} />
+                </div>
+
+                <div className="rounded-xl border border-surface-200 p-4 space-y-4">
+                  <h4 className="text-sm font-semibold text-charcoal">Risk Analysis</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Likelihood (1-5)</label>
+                      <input type="number" min={1} max={5} value={riskLikelihood} onChange={(e) => setRiskLikelihood(Math.max(1, Math.min(5, Number(e.target.value || 1))) as 1 | 2 | 3 | 4 | 5)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Severity (1-5)</label>
+                      <input type="number" min={1} max={5} value={riskSeverity} onChange={(e) => setRiskSeverity(Math.max(1, Math.min(5, Number(e.target.value || 1))) as 1 | 2 | 3 | 4 | 5)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated risk</label>
+                      <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm font-semibold bg-surface-50">{calculatedRisk}</div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated category</label>
+                      <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm font-semibold bg-surface-50">{calculatedRiskCategory}</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Risk profile (Hazards)</label>
+                    <textarea value={riskProfile} onChange={(e) => setRiskProfile(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Consequence / Potential consequence</label>
+                    <textarea value={potentialConsequence} onChange={(e) => setPotentialConsequence(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                  </div>
+                </div>
+
+                {renderDetailedCauseGroups('Immediate Causes (multi-select + notes + per-item evidence)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, immediateCauseCategories, setImmediateCauseCategories)}
+                {renderCauseGroups('Unsafe Acts (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, 'acts', unsafeActs)}
+                {renderCauseGroups('Unsafe Conditions (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS, 'conditions', unsafeConditions)}
+                {renderDetailedCauseGroups('Root Cause Analysis - Human Factors', ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES, rootCauseHuman, setRootCauseHuman)}
+                {renderDetailedCauseGroups('Root Cause Analysis - Workplace Factors', ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES, rootCauseWorkplace, setRootCauseWorkplace)}
+
+                <div className="rounded-xl border border-surface-200 p-4 space-y-3">
+                  <h4 className="text-sm font-semibold text-charcoal">System Failure</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {SYSTEM_FAILURE_OPTIONS.map((option) => {
+                      const key = makeCauseKey('System Failure', option);
+                      const selected = Boolean(systemFailures[key]);
+                      return (
+                        <div key={key} className="rounded border border-surface-100 p-2 space-y-2">
+                          <label className="flex items-center gap-2 text-sm text-charcoal">
+                            <input type="checkbox" checked={selected} onChange={(e) => toggleDetailedCause(setSystemFailures, 'System Failure', option, e.target.checked)} className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal" />
+                            <span>{option}</span>
+                          </label>
+                          <input value={systemFailures[key]?.note ?? ''} onChange={(e) => updateDetailedCauseNote(setSystemFailures, key, e.target.value)} disabled={!selected} placeholder="Explanation / notes" className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal disabled:bg-surface-100 disabled:text-charcoal-400" />
+                          <input type="file" multiple disabled={!selected} onChange={(e) => addUploads(e.target.files, 'investigation', `System Failure: ${option}`)} className="w-full text-xs disabled:opacity-60" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-surface-200 p-4 space-y-3">
+                  <h4 className="text-sm font-semibold text-charcoal">Final Sections</h4>
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Contributing factors</label>
+                    <textarea value={contributingFactors} onChange={(e) => setContributingFactors(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Corrective actions (linked to Task / NCR after save)</label>
+                    <textarea value={correctiveActionsText} onChange={(e) => setCorrectiveActionsText(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Lessons learnt</label>
+                    <textarea value={lessonsLearnt} onChange={(e) => setLessonsLearnt(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Investigation team</label>
+                      <input value={investigationTeam} onChange={(e) => setInvestigationTeam(e.target.value)} placeholder="Comma-separated names" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Prepared by</label>
+                      <input value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Conclusion</label>
+                    <textarea value={conclusion} onChange={(e) => setConclusion(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Distribution list (copy to)</label>
+                    <input value={distributionList} onChange={(e) => setDistributionList(e.target.value)} placeholder="Comma-separated emails/names" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-surface-200">

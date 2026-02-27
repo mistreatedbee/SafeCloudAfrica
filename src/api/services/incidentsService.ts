@@ -199,6 +199,13 @@ export type CreateIncidentInput = {
     reputationalLoss?: number | null;
     damageAssetLoss?: number | null;
     illnessInjuryImpact?: number | null;
+    illnessLoss?: number | null;
+    injuryLoss?: number | null;
+    civilLiabilityLoss?: number | null;
+    criminalLiabilityLoss?: number | null;
+    vicariousLiabilityLoss?: number | null;
+    substandardQualityLoss?: number | null;
+    types?: string[] | null;
     other?: string | null;
     notes?: string | null;
   };
@@ -206,6 +213,7 @@ export type CreateIncidentInput = {
   riskLikelihood1To5?: number | null;
   riskRatingProduct?: number | null;
   riskClassification?: IncidentRiskCategory | null;
+  riskCategorySimple?: 'Low' | 'Medium' | 'High' | null;
   severity: Severity;
   occurredAt: string; // ISO string
   location?: string;
@@ -240,12 +248,20 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
       loss_reputational_value: losses.reputationalLoss ?? null,
       loss_damage_asset_value: losses.damageAssetLoss ?? null,
       loss_illness_injury_value: losses.illnessInjuryImpact ?? null,
+      loss_illness_value: losses.illnessLoss ?? null,
+      loss_injury_value: losses.injuryLoss ?? null,
+      loss_civil_liability_value: losses.civilLiabilityLoss ?? null,
+      loss_criminal_liability_value: losses.criminalLiabilityLoss ?? null,
+      loss_vicarious_liability_value: losses.vicariousLiabilityLoss ?? null,
+      loss_substandard_quality_value: losses.substandardQualityLoss ?? null,
+      loss_types: losses.types ?? null,
       loss_other_text: losses.other ?? null,
       loss_notes: losses.notes ?? null,
       risk_severity_1_5: input.riskSeverity1To5 ?? null,
       risk_likelihood_1_5: input.riskLikelihood1To5 ?? null,
       risk_rating_product: input.riskRatingProduct ?? null,
       risk_classification: input.riskClassification ?? null,
+      risk_category: input.riskCategorySimple ?? null,
       severity: input.severity,
       status: 'open' satisfies IncidentStatus,
       occurred_at: input.occurredAt,
@@ -298,12 +314,20 @@ export type UpdateIncidentPatch = Partial<{
   lossReputationalValue: number | null;
   lossDamageAssetValue: number | null;
   lossIllnessInjuryValue: number | null;
+  lossIllnessValue: number | null;
+  lossInjuryValue: number | null;
+  lossCivilLiabilityValue: number | null;
+  lossCriminalLiabilityValue: number | null;
+  lossVicariousLiabilityValue: number | null;
+  lossSubstandardQualityValue: number | null;
+  lossTypes: string[] | null;
   lossOtherText: string | null;
   lossNotes: string | null;
   riskSeverity1To5: number | null;
   riskLikelihood1To5: number | null;
   riskRatingProduct: number | null;
   riskClassification: IncidentRiskCategory | null;
+  riskCategorySimple: 'Low' | 'Medium' | 'High' | null;
 }>;
 
 export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatch): Promise<Incident> {
@@ -336,12 +360,20 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
   if (patch.lossReputationalValue !== undefined) updateData.loss_reputational_value = patch.lossReputationalValue;
   if (patch.lossDamageAssetValue !== undefined) updateData.loss_damage_asset_value = patch.lossDamageAssetValue;
   if (patch.lossIllnessInjuryValue !== undefined) updateData.loss_illness_injury_value = patch.lossIllnessInjuryValue;
+  if (patch.lossIllnessValue !== undefined) updateData.loss_illness_value = patch.lossIllnessValue;
+  if (patch.lossInjuryValue !== undefined) updateData.loss_injury_value = patch.lossInjuryValue;
+  if (patch.lossCivilLiabilityValue !== undefined) updateData.loss_civil_liability_value = patch.lossCivilLiabilityValue;
+  if (patch.lossCriminalLiabilityValue !== undefined) updateData.loss_criminal_liability_value = patch.lossCriminalLiabilityValue;
+  if (patch.lossVicariousLiabilityValue !== undefined) updateData.loss_vicarious_liability_value = patch.lossVicariousLiabilityValue;
+  if (patch.lossSubstandardQualityValue !== undefined) updateData.loss_substandard_quality_value = patch.lossSubstandardQualityValue;
+  if (patch.lossTypes !== undefined) updateData.loss_types = patch.lossTypes;
   if (patch.lossOtherText !== undefined) updateData.loss_other_text = patch.lossOtherText;
   if (patch.lossNotes !== undefined) updateData.loss_notes = patch.lossNotes;
   if (patch.riskSeverity1To5 !== undefined) updateData.risk_severity_1_5 = patch.riskSeverity1To5;
   if (patch.riskLikelihood1To5 !== undefined) updateData.risk_likelihood_1_5 = patch.riskLikelihood1To5;
   if (patch.riskRatingProduct !== undefined) updateData.risk_rating_product = patch.riskRatingProduct;
   if (patch.riskClassification !== undefined) updateData.risk_classification = patch.riskClassification;
+  if (patch.riskCategorySimple !== undefined) updateData.risk_category = patch.riskCategorySimple;
 
   const { data, error } = await insforge.database
     .from('incidents')
