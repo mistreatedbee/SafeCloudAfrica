@@ -18,7 +18,8 @@
     "react-dom": "^18.3.1",
     "react-helmet": "^6.1.0",
     "react-router-dom": "^6.26.2",
-    "recharts": "^2.12.7"
+    "recharts": "^2.12.7",
+    "resend": "^6.9.2"
   },
   "devDependencies": {
     "@types/node": "^20.11.18",

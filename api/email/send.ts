@@ -1,3 +1,5 @@
+import { Resend } from 'resend';
+
 type EmailRequest = {
   to: string | string[];
   subject: string;
@@ -18,8 +20,12 @@ export default async function handler(req: any, res: any) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
   if (!apiKey || !from) {
-    return res.status(500).json({ ok: false, error: 'Email provider not configured' });
+    return res.status(500).json({
+      ok: false,
+      error: 'Email provider not configured. Set RESEND_API_KEY (replace re_xxxxxxxxx with your real key) and EMAIL_FROM.'
+    });
   }
+  const resend = new Resend(apiKey);
 
   const body = (req.body ?? {}) as EmailRequest;
   const to = asArray(body.to ?? []).map((entry) => String(entry || '').trim()).filter(Boolean);
@@ -32,29 +38,15 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
+    const { error } = await resend.emails.send({
         from,
         to,
         subject,
         html: html || undefined,
         text: text || undefined
-      })
     });
-
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = typeof result?.error?.message === 'string'
-        ? result.error.message
-        : typeof result?.message === 'string'
-          ? result.message
-          : `Resend error (${response.status})`;
-      return res.status(502).json({ ok: false, error });
+    if (error) {
+      return res.status(502).json({ ok: false, error: error.message || 'Resend send failed' });
     }
 
     return res.status(200).json({ ok: true });
