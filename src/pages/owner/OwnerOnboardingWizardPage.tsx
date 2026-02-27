@@ -56,7 +56,7 @@ export function OwnerOnboardingWizardPage() {
 
   const onboardingComplete = (activeCompany?.metadata as { onboarding_completed_at?: string } | undefined)?.onboarding_completed_at;
   if (onboardingComplete && stepIndex === 0 && refresh === 0) {
-    navigate('/owner', { replace: true });
+    navigate('/org/dashboard', { replace: true });
     return null;
   }
 
@@ -104,7 +104,7 @@ export function OwnerOnboardingWizardPage() {
       });
       setCompletionMessage('Organization setup complete. Your system is ready.');
       window.setTimeout(() => {
-        navigate('/owner?onboarding=complete', { replace: true });
+        navigate('/org/dashboard?onboarding=complete', { replace: true });
       }, 1200);
     } finally {
       setFinishing(false);
@@ -197,9 +197,9 @@ export function OwnerOnboardingWizardPage() {
               onInvited={() => setRefresh((r) => r + 1)}
               onInviteResult={(result: InviteCreateResult, email: string) => {
                 if (result.ok) {
-                  setInviteFeedback({ type: 'success', text: `Invite sent successfully to ${email}.` });
+                  setInviteFeedback({ type: 'success', text: `Email successfully sent to ${email}.` });
                 } else {
-                  setInviteFeedback({ type: 'error', text: result.message || 'Invite failed to send. Please try again or contact support.' });
+                  setInviteFeedback({ type: 'error', text: result.message || 'Email failed to send, try again.' });
                 }
               }}
             />
@@ -226,9 +226,9 @@ export function OwnerOnboardingWizardPage() {
               onInvited={() => setRefresh((r) => r + 1)}
               onInviteResult={(result: InviteCreateResult, email: string) => {
                 if (result.ok) {
-                  setInviteFeedback({ type: 'success', text: `Invite sent successfully to ${email}.` });
+                  setInviteFeedback({ type: 'success', text: `Email successfully sent to ${email}.` });
                 } else {
-                  setInviteFeedback({ type: 'error', text: result.message || 'Invite failed to send. Please try again or contact support.' });
+                  setInviteFeedback({ type: 'error', text: result.message || 'Email failed to send, try again.' });
                 }
               }}
             />

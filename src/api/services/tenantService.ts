@@ -1,6 +1,6 @@
 import { insforge } from '../insforge/client';
 import type { Company, CompanyInvite, CompanyMembership, UUID } from '../models/entities';
-import type { CompanyRole, LicenseType } from '../models/core';
+import type { CompanyRole, LicenseType, ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { ensureInsforgeSession } from '../insforge/ensureSession';
@@ -55,6 +55,7 @@ export async function createMembership(input: {
   departmentId?: UUID | null;
   siteId?: UUID | null;
   invitedByUserId?: UUID | null;
+  consultantScope?: Record<string, unknown> | null;
 }): Promise<CompanyMembership> {
   await ensureInsforgeSession();
 
@@ -76,6 +77,7 @@ export async function createMembership(input: {
   if (input.departmentId) payload.department_id = input.departmentId;
   if (input.siteId) payload.site_id = input.siteId;
   if (input.invitedByUserId) payload.invited_by_user_id = input.invitedByUserId;
+  if (input.consultantScope) payload.consultant_scope = input.consultantScope;
 
   let result = await insforge.database.from('company_memberships').insert(payload).select('*').single();
 
@@ -269,6 +271,7 @@ export async function createInvite(input: {
   role: CompanyRole;
   departmentId?: UUID | null;
   siteId?: UUID | null;
+  modulesScope?: ModuleKey[];
 }): Promise<InviteCreateResult> {
   try {
     await ensureInsforgeSession();
@@ -282,8 +285,15 @@ export async function createInvite(input: {
   }
 
   const normalizedEmail = input.email.trim().toLowerCase();
-  const nowIso = new Date().toISOString();
   const expiresAtIso = addDaysIso(7);
+  const isScopedExternalRole = input.role === 'consultant' || input.role === 'auditor';
+  const scope = isScopedExternalRole
+    ? {
+        allowedModules: Array.from(new Set(input.modulesScope ?? [])),
+        allowedDepartments: input.departmentId ? [input.departmentId] : [],
+        allowedSites: input.siteId ? [input.siteId] : []
+      }
+    : null;
 
   try {
     const [inviterMembershipRes, companyRes] = await Promise.all([
@@ -314,26 +324,23 @@ export async function createInvite(input: {
       };
     }
 
-    const { data: activeInvite } = await insforge.database
+    const { data: activeInvites } = await insforge.database
       .from('company_invites')
-      .select('id, status, expires_at')
+      .select('id, status')
       .eq('company_id', input.company.id)
       .eq('email', normalizedEmail)
       .in('status', ['PENDING', 'SENT'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order('created_at', { ascending: false });
 
-    if (activeInvite) {
-      const expiry = new Date((activeInvite as any).expires_at ?? nowIso);
-      if (expiry > new Date()) {
-        return {
-          ok: false,
-          status: 'FAILED',
-          code: 'ALREADY_INVITED',
-          message: 'This user is already invited.'
-        };
-      }
+    if (activeInvites && activeInvites.length > 0) {
+      const ids = activeInvites.map((row: any) => row.id as UUID);
+      await insforge.database
+        .from('company_invites')
+        .update({
+          status: 'CANCELLED',
+          error_message: 'Superseded by newer invitation.'
+        })
+        .in('id', ids);
     }
 
     const { data: existingUserProfile } = await insforge.database
@@ -379,13 +386,14 @@ export async function createInvite(input: {
 
     const payload: Record<string, unknown> = {
       company_id: input.company.id,
+      organization_name: input.company.name,
       email: normalizedEmail,
       role: input.role,
       created_by_user_id: input.actorUserId,
       token: generateInviteToken(),
       expires_at: expiresAtIso,
-      status: 'SENT',
-      sent_at: nowIso,
+      status: 'PENDING',
+      consultant_scope: scope,
       error_message: null
     };
 
@@ -418,6 +426,21 @@ export async function createInvite(input: {
         inviteToken: invite.token,
         expiresAtIso: invite.expires_at
       });
+      const sentAt = new Date().toISOString();
+      const { data: sentInvite } = await insforge.database
+        .from('company_invites')
+        .update({
+          status: 'SENT',
+          sent_at: sentAt,
+          error_message: null
+        })
+        .eq('id', invite.id)
+        .select('*')
+        .single();
+      if (sentInvite) {
+        invite.status = 'SENT';
+        invite.sent_at = sentAt;
+      }
     } catch (emailErr: any) {
       await insforge.database
         .from('company_invites')
@@ -427,7 +450,7 @@ export async function createInvite(input: {
         ok: false,
         status: 'FAILED',
         code: 'INVITE_CREATE_FAILED',
-        message: 'Invite created, but email delivery failed. You can copy the invite link from the invites list.'
+        message: 'Email failed to send, try again.'
       };
     }
 
@@ -455,50 +478,29 @@ export async function validateInvitationToken(token: string): Promise<InviteVali
   const cleanToken = token.trim();
   if (!cleanToken) return { code: 'INVITE_INVALID', invite: null };
 
-  const { data: inviteId, error: tokenError } = await insforge.database.rpc('get_invite_id_by_token', { p_token: cleanToken });
-  if (tokenError) return { code: 'INVITE_INVALID', invite: null };
-  if (!inviteId) return { code: 'INVITE_INVALID', invite: null };
+  const { data, error } = await insforge.database.rpc('validate_invitation_token', { p_token: cleanToken });
+  if (error) return { code: 'INVITE_INVALID', invite: null };
 
-  const { data, error } = await insforge.database
-    .from('company_invites')
-    .select('*, companies(name)')
-    .eq('id', inviteId)
-    .maybeSingle();
-
-  if (error || !data) {
-    return {
-      code: 'OK',
-      invite: {
-        id: inviteId as UUID,
-        company_id: '' as UUID,
-        email: '',
-        role: 'employee',
-        created_by_user_id: '' as UUID,
-        created_at: '',
-        accepted_at: null,
-        accepted_user_id: null,
-        token: cleanToken,
-        expires_at: '',
-        status: 'SENT'
-      }
-    };
-  }
-
-  const status = normalizeInviteStatus((data as any).status);
-  if (status === 'ACCEPTED') return { code: 'INVITE_ACCEPTED', invite: null };
-  if (status === 'EXPIRED') return { code: 'INVITE_EXPIRED', invite: null };
-
-  const expires = new Date((data as any).expires_at);
-  if (!Number.isNaN(expires.getTime()) && expires <= new Date()) {
-    return { code: 'INVITE_EXPIRED', invite: null };
-  }
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row?.invite_id) return { code: 'INVITE_INVALID', invite: null };
 
   return {
     code: 'OK',
     invite: {
-      ...(data as any),
-      company_name: (data as any)?.companies?.name ?? null
-    }
+      id: row.invite_id,
+      company_id: row.company_id,
+      organization_name: row.company_name ?? null,
+      email: row.email,
+      role: row.role,
+      created_by_user_id: '' as UUID,
+      created_at: '',
+      accepted_at: null,
+      accepted_user_id: null,
+      token: cleanToken,
+      expires_at: row.expires_at,
+      status: row.status,
+      company_name: row.company_name ?? null
+    } as CompanyInvite & { company_name?: string | null }
   };
 }
 
@@ -542,7 +544,24 @@ export async function acceptInvite(input: { inviteId: UUID; userId: UUID }): Pro
 
   let membership: CompanyMembership;
   if (existingMembership) {
-    membership = existingMembership as CompanyMembership;
+    const membershipPatch: Record<string, unknown> = {
+      role,
+      status: 'ACTIVE',
+      department_id: (invite as any).department_id ?? null,
+      site_id: (invite as any).site_id ?? null,
+      invited_by_user_id: (invite as any).created_by_user_id ?? null,
+      consultant_scope: (invite as any).consultant_scope ?? null
+    };
+    const { data: updatedMembership, error: membershipUpdateError } = await insforge.database
+      .from('company_memberships')
+      .update(membershipPatch)
+      .eq('id', (existingMembership as any).id)
+      .eq('company_id', companyId)
+      .eq('user_id', input.userId)
+      .select('*')
+      .single();
+    if (membershipUpdateError || !updatedMembership) throw new Error(getErrorMessage(membershipUpdateError));
+    membership = updatedMembership as CompanyMembership;
   } else {
     membership = await createMembership({
       companyId,
@@ -550,7 +569,8 @@ export async function acceptInvite(input: { inviteId: UUID; userId: UUID }): Pro
       role,
       departmentId: (invite as any).department_id ?? null,
       siteId: (invite as any).site_id ?? null,
-      invitedByUserId: (invite as any).created_by_user_id ?? null
+      invitedByUserId: (invite as any).created_by_user_id ?? null,
+      consultantScope: (invite as any).consultant_scope ?? null
     });
   }
 

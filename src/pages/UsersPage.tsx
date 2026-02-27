@@ -189,13 +189,13 @@ export function UsersPage() {
 
   const onInviteResult = (result: InviteCreateResult, email: string) => {
     if (result.ok) {
-      setInviteFeedback({ type: 'success', text: `Invite sent successfully to ${email}.` });
+      setInviteFeedback({ type: 'success', text: `Email successfully sent to ${email}.` });
       void refreshUsersData();
       return;
     }
     setInviteFeedback({
       type: 'error',
-      text: result.message || 'Invite failed to send. Please try again or contact support.'
+      text: result.message || 'Email failed to send, try again.'
     });
   };
 

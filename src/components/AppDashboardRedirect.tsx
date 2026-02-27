@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useTenant } from '../tenant/TenantContext';
-import { getDashboardPathByRole } from '../api/services/platformAdminService';
+import { getDashboardRoute } from '../api/services/platformAdminService';
 
 /**
  * Redirects /app to the role-based dashboard so users always land on the correct home.
@@ -9,6 +9,6 @@ import { getDashboardPathByRole } from '../api/services/platformAdminService';
  */
 export function AppDashboardRedirect() {
   const { activeRole } = useTenant();
-  const path = activeRole ? getDashboardPathByRole(activeRole) : '/owner';
+  const path = activeRole ? getDashboardRoute(activeRole) : '/org/dashboard';
   return <Navigate to={path} replace />;
 }

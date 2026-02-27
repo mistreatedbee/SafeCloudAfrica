@@ -16,7 +16,7 @@ import {
 } from '../../api/services/tenantService';
 import { useTenant } from '../../tenant/TenantContext';
 import type { CompanyInvite } from '../../api/models/entities';
-import { getDashboardPathByRole } from '../../api/services/platformAdminService';
+import { getDashboardRoute } from '../../api/services/platformAdminService';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -115,7 +115,7 @@ export function InviteAcceptPage() {
         await refreshTenant();
         setSuccess(true);
         setTimeout(() => {
-          navigate(getDashboardPathByRole(membership.role), { replace: true });
+          navigate(getDashboardRoute(membership.role), { replace: true });
         }, 900);
       } catch (err: any) {
         if (!cancelled) setError(toUserInviteMessage(err?.message || 'Failed to accept invite.'));
@@ -149,6 +149,9 @@ export function InviteAcceptPage() {
             <XCircleIcon className="w-12 h-12 text-critical mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-critical mb-2">Invalid or Expired Invite</h3>
             <p className="text-charcoal-600">{error}</p>
+            <Link to="/login" className="inline-flex mt-4 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">
+              Request new invite
+            </Link>
           </motion.div>
         </motion.div>
       </AuthShell>

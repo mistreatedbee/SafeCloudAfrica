@@ -41,6 +41,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import type { CompanyRole, ModuleKey } from '../../api/models/core';
 import type { SellableFeatureKey } from '../../api/services/sellableFeaturesService';
 import { SELLABLE_FEATURE_ROUTE_PATHS } from '../../api/services/sellableFeaturesService';
+import { getDashboardRoute } from '../../api/services/platformAdminService';
 
 type NavItem = {
   name: string;
@@ -227,16 +228,7 @@ type SidebarProps = {
 
 function dashboardPathForRole(role: CompanyRole | null): string {
   if (!role) return '/app';
-  const map: Record<CompanyRole, string> = {
-    owner: '/owner',
-    admin: '/admin',
-    manager: '/manager',
-    supervisor: '/manager',
-    employee: '/employee',
-    consultant: '/external',
-    auditor: '/external'
-  };
-  return map[role] ?? '/app';
+  return getDashboardRoute(role);
 }
 
 function isRoleVisible(roles: CompanyRole[] | undefined, activeRole: CompanyRole | null): boolean {

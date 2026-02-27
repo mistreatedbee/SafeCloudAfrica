@@ -11,6 +11,7 @@ import type { UUID } from '../../api/models/entities';
 
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
 const INVALID_REDIRECT_PREFIXES = ['/login', '/register', '/forgot-password', '/reset-password', '/logout'];
+const ACTIVE_COMPANY_KEY = 'sca_active_company_id_v3';
 
 function sanitizeRedirect(raw: string | null, fallback: string): string {
   if (!raw) return fallback;
@@ -71,7 +72,14 @@ export function LoginPage() {
           navigate('/super-admin/overview', { replace: true });
           return;
         }
-        const { path: defaultPath, organizationId, reason } = await getLoginRedirectPath(user.id as UUID);
+        const storedCompanyId = (() => {
+          try {
+            return (localStorage.getItem(ACTIVE_COMPANY_KEY) as UUID | null) ?? null;
+          } catch {
+            return null;
+          }
+        })();
+        const { path: defaultPath, organizationId, reason } = await getLoginRedirectPath(user.id as UUID, storedCompanyId);
         if (organizationId) setActiveCompanyId(organizationId);
         await refreshTenant();
         if (cancelled) return;

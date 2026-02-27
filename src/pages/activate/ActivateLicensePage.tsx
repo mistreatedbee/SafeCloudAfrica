@@ -4,7 +4,7 @@ import { KeyRoundIcon, Building2Icon, FileCheckIcon, Loader2Icon } from 'lucide-
 import { useAuth, useUser } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { validateLicenseKey, activateLicenseKey, type ValidatedKeyInfo } from '../../api/services/activationService';
-import { getDashboardPathByRole } from '../../api/services/platformAdminService';
+import { getDashboardRoute } from '../../api/services/platformAdminService';
 import { useTenant } from '../../tenant/TenantContext';
 import { insforge } from '../../api/insforge/client';
 
@@ -132,7 +132,7 @@ export function ActivateLicensePage() {
       setActiveCompanyId(result.organizationId);
       await refreshTenant();
       setRedirecting(true);
-      navigate(getDashboardPathByRole('owner'), { replace: true });
+      navigate(getDashboardRoute('owner'), { replace: true });
     } catch (err) {
       setSubmitError((err as Error)?.message ?? 'Activation failed. Please try again or contact support.');
     } finally {

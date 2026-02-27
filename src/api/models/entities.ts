@@ -66,6 +66,7 @@ export type CompanyInviteStatus = 'PENDING' | 'SENT' | 'FAILED' | 'ACCEPTED' | '
 export type CompanyInvite = {
   id: UUID;
   company_id: UUID;
+  organization_name?: string | null;
   email: string;
   role: CompanyRole;
   created_by_user_id: UUID;
@@ -74,6 +75,7 @@ export type CompanyInvite = {
   accepted_user_id: UUID | null;
   department_id?: UUID | null;
   site_id?: UUID | null;
+  consultant_scope?: ConsultantScope | null;
   token: string;
   expires_at: string;
   status: CompanyInviteStatus;

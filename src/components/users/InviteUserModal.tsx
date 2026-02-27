@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import type { Company, CompanyInvite, Department, Site, UUID } from '../../api/models/entities';
-import type { CompanyRole } from '../../api/models/core';
+import type { CompanyRole, ModuleKey } from '../../api/models/core';
 import { createInvite, type InviteCreateResult } from '../../api/services/tenantService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
@@ -24,7 +24,10 @@ export function InviteUserModal(props: {
   const [siteId, setSiteId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modulesScope, setModulesScope] = useState<ModuleKey[]>([]);
   const canSubmit = useMemo(() => email.trim().includes('@') && !!role, [email, role]);
+  const isScopedExternalRole = role === 'consultant' || role === 'auditor';
+  const moduleOptions: ModuleKey[] = ['general', 'safety', 'quality', 'environment', 'health', 'legal', 'hr', 'security'];
 
   const { data: departments } = useAsync<Department[]>(
     async () => listDepartments(props.company.id),
@@ -48,7 +51,8 @@ export function InviteUserModal(props: {
         email,
         role,
         departmentId: departmentId || null,
-        siteId: siteId || null
+        siteId: siteId || null,
+        modulesScope
       });
       props.onInviteResult?.(result, normalizedEmail);
       if (result.ok) {
@@ -56,6 +60,7 @@ export function InviteUserModal(props: {
         setEmail('');
         setDepartmentId('');
         setSiteId('');
+        setModulesScope([]);
         props.onClose();
         return;
       }
@@ -122,6 +127,33 @@ export function InviteUserModal(props: {
               Invited users will only see data within this company workspace.
             </p>
           </div>
+
+          {isScopedExternalRole && (
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Module scope (optional)</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 rounded-lg border border-surface-300 p-3">
+                {moduleOptions.map((moduleKey) => {
+                  const checked = modulesScope.includes(moduleKey);
+                  return (
+                    <label key={moduleKey} className="inline-flex items-center gap-2 text-sm text-charcoal-600">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setModulesScope((prev) =>
+                            prev.includes(moduleKey) ? prev.filter((m) => m !== moduleKey) : [...prev, moduleKey]
+                          );
+                        }}
+                        className="rounded border-surface-300 text-teal focus:ring-teal"
+                      />
+                      <span className="capitalize">{moduleKey.replace('_', ' ')}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-charcoal-500 mt-1">Only selected modules are accessible for this invite.</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>

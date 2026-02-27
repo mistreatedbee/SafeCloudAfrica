@@ -6,22 +6,26 @@ const ROLE_ORDER = ['owner', 'admin', 'manager', 'supervisor', 'consultant', 'em
 
 /** Single source of truth: role -> dashboard path. Use for login, activation, and app boot. */
 export const ROLE_PATH_MAP: Record<string, string> = {
-  owner: '/owner',
-  admin: '/admin',
-  manager: '/manager',
-  supervisor: '/manager',
-  consultant: '/external',
-  employee: '/employee',
-  auditor: '/external',
+  owner: '/org/dashboard',
+  admin: '/admin/dashboard',
+  manager: '/manager/dashboard',
+  supervisor: '/supervisor/dashboard',
+  consultant: '/consultant/dashboard',
+  employee: '/employee/dashboard',
+  auditor: '/auditor/dashboard',
 };
 
 /**
  * Returns the dashboard path for a role. Use after login, after license activation, and on app boot.
  * SUPER_ADMIN is handled separately (-> /super-admin/overview). For org roles, requires organizationId in session.
  */
-export function getDashboardPathByRole(role: string): string {
+export function getDashboardRoute(role: string): string {
   const path = ROLE_PATH_MAP[role?.toLowerCase()];
   return path ?? '/app';
+}
+
+export function getDashboardPathByRole(role: string): string {
+  return getDashboardRoute(role);
 }
 
 /** Returns the dashboard path for the user's best role across memberships, or /app. */
@@ -54,7 +58,7 @@ export type LoginRedirectResult = { path: string; organizationId?: UUID; reason?
  * Resolves post-login redirect: no org → /activate; subscription expired/suspended → /billing/status; else role path.
  * Returns organizationId so the client can set active company before navigating (correct org/tenant for dashboard).
  */
-export async function getLoginRedirectPath(userId: UUID): Promise<LoginRedirectResult> {
+export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId?: UUID | null): Promise<LoginRedirectResult> {
   try {
     const { data: memberships, error: mErr } = await insforge.database
       .from('company_memberships')
@@ -62,10 +66,19 @@ export async function getLoginRedirectPath(userId: UUID): Promise<LoginRedirectR
       .eq('user_id', userId);
     if (mErr || !memberships?.length) return { path: '/activate', reason: 'no_org' };
 
+    const membershipRows = memberships as { company_id: UUID; role: string }[];
+    if (preferredOrganizationId) {
+      const preferredMembership = membershipRows.find((m) => m.company_id === preferredOrganizationId);
+      if (preferredMembership) {
+        const path = ROLE_PATH_MAP[preferredMembership.role] ?? '/app';
+        return { path, organizationId: preferredMembership.company_id };
+      }
+    }
+
     let bestIdx = ROLE_ORDER.length;
     let bestCompanyId: UUID | null = null;
     let bestRole: string | null = null;
-    for (const m of memberships as { company_id: UUID; role: string }[]) {
+    for (const m of membershipRows) {
       const idx = ROLE_ORDER.indexOf(m.role as (typeof ROLE_ORDER)[number]);
       if (idx >= 0 && idx < bestIdx) {
         bestIdx = idx;

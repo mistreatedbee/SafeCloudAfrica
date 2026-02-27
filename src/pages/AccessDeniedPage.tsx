@@ -3,13 +3,15 @@ import { Link, useLocation } from 'react-router-dom';
 import { ShieldAlertIcon, HomeIcon } from 'lucide-react';
 import { useTenant } from '../tenant/TenantContext';
 import { Layout } from '../components/layout/Layout';
-import { getDashboardPathByRole } from '../api/services/platformAdminService';
+import { getDashboardRoute } from '../api/services/platformAdminService';
 
 export function AccessDeniedPage() {
   const location = useLocation();
   const { activeRole } = useTenant();
   const from = (location.state as { from?: string })?.from;
-  const dashboardPath = activeRole ? getDashboardPathByRole(activeRole) : '/app';
+  const reason = (location.state as { reason?: string })?.reason;
+  const dashboardPath = activeRole ? getDashboardRoute(activeRole) : '/app';
+  const moduleDisabled = reason === 'module_disabled';
 
   return (
     <Layout title="Access denied">
@@ -19,7 +21,7 @@ export function AccessDeniedPage() {
         </div>
         <h1 className="text-xl font-semibold text-charcoal mb-2">Access denied</h1>
         <p className="text-charcoal-500 mb-6">
-          You don&apos;t have permission to view this page.
+          {moduleDisabled ? 'Module not enabled for your organization.' : 'You don&apos;t have permission to view this page.'}
           {from && (
             <span className="block mt-2 text-sm">
               Blocked: <code className="bg-surface-200 px-1 rounded">{from}</code>
