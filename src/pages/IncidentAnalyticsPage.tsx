@@ -188,7 +188,7 @@ export function IncidentAnalyticsPage() {
             <p className="text-sm text-charcoal-500 mt-1">12-month rolling trend analysis</p>
           </div>
           <button
-            onClick={() => navigate('/incidents')}
+            onClick={() => navigate('/dashboard/incidents/management')}
             className="px-4 py-2 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors"
           >
             View All Incidents

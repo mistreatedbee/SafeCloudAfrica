@@ -365,12 +365,12 @@ export function TasksPage() {
           open={createOpen}
           onClose={() => {
             setCreateOpen(false);
-            if (isNew) navigate('/tasks', { replace: true });
+            if (isNew) navigate('/dashboard/management/tasks', { replace: true });
           }}
           companyId={activeCompanyId}
           createdByUserId={user.id}
           defaultModule="safety"
-          onCreated={() => navigate('/tasks', { replace: true })}
+          onCreated={() => navigate('/dashboard/management/tasks', { replace: true })}
         />
       )}
       <motion.div
@@ -382,14 +382,14 @@ export function TasksPage() {
         <motion.div variants={itemVariants} className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => navigate('/tasks')}
+            onClick={() => navigate('/dashboard/management/tasks')}
             className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'tasks' ? 'bg-navy text-white' : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'}`}
           >
             Tasks
           </button>
           <button
             type="button"
-            onClick={() => navigate('/tasks?view=capa')}
+            onClick={() => navigate('/dashboard/management/tasks?view=capa')}
             className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'capa' ? 'bg-navy text-white' : 'bg-white border border-surface-300 text-charcoal hover:bg-surface-50'}`}
           >
             CAPA
@@ -581,7 +581,7 @@ export function TasksPage() {
               <button
                 type="button"
                 disabled={!canCreate}
-                onClick={() => navigate('/tasks/new')}
+                onClick={() => navigate('/dashboard/management/tasks/new')}
                 className="flex items-center justify-center gap-2 px-5 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <PlusIcon className="w-4 h-4" />

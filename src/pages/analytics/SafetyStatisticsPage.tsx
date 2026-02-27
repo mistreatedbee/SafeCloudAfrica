@@ -41,7 +41,7 @@ export function SafetyStatisticsPage() {
             <p className="text-sm text-charcoal-500 mt-1">12-month rolling rates (multiplier: {safety?.multiplier === 1_000_000 ? '1,000,000' : '200,000'})</p>
           </div>
           <div className="flex gap-2">
-            <Link to="/incidents/analytics" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-surface-300 text-charcoal text-sm">
+            <Link to="/dashboard/incidents/analysis" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-surface-300 text-charcoal text-sm">
               <BarChart3Icon className="w-4 h-4" /> Incident trends
             </Link>
             <button
@@ -137,7 +137,7 @@ export function SafetyStatisticsPage() {
                 <p className="text-2xl font-bold text-teal">{formatNum(ltiFree.ltiFreeHours)}</p>
                 {ltiFree.lastResetDate && (
                   <p className="text-xs text-charcoal-500 mt-2">
-                    Last reset: {new Date(ltiFree.lastResetDate).toLocaleDateString()} ({ltiFree.lastResetReason}). <Link to="/incidents" className="text-teal hover:underline">View incidents</Link>
+                    Last reset: {new Date(ltiFree.lastResetDate).toLocaleDateString()} ({ltiFree.lastResetReason}). <Link to="/dashboard/incidents/management" className="text-teal hover:underline">View incidents</Link>
                   </p>
                 )}
               </div>

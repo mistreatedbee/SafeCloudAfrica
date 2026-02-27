@@ -63,7 +63,7 @@ export function ExternalDashboardPage() {
             </div>
           </a>
           <a
-            href="/incidents"
+            href="/dashboard/incidents/management"
             className="flex items-center gap-4 p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all text-left"
           >
             <div className="p-3 rounded-lg bg-amber-500/10">

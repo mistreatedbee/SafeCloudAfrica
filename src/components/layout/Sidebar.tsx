@@ -1,4 +1,4 @@
-import React, { useMemo, useState, type ComponentType } from 'react';
+import React, { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -34,7 +34,8 @@ import {
   CreditCardIcon,
   IdCardIcon,
   PackageIcon,
-  FlaskConicalIcon
+  FlaskConicalIcon,
+  BriefcaseIcon
 } from 'lucide-react';
 import { useTenant } from '../../tenant/TenantContext';
 import type { CompanyRole, ModuleKey } from '../../api/models/core';
@@ -43,96 +44,176 @@ import { SELLABLE_FEATURE_ROUTE_PATHS } from '../../api/services/sellableFeature
 
 type NavItem = {
   name: string;
-  path: string;
+  path?: string;
   icon: ComponentType<{ className?: string }>;
-  /** Roles that can see this item (empty = all org roles). */
   roles?: CompanyRole[];
-  /** If set, item is hidden when this module is disabled for the org. */
   module?: ModuleKey;
   sellableFeatureKey?: SellableFeatureKey;
+  comingSoon?: boolean;
 };
-/** Roles that can see management/analytics (not employee or external). */
+
+type NavGroup = {
+  id: string;
+  name: string;
+  icon: ComponentType<{ className?: string }>;
+  roles?: CompanyRole[];
+  module?: ModuleKey;
+  items: NavItem[];
+};
+
+const GROUP_STORAGE_KEY = 'safecloud.sidebar.management-groups.v1';
+
 const managementRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
-/** Roles that can see admin-only items (users, license). */
 const adminOnlyRoles: CompanyRole[] = ['owner', 'admin'];
-/** Roles that can see full modules (not employee; consultant/auditor see limited via supporting). */
 const moduleRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
 
 const modules: NavItem[] = [
-{ name: 'General', path: '/modules/general', icon: FolderIcon, roles: moduleRoles, module: 'general' },
-{ name: 'Safety', path: '/modules/safety', icon: ShieldIcon, roles: moduleRoles, module: 'safety' },
-{ name: 'Quality', path: '/modules/quality', icon: AwardIcon, roles: moduleRoles, module: 'quality' },
-{ name: 'Environment', path: '/modules/environment', icon: LeafIcon, roles: moduleRoles, module: 'environment' },
-{ name: 'Health', path: '/dashboard/health', icon: HeartIcon, roles: moduleRoles, module: 'health' },
-{ name: 'Legal', path: '/modules/legal', icon: ScaleIcon, roles: moduleRoles, module: 'legal' },
-{ name: 'HR', path: '/dashboard/hr', icon: UsersIcon, roles: moduleRoles, module: 'hr' },
-{ name: 'Performance KPIs', path: '/modules/hr/kpis', icon: TrendingUpIcon, roles: moduleRoles, module: 'hr' },
-{ name: 'Security', path: '/modules/security', icon: LockIcon, roles: moduleRoles, module: 'security' }
+  { name: 'General', path: '/modules/general', icon: FolderIcon, roles: moduleRoles, module: 'general' },
+  { name: 'Safety', path: '/modules/safety', icon: ShieldIcon, roles: moduleRoles, module: 'safety' },
+  { name: 'Quality', path: '/modules/quality', icon: AwardIcon, roles: moduleRoles, module: 'quality' },
+  { name: 'Environment', path: '/modules/environment', icon: LeafIcon, roles: moduleRoles, module: 'environment' },
+  { name: 'Health', path: '/dashboard/health', icon: HeartIcon, roles: moduleRoles, module: 'health' },
+  { name: 'Legal', path: '/modules/legal', icon: ScaleIcon, roles: moduleRoles, module: 'legal' },
+  { name: 'HR', path: '/dashboard/hr', icon: UsersIcon, roles: moduleRoles, module: 'hr' },
+  { name: 'Performance KPIs', path: '/modules/hr/kpis', icon: TrendingUpIcon, roles: moduleRoles, module: 'hr' },
+  { name: 'Security', path: '/modules/security', icon: LockIcon, roles: moduleRoles, module: 'security' }
 ];
 
-const supportingSections: NavItem[] = [
-{ name: 'Documents', path: '/documents', icon: FileTextIcon },
-{ name: 'Forms & Templates', path: '/forms', icon: FileTextIcon },
-{ name: 'Non-Conformances (NCR)', path: '/ncrs', icon: AlertTriangleIcon, roles: managementRoles },
-{ name: 'Customer Complaints', path: '/dashboard/quality/complaints', icon: AlertCircleIcon, roles: managementRoles, module: 'quality' },
-{ name: 'Internal & External Issues', path: '/dashboard/quality/issues', icon: AlertOctagonIcon, roles: managementRoles, module: 'quality' },
-{ name: 'Quality Calibration', path: '/dashboard/quality/calibration', icon: ClipboardCheckIcon, roles: managementRoles, module: 'quality' },
-{ name: 'Plan Job Observations (PJO)', path: '/pjo', icon: ClipboardCheckIcon, roles: managementRoles },
-{ name: 'Tasks & Time', path: '/tasks', icon: ClipboardCheckIcon },
-{ name: 'Incidents', path: '/incidents', icon: AlertTriangleIcon },
-{ name: 'Incident Analytics', path: '/incidents/analytics', icon: BarChart3Icon, roles: managementRoles, module: 'safety' },
-{ name: 'Safety Statistics (KPI)', path: '/analytics/safety-statistics', icon: BarChart3Icon, roles: managementRoles, module: 'safety' },
-{ name: 'Compliance & Performance', path: '/analytics/compliance', icon: BarChart3Icon, roles: managementRoles },
-{ name: 'Quality KPIs', path: '/analytics/quality', icon: AwardIcon, roles: managementRoles, module: 'quality' },
-{ name: 'Environmental KPIs', path: '/analytics/environmental', icon: LeafIcon, roles: managementRoles, module: 'environment' },
-{ name: 'Environment Dashboard', path: '/dashboard/environment', icon: LeafIcon, roles: managementRoles, module: 'environment' },
-{ name: 'Health Dashboard', path: '/dashboard/health', icon: HeartIcon, roles: managementRoles, module: 'health' },
-{ name: 'HR Dashboard', path: '/dashboard/hr', icon: UsersIcon, roles: managementRoles, module: 'hr' },
-{ name: 'HR Employees', path: '/dashboard/hr/employees', icon: IdCardIcon, roles: managementRoles, module: 'hr' },
-{ name: 'HR Leave', path: '/dashboard/hr/leave', icon: CalendarIcon, roles: managementRoles, module: 'hr' },
-{ name: 'HR Hours', path: '/dashboard/hr/hours', icon: ClockIcon, roles: managementRoles, module: 'hr' },
-{ name: 'HR Labour', path: '/dashboard/hr/labour', icon: AlertTriangleIcon, roles: managementRoles, module: 'hr' },
-{ name: 'Health Medical', path: '/dashboard/health/medical', icon: CalendarIcon, roles: managementRoles, module: 'health' },
-{ name: 'Health Hygiene', path: '/dashboard/health/hygiene', icon: ClipboardCheckIcon, roles: managementRoles, module: 'health' },
-{ name: 'Health Wellness', path: '/dashboard/health/wellness', icon: UsersIcon, roles: managementRoles, module: 'health' },
-{ name: 'Health Calibration', path: '/dashboard/health/calibration', icon: ClipboardCheckIcon, roles: managementRoles, module: 'health' },
-{ name: 'Environment EIA', path: '/dashboard/environment/eia', icon: BookOpenIcon, roles: managementRoles, module: 'environment' },
-{ name: 'Env Risk & Opportunity', path: '/dashboard/environment/risk-opportunity', icon: AlertOctagonIcon, roles: managementRoles, module: 'environment' },
-{ name: 'Env Waste Register', path: '/dashboard/environment/waste', icon: ClipboardCheckIcon, roles: managementRoles, module: 'environment' },
-{ name: 'Env Water Monitoring', path: '/dashboard/environment/water', icon: CalendarIcon, roles: managementRoles, module: 'environment' },
-{ name: 'Env Air Monitoring', path: '/dashboard/environment/air', icon: CalendarIcon, roles: managementRoles, module: 'environment' },
-{ name: 'Environment Calibration', path: '/dashboard/environment/calibration', icon: ClipboardCheckIcon, roles: managementRoles, module: 'environment' },
-{ name: 'Safety Calibration', path: '/dashboard/safety/calibration', icon: ClipboardCheckIcon, roles: managementRoles, module: 'safety' },
-{ name: 'Training', path: '/training', icon: GraduationCapIcon },
-{ name: 'Audits', path: '/audits', icon: SearchIcon },
-{ name: 'Inspections', path: '/inspections', icon: ClipboardCheckIcon, roles: managementRoles },
-{ name: 'Risk Management', path: '/risks', icon: AlertOctagonIcon },
-{ name: 'PPE Management', path: '/ppe', icon: HardHatIcon },
-{ name: 'Legal Register', path: '/dashboard/legal/register', icon: BookOpenIcon, roles: managementRoles, module: 'legal' },
-{ name: 'Legal Updates', path: '/dashboard/legal/updates', icon: CalendarIcon, roles: managementRoles, module: 'legal' },
-{ name: 'Planning & Review', path: '/planning', icon: ClipboardCheckIcon, roles: managementRoles },
-{ name: 'Approvals', path: '/approvals', icon: LockIcon, roles: managementRoles },
-{ name: 'Document Reviews', path: '/document-reviews', icon: CalendarIcon },
-{ name: 'Improvement', path: '/improvement', icon: TrendingUpIcon, roles: managementRoles },
-{ name: 'Reports', path: '/reports', icon: BarChart3Icon, roles: managementRoles },
-{ name: 'Hours Worked', path: '/management/hours-worked', icon: ClockIcon, roles: managementRoles },
-{ name: 'Operational Inputs', path: '/management/operational-inputs', icon: BarChart3Icon, roles: managementRoles }
+const managementGroups: NavGroup[] = [
+  {
+    id: 'incidents',
+    name: 'Incidents',
+    icon: AlertTriangleIcon,
+    module: 'safety',
+    items: [
+      { name: 'Incident Management', path: '/dashboard/incidents/management', icon: AlertTriangleIcon },
+      { name: 'Incident Analysis', path: '/dashboard/incidents/analysis', icon: BarChart3Icon, roles: managementRoles },
+      { name: 'Investigation / Corrective Actions', path: '/dashboard/management/tasks?view=capa', icon: ClipboardCheckIcon, roles: managementRoles }
+    ]
+  },
+  {
+    id: 'hr',
+    name: 'HR',
+    icon: UsersIcon,
+    module: 'hr',
+    roles: managementRoles,
+    items: [
+      { name: 'HR Dashboard', path: '/dashboard/hr', icon: UsersIcon },
+      { name: 'Employees', path: '/dashboard/hr/employees', icon: IdCardIcon },
+      { name: 'Leave', path: '/dashboard/hr/leave', icon: CalendarIcon },
+      { name: 'Hours Worked', path: '/dashboard/hr/hours', icon: ClockIcon },
+      { name: 'Payroll / Salaries', icon: CreditCardIcon, comingSoon: true },
+      { name: 'HR Documents / Policies', path: '/dashboard/hr/documents', icon: FileTextIcon }
+    ]
+  },
+  {
+    id: 'health',
+    name: 'Health',
+    icon: HeartIcon,
+    module: 'health',
+    roles: managementRoles,
+    items: [
+      { name: 'Health Dashboard', path: '/dashboard/health', icon: HeartIcon },
+      { name: 'Medical Surveillance', path: '/dashboard/health/medical', icon: CalendarIcon },
+      { name: 'Exposure Monitoring', path: '/dashboard/health/hygiene', icon: ClipboardCheckIcon },
+      { name: 'IOD / Health Incidents', path: '/dashboard/incidents/management?module=health', icon: AlertCircleIcon },
+      { name: 'Psychosocial Support', path: '/dashboard/health/wellness', icon: UsersIcon }
+    ]
+  },
+  {
+    id: 'environment',
+    name: 'Environment',
+    icon: LeafIcon,
+    module: 'environment',
+    roles: managementRoles,
+    items: [
+      { name: 'Environmental Dashboard', path: '/dashboard/environment', icon: LeafIcon },
+      { name: 'Aspects & Impacts Register (EAIR)', path: '/dashboard/environment/eia', icon: BookOpenIcon },
+      { name: 'EMP / Operational Controls', path: '/dashboard/environment/risk-opportunity', icon: ClipboardCheckIcon },
+      { name: 'Monitoring - Water', path: '/dashboard/environment/water', icon: CalendarIcon },
+      { name: 'Monitoring - Air', path: '/dashboard/environment/air', icon: CalendarIcon },
+      { name: 'Monitoring - Waste', path: '/dashboard/environment/waste', icon: CalendarIcon },
+      { name: 'Environmental Inspections', path: '/dashboard/operations/inspections', icon: SearchIcon }
+    ]
+  },
+  {
+    id: 'safety-management',
+    name: 'Safety Management',
+    icon: ShieldIcon,
+    module: 'safety',
+    roles: managementRoles,
+    items: [
+      { name: 'Safety Dashboard', path: '/modules/safety', icon: ShieldIcon },
+      { name: 'Policies / Plans / Procedures / Manuals', path: '/documents?module=safety', icon: FileTextIcon },
+      { name: 'Meetings & Minutes', path: '/dashboard/management/document-reviews', icon: CalendarIcon },
+      { name: 'Suppliers / Contractor Safety', path: SELLABLE_FEATURE_ROUTE_PATHS.contractorsVisitors, icon: UsersIcon, sellableFeatureKey: 'contractorsVisitors' }
+    ]
+  },
+  {
+    id: 'legal',
+    name: 'Legal',
+    icon: ScaleIcon,
+    module: 'legal',
+    roles: managementRoles,
+    items: [
+      { name: 'Legal Register / Requirements', path: '/dashboard/legal/register', icon: BookOpenIcon },
+      { name: 'Contracts & Agreements', path: '/documents?category=contracts', icon: FileTextIcon },
+      { name: 'Compliance & Governance Docs', path: '/dashboard/legal/updates', icon: ClipboardCheckIcon }
+    ]
+  },
+  {
+    id: 'quality',
+    name: 'Quality',
+    icon: AwardIcon,
+    module: 'quality',
+    roles: managementRoles,
+    items: [
+      { name: 'Quality Dashboard', path: '/modules/quality', icon: AwardIcon },
+      { name: 'Customer Complaint Log', path: '/dashboard/quality/complaints', icon: AlertCircleIcon },
+      { name: 'Internal/External Issues', path: '/dashboard/quality/issues', icon: AlertOctagonIcon },
+      { name: 'Calibration', path: '/dashboard/quality/calibration', icon: ClipboardCheckIcon },
+      { name: 'Quality Forms / SOPs', path: '/forms?module=quality', icon: FileTextIcon }
+    ]
+  },
+  {
+    id: 'cross-management',
+    name: 'Management',
+    icon: BriefcaseIcon,
+    items: [
+      { name: 'Tasks / CAPA', path: '/dashboard/management/tasks', icon: ClipboardCheckIcon },
+      { name: 'NCR / Non-Conformance Report', path: '/dashboard/management/ncrs', icon: AlertTriangleIcon, roles: managementRoles },
+      { name: 'KPI', path: '/modules/hr/kpis', icon: TrendingUpIcon, roles: managementRoles, module: 'hr' },
+      { name: 'Document Reviews', path: '/dashboard/management/document-reviews', icon: CalendarIcon },
+      { name: 'Reports / Exports', path: '/dashboard/management/reports', icon: BarChart3Icon, roles: managementRoles },
+      { name: 'Planning & Review', path: '/dashboard/management/planning', icon: ClipboardCheckIcon, roles: managementRoles },
+      { name: 'Improvement', path: '/dashboard/management/improvement', icon: TrendingUpIcon, roles: managementRoles },
+      { name: 'Approvals', path: '/dashboard/management/approvals', icon: LockIcon, roles: managementRoles },
+      { name: 'Hours Worked', path: '/dashboard/management/hours-worked', icon: ClockIcon, roles: managementRoles },
+      { name: 'Operational Inputs', path: '/dashboard/management/operational-inputs', icon: BarChart3Icon, roles: managementRoles },
+      { name: 'PJO', path: '/dashboard/operations/pjo', icon: ClipboardCheckIcon, roles: managementRoles },
+      { name: 'Audits', path: '/dashboard/operations/audits', icon: SearchIcon },
+      { name: 'Inspections', path: '/dashboard/operations/inspections', icon: ClipboardCheckIcon, roles: managementRoles },
+      { name: 'Risk Management', path: '/dashboard/operations/risks', icon: AlertOctagonIcon },
+      { name: 'PPE Management', path: '/dashboard/operations/ppe', icon: HardHatIcon },
+      { name: 'Training', path: '/dashboard/operations/training', icon: GraduationCapIcon }
+    ]
+  }
 ];
 
 const sellableFeatures: NavItem[] = [
-{ name: 'BBS Programme', path: SELLABLE_FEATURE_ROUTE_PATHS.bbs, icon: EyeIcon, roles: managementRoles, sellableFeatureKey: 'bbs' },
-{ name: 'Contractors & Visitors', path: SELLABLE_FEATURE_ROUTE_PATHS.contractorsVisitors, icon: UsersIcon, roles: managementRoles, sellableFeatureKey: 'contractorsVisitors' },
-{ name: 'Emergency Preparedness', path: SELLABLE_FEATURE_ROUTE_PATHS.emergencyPreparedness, icon: AlertTriangleIcon, roles: managementRoles, sellableFeatureKey: 'emergencyPreparedness' },
-{ name: 'Template Library', path: SELLABLE_FEATURE_ROUTE_PATHS.templateLibrary, icon: FolderIcon, roles: managementRoles, sellableFeatureKey: 'templateLibrary' },
-{ name: 'Asset Management', path: SELLABLE_FEATURE_ROUTE_PATHS.assetManagement, icon: PackageIcon, roles: managementRoles, sellableFeatureKey: 'assetManagement' },
-{ name: 'Hazardous Chemical Management', path: SELLABLE_FEATURE_ROUTE_PATHS.hazardousChemicals, icon: FlaskConicalIcon, roles: managementRoles, sellableFeatureKey: 'hazardousChemicals' }
+  { name: 'BBS Programme', path: SELLABLE_FEATURE_ROUTE_PATHS.bbs, icon: EyeIcon, roles: managementRoles, sellableFeatureKey: 'bbs' },
+  { name: 'Contractors & Visitors', path: SELLABLE_FEATURE_ROUTE_PATHS.contractorsVisitors, icon: UsersIcon, roles: managementRoles, sellableFeatureKey: 'contractorsVisitors' },
+  { name: 'Emergency Preparedness', path: SELLABLE_FEATURE_ROUTE_PATHS.emergencyPreparedness, icon: AlertTriangleIcon, roles: managementRoles, sellableFeatureKey: 'emergencyPreparedness' },
+  { name: 'Template Library', path: SELLABLE_FEATURE_ROUTE_PATHS.templateLibrary, icon: FolderIcon, roles: managementRoles, sellableFeatureKey: 'templateLibrary' },
+  { name: 'Asset Management', path: SELLABLE_FEATURE_ROUTE_PATHS.assetManagement, icon: PackageIcon, roles: managementRoles, sellableFeatureKey: 'assetManagement' },
+  { name: 'Hazardous Chemical Management', path: SELLABLE_FEATURE_ROUTE_PATHS.hazardousChemicals, icon: FlaskConicalIcon, roles: managementRoles, sellableFeatureKey: 'hazardousChemicals' }
 ];
 
 const settingsItems: NavItem[] = [
-{ name: 'Settings', path: '/settings', icon: SettingsIcon, roles: adminOnlyRoles },
-{ name: 'Billing & Pricing', path: '/billing', icon: CreditCardIcon, roles: adminOnlyRoles },
-{ name: 'License', path: '/admin/license', icon: CreditCardIcon, roles: adminOnlyRoles },
-{ name: 'User Management', path: '/users', icon: UsersIcon, roles: adminOnlyRoles }
+  { name: 'Settings', path: '/settings', icon: SettingsIcon, roles: adminOnlyRoles },
+  { name: 'Billing & Pricing', path: '/billing', icon: CreditCardIcon, roles: adminOnlyRoles },
+  { name: 'License', path: '/admin/license', icon: CreditCardIcon, roles: adminOnlyRoles },
+  { name: 'User Management', path: '/users', icon: UsersIcon, roles: adminOnlyRoles }
 ];
 
 type SidebarProps = {
@@ -141,6 +222,7 @@ type SidebarProps = {
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
 };
+
 function dashboardPathForRole(role: CompanyRole | null): string {
   if (!role) return '/app';
   const map: Record<CompanyRole, string> = {
@@ -155,51 +237,104 @@ function dashboardPathForRole(role: CompanyRole | null): string {
   return map[role] ?? '/app';
 }
 
-function filterByRole<T extends { roles?: CompanyRole[] }>(items: T[], activeRole: CompanyRole | null): T[] {
-  if (!activeRole) return items;
-  return items.filter((item) => {
-    if (!item.roles || item.roles.length === 0) return true;
-    return item.roles.includes(activeRole);
-  });
+function isRoleVisible(roles: CompanyRole[] | undefined, activeRole: CompanyRole | null): boolean {
+  if (!activeRole || !roles || roles.length === 0) return true;
+  return roles.includes(activeRole);
 }
 
-function filterByEnabledModules<T extends { module?: ModuleKey }>(items: T[], enabledModules: ModuleKey[]): T[] {
-  if (!enabledModules.length) return items;
-  return items.filter((item) => {
-    if (!item.module) return true;
-    return enabledModules.includes(item.module);
-  });
+function isModuleVisible(module: ModuleKey | undefined, enabledModules: ModuleKey[]): boolean {
+  if (!module) return true;
+  if (!enabledModules.length) return true;
+  return enabledModules.includes(module);
 }
 
 export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapsed }: SidebarProps) {
   const [modulesExpanded, setModulesExpanded] = useState(true);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const location = useLocation();
   const { activeRole, enabledModules, sellableFeatures: sellableFeatureConfig } = useTenant();
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(GROUP_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, boolean>;
+      if (parsed && typeof parsed === 'object') setExpandedGroups(parsed);
+    } catch {
+      // Ignore localStorage errors.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify(expandedGroups));
+    } catch {
+      // Ignore localStorage errors.
+    }
+  }, [expandedGroups]);
+
   const dashboardPath = useMemo(() => dashboardPathForRole(activeRole), [activeRole]);
   const filteredModules = useMemo(
-    () => filterByEnabledModules(filterByRole(modules, activeRole), enabledModules),
+    () => modules.filter((item) => isRoleVisible(item.roles, activeRole) && isModuleVisible(item.module, enabledModules)),
     [activeRole, enabledModules]
   );
-  const filteredSupporting = useMemo(
-    () => filterByEnabledModules(filterByRole(supportingSections, activeRole), enabledModules),
-    [activeRole, enabledModules]
-  );
+
+  const filteredManagementGroups = useMemo(() => {
+    return managementGroups
+      .filter((group) => isRoleVisible(group.roles, activeRole) && isModuleVisible(group.module, enabledModules))
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => {
+          if (!isRoleVisible(item.roles, activeRole)) return false;
+          if (!isModuleVisible(item.module, enabledModules)) return false;
+          if (!item.sellableFeatureKey) return true;
+          return sellableFeatureConfig[item.sellableFeatureKey].enabled;
+        })
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [activeRole, enabledModules, sellableFeatureConfig]);
+
   const filteredSellable = useMemo(
     () =>
-      filterByRole(sellableFeatures, activeRole).filter((item) => {
+      sellableFeatures.filter((item) => {
+        if (!isRoleVisible(item.roles, activeRole)) return false;
         if (!item.sellableFeatureKey) return true;
         return sellableFeatureConfig[item.sellableFeatureKey].enabled;
       }),
     [activeRole, sellableFeatureConfig]
   );
-  const filteredSettings = useMemo(() => filterByRole(settingsItems, activeRole), [activeRole]);
+
+  const filteredSettings = useMemo(
+    () => settingsItems.filter((item) => isRoleVisible(item.roles, activeRole)),
+    [activeRole]
+  );
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [groupId]: !(prev[groupId] ?? true)
+    }));
+  };
 
   const NavLinkItem = ({ item }: { item: NavItem }) => {
-    const isActive =
-      location.pathname === item.path ||
-      location.pathname.startsWith(item.path + '/');
+    const pathBase = item.path?.split('?')[0];
+    const isActive = Boolean(pathBase) && (location.pathname === pathBase || location.pathname.startsWith(pathBase + '/'));
     const isSellableLocked = item.sellableFeatureKey ? sellableFeatureConfig[item.sellableFeatureKey].locked : false;
+
+    if (item.comingSoon || !item.path) {
+      return (
+        <div className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium ${isCollapsed ? 'justify-center' : 'gap-3'} text-charcoal-400 bg-surface-100/60`}>
+          <item.icon className="w-5 h-5 flex-shrink-0" />
+          {!isCollapsed && <span className="truncate">{item.name}</span>}
+          {!isCollapsed && (
+            <span className="ml-auto inline-flex items-center rounded-full bg-surface-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-charcoal-500">
+              Coming soon
+            </span>
+          )}
+        </div>
+      );
+    }
+
     return (
       <NavLink
         to={item.path}
@@ -219,111 +354,120 @@ export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapsed }: Sid
     );
   };
 
-  const sidebarContent =
-  <div className="flex flex-col h-full bg-white border-r border-surface-300 min-w-0">
-      {/* Logo */}
+  const sidebarContent = (
+    <div className="flex flex-col h-full bg-white border-r border-surface-300 min-w-0">
       <div className={`flex items-center px-5 py-4 border-b border-surface-200 ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
         <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-navy to-navy-700">
           <CloudIcon className="w-6 h-6 text-white" />
         </div>
-        {!isCollapsed && <div>
-          <h1 className="font-bold text-navy text-lg leading-tight">
-            Safe Cloud
-          </h1>
-          <p className="text-xs text-teal font-medium">Africa</p>
-        </div>}
+        {!isCollapsed && (
+          <div>
+            <h1 className="font-bold text-navy text-lg leading-tight">Safe Cloud</h1>
+            <p className="text-xs text-teal font-medium">Africa</p>
+          </div>
+        )}
         {!isCollapsed && (
           <button
-          onClick={onToggleCollapsed}
-          className="hidden lg:inline-flex ml-auto p-2 rounded-lg hover:bg-surface-100 text-charcoal-400"
-          aria-label="Collapse sidebar"
-          title="Collapse sidebar">
-
+            onClick={onToggleCollapsed}
+            className="hidden lg:inline-flex ml-auto p-2 rounded-lg hover:bg-surface-100 text-charcoal-400"
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
             <PanelLeftCloseIcon className="w-5 h-5" />
           </button>
         )}
         <button
-        onClick={onClose}
-        className="lg:hidden ml-auto p-2 rounded-lg hover:bg-surface-100 text-charcoal-400"
-        aria-label="Close menu">
-
+          onClick={onClose}
+          className="lg:hidden ml-auto p-2 rounded-lg hover:bg-surface-100 text-charcoal-400"
+          aria-label="Close menu"
+        >
           <XIcon className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {/* Home */}
         <div className="mb-4">
-          <NavLinkItem
-            item={{
-              name: 'Dashboard',
-              path: dashboardPath,
-              icon: HomeIcon
-            }}
-          />
+          <NavLinkItem item={{ name: 'Dashboard', path: dashboardPath, icon: HomeIcon }} />
         </div>
 
-        {/* Modules Section */}
         <div className="mb-4">
           <button
-          onClick={() => setModulesExpanded(!modulesExpanded)}
-          className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider hover:text-charcoal transition-colors ${isCollapsed ? 'hidden' : ''}`}>
-
+            onClick={() => setModulesExpanded(!modulesExpanded)}
+            className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider hover:text-charcoal transition-colors ${isCollapsed ? 'hidden' : ''}`}
+          >
             <span>Modules</span>
-            {modulesExpanded ?
-          <ChevronDownIcon className="w-4 h-4" /> :
-
-          <ChevronRightIcon className="w-4 h-4" />
-          }
+            {modulesExpanded ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
           </button>
           <AnimatePresence>
-            {(isCollapsed || modulesExpanded) &&
-          <motion.div
-            initial={{
-              height: 0,
-              opacity: 0
-            }}
-            animate={{
-              height: 'auto',
-              opacity: 1
-            }}
-            exit={{
-              height: 0,
-              opacity: 0
-            }}
-            transition={{
-              duration: 0.2
-            }}
-            className="overflow-hidden">
-
+            {(isCollapsed || modulesExpanded) && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
                 <div className="mt-1 space-y-0.5">
                   {filteredModules.map((item) => (
                     <NavLinkItem key={item.path} item={item} />
                   ))}
                 </div>
               </motion.div>
-          }
+            )}
           </AnimatePresence>
         </div>
 
-        {/* Supporting Sections */}
         <div className="mb-4">
           <div className={`px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider ${isCollapsed ? 'hidden' : ''}`}>
             Management
           </div>
-          <div className="mt-1 space-y-0.5">
-            {filteredSupporting.map((item) => (
-              <NavLinkItem key={item.path} item={item} />
-            ))}
+          <div className="mt-1 space-y-1">
+            {filteredManagementGroups.map((group) => {
+              const hasActiveChild = group.items.some((item) => {
+                if (!item.path) return false;
+                const basePath = item.path.split('?')[0];
+                return location.pathname === basePath || location.pathname.startsWith(basePath + '/');
+              });
+              const expanded = expandedGroups[group.id] ?? hasActiveChild;
+
+              return (
+                <div key={group.id} className="rounded-lg border border-surface-200 bg-surface-50/60">
+                  <button
+                    onClick={() => toggleGroup(group.id)}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-semibold text-charcoal-600 hover:bg-surface-100/80 rounded-lg ${isCollapsed ? 'justify-center' : 'gap-2'}`}
+                    title={isCollapsed ? group.name : undefined}
+                  >
+                    <group.icon className="w-4 h-4 flex-shrink-0" />
+                    {!isCollapsed && <span className="truncate">{group.name}</span>}
+                    {!isCollapsed && (expanded ? <ChevronDownIcon className="w-4 h-4 ml-auto" /> : <ChevronRightIcon className="w-4 h-4 ml-auto" />)}
+                  </button>
+                  <AnimatePresence>
+                    {(isCollapsed || expanded) && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.18 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="pb-2 px-2 space-y-0.5">
+                          {group.items.map((item) => (
+                            <NavLinkItem key={`${group.id}:${item.name}:${item.path ?? 'coming-soon'}`} item={item} />
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* Sellable Features */}
         {filteredSellable.length > 0 && (
           <div className="mb-4">
             <div className={`px-3 py-2 text-xs font-semibold text-charcoal-400 uppercase tracking-wider ${isCollapsed ? 'hidden' : ''}`}>
-              Sellable Features
+              Paid Programs
             </div>
             <div className="mt-1 space-y-0.5">
               {filteredSellable.map((item) => (
@@ -333,7 +477,6 @@ export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapsed }: Sid
           </div>
         )}
 
-        {/* Settings */}
         <div className="pt-4 border-t border-surface-200">
           <div className="space-y-0.5">
             {filteredSettings.map((item) => (
@@ -343,67 +486,42 @@ export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapsed }: Sid
         </div>
       </nav>
 
-      {/* Footer */}
       <div className="px-4 py-3 border-t border-surface-200 bg-surface-50">
-        {!isCollapsed && (
-          <p className="text-xs text-charcoal-400 text-center">
-            (c) 2024 Safe Cloud Africa
-          </p>
-        )}
+        {!isCollapsed && <p className="text-xs text-charcoal-400 text-center">(c) 2024 Safe Cloud Africa</p>}
       </div>
-    </div>;
+    </div>
+  );
 
   return (
     <>
-      {/* Desktop Sidebar */}
-      <aside
-        className={`hidden lg:flex lg:flex-shrink-0 lg:relative lg:z-40 transition-[width] duration-300 ease-in-out ${isCollapsed ? 'lg:w-[88px]' : 'lg:w-[280px]'}`}
-      >
+      <aside className={`hidden lg:flex lg:flex-shrink-0 lg:relative lg:z-40 transition-[width] duration-300 ease-in-out ${isCollapsed ? 'lg:w-[88px]' : 'lg:w-[280px]'}`}>
         {sidebarContent}
       </aside>
 
-      {/* Mobile Sidebar Overlay */}
       <AnimatePresence>
-        {isOpen &&
-        <>
+        {isOpen && (
+          <>
             <motion.div
-            initial={{
-              opacity: 0
-            }}
-            animate={{
-              opacity: 1
-            }}
-            exit={{
-              opacity: 0
-            }}
-            transition={{
-              duration: 0.2
-            }}
-            className="fixed inset-0 bg-navy/50 z-40 lg:hidden"
-            onClick={onClose} />
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-navy/50 z-40 lg:hidden"
+              onClick={onClose}
+            />
 
             <motion.aside
-            initial={{
-              x: -280
-            }}
-            animate={{
-              x: 0
-            }}
-            exit={{
-              x: -280
-            }}
-            transition={{
-              duration: 0.2,
-              ease: 'easeOut'
-            }}
-            className="fixed inset-y-0 left-0 w-[280px] z-50 lg:hidden">
-
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="fixed inset-y-0 left-0 w-[280px] z-50 lg:hidden"
+            >
               {sidebarContent}
             </motion.aside>
           </>
-        }
+        )}
       </AnimatePresence>
-    </>);
-
+    </>
+  );
 }
-

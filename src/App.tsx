@@ -1065,6 +1065,268 @@ export function App() {
             }
           />
 
+          {/* Canonical dashboard nested aliases */}
+          <Route
+            path="/dashboard/incidents/management"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <IncidentsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/incidents/management/new"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <IncidentsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/incidents/analysis"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <IncidentAnalyticsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/tasks"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <TasksPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/tasks/new"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <TasksPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/ncrs"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <NCRsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/approvals"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ApprovalsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/document-reviews"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <DocumentReviewsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/document-reviews/new"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ReviewMeetingDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/document-reviews/actions"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ReviewMeetingActionsBoardPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/document-reviews/:meetingId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ReviewMeetingDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/improvement"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ImprovementPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/improvement/new"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ImprovementDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/improvement/:improvementId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ImprovementDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/reports"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ReportsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/planning"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <PlanningReviewPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/hours-worked"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HoursWorkedPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/operational-inputs"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <OperationalInputsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/operations/audits"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <AuditsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/operations/audits/new"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <AuditsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/operations/inspections"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <InspectionsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/operations/inspections/new"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <InspectionsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/operations/training"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <TrainingPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/operations/pjo"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <PjoPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/operations/risks"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RisksPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/operations/ppe"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <PPEPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+
           {/* Sellable feature modules (Phase 1 placeholders) */}
           <Route
             path={SELLABLE_FEATURE_ROUTE_PATHS.bbs}

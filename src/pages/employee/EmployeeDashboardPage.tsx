@@ -106,7 +106,7 @@ export function EmployeeDashboardPage() {
             <ArrowRightIcon className="w-5 h-5 text-charcoal-400" />
           </a>
           <a
-            href="/tasks"
+            href="/dashboard/management/tasks"
             className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all"
           >
             <div className="flex items-center gap-3">
@@ -126,7 +126,7 @@ export function EmployeeDashboardPage() {
             <ArrowRightIcon className="w-5 h-5 text-charcoal-400" />
           </a>
           <a
-            href="/incidents"
+            href="/dashboard/incidents/management"
             className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all"
           >
             <div className="flex items-center gap-3">

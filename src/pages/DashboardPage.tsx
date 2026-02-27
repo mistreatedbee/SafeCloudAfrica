@@ -19,7 +19,6 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { ModuleCard } from '../components/ui/ModuleCard';
 import { useUser } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
-import { useIdentity } from '../hooks/useIdentity';
 import { useAsync } from '../api/hooks/useAsync';
 import type { Incident, Task } from '../api/models/entities';
 import { listIncidents, countIncidentsByStatus, countNearMissesThisMonth, countMyIncidents } from '../api/services/incidentsService';
@@ -28,7 +27,6 @@ import { listRisks } from '../api/services/risksService';
 import { listModuleTargets } from '../api/services/moduleTargetsService';
 import { countOverdueCorrectiveActions } from '../api/services/correctiveActionsService';
 import { countExpiringTraining, countExpiringTrainingForUser } from '../api/services/trainingService';
-import { getLicenseInfo } from '../api/services/licensingService';
 const containerVariants = {
   hidden: {
     opacity: 0
@@ -76,9 +74,9 @@ const moduleCards = [
 export function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useUser();
-  const { activeCompanyId, activeRole, enabledModules } = useTenant();
-  const { fullName, organisationName } = useIdentity();
-  const firstName = String(fullName).split(' ')[0];
+  const { activeCompanyId, activeRole } = useTenant();
+  const displayName = (user?.profile as any)?.name ?? user?.email ?? 'there';
+  const firstName = String(displayName).split(' ')[0];
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Lightweight real-time refresh (poll)
@@ -220,14 +218,6 @@ export function DashboardPage() {
     [activeCompanyId, activeRole, user?.id, refreshKey]
   );
 
-  const { data: licenseInfo } = useAsync(
-    async () => {
-      if (!activeCompanyId || (activeRole !== 'admin' && activeRole !== 'owner')) return null;
-      return await getLicenseInfo(activeCompanyId);
-    },
-    [activeCompanyId, activeRole, refreshKey]
-  );
-
   const openIncidents = summary?.openIncidents ?? 0;
   const overdueActions = summary?.overdueActions ?? 0;
   const expiringTraining = summary?.expiringTraining ?? 0;
@@ -235,10 +225,8 @@ export function DashboardPage() {
   const overallScore = summary?.overallScore ?? 0;
 
   const moduleCardsWithScores = useMemo(() => {
-    const withScores = moduleCards.map((m) => ({ ...m, score: moduleScoreByKey[m.id] ?? 0 }));
-    if (!enabledModules.length) return withScores;
-    return withScores.filter((m) => enabledModules.includes(m.id as 'safety' | 'quality' | 'environment' | 'health' | 'legal' | 'hr'));
-  }, [moduleScoreByKey, enabledModules]);
+    return moduleCards.map((m) => ({ ...m, score: moduleScoreByKey[m.id] ?? 0 }));
+  }, [moduleScoreByKey]);
 
   return (
     <Layout title="Dashboard">
@@ -259,9 +247,7 @@ export function DashboardPage() {
                 Good morning, {firstName}
               </h1>
               <p className="text-navy-200">
-                {organisationName
-                  ? `Here’s today’s overview for ${organisationName}`
-                  : "Here's your safety management overview for today"}
+                Here's your safety management overview for today
               </p>
             </div>
             <div className="flex items-center gap-3 bg-white/10 rounded-xl px-4 py-3">
@@ -285,30 +271,6 @@ export function DashboardPage() {
               className="mt-3 text-sm text-critical hover:text-critical-600 font-medium underline"
             >
               Try again
-            </button>
-          </motion.div>
-        )}
-
-        {/* License usage (Admin/Owner only) */}
-        {(activeRole === 'admin' || activeRole === 'owner') && licenseInfo && (
-          <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-            <p className="text-sm font-semibold text-charcoal">License usage</p>
-            <p className="text-sm text-charcoal-500 mt-1">
-              <span className="font-medium text-charcoal">{licenseInfo.currentEmployees}</span> / {licenseInfo.employeeLimit} seats used
-              {' — '}
-              <span className={licenseInfo.canAddEmployees ? 'text-success' : 'text-critical'}>
-                {Math.max(0, licenseInfo.employeeLimit - licenseInfo.currentEmployees)} remaining
-              </span>
-            </p>
-            {!licenseInfo.canAddEmployees && (
-              <p className="text-xs text-critical mt-1">Upgrade your licence to add more users.</p>
-            )}
-            <button
-              type="button"
-              onClick={() => navigate('/billing')}
-              className="mt-2 text-sm font-medium text-teal hover:text-teal-700"
-            >
-              View billing & pricing
             </button>
           </motion.div>
         )}
@@ -404,7 +366,7 @@ export function DashboardPage() {
             <QuickActionButton
               icon="AlertTriangle"
               label="Report Incident"
-              onClick={() => navigate('/incidents/new')} />
+              onClick={() => navigate('/dashboard/incidents/management/new')} />
 
             <QuickActionButton
               icon="Upload"
@@ -416,7 +378,7 @@ export function DashboardPage() {
               icon="PlusCircle"
               label="Create Task"
               variant="secondary"
-              onClick={() => navigate('/tasks/new')} />
+              onClick={() => navigate('/dashboard/management/tasks/new')} />
 
             <QuickActionButton
               icon="ClipboardCheck"
@@ -470,7 +432,7 @@ export function DashboardPage() {
             </div>
             <div className="px-5 py-3 bg-surface-50 border-t border-surface-200">
               <button
-                onClick={() => navigate('/tasks')}
+                onClick={() => navigate('/dashboard/management/tasks')}
                 className="text-sm font-medium text-teal hover:text-teal-700 transition-colors">
 
                 View all tasks →
@@ -497,7 +459,7 @@ export function DashboardPage() {
             <div className="px-5 py-3 bg-surface-50 border-t border-surface-200">
               <button
                 type="button"
-                onClick={() => navigate('/tasks')}
+                onClick={() => navigate('/dashboard/management/tasks')}
                 className="text-sm font-medium text-warning hover:text-warning-700 transition-colors"
               >
                 Resolve overdue →
@@ -538,7 +500,7 @@ export function DashboardPage() {
             <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between">
               <h3 className="font-semibold text-charcoal">Recent Incidents</h3>
               <button
-                onClick={() => navigate('/incidents')}
+                onClick={() => navigate('/dashboard/incidents/management')}
                 className="text-sm font-medium text-teal hover:text-teal-700 transition-colors">
 
                 View all →

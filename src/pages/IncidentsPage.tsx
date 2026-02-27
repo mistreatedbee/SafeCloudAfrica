@@ -113,12 +113,12 @@ export function IncidentsPage() {
             open={createOpen}
             onClose={() => {
               setCreateOpen(false);
-              if (isNew) navigate('/incidents', { replace: true });
+              if (isNew) navigate('/dashboard/incidents/management', { replace: true });
             }}
             companyId={activeCompanyId}
             createdByUserId={user.id}
             defaultModule="safety"
-            onCreated={() => navigate('/incidents', { replace: true })}
+            onCreated={() => navigate('/dashboard/incidents/management', { replace: true })}
           />
         </Suspense>
       )}
@@ -205,14 +205,14 @@ export function IncidentsPage() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => navigate('/incidents/analytics')}
+              onClick={() => navigate('/dashboard/incidents/analysis')}
               className="flex items-center justify-center gap-2 px-4 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors"
             >
               Analytics
             </button>
             <button
               type="button"
-              onClick={() => navigate('/incidents/new')}
+              onClick={() => navigate('/dashboard/incidents/management/new')}
               className="flex items-center justify-center gap-2 px-5 py-2.5 bg-critical text-white rounded-lg text-sm font-medium hover:bg-critical-600 transition-colors"
             >
               <AlertTriangleIcon className="w-4 h-4" />
