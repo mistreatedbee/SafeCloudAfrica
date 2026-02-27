@@ -63,6 +63,15 @@ import { HrPerformancePage } from './pages/hr/HrPerformancePage';
 import { HrHoursPage } from './pages/hr/HrHoursPage';
 import { HrLeavePage } from './pages/hr/HrLeavePage';
 import { HrSettingsPage } from './pages/hr/HrSettingsPage';
+import { KPIModuleLayout } from './pages/kpi/KPIModuleLayout';
+import { KPIDashboardPage } from './pages/kpi/KPIDashboardPage';
+import { KPIAssessmentsListPage } from './pages/kpi/KPIAssessmentsListPage';
+import { KPIAssessmentCreatePage } from './pages/kpi/KPIAssessmentCreatePage';
+import { KPIAssessmentDetailPage } from './pages/kpi/KPIAssessmentDetailPage';
+import { KPILibraryPage } from './pages/kpi/KPILibraryPage';
+import { KPIFindingsListPage } from './pages/kpi/KPIFindingsListPage';
+import { KPIReportsPage } from './pages/kpi/KPIReportsPage';
+import { KPIAnalyticsPage } from './pages/kpi/KPIAnalyticsPage';
 import { SecurityModulePage } from './pages/modules/SecurityModulePage';
 import { SafetyManagementPage } from './pages/modules/SafetyManagementPage';
 import { IncidentAnalyticsPage } from './pages/IncidentAnalyticsPage';
@@ -612,6 +621,26 @@ export function App() {
               </RequireSignedIn>
             }
           />
+          <Route
+            path="/modules/hr/kpis"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <KPIModuleLayout />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          >
+            <Route index element={<KPIDashboardPage />} />
+            <Route path="assessments" element={<KPIAssessmentsListPage />} />
+            <Route path="assessments/new" element={<KPIAssessmentCreatePage />} />
+            <Route path="assessments/:assessmentId" element={<KPIAssessmentDetailPage />} />
+            <Route path="library" element={<KPILibraryPage />} />
+            <Route path="findings" element={<KPIFindingsListPage />} />
+            <Route path="reports" element={<KPIReportsPage />} />
+            <Route path="trends" element={<KPIAnalyticsPage />} />
+            <Route path="*" element={<Navigate to="/modules/hr/kpis" replace />} />
+          </Route>
           <Route
             path="/modules/security"
             element={
