@@ -58,6 +58,12 @@ export function InspectionRunReportPage() {
                 <span className="font-semibold">{report.maxScore}</span> (
                 {report.compliancePercent.toFixed(1)}% compliant)
               </p>
+              <p className="text-sm text-charcoal-600 mt-1">
+                Department performance score: <span className="font-semibold">{report.departmentPerformanceScore}%</span>
+              </p>
+              <p className="text-sm text-charcoal-600 mt-1">
+                Repeat findings: <span className="font-semibold">{report.repeatFindingsCount}</span> ({report.repeatFindingsIndicator})
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -162,10 +168,24 @@ export function InspectionRunReportPage() {
                 </div>
               )}
             </section>
+
+            <section className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+              <h3 className="text-sm font-semibold text-charcoal mb-2">Audit score history</h3>
+              {report.auditScoreHistory.length === 0 ? (
+                <p className="text-sm text-charcoal-500">No linked score history.</p>
+              ) : (
+                <ul className="space-y-2 text-sm text-charcoal-700">
+                  {report.auditScoreHistory.map((h) => (
+                    <li key={h.runId} className="border border-surface-200 rounded-lg px-3 py-2">
+                      Run {String(h.runId).slice(0, 8)} - {h.compliancePercent.toFixed(1)}%
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </div>
         )}
       </div>
     </Layout>
   );
 }
-

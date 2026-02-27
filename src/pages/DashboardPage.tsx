@@ -27,6 +27,7 @@ import { listRisks } from '../api/services/risksService';
 import { listModuleTargets } from '../api/services/moduleTargetsService';
 import { countOverdueCorrectiveActions } from '../api/services/correctiveActionsService';
 import { countExpiringTraining, countExpiringTrainingForUser } from '../api/services/trainingService';
+import { listInspections } from '../api/services/inspectionsService';
 const containerVariants = {
   hidden: {
     opacity: 0
@@ -100,6 +101,7 @@ export function DashboardPage() {
     overallScore: number;
     heatMapData: Array<{ likelihood: number; consequence: number; count: number; level: string }>;
     trendData: Array<{ month: string; incidents: number; nearMisses: number; lti: number }>;
+    openInspections: number;
   } | null>(
     async () => {
       if (!activeCompanyId || !user?.id) return null;
@@ -117,9 +119,10 @@ export function DashboardPage() {
           countMyIncidents(activeCompanyId, user.id).catch(() => 0)
         ]);
 
-        const [overdueActions, expiringTraining] = await Promise.all([
+        const [overdueActions, expiringTraining, inspections] = await Promise.all([
           countOverdueCorrectiveActions(activeCompanyId).catch(() => 0),
-          (activeRole === 'employee' ? countExpiringTrainingForUser(activeCompanyId, user.id, 30) : countExpiringTraining(activeCompanyId, 30)).catch(() => 0)
+          (activeRole === 'employee' ? countExpiringTrainingForUser(activeCompanyId, user.id, 30) : countExpiringTraining(activeCompanyId, 30)).catch(() => 0),
+          listInspections({ companyId: activeCompanyId, limit: 500 }).catch(() => [])
         ]);
 
         const tasks = await listTasks({
@@ -208,7 +211,8 @@ export function DashboardPage() {
           moduleScoreByKey,
           overallScore,
           heatMapData,
-          trendData
+          trendData,
+          openInspections: inspections.filter((i) => i.status !== 'completed').length
         };
       } catch (err) {
         console.error('Dashboard data error:', err);
@@ -220,6 +224,7 @@ export function DashboardPage() {
 
   const openIncidents = summary?.openIncidents ?? 0;
   const overdueActions = summary?.overdueActions ?? 0;
+  const openInspections = summary?.openInspections ?? 0;
   const expiringTraining = summary?.expiringTraining ?? 0;
   const moduleScoreByKey = summary?.moduleScoreByKey ?? {};
   const overallScore = summary?.overallScore ?? 0;
@@ -316,6 +321,14 @@ export function DashboardPage() {
             iconColor="#E74C3C"
             variant="critical"
             subtitle="Next 30 days" />
+
+          <StatCard
+            title="Open Inspections"
+            value={openInspections}
+            icon="ClipboardCheck"
+            iconColor="#0FB9B1"
+            variant="info"
+            subtitle="Checklist workflow" />
 
         </motion.div>
 

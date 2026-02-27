@@ -74,7 +74,9 @@ export type CreateInspectionInput = {
   inspectorUserId?: UUID | null;
   auditorUserId?: UUID | null;
   auditeeUserId?: UUID | null;
-  inspectionMethod?: 'physical-observation' | 'record-review' | 'interview' | 'other';
+  sector?: string;
+  frequency?: 'daily' | 'monthly' | 'audit-linked';
+  inspectionMethod?: 'physical-inspection' | 'observation' | 'record-review';
   inspectionDate?: string;
 };
 
@@ -95,7 +97,9 @@ export async function createInspection(input: CreateInspectionInput): Promise<In
       inspector_user_id: input.inspectorUserId ?? input.assigneeUserId ?? input.createdByUserId,
       auditor_user_id: input.auditorUserId ?? null,
       auditee_user_id: input.auditeeUserId ?? null,
-      inspection_method: input.inspectionMethod ?? 'physical-observation',
+      sector: input.sector ?? null,
+      frequency: input.frequency ?? 'daily',
+      inspection_method: input.inspectionMethod ?? 'physical-inspection',
       inspection_date: input.inspectionDate ?? null,
       created_by_user_id: input.createdByUserId
     })
@@ -189,7 +193,7 @@ export async function createInspectionChecklistTemplate(input: {
   googleDocId?: string | null;
   googleDocUrl?: string | null;
   defaultSector?: string | null;
-  frequency?: 'ad-hoc' | 'daily' | 'monthly' | 'quarterly';
+  frequency?: 'daily' | 'monthly' | 'audit-linked';
 }): Promise<InspectionChecklistTemplate> {
   const { data, error } = await insforge.database
     .from('inspection_checklist_templates')
@@ -204,8 +208,9 @@ export async function createInspectionChecklistTemplate(input: {
       is_active: input.isActive ?? true,
       google_doc_id: input.googleDocId ?? null,
       google_doc_url: input.googleDocUrl ?? null,
+      source_type: (input.googleDocId || input.googleDocUrl) ? 'google-doc' : 'manual',
       default_sector: input.defaultSector ?? null,
-      frequency: input.frequency ?? 'ad-hoc',
+      frequency: input.frequency ?? 'daily',
       created_by_user_id: input.createdByUserId,
       updated_by_user_id: input.createdByUserId
     })
@@ -228,7 +233,7 @@ export async function updateInspectionChecklistTemplate(input: {
   googleDocId?: string | null;
   googleDocUrl?: string | null;
   defaultSector?: string | null;
-  frequency?: 'ad-hoc' | 'daily' | 'monthly' | 'quarterly';
+  frequency?: 'daily' | 'monthly' | 'audit-linked';
 }): Promise<InspectionChecklistTemplate> {
   const patch: Record<string, unknown> = {
     updated_by_user_id: input.updatedByUserId,
@@ -240,10 +245,14 @@ export async function updateInspectionChecklistTemplate(input: {
   if (typeof input.siteId !== 'undefined') patch.site_id = input.siteId;
   if (typeof input.departmentId !== 'undefined') patch.department_id = input.departmentId;
   if (typeof input.isActive !== 'undefined') patch.is_active = input.isActive;
-   if (typeof input.googleDocId !== 'undefined') patch.google_doc_id = input.googleDocId;
-   if (typeof input.googleDocUrl !== 'undefined') patch.google_doc_url = input.googleDocUrl;
-   if (typeof input.defaultSector !== 'undefined') patch.default_sector = input.defaultSector;
-   if (typeof input.frequency !== 'undefined') patch.frequency = input.frequency;
+  if (typeof input.googleDocId !== 'undefined') patch.google_doc_id = input.googleDocId;
+  if (typeof input.googleDocUrl !== 'undefined') patch.google_doc_url = input.googleDocUrl;
+  if (typeof input.defaultSector !== 'undefined') patch.default_sector = input.defaultSector;
+  if (typeof input.frequency !== 'undefined') patch.frequency = input.frequency;
+  if (typeof input.googleDocId !== 'undefined' || typeof input.googleDocUrl !== 'undefined') {
+    const hasGoogleDoc = Boolean(input.googleDocId || input.googleDocUrl);
+    patch.source_type = hasGoogleDoc ? 'google-doc' : 'manual';
+  }
 
   const { data, error } = await insforge.database
     .from('inspection_checklist_templates')
@@ -286,17 +295,22 @@ export async function listInspectionChecklistItems(
 export async function upsertInspectionChecklistItems(input: {
   companyId: UUID;
   templateId: UUID;
-  items: Array<{
-    id?: UUID;
-    item_order: number;
-    section?: string | null;
-    question: string;
-    expected_evidence?: string | null;
-    risk_area?: string | null;
-    default_risk_rating?: string | null;
-    default_nc_severity?: string | null;
-    is_mandatory?: boolean;
-  }>;
+    items: Array<{
+      id?: UUID;
+      item_order: number;
+      section?: string | null;
+      audit_section_or_category?: string | null;
+      requirement_reference?: string | null;
+      question: string;
+      expected_evidence?: string | null;
+      risk_area?: string | null;
+      default_risk_rating?: string | null;
+      default_nc_severity?: string | null;
+      evidence_required_default?: boolean;
+      risk_level_default?: 'low' | 'medium' | 'high' | null;
+      inspection_method_default?: 'physical-inspection' | 'observation' | 'record-review';
+      is_mandatory?: boolean;
+    }>;
 }): Promise<InspectionChecklistItem[]> {
   const rows = input.items.map((item) => ({
     id: item.id ?? undefined,
@@ -304,11 +318,16 @@ export async function upsertInspectionChecklistItems(input: {
     template_id: input.templateId,
     item_order: item.item_order,
     section: item.section ?? null,
+    audit_section_or_category: item.audit_section_or_category ?? item.section ?? null,
+    requirement_reference: item.requirement_reference ?? null,
     question: item.question,
     expected_evidence: item.expected_evidence ?? null,
     risk_area: item.risk_area ?? null,
     default_risk_rating: item.default_risk_rating ?? null,
     default_nc_severity: item.default_nc_severity ?? null,
+    evidence_required_default: item.evidence_required_default ?? false,
+    risk_level_default: item.risk_level_default ?? null,
+    inspection_method_default: item.inspection_method_default ?? 'observation',
     is_mandatory: item.is_mandatory ?? false
   }));
 
@@ -341,6 +360,7 @@ export async function createInspectionRunFromTemplate(input: {
   inspectionId: UUID;
   templateId: UUID;
   inspectorUserId?: UUID | null;
+  auditorUserId?: UUID | null;
   auditeeUserId?: UUID | null;
 }): Promise<{ run: InspectionRun; items: InspectionRunItem[] }> {
   // Determine next run number
@@ -357,11 +377,19 @@ export async function createInspectionRunFromTemplate(input: {
   const nowIso = new Date().toISOString();
 
   // Fetch template + items
-  const [template, templateItems] = await Promise.all([
+  const [{ data: inspectionData, error: inspectionError }, template, templateItems] = await Promise.all([
+    insforge.database
+      .from('inspections')
+      .select('id, location, sector, frequency, inspection_date, auditor_user_id')
+      .eq('company_id', input.companyId)
+      .eq('id', input.inspectionId)
+      .maybeSingle(),
     getInspectionChecklistTemplateById(input.companyId, input.templateId),
     listInspectionChecklistItems(input.companyId, input.templateId)
   ]);
+  if (inspectionError) throw new Error(getErrorMessage(inspectionError));
   if (!template) throw new Error('Checklist template not found.');
+  const inspection = (inspectionData ?? {}) as Partial<Inspection>;
 
   // Create run
   const { data: runData, error: runError } = await insforge.database
@@ -377,7 +405,12 @@ export async function createInspectionRunFromTemplate(input: {
       started_at: nowIso,
       status: 'in-progress',
       inspector_user_id: input.inspectorUserId ?? null,
+      auditor_user_id: input.auditorUserId ?? inspection.auditor_user_id ?? null,
       auditee_user_id: input.auditeeUserId ?? null,
+      sector: inspection.sector ?? (template as any).default_sector ?? null,
+      location: inspection.location ?? null,
+      frequency: inspection.frequency ?? (template as any).frequency ?? 'daily',
+      inspection_date_stamp: inspection.inspection_date ?? nowIso.slice(0, 10),
       items_total: templateItems.length,
       items_nc: 0,
       ncrs_created_count: 0
@@ -395,12 +428,13 @@ export async function createInspectionRunFromTemplate(input: {
     item_order: item.item_order,
     section: item.section,
     audit_section_or_category: (item as any).audit_section_or_category ?? item.section,
+    requirement_reference: (item as any).requirement_reference ?? null,
     question: item.question,
     expected_evidence: item.expected_evidence,
     risk_area: item.risk_area,
     risk_rating: item.default_risk_rating,
     nc_severity: item.default_nc_severity,
-    inspection_method: (item as any).inspection_method_default ?? template.default_inspection_method ?? 'physical-observation',
+    inspection_method: (item as any).inspection_method_default ?? template.default_inspection_method ?? 'observation',
     evidence_required: (item as any).evidence_required_default ?? false,
     risk_level: (item as any).risk_level_default ?? null,
     question_fingerprint: (item as any).question_fingerprint ?? null,
@@ -414,6 +448,7 @@ export async function createInspectionRunFromTemplate(input: {
     photo_url: null,
     nonconformance_flag: false,
     corrective_action_required: false,
+    status: 'open',
     auto_ncr_id: null
   }));
 
@@ -468,7 +503,7 @@ export async function updateInspectionRunItem(
     evidence_notes: string | null;
     comments: string | null;
     auditor_comments: string | null;
-    inspection_method: 'physical-observation' | 'record-review' | 'interview' | 'other';
+    inspection_method: 'physical-inspection' | 'observation' | 'record-review';
     nonconformance_flag: boolean;
     corrective_action_required: boolean;
     responsible_person_id: UUID | null;
@@ -497,6 +532,8 @@ export async function updateInspectionRunItem(
     const score = rating === 'C' ? 2 : rating === 'PC' ? 1 : 0;
     updatePatch.score = score;
     updatePatch.max_score = 2;
+    updatePatch.nonconformance_flag = rating === 'NC';
+    updatePatch.compliance_status = rating === 'NC' ? 'NC' : rating === 'PC' ? 'NA' : 'C';
   }
   if (typeof patch.risk_level !== 'undefined') updatePatch.risk_level = patch.risk_level;
   if (typeof patch.evidence_required !== 'undefined') updatePatch.evidence_required = patch.evidence_required;
@@ -539,6 +576,7 @@ export async function completeInspectionRun(input: {
   runId: UUID;
   actorUserId: UUID;
 }): Promise<{ run: InspectionRun; items: InspectionRunItem[] }> {
+  await syncInspectionItemsFromNcrStatus(input.companyId, input.runId);
   const runWithItems = await getInspectionRunById(input.companyId, input.runId);
   if (!runWithItems) throw new Error('Inspection run not found.');
 
@@ -554,15 +592,13 @@ export async function completeInspectionRun(input: {
     if (!autoNcrId) {
       const ncr = await createQualityNcrFromInspectionItem({
         companyId: input.companyId,
-        inspectionId: run.inspection_id,
-        runId: run.id,
-        runItemId: item.id,
-        siteId: run.site_id ?? null,
-        departmentId: run.department_id ?? null,
+        title: `Checklist NC: ${item.question}`,
+        sourceEntityType: 'inspection_item',
+        sourceEntityId: item.id,
+        location: (run as any).location ?? undefined,
         severity: (item.nc_severity as any) ?? 'medium',
-        riskRating: item.risk_rating ?? null,
         description: item.comments ?? item.question,
-        detectedByUserId: input.actorUserId
+        createdByUserId: input.actorUserId
       });
 
       ncrsCreatedCount += 1;
@@ -593,8 +629,8 @@ export async function completeInspectionRun(input: {
         title: item.question,
         description: item.comments ?? item.auditor_comments ?? null ?? undefined,
         actionType: 'corrective',
-        sourceType: 'inspection',
-        sourceId: item.id as UUID,
+        sourceType: 'ncr',
+        sourceId: autoNcrId as UUID,
         priority,
         dueDate,
         assignedToUserId: (item.responsible_person_id as UUID | null | undefined) ?? undefined,
@@ -764,5 +800,75 @@ export async function completeInspectionRun(input: {
   const refreshed = await getInspectionRunById(input.companyId, input.runId);
   if (!refreshed) throw new Error('Failed to reload inspection run after completion.');
   return refreshed;
+}
+
+export async function submitAuditeeSelfAssessment(input: {
+  companyId: UUID;
+  runId: UUID;
+  actorUserId: UUID;
+}): Promise<InspectionRun> {
+  const nowIso = new Date().toISOString();
+  const { data, error } = await insforge.database
+    .from('inspection_runs')
+    .update({
+      auditee_submission_status: 'submitted',
+      auditee_submitted_at: nowIso,
+      updated_at: nowIso
+    })
+    .eq('company_id', input.companyId)
+    .eq('id', input.runId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'inspections.submit_self_assessment',
+    entityType: 'inspection_run',
+    entityId: input.runId
+  });
+  return data as InspectionRun;
+}
+
+export async function syncInspectionItemsFromNcrStatus(companyId: UUID, runId: UUID): Promise<void> {
+  const { data: itemsData, error: itemsError } = await insforge.database
+    .from('inspection_run_items')
+    .select('id, auto_ncr_id, status')
+    .eq('company_id', companyId)
+    .eq('run_id', runId)
+    .not('auto_ncr_id', 'is', null);
+  if (itemsError) throw new Error(getErrorMessage(itemsError));
+  const items = (itemsData ?? []) as Array<{ id: UUID; auto_ncr_id: UUID; status: InspectionRunItem['status'] }>;
+  if (items.length === 0) return;
+
+  const ncrIds = Array.from(new Set(items.map((i) => i.auto_ncr_id)));
+  const { data: ncrData, error: ncrError } = await insforge.database
+    .from('quality_ncrs')
+    .select('id, status, closed_at, closed_by_user_id')
+    .eq('company_id', companyId)
+    .in('id', ncrIds);
+  if (ncrError) throw new Error(getErrorMessage(ncrError));
+  const closedNcrById = new Map(
+    ((ncrData ?? []) as any[])
+      .filter((n) => String(n.status).toLowerCase() === 'closed')
+      .map((n) => [String(n.id), n])
+  );
+
+  const nowIso = new Date().toISOString();
+  for (const item of items) {
+    const ncr = closedNcrById.get(String(item.auto_ncr_id));
+    if (!ncr) continue;
+    if (item.status === 'closed') continue;
+    await insforge.database
+      .from('inspection_run_items')
+      .update({
+        status: 'closed',
+        ncr_closed_at: ncr.closed_at ?? nowIso,
+        ncr_closed_by_user_id: ncr.closed_by_user_id ?? null,
+        updated_at: nowIso
+      })
+      .eq('company_id', companyId)
+      .eq('id', item.id);
+  }
 }
 

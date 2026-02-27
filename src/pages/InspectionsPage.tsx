@@ -41,9 +41,7 @@ export function InspectionsPage() {
   const { data: inspections, loading, error } = useAsync<Inspection[]>(
     async () => {
       if (!activeCompanyId) return [];
-      const all = await listInspections({ companyId: activeCompanyId, limit: 500 });
-      // Filter to only show inspections (not audits)
-      return all.filter(i => i.title.startsWith('[INSPECTION]') || (!i.title.startsWith('[') && i.checklist_name));
+      return await listInspections({ companyId: activeCompanyId, limit: 500 });
     },
     [activeCompanyId]
   );
@@ -75,7 +73,8 @@ export function InspectionsPage() {
       status: i.status,
       findings: i.findings_count ?? 0,
       nonConformances: i.nonconformances_count ?? 0,
-      location: i.location
+      location: i.location,
+      frequency: i.frequency ?? null
     };
   });
 
@@ -256,6 +255,11 @@ export function InspectionsPage() {
                           <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
                             {inspection.module}
                           </span>
+                          {inspection.frequency && (
+                            <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
+                              {inspection.frequency}
+                            </span>
+                          )}
                           {inspection.findings > 0 && (
                             <span className="flex items-center gap-1 text-warning">
                               <AlertCircleIcon className="w-4 h-4" />
@@ -288,4 +292,3 @@ export function InspectionsPage() {
     </Layout>
   );
 }
-

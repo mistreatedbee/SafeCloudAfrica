@@ -271,7 +271,7 @@ export function SafetyPage() {
               type="button"
               onClick={() => {
                 if (item.label === 'Report Incident') navigate('/incidents/new');
-                if (item.label === 'Safety Inspection') navigate('/audits'); // inspections live under audits
+                if (item.label === 'Safety Inspection') navigate('/inspections');
                 if (item.label === 'Risk Assessment') navigate('/risks');
                 if (item.label === 'PPE Management') navigate('/ppe');
               }}

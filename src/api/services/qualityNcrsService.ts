@@ -257,6 +257,7 @@ export async function createQualityNcrFromInspectionItem(input: {
   location?: string;
   severity: QualityNcr['severity'];
   createdByUserId: UUID;
+  sourceEntityType?: string;
   sourceEntityId?: UUID;
 }): Promise<QualityNcr> {
   return await createQualityNcr({
@@ -266,7 +267,7 @@ export async function createQualityNcrFromInspectionItem(input: {
     location: input.location,
     severity: input.severity,
     createdByUserId: input.createdByUserId,
-    source_entity_type: 'inspection_item',
+    source_entity_type: input.sourceEntityType ?? 'inspection_item',
     source_entity_id: input.sourceEntityId
   });
 }

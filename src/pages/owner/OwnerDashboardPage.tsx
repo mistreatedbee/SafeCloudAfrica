@@ -27,6 +27,7 @@ import { countExpiringTraining } from '../../api/services/trainingService';
 import { listAudits } from '../../api/services/auditsService';
 import { listSites } from '../../api/services/sitesService';
 import { listDepartments } from '../../api/services/departmentsService';
+import { listInspections } from '../../api/services/inspectionsService';
 
 export function OwnerDashboardPage() {
   const { activeCompanyId, activeCompany } = useTenant();
@@ -39,13 +40,14 @@ export function OwnerDashboardPage() {
   const { data: summary, loading, error } = useAsync(
     async () => {
       if (!activeCompanyId) return null;
-      const [incidents, risks, moduleTargets, overdueActions, expiringTraining, audits] = await Promise.all([
+      const [incidents, risks, moduleTargets, overdueActions, expiringTraining, audits, inspections] = await Promise.all([
         listIncidents({ companyId: activeCompanyId, limit: 2000 }).catch(() => []),
         listRisks({ companyId: activeCompanyId, limit: 2000 }).catch(() => []),
         listModuleTargets({ companyId: activeCompanyId, limit: 2000 }).catch(() => []),
         countOverdueCorrectiveActions(activeCompanyId).catch(() => 0),
         countExpiringTraining(activeCompanyId, 30).catch(() => 0),
         listAudits({ companyId: activeCompanyId, limit: 100 }).catch(() => []),
+        listInspections({ companyId: activeCompanyId, limit: 500 }).catch(() => []),
       ]);
 
       const byModule = new Map<string, { total: number; achieved: number }>();
@@ -117,6 +119,8 @@ export function OwnerDashboardPage() {
         expiringTraining,
         auditOpen,
         auditTotal: audits.length,
+        inspectionOpen: inspections.filter((i) => i.status !== 'completed').length,
+        inspectionTotal: inspections.length
       };
     },
     [activeCompanyId, refreshKey]
@@ -260,6 +264,14 @@ export function OwnerDashboardPage() {
             iconColor="#2ECC71"
             variant="info"
             subtitle={`${summary?.auditTotal ?? 0} total`}
+          />
+          <StatCard
+            title="Inspections (open)"
+            value={summary?.inspectionOpen ?? 0}
+            icon="ClipboardCheck"
+            iconColor="#0FB9B1"
+            variant="info"
+            subtitle={`${summary?.inspectionTotal ?? 0} total`}
           />
         </div>
 

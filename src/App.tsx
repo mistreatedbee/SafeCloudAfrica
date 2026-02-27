@@ -25,6 +25,8 @@ import { IncidentsPage } from './pages/IncidentsPage';
 import { TrainingPage } from './pages/TrainingPage';
 import { AuditsPage } from './pages/AuditsPage';
 import { InspectionsPage } from './pages/InspectionsPage';
+import { InspectionDetailPage } from './pages/InspectionDetailPage';
+import { InspectionRunReportPage } from './pages/InspectionRunReportPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ProfilePage } from './pages/ProfilePage';
@@ -869,6 +871,26 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <InspectionsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/inspections/:inspectionId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <InspectionDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/inspection-runs/:runId/report"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <InspectionRunReportPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

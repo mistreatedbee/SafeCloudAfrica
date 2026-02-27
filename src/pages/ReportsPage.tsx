@@ -311,17 +311,46 @@ export function ReportsPage() {
 
     if (template.id === 'inspections') {
       const inspections = await listInspections({ companyId: activeCompanyId, limit: 2000 });
-      const rows = inspections.map((i) => ({
-        id: i.id,
-        module: i.module,
-        title: i.title,
-        status: i.status,
-        scheduled_at: i.scheduled_at,
-        completed_at: i.completed_at,
-        location: i.location ?? '',
-        findings_count: i.findings_count ?? 0,
-        nonconformances_count: i.nonconformances_count ?? 0
-      }));
+      const { insforge } = await import('../api/insforge/client');
+      const rows: Array<Record<string, unknown>> = [];
+      for (const i of inspections) {
+        const { data: runs } = await insforge.database
+          .from('inspection_runs')
+          .select('id, run_number')
+          .eq('company_id', activeCompanyId)
+          .eq('inspection_id', i.id)
+          .order('run_number', { ascending: false })
+          .limit(1);
+        const latestRunId = (runs ?? [])[0]?.id as string | undefined;
+        let compliance_percent = 0;
+        let high_risk_findings = 0;
+        if (latestRunId) {
+          const { data: runItems } = await insforge.database
+            .from('inspection_run_items')
+            .select('score, max_score, risk_level')
+            .eq('company_id', activeCompanyId)
+            .eq('run_id', latestRunId);
+          const totalScore = (runItems ?? []).reduce((s: number, r: any) => s + Number(r.score ?? 0), 0);
+          const totalMax = (runItems ?? []).reduce((s: number, r: any) => s + Number(r.max_score ?? 0), 0);
+          compliance_percent = totalMax > 0 ? Number(((totalScore / totalMax) * 100).toFixed(1)) : 0;
+          high_risk_findings = (runItems ?? []).filter((r: any) => r.risk_level === 'high').length;
+        }
+        rows.push({
+          id: i.id,
+          module: i.module,
+          title: i.title,
+          status: i.status,
+          sector: (i as any).sector ?? '',
+          frequency: (i as any).frequency ?? '',
+          location: i.location ?? '',
+          scheduled_at: i.scheduled_at,
+          completed_at: i.completed_at,
+          findings_count: i.findings_count ?? 0,
+          nonconformances_count: i.nonconformances_count ?? 0,
+          compliance_percent,
+          high_risk_findings
+        });
+      }
       const csv = toCsv(rows);
       const content = `${metaLines.join('\r\n')}\r\n${csv}`;
       const filename = `${safeOrg}-inspections-${dateStamp}.csv`;

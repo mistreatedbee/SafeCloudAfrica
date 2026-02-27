@@ -4,6 +4,8 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { ModuleKey, UUID } from '../../api/models/core';
 import { createInspection, listInspectionChecklistTemplates } from '../../api/services/inspectionsService';
+import { listUserProfiles } from '../../api/services/profilesService';
+import type { UserProfile } from '../../api/models/entities';
 
 type ChecklistTemplateOption = {
   id: string;
@@ -22,8 +24,15 @@ export function InspectionCreateModal(props: {
   const [module, setModule] = useState<ModuleKey>('safety');
   const [templateId, setTemplateId] = useState<string>('');
   const [scheduledAt, setScheduledAt] = useState('');
+  const [inspectionDate, setInspectionDate] = useState('');
   const [location, setLocation] = useState('');
+  const [sector, setSector] = useState('');
+  const [department, setDepartment] = useState('');
+  const [frequency, setFrequency] = useState<'daily' | 'monthly' | 'audit-linked'>('daily');
+  const [inspectorUserId, setInspectorUserId] = useState('');
+  const [auditorUserId, setAuditorUserId] = useState('');
   const [templates, setTemplates] = useState<ChecklistTemplateOption[]>([]);
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
@@ -58,6 +67,19 @@ export function InspectionCreateModal(props: {
     loadTemplates();
   }, [props.companyId, module]);
 
+  useEffect(() => {
+    async function loadProfiles() {
+      if (!props.companyId) return;
+      try {
+        const data = await listUserProfiles(props.companyId);
+        setProfiles(data);
+      } catch {
+        setProfiles([]);
+      }
+    }
+    loadProfiles();
+  }, [props.companyId]);
+
   const canSubmit = useMemo(() => !!templateId && !loading, [templateId, loading]);
 
   async function onSubmit(e: React.FormEvent) {
@@ -74,7 +96,12 @@ export function InspectionCreateModal(props: {
         module,
         title,
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+        inspectionDate: inspectionDate || undefined,
         location: location.trim() || undefined,
+        sector: sector.trim() || undefined,
+        frequency,
+        inspectorUserId: inspectorUserId ? (inspectorUserId as UUID) : undefined,
+        auditorUserId: auditorUserId ? (auditorUserId as UUID) : undefined,
         createdByUserId: props.createdByUserId,
         templateId: templateId as UUID
       });
@@ -92,7 +119,13 @@ export function InspectionCreateModal(props: {
   function resetForm() {
     setTemplateId('');
     setScheduledAt('');
+    setInspectionDate('');
     setLocation('');
+    setSector('');
+    setDepartment('');
+    setFrequency('daily');
+    setInspectorUserId('');
+    setAuditorUserId('');
     setModule('safety');
   }
 
@@ -170,6 +203,15 @@ export function InspectionCreateModal(props: {
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Inspection Date</label>
+                <input
+                  type="date"
+                  value={inspectionDate}
+                  onChange={(e) => setInspectionDate(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Location</label>
                 <input
@@ -178,6 +220,66 @@ export function InspectionCreateModal(props: {
                   placeholder="e.g. Site A, Warehouse B"
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Sector</label>
+                <input
+                  value={sector}
+                  onChange={(e) => setSector(e.target.value)}
+                  placeholder="e.g. Mining, Construction"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Department</label>
+                <input
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  placeholder="e.g. Operations"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Frequency</label>
+                <select
+                  value={frequency}
+                  onChange={(e) => setFrequency(e.target.value as 'daily' | 'monthly' | 'audit-linked')}
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="audit-linked">Audit-linked</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Inspector</label>
+                <select
+                  value={inspectorUserId}
+                  onChange={(e) => setInspectorUserId(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                >
+                  <option value="">Select inspector</option>
+                  {profiles.map((p) => (
+                    <option key={p.user_id} value={p.user_id}>
+                      {p.full_name || p.email || p.user_id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Auditor</label>
+                <select
+                  value={auditorUserId}
+                  onChange={(e) => setAuditorUserId(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                >
+                  <option value="">Select auditor</option>
+                  {profiles.map((p) => (
+                    <option key={p.user_id} value={p.user_id}>
+                      {p.full_name || p.email || p.user_id}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>

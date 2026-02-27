@@ -10,6 +10,10 @@ export type InspectionRunReport = {
   totalScore: number;
   maxScore: number;
   compliancePercent: number;
+  departmentPerformanceScore: number;
+  repeatFindingsCount: number;
+  repeatFindingsIndicator: 'none' | 'low' | 'high';
+  auditScoreHistory: Array<{ runId: UUID; completedAt: string | null; compliancePercent: number }>;
   findings: any[];
   nonConformances: any[];
   highRiskFindings: any[];
@@ -41,6 +45,72 @@ export async function getInspectionRunReport(companyId: UUID, runId: UUID): Prom
   const findings = items.filter((i) => i.inspection_rating === 'PC' || i.inspection_rating === 'NC');
   const nonConformances = items.filter((i) => i.nonconformance_flag || i.inspection_rating === 'NC');
   const highRiskFindings = items.filter((i) => i.risk_level === 'high');
+  const completedItems = items.filter((i) => i.status === 'closed').length;
+  const completionPercent = items.length > 0 ? (completedItems / items.length) * 100 : 0;
+  const departmentPerformanceScore = Math.max(0, Math.round((compliancePercent * 0.7) + (completionPercent * 0.3)));
+
+  const fingerprints = Array.from(
+    new Set(items.map((i) => String(i.question_fingerprint ?? '').trim()).filter(Boolean))
+  );
+  let repeatFindingsCount = 0;
+  if (fingerprints.length > 0) {
+    const { data: priorRunsData, error: priorRunsError } = await insforge.database
+      .from('inspection_runs')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('template_id', (runData as any).template_id)
+      .neq('id', runId);
+    if (priorRunsError) throw new Error(getErrorMessage(priorRunsError));
+    const priorRunIds = (priorRunsData ?? []).map((r: any) => r.id);
+    if (priorRunIds.length > 0) {
+      const { data: repeatNcData, error: repeatNcError } = await insforge.database
+        .from('inspection_run_items')
+        .select('question_fingerprint')
+        .eq('company_id', companyId)
+        .in('run_id', priorRunIds)
+        .eq('inspection_rating', 'NC')
+        .in('question_fingerprint', fingerprints);
+      if (repeatNcError) throw new Error(getErrorMessage(repeatNcError));
+      repeatFindingsCount = new Set((repeatNcData ?? []).map((r: any) => String(r.question_fingerprint))).size;
+    }
+  }
+  const repeatFindingsIndicator: 'none' | 'low' | 'high' =
+    repeatFindingsCount === 0 ? 'none' : repeatFindingsCount >= 3 ? 'high' : 'low';
+
+  const { data: historyRunsData, error: historyRunsError } = await insforge.database
+    .from('inspection_runs')
+    .select('id, completed_at')
+    .eq('company_id', companyId)
+    .eq('inspection_id', (runData as any).inspection_id)
+    .order('run_number', { ascending: true });
+  if (historyRunsError) throw new Error(getErrorMessage(historyRunsError));
+  const historyRunIds = (historyRunsData ?? []).map((r: any) => r.id);
+  let auditScoreHistory: Array<{ runId: UUID; completedAt: string | null; compliancePercent: number }> = [];
+  if (historyRunIds.length > 0) {
+    const { data: historyItemsData, error: historyItemsError } = await insforge.database
+      .from('inspection_run_items')
+      .select('run_id, score, max_score')
+      .eq('company_id', companyId)
+      .in('run_id', historyRunIds);
+    if (historyItemsError) throw new Error(getErrorMessage(historyItemsError));
+    const byRun = new Map<string, { score: number; maxScore: number }>();
+    for (const row of historyItemsData ?? []) {
+      const key = String((row as any).run_id);
+      const curr = byRun.get(key) ?? { score: 0, maxScore: 0 };
+      curr.score += Number((row as any).score ?? 0);
+      curr.maxScore += Number((row as any).max_score ?? 0);
+      byRun.set(key, curr);
+    }
+    auditScoreHistory = (historyRunsData ?? []).map((run: any) => {
+      const agg = byRun.get(String(run.id)) ?? { score: 0, maxScore: 0 };
+      const pct = agg.maxScore > 0 ? (agg.score / agg.maxScore) * 100 : 0;
+      return {
+        runId: run.id as UUID,
+        completedAt: run.completed_at as string | null,
+        compliancePercent: pct
+      };
+    });
+  }
 
   const itemIds = items.map((i) => i.id).filter(Boolean);
   let evidenceByItemId: Record<string, InspectionItemEvidence[]> = {};
@@ -67,10 +137,13 @@ export async function getInspectionRunReport(companyId: UUID, runId: UUID): Prom
     totalScore,
     maxScore,
     compliancePercent,
+    departmentPerformanceScore,
+    repeatFindingsCount,
+    repeatFindingsIndicator,
+    auditScoreHistory,
     findings,
     nonConformances,
     highRiskFindings,
     evidenceByItemId
   };
 }
-
