@@ -13,6 +13,41 @@ import { listIncidentCorrectiveActions } from '../../api/services/incidentCorrec
 import { IncidentCorrectiveActionsList } from './IncidentCorrectiveActionsList';
 import { IncidentCorrectiveActionModal } from './IncidentCorrectiveActionModal';
 
+type InvestigationSectionKey =
+  | 'immediateCauses'
+  | 'rootCauseHuman'
+  | 'rootCauseWorkplace'
+  | 'systemFailure'
+  | 'contributingFactors'
+  | 'correctiveActions'
+  | 'lessonsLearnt';
+
+const INVESTIGATION_SECTION_DEFINITIONS: Array<{
+  key: InvestigationSectionKey;
+  label: string;
+  description: string;
+}> = [
+  { key: 'immediateCauses', label: 'Immediate Causes', description: 'Task flow, risk context and immediate cause details' },
+  { key: 'rootCauseHuman', label: 'Root Cause (Human Factors)', description: 'Human performance and behavior factors' },
+  { key: 'rootCauseWorkplace', label: 'Root Cause (Workplace Factors)', description: 'Workplace and environment factors' },
+  { key: 'systemFailure', label: 'System Failure', description: 'System/process management failures' },
+  { key: 'contributingFactors', label: 'Contributing Factors', description: 'Other factors that influenced the outcome' },
+  { key: 'correctiveActions', label: 'Corrective Actions', description: 'Action notes, sign-off and distribution details' },
+  { key: 'lessonsLearnt', label: 'Lessons Learnt', description: 'Key learning points for prevention' }
+];
+
+function emptyInvestigationSectionSelection(): Record<InvestigationSectionKey, boolean> {
+  return {
+    immediateCauses: false,
+    rootCauseHuman: false,
+    rootCauseWorkplace: false,
+    systemFailure: false,
+    contributingFactors: false,
+    correctiveActions: false,
+    lessonsLearnt: false
+  };
+}
+
 export function IncidentDetailModal(props: {
   open: boolean;
   onClose: () => void;
@@ -57,6 +92,7 @@ export function IncidentDetailModal(props: {
   const [preparedBy, setPreparedBy] = useState('');
   const [investigationTeam, setInvestigationTeam] = useState('');
   const [distributions, setDistributions] = useState('');
+  const [investigationSections, setInvestigationSections] = useState<Record<InvestigationSectionKey, boolean>>(emptyInvestigationSectionSelection);
   const { fullName, organisationName } = useIdentity();
 
   useEffect(() => {
@@ -83,6 +119,7 @@ export function IncidentDetailModal(props: {
     setPreparedBy('');
     setInvestigationTeam('');
     setDistributions('');
+    setInvestigationSections(emptyInvestigationSectionSelection());
 
     (async () => {
       try {
@@ -113,6 +150,25 @@ export function IncidentDetailModal(props: {
           setPreparedBy(inv.prepared_by ?? '');
           setInvestigationTeam(Array.isArray(inv.investigation_team) ? inv.investigation_team.join(', ') : '');
           setDistributions(Array.isArray(inv.distributions) ? inv.distributions.join(', ') : '');
+          setInvestigationSections({
+            immediateCauses: Boolean((inv.instruction_breakdown ?? '').trim())
+              || Boolean((inv.task_sequence ?? '').trim())
+              || Boolean((inv.event_timeline ?? '').trim())
+              || Boolean((inv.risk ?? '').trim())
+              || Boolean((inv.risk_profile ?? '').trim())
+              || Boolean((inv.potential_consequence ?? '').trim())
+              || (Array.isArray(inv.immediate_causes) && inv.immediate_causes.length > 0),
+            rootCauseHuman: Array.isArray(inv.root_causes_human) && inv.root_causes_human.length > 0,
+            rootCauseWorkplace: Array.isArray(inv.root_causes_workplace) && inv.root_causes_workplace.length > 0,
+            systemFailure: Array.isArray(inv.system_failures) && inv.system_failures.length > 0,
+            contributingFactors: Boolean((inv.contributing_factors ?? '').trim()),
+            correctiveActions: Boolean((inv.notes ?? '').trim())
+              || Boolean((inv.conclusion ?? '').trim())
+              || Boolean((inv.prepared_by ?? '').trim())
+              || (Array.isArray(inv.investigation_team) && inv.investigation_team.length > 0)
+              || (Array.isArray(inv.distributions) && inv.distributions.length > 0),
+            lessonsLearnt: Boolean((inv.lessons_learnt ?? '').trim())
+          });
         }
       } catch (e: any) {
         setError(formatAuthError(e));
@@ -195,6 +251,30 @@ export function IncidentDetailModal(props: {
     } finally {
       setLoading(false);
     }
+  }
+
+  function setInvestigationSection(section: InvestigationSectionKey, selected: boolean) {
+    setInvestigationSections((prev) => ({ ...prev, [section]: selected }));
+  }
+
+  function renderInvestigationCard(section: InvestigationSectionKey, titleText: string, children: React.ReactNode) {
+    if (!investigationSections[section]) return null;
+    return (
+      <div className="rounded-xl border border-surface-200 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="text-sm font-semibold text-charcoal">{titleText}</h4>
+          <button
+            type="button"
+            onClick={() => setInvestigationSection(section, false)}
+            className="text-xs font-medium text-charcoal-500 hover:text-charcoal"
+            disabled={!props.canEditInvestigation}
+          >
+            Collapse
+          </button>
+        </div>
+        {children}
+      </div>
+    );
   }
 
   if (!props.open || !incident) return null;
@@ -496,181 +576,141 @@ export function IncidentDetailModal(props: {
                   </div>
                 )}
 
-                <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Notes</label>
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={4}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
+                <div className="mt-4 space-y-4">
+                  <div className="rounded-xl border border-surface-200 p-4">
+                    <p className="text-sm font-semibold text-charcoal">Investigation sections</p>
+                    <p className="text-xs text-charcoal-500 mt-0.5">Select only what applies. Unselected sections stay hidden and entered values are preserved.</p>
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                      {INVESTIGATION_SECTION_DEFINITIONS.map((section) => (
+                        <label key={section.key} className="flex items-start gap-2 rounded-lg border border-surface-200 p-3 text-sm text-charcoal">
+                          <input
+                            type="checkbox"
+                            checked={investigationSections[section.key]}
+                            onChange={(e) => setInvestigationSection(section.key, e.target.checked)}
+                            disabled={!props.canEditInvestigation}
+                            className="mt-0.5 w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal disabled:opacity-60"
+                          />
+                          <span>
+                            <span className="block font-medium">{section.label}</span>
+                            <span className="block text-xs text-charcoal-500">{section.description}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Instruction breakdown / flow</label>
-                    <textarea
-                      value={instructionBreakdown}
-                      onChange={(e) => setInstructionBreakdown(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={4}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Risk (L/M/H)</label>
-                    <input
-                      value={risk}
-                      onChange={(e) => setRisk(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Risk profile (hazards)</label>
-                    <input
-                      value={riskProfile}
-                      onChange={(e) => setRiskProfile(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Consequence / potential consequence</label>
-                    <textarea
-                      value={potentialConsequence}
-                      onChange={(e) => setPotentialConsequence(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={3}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Task sequence</label>
-                    <textarea
-                      value={taskSequence}
-                      onChange={(e) => setTaskSequence(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={4}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Incident event timeline</label>
-                    <textarea
-                      value={eventTimeline}
-                      onChange={(e) => setEventTimeline(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={4}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">
-                      Immediate causes (comma-separated)
-                    </label>
-                    <textarea
-                      value={immediateCauses}
-                      onChange={(e) => setImmediateCauses(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={3}
-                      placeholder="e.g. Shortcuts, Improper lifting, PPE not used"
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">
-                      Root causes (Human factors) (comma-separated)
-                    </label>
-                    <textarea
-                      value={rootHuman}
-                      onChange={(e) => setRootHuman(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={3}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">
-                      Root causes (Workplace factors) (comma-separated)
-                    </label>
-                    <textarea
-                      value={rootWorkplace}
-                      onChange={(e) => setRootWorkplace(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={3}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">
-                      System failures (comma-separated)
-                    </label>
-                    <textarea
-                      value={systemFailures}
-                      onChange={(e) => setSystemFailures(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={3}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Contributing factors</label>
-                    <textarea
-                      value={contributingFactors}
-                      onChange={(e) => setContributingFactors(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={3}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Lessons learnt</label>
-                    <textarea
-                      value={lessonsLearnt}
-                      onChange={(e) => setLessonsLearnt(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={4}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Conclusion</label>
-                    <textarea
-                      value={conclusion}
-                      onChange={(e) => setConclusion(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      rows={4}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Prepared by</label>
-                    <input
-                      value={preparedBy}
-                      onChange={(e) => setPreparedBy(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Investigation team (comma-separated)</label>
-                    <input
-                      value={investigationTeam}
-                      onChange={(e) => setInvestigationTeam(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Distributions / copy to (comma-separated)</label>
-                    <input
-                      value={distributions}
-                      onChange={(e) => setDistributions(e.target.value)}
-                      disabled={!props.canEditInvestigation}
-                      className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60"
-                    />
-                  </div>
+
+                  {renderInvestigationCard(
+                    'immediateCauses',
+                    'Immediate Causes',
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Instruction breakdown / flow</label>
+                        <textarea value={instructionBreakdown} onChange={(e) => setInstructionBreakdown(e.target.value)} disabled={!props.canEditInvestigation} rows={4} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Task sequence</label>
+                        <textarea value={taskSequence} onChange={(e) => setTaskSequence(e.target.value)} disabled={!props.canEditInvestigation} rows={4} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Risk (L/M/H)</label>
+                        <input value={risk} onChange={(e) => setRisk(e.target.value)} disabled={!props.canEditInvestigation} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Risk profile (hazards)</label>
+                        <input value={riskProfile} onChange={(e) => setRiskProfile(e.target.value)} disabled={!props.canEditInvestigation} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Consequence / potential consequence</label>
+                        <textarea value={potentialConsequence} onChange={(e) => setPotentialConsequence(e.target.value)} disabled={!props.canEditInvestigation} rows={3} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Incident event timeline</label>
+                        <textarea value={eventTimeline} onChange={(e) => setEventTimeline(e.target.value)} disabled={!props.canEditInvestigation} rows={4} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Immediate causes (comma-separated)</label>
+                        <textarea value={immediateCauses} onChange={(e) => setImmediateCauses(e.target.value)} disabled={!props.canEditInvestigation} rows={3} placeholder="e.g. Shortcuts, Improper lifting, PPE not used" className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                    </div>
+                  )}
+
+                  {renderInvestigationCard(
+                    'rootCauseHuman',
+                    'Root Cause (Human Factors)',
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Root causes (Human factors) (comma-separated)</label>
+                      <textarea value={rootHuman} onChange={(e) => setRootHuman(e.target.value)} disabled={!props.canEditInvestigation} rows={3} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                    </div>
+                  )}
+
+                  {renderInvestigationCard(
+                    'rootCauseWorkplace',
+                    'Root Cause (Workplace Factors)',
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Root causes (Workplace factors) (comma-separated)</label>
+                      <textarea value={rootWorkplace} onChange={(e) => setRootWorkplace(e.target.value)} disabled={!props.canEditInvestigation} rows={3} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                    </div>
+                  )}
+
+                  {renderInvestigationCard(
+                    'systemFailure',
+                    'System Failure',
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">System failures (comma-separated)</label>
+                      <textarea value={systemFailures} onChange={(e) => setSystemFailures(e.target.value)} disabled={!props.canEditInvestigation} rows={3} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                    </div>
+                  )}
+
+                  {renderInvestigationCard(
+                    'contributingFactors',
+                    'Contributing Factors',
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Contributing factors</label>
+                      <textarea value={contributingFactors} onChange={(e) => setContributingFactors(e.target.value)} disabled={!props.canEditInvestigation} rows={3} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                    </div>
+                  )}
+
+                  {renderInvestigationCard(
+                    'correctiveActions',
+                    'Corrective Actions',
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Notes</label>
+                        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!props.canEditInvestigation} rows={4} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Prepared by</label>
+                        <input value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} disabled={!props.canEditInvestigation} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Investigation team (comma-separated)</label>
+                        <input value={investigationTeam} onChange={(e) => setInvestigationTeam(e.target.value)} disabled={!props.canEditInvestigation} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Conclusion</label>
+                        <textarea value={conclusion} onChange={(e) => setConclusion(e.target.value)} disabled={!props.canEditInvestigation} rows={3} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Distributions / copy to (comma-separated)</label>
+                        <input value={distributions} onChange={(e) => setDistributions(e.target.value)} disabled={!props.canEditInvestigation} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                      </div>
+                    </div>
+                  )}
+
+                  {renderInvestigationCard(
+                    'lessonsLearnt',
+                    'Lessons Learnt',
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Lessons learnt</label>
+                      <textarea value={lessonsLearnt} onChange={(e) => setLessonsLearnt(e.target.value)} disabled={!props.canEditInvestigation} rows={4} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                    </div>
+                  )}
+
+                  {!Object.values(investigationSections).some(Boolean) && (
+                    <div className="rounded-xl border border-dashed border-surface-300 p-4 bg-surface-50">
+                      <p className="text-sm text-charcoal-600">Select at least one investigation section to view or edit details.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

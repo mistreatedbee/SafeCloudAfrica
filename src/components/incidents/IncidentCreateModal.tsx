@@ -46,6 +46,41 @@ type UploadDraft = {
   kind: 'image' | 'document';
 };
 
+type InvestigationSectionKey =
+  | 'immediateCauses'
+  | 'rootCauseHuman'
+  | 'rootCauseWorkplace'
+  | 'systemFailure'
+  | 'contributingFactors'
+  | 'correctiveActions'
+  | 'lessonsLearnt';
+
+const INVESTIGATION_SECTION_DEFINITIONS: Array<{
+  key: InvestigationSectionKey;
+  label: string;
+  description: string;
+}> = [
+  { key: 'immediateCauses', label: 'Immediate Causes', description: 'Unsafe acts/conditions, task flow and risk context' },
+  { key: 'rootCauseHuman', label: 'Root Cause (Human Factors)', description: 'Human behavior and competency causes' },
+  { key: 'rootCauseWorkplace', label: 'Root Cause (Workplace Factors)', description: 'Workplace and operational environment causes' },
+  { key: 'systemFailure', label: 'System Failure', description: 'Management system and process breakdowns' },
+  { key: 'contributingFactors', label: 'Contributing Factors', description: 'Other factors that influenced the incident' },
+  { key: 'correctiveActions', label: 'Corrective Actions', description: 'Actions, ownership, conclusion and distribution' },
+  { key: 'lessonsLearnt', label: 'Lessons Learnt', description: 'Reusable learning points for prevention' }
+];
+
+function emptyInvestigationSectionSelection(): Record<InvestigationSectionKey, boolean> {
+  return {
+    immediateCauses: false,
+    rootCauseHuman: false,
+    rootCauseWorkplace: false,
+    systemFailure: false,
+    contributingFactors: false,
+    correctiveActions: false,
+    lessonsLearnt: false
+  };
+}
+
 function toLegacySeverity(score: number): Severity {
   if (score >= 5) return 'critical';
   if (score >= 4) return 'high';
@@ -152,6 +187,7 @@ export function IncidentCreateModal(props: {
   const [conclusion, setConclusion] = useState('');
   const [preparedBy, setPreparedBy] = useState('');
   const [distributionList, setDistributionList] = useState('');
+  const [investigationSections, setInvestigationSections] = useState<Record<InvestigationSectionKey, boolean>>(emptyInvestigationSectionSelection);
 
   const [evidenceUploads, setEvidenceUploads] = useState<UploadDraft[]>([]);
   const [investigationUploads, setInvestigationUploads] = useState<UploadDraft[]>([]);
@@ -266,6 +302,7 @@ export function IncidentCreateModal(props: {
     setConclusion('');
     setPreparedBy('');
     setDistributionList('');
+    setInvestigationSections(emptyInvestigationSectionSelection());
     setEvidenceUploads([]);
     setInvestigationUploads([]);
     setError(null);
@@ -362,8 +399,10 @@ export function IncidentCreateModal(props: {
       return next;
     };
 
-    setUnsafeActs(mapCauseEntries((editingIncident as any).immediate_causes_unsafe_acts));
-    setUnsafeConditions(mapCauseEntries((editingIncident as any).immediate_causes_unsafe_conditions));
+    const mappedUnsafeActs = mapCauseEntries((editingIncident as any).immediate_causes_unsafe_acts);
+    const mappedUnsafeConditions = mapCauseEntries((editingIncident as any).immediate_causes_unsafe_conditions);
+    setUnsafeActs(mappedUnsafeActs);
+    setUnsafeConditions(mappedUnsafeConditions);
     setImmediateCauseCategories({});
     setRootCauseHuman({});
     setRootCauseWorkplace({});
@@ -380,6 +419,10 @@ export function IncidentCreateModal(props: {
     setConclusion('');
     setPreparedBy('');
     setDistributionList('');
+    setInvestigationSections({
+      ...emptyInvestigationSectionSelection(),
+      immediateCauses: Object.keys(mappedUnsafeActs).length > 0 || Object.keys(mappedUnsafeConditions).length > 0
+    });
     setEvidenceUploads([]);
     setInvestigationUploads([]);
     setError(null);
@@ -423,6 +466,33 @@ export function IncidentCreateModal(props: {
           }
           setImmediateCauseCategories(next);
         }
+        const hasImmediateCauses = (Array.isArray(inv.immediate_causes) && inv.immediate_causes.length > 0)
+          || (Array.isArray((editingIncident as any)?.immediate_causes_unsafe_acts) && (editingIncident as any).immediate_causes_unsafe_acts.length > 0)
+          || (Array.isArray((editingIncident as any)?.immediate_causes_unsafe_conditions) && (editingIncident as any).immediate_causes_unsafe_conditions.length > 0)
+          || Boolean((inv.instruction_breakdown ?? '').trim())
+          || Boolean((inv.task_sequence ?? '').trim())
+          || Boolean((inv.event_timeline ?? '').trim())
+          || Boolean((inv.risk_profile ?? '').trim())
+          || Boolean((inv.potential_consequence ?? '').trim());
+        const hasRootHuman = Array.isArray(inv.root_causes_human) && inv.root_causes_human.length > 0;
+        const hasRootWorkplace = Array.isArray(inv.root_causes_workplace) && inv.root_causes_workplace.length > 0;
+        const hasSystemFailures = Array.isArray(inv.system_failures) && inv.system_failures.length > 0;
+        const hasContributingFactors = Boolean((inv.contributing_factors ?? '').trim());
+        const hasCorrectiveActions = Boolean((inv.notes ?? '').trim())
+          || Boolean((inv.conclusion ?? '').trim())
+          || Boolean((inv.prepared_by ?? '').trim())
+          || (Array.isArray(inv.investigation_team) && inv.investigation_team.length > 0)
+          || (Array.isArray(inv.distributions) && inv.distributions.length > 0);
+        const hasLessonsLearnt = Boolean((inv.lessons_learnt ?? '').trim());
+        setInvestigationSections({
+          immediateCauses: hasImmediateCauses,
+          rootCauseHuman: hasRootHuman,
+          rootCauseWorkplace: hasRootWorkplace,
+          systemFailure: hasSystemFailures,
+          contributingFactors: hasContributingFactors,
+          correctiveActions: hasCorrectiveActions,
+          lessonsLearnt: hasLessonsLearnt
+        });
         if (Array.isArray(inv.root_causes_human)) {
           const next: Record<string, CauseDetailEntry> = {};
           for (const entry of inv.root_causes_human as any[]) {
@@ -790,6 +860,10 @@ export function IncidentCreateModal(props: {
     }
   }
 
+  function setInvestigationSection(section: InvestigationSectionKey, selected: boolean) {
+    setInvestigationSections((prev) => ({ ...prev, [section]: selected }));
+  }
+
   function renderUploadSection(titleText: string, section: 'evidence' | 'investigation', items: UploadDraft[]) {
     return (
       <div className="space-y-3">
@@ -947,6 +1021,25 @@ export function IncidentCreateModal(props: {
             </div>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  function renderInvestigationCard(section: InvestigationSectionKey, titleText: string, children: React.ReactNode) {
+    if (!investigationSections[section]) return null;
+    return (
+      <div className="rounded-xl border border-surface-200 p-4 space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="text-sm font-semibold text-charcoal">{titleText}</h4>
+          <button
+            type="button"
+            onClick={() => setInvestigationSection(section, false)}
+            className="text-xs font-medium text-charcoal-500 hover:text-charcoal"
+          >
+            Collapse
+          </button>
+        </div>
+        {children}
       </div>
     );
   }
@@ -1280,61 +1373,91 @@ export function IncidentCreateModal(props: {
             </div>
 
             {renderUploadSection('Upload evidence', 'evidence', evidenceUploads)}
-            {!investigationRequired && renderUploadSection('Upload investigation files', 'investigation', investigationUploads)}
+            {renderUploadSection('Upload investigation files', 'investigation', investigationUploads)}
 
             {investigationRequired && (
               <div className="space-y-5">
-                <div className="rounded-xl border border-surface-200 p-4 space-y-4">
-                  <h4 className="text-sm font-semibold text-charcoal">Task & Event Breakdown</h4>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Instruction breakdown / flow</label>
-                    <textarea value={instructionBreakdown} onChange={(e) => setInstructionBreakdown(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Task sequence</label>
-                    <textarea value={taskSequence} onChange={(e) => setTaskSequence(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                  </div>
-                  <IncidentTimelineBuilder events={incidentTimelineEvents} onChange={setIncidentTimelineEvents} />
-                </div>
-
-                <div className="rounded-xl border border-surface-200 p-4 space-y-4">
-                  <h4 className="text-sm font-semibold text-charcoal">Risk Analysis</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Likelihood (1-5)</label>
-                      <input type="number" min={1} max={5} value={riskLikelihood} onChange={(e) => setRiskLikelihood(Math.max(1, Math.min(5, Number(e.target.value || 1))) as 1 | 2 | 3 | 4 | 5)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Severity (1-5)</label>
-                      <input type="number" min={1} max={5} value={riskSeverity} onChange={(e) => setRiskSeverity(Math.max(1, Math.min(5, Number(e.target.value || 1))) as 1 | 2 | 3 | 4 | 5)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated risk</label>
-                      <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm font-semibold bg-surface-50">{calculatedRisk}</div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated category</label>
-                      <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm font-semibold bg-surface-50">{calculatedRiskCategory}</div>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Risk profile (Hazards)</label>
-                    <textarea value={riskProfile} onChange={(e) => setRiskProfile(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Consequence / Potential consequence</label>
-                    <textarea value={potentialConsequence} onChange={(e) => setPotentialConsequence(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                <div className="rounded-xl border border-surface-200 p-4">
+                  <p className="text-sm font-semibold text-charcoal">Investigation sections</p>
+                  <p className="text-xs text-charcoal-500 mt-0.5">Select only what applies. Unselected sections stay hidden and existing values are preserved.</p>
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                    {INVESTIGATION_SECTION_DEFINITIONS.map((section) => (
+                      <label key={section.key} className="flex items-start gap-2 rounded-lg border border-surface-200 p-3 text-sm text-charcoal">
+                        <input
+                          type="checkbox"
+                          checked={investigationSections[section.key]}
+                          onChange={(e) => setInvestigationSection(section.key, e.target.checked)}
+                          className="mt-0.5 w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
+                        />
+                        <span>
+                          <span className="block font-medium">{section.label}</span>
+                          <span className="block text-xs text-charcoal-500">{section.description}</span>
+                        </span>
+                      </label>
+                    ))}
                   </div>
                 </div>
 
-                {renderDetailedCauseGroups('Immediate Causes (multi-select + notes + per-item evidence)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, immediateCauseCategories, setImmediateCauseCategories)}
-                {renderCauseGroups('Unsafe Acts (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, 'acts', unsafeActs)}
-                {renderCauseGroups('Unsafe Conditions (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS, 'conditions', unsafeConditions)}
-                {renderDetailedCauseGroups('Root Cause Analysis - Human Factors', ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES, rootCauseHuman, setRootCauseHuman)}
-                {renderDetailedCauseGroups('Root Cause Analysis - Workplace Factors', ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES, rootCauseWorkplace, setRootCauseWorkplace)}
+                {renderInvestigationCard(
+                  'immediateCauses',
+                  'Immediate Causes',
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Instruction breakdown / flow</label>
+                      <textarea value={instructionBreakdown} onChange={(e) => setInstructionBreakdown(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Task sequence</label>
+                      <textarea value={taskSequence} onChange={(e) => setTaskSequence(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                    <IncidentTimelineBuilder events={incidentTimelineEvents} onChange={setIncidentTimelineEvents} />
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Likelihood (1-5)</label>
+                        <input type="number" min={1} max={5} value={riskLikelihood} onChange={(e) => setRiskLikelihood(Math.max(1, Math.min(5, Number(e.target.value || 1))) as 1 | 2 | 3 | 4 | 5)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Severity (1-5)</label>
+                        <input type="number" min={1} max={5} value={riskSeverity} onChange={(e) => setRiskSeverity(Math.max(1, Math.min(5, Number(e.target.value || 1))) as 1 | 2 | 3 | 4 | 5)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated risk</label>
+                        <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm font-semibold bg-surface-50">{calculatedRisk}</div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated category</label>
+                        <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm font-semibold bg-surface-50">{calculatedRiskCategory}</div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Risk profile (Hazards)</label>
+                      <textarea value={riskProfile} onChange={(e) => setRiskProfile(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Consequence / Potential consequence</label>
+                      <textarea value={potentialConsequence} onChange={(e) => setPotentialConsequence(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                    {renderDetailedCauseGroups('Immediate Causes (multi-select + notes + per-item evidence)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, immediateCauseCategories, setImmediateCauseCategories)}
+                    {renderCauseGroups('Unsafe Acts (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, 'acts', unsafeActs)}
+                    {renderCauseGroups('Unsafe Conditions (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS, 'conditions', unsafeConditions)}
+                  </div>
+                )}
 
-                <div className="rounded-xl border border-surface-200 p-4 space-y-3">
-                  <h4 className="text-sm font-semibold text-charcoal">System Failure</h4>
+                {renderInvestigationCard(
+                  'rootCauseHuman',
+                  'Root Cause (Human Factors)',
+                  renderDetailedCauseGroups('Root Cause Analysis - Human Factors', ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES, rootCauseHuman, setRootCauseHuman)
+                )}
+
+                {renderInvestigationCard(
+                  'rootCauseWorkplace',
+                  'Root Cause (Workplace Factors)',
+                  renderDetailedCauseGroups('Root Cause Analysis - Workplace Factors', ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES, rootCauseWorkplace, setRootCauseWorkplace)
+                )}
+
+                {renderInvestigationCard(
+                  'systemFailure',
+                  'System Failure',
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {SYSTEM_FAILURE_OPTIONS.map((option) => {
                       const key = makeCauseKey('System Failure', option);
@@ -1351,41 +1474,60 @@ export function IncidentCreateModal(props: {
                       );
                     })}
                   </div>
-                </div>
+                )}
 
-                <div className="rounded-xl border border-surface-200 p-4 space-y-3">
-                  <h4 className="text-sm font-semibold text-charcoal">Final Sections</h4>
+                {renderInvestigationCard(
+                  'contributingFactors',
+                  'Contributing Factors',
                   <div>
                     <label className="block text-sm font-medium text-charcoal mb-1.5">Contributing factors</label>
-                    <textarea value={contributingFactors} onChange={(e) => setContributingFactors(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    <textarea value={contributingFactors} onChange={(e) => setContributingFactors(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Corrective actions (linked to Task / NCR after save)</label>
-                    <textarea value={correctiveActionsText} onChange={(e) => setCorrectiveActionsText(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                )}
+
+                {renderInvestigationCard(
+                  'correctiveActions',
+                  'Corrective Actions',
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Corrective actions (linked to Task / NCR after save)</label>
+                      <textarea value={correctiveActionsText} onChange={(e) => setCorrectiveActionsText(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Investigation team</label>
+                        <input value={investigationTeam} onChange={(e) => setInvestigationTeam(e.target.value)} placeholder="Comma-separated names" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Prepared by</label>
+                        <input value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Conclusion</label>
+                      <textarea value={conclusion} onChange={(e) => setConclusion(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Distribution list (copy to)</label>
+                      <input value={distributionList} onChange={(e) => setDistributionList(e.target.value)} placeholder="Comma-separated emails/names" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
                   </div>
+                )}
+
+                {renderInvestigationCard(
+                  'lessonsLearnt',
+                  'Lessons Learnt',
                   <div>
                     <label className="block text-sm font-medium text-charcoal mb-1.5">Lessons learnt</label>
-                    <textarea value={lessonsLearnt} onChange={(e) => setLessonsLearnt(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    <textarea value={lessonsLearnt} onChange={(e) => setLessonsLearnt(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Investigation team</label>
-                      <input value={investigationTeam} onChange={(e) => setInvestigationTeam(e.target.value)} placeholder="Comma-separated names" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Prepared by</label>
-                      <input value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                    </div>
+                )}
+
+                {!Object.values(investigationSections).some(Boolean) && (
+                  <div className="rounded-xl border border-dashed border-surface-300 p-4 bg-surface-50">
+                    <p className="text-sm text-charcoal-600">Select at least one investigation section above to start capturing details.</p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Conclusion</label>
-                    <textarea value={conclusion} onChange={(e) => setConclusion(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Distribution list (copy to)</label>
-                    <input value={distributionList} onChange={(e) => setDistributionList(e.target.value)} placeholder="Comma-separated emails/names" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                  </div>
-                </div>
+                )}
               </div>
             )}
           </div>
