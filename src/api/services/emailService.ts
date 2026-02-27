@@ -13,6 +13,7 @@ export interface EmailPayload {
   html: string;
   text?: string;
   replyTo?: string;
+  from?: string;
 }
 
 const emailTemplates: Record<string, EmailTemplate> = {
@@ -79,17 +80,10 @@ const emailTemplates: Record<string, EmailTemplate> = {
  */
 export async function sendEmail(payload: EmailPayload): Promise<void> {
   await ensureInsforgeSession();
-
-  const { data, error } = await insforge.functions.invoke('emailSend', {
-    body: payload
-  });
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data || (data as any).ok === false) {
-    throw new Error(`Failed to send email: ${(data as any)?.error || (data as any)?.message || 'Unknown error'}`);
+  const { data, error } = await insforge.functions.invoke('emailSend', { body: payload });
+  if (error) throw new Error(error.message);
+  if (data && typeof data === 'object' && 'ok' in (data as Record<string, unknown>) && !(data as any).ok) {
+    throw new Error(((data as any).error as string) || 'Failed to send email.');
   }
 }
 
@@ -207,4 +201,60 @@ export async function notifyTrainingExpiry(
     expiryDate,
     link
   });
+}
+
+export async function sendOrganizationInviteEmail(input: {
+  to: string;
+  orgName: string;
+  role: string;
+  inviterName: string;
+  inviterEmail: string;
+  inviteToken: string;
+  expiresAtIso: string;
+  supportEmail?: string;
+  appUrl?: string;
+}): Promise<void> {
+  const appUrl = (input.appUrl ?? (import.meta as any)?.env?.VITE_APP_URL ?? window.location.origin).replace(/\/+$/, '');
+  const acceptUrl = `${appUrl}/accept-invite?token=${encodeURIComponent(input.inviteToken)}`;
+  const expiryDate = new Date(input.expiresAtIso);
+  const expiresText = Number.isNaN(expiryDate.getTime()) ? input.expiresAtIso : expiryDate.toLocaleDateString();
+  const daysUntilExpiry = Math.max(1, Math.ceil((expiryDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+  const support = input.supportEmail ?? 'support@safecloudafrica.com';
+  const subject = `You've been invited to join ${input.orgName} on SafeCloud Africa`;
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;background:#f4f7f8;padding:24px;color:#12212b;">
+      <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #dde5e8;border-radius:12px;overflow:hidden;">
+        <div style="padding:20px 24px;background:#0f766e;color:#ffffff;">
+          <h1 style="margin:0;font-size:20px;line-height:1.3;">SafeCloud Africa Invitation</h1>
+        </div>
+        <div style="padding:24px;">
+          <p style="margin:0 0 12px 0;">Hello,</p>
+          <p style="margin:0 0 14px 0;">
+            <strong>${input.inviterName}</strong> (${input.inviterEmail}) invited you to join
+            <strong>${input.orgName}</strong> on SafeCloud Africa as a <strong>${input.role}</strong>.
+          </p>
+          <p style="margin:0 0 22px 0;">
+            <a href="${acceptUrl}" style="display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">
+              Accept Invitation
+            </a>
+          </p>
+          <p style="margin:0 0 10px 0;color:#405562;">This invite expires in ${daysUntilExpiry} day(s) (${expiresText}). If you didn't expect this, ignore this email.</p>
+          <p style="margin:0;color:#405562;">Need help? Contact <a href="mailto:${support}">${support}</a>.</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const text = [
+    'SafeCloud Africa Invitation',
+    '',
+    `${input.inviterName} (${input.inviterEmail}) invited you to join ${input.orgName} on SafeCloud Africa as a ${input.role}.`,
+    '',
+    `Accept invitation: ${acceptUrl}`,
+    `This invite expires in ${daysUntilExpiry} day(s) (${expiresText}). If you didn't expect this, ignore this email.`,
+    `Support: ${support}`
+  ].join('\n');
+
+  await sendEmail({ to: input.to, subject, html, text });
 }

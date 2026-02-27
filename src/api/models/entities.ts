@@ -61,7 +61,7 @@ export type CompanyMembership = {
   created_at: string;
 };
 
-export type CompanyInviteStatus = 'PENDING' | 'SENT' | 'FAILED' | 'ACCEPTED' | 'EXPIRED';
+export type CompanyInviteStatus = 'PENDING' | 'SENT' | 'FAILED' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED';
 
 export type CompanyInvite = {
   id: UUID;
@@ -72,6 +72,8 @@ export type CompanyInvite = {
   created_at: string;
   accepted_at: string | null;
   accepted_user_id: UUID | null;
+  department_id?: UUID | null;
+  site_id?: UUID | null;
   token: string;
   expires_at: string;
   status: CompanyInviteStatus;

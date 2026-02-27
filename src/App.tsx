@@ -177,6 +177,7 @@ export function App() {
 
           {/* Invite acceptance */}
           <Route path="/invite/:inviteId" element={<InviteAcceptPage />} />
+          <Route path="/accept-invite" element={<InviteAcceptPage />} />
 
           {/* Super Admin (platform-wide) */}
           <Route

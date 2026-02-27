@@ -5,8 +5,11 @@ import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
 import {
+  cancelInvite,
+  getInviteAcceptanceLink,
   listCompanyInvites,
   listCompanyMemberships,
+  resendInvite,
   updateMembershipRole,
   updateMembershipStatus,
   type InviteCreateResult
@@ -86,12 +89,18 @@ export function UsersPage() {
       : ['manager', 'supervisor', 'consultant', 'employee', 'auditor'];
 
   const seatsAllowed = (activeCompany?.license_user_limit ?? activeCompany?.employee_limit ?? 0) as number;
-  const seatsUsed = (members ?? []).length;
-  const seatsFull = seatsAllowed > 0 && seatsUsed >= seatsAllowed;
+  const seatsUsed = (members ?? []).filter((m) => String(m.status ?? 'ACTIVE').toUpperCase() === 'ACTIVE').length;
+  const pendingInvites = (invites ?? []).filter((i) => {
+    const s = String(i.status ?? '').toUpperCase();
+    return s === 'PENDING' || s === 'SENT';
+  }).length;
+  const seatsProjected = seatsUsed + pendingInvites;
+  const seatsFull = seatsAllowed > 0 && seatsProjected >= seatsAllowed;
 
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [inviteFeedback, setInviteFeedback] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [membershipActionLoadingId, setMembershipActionLoadingId] = React.useState<string | null>(null);
+  const [inviteActionLoadingId, setInviteActionLoadingId] = React.useState<string | null>(null);
   const [editOpen, setEditOpen] = React.useState(false);
   const [editUserId, setEditUserId] = React.useState<string | null>(null);
 
@@ -118,7 +127,7 @@ export function UsersPage() {
       userId: m.user_id
     })),
     ...(invites ?? [])
-      .filter((i) => !i.accepted_at)
+      .filter((i) => normalizeInviteStatus(i.status) !== 'CANCELLED')
       .map((i) => ({
         id: `INV-${shortId(i.id)}`,
         membershipId: null,
@@ -126,10 +135,19 @@ export function UsersPage() {
         role: formatRole(i.role),
         roleRaw: i.role,
         email: i.email,
-        status: 'Invited',
+        status: normalizeInviteStatus(i.status),
         userId: null
       }))
   ];
+
+  const inviteRows = (invites ?? []).map((invite) => ({
+    ...invite,
+    status: normalizeInviteStatus(invite.status)
+  }));
+
+  function normalizeInviteStatus(status: string | null | undefined): string {
+    return String(status ?? 'SENT').toUpperCase();
+  }
 
   async function refreshUsersData() {
     await Promise.all([refreshMembers(), refreshInvites()]);
@@ -180,6 +198,45 @@ export function UsersPage() {
       text: result.message || 'Invite failed to send. Please try again or contact support.'
     });
   };
+
+  async function onResendInvite(inviteId: string) {
+    if (!user?.id) return;
+    setInviteActionLoadingId(inviteId);
+    setInviteFeedback(null);
+    try {
+      await resendInvite({ inviteId: inviteId as any, actorUserId: user.id });
+      await refreshInvites();
+      setInviteFeedback({ type: 'success', text: 'Invite resent successfully.' });
+    } catch (err: any) {
+      setInviteFeedback({ type: 'error', text: err?.message || 'Failed to resend invite.' });
+    } finally {
+      setInviteActionLoadingId(null);
+    }
+  }
+
+  async function onCancelInvite(inviteId: string) {
+    if (!user?.id) return;
+    setInviteActionLoadingId(inviteId);
+    setInviteFeedback(null);
+    try {
+      await cancelInvite({ inviteId: inviteId as any, actorUserId: user.id });
+      await refreshInvites();
+      setInviteFeedback({ type: 'success', text: 'Invite cancelled successfully.' });
+    } catch (err: any) {
+      setInviteFeedback({ type: 'error', text: err?.message || 'Failed to cancel invite.' });
+    } finally {
+      setInviteActionLoadingId(null);
+    }
+  }
+
+  async function onCopyInviteLink(token: string) {
+    try {
+      await navigator.clipboard.writeText(getInviteAcceptanceLink(token));
+      setInviteFeedback({ type: 'success', text: 'Invite link copied to clipboard.' });
+    } catch {
+      setInviteFeedback({ type: 'error', text: 'Could not copy invite link. Please copy it manually.' });
+    }
+  }
 
   function handleExportCsv() {
     if (!activeCompanyId || combinedUsers.length === 0) return;
@@ -246,6 +303,7 @@ export function UsersPage() {
               {!!seatsAllowed && (
                 <p className="text-xs text-charcoal-500 mt-1">
                   Seats: <span className="font-semibold">{seatsUsed}</span> / {seatsAllowed}{' '}
+                  {pendingInvites > 0 ? <span className="text-charcoal-500">(+ {pendingInvites} pending invites)</span> : null}{' '}
                   {seatsFull ? <span className="text-critical font-semibold">(limit reached)</span> : null}
                 </p>
               )}
@@ -388,6 +446,76 @@ export function UsersPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </motion.div>
+
+        <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
+          <h3 className="font-semibold text-charcoal mb-3">Invites</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-surface-50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Email</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Role</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Invited At</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Expires</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-100">
+                {inviteRows.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-3 text-sm text-charcoal-500">No invites found.</td>
+                  </tr>
+                )}
+                {inviteRows.map((invite) => {
+                  const activeInvite = invite.status === 'SENT' || invite.status === 'PENDING' || invite.status === 'FAILED';
+                  return (
+                    <tr key={invite.id}>
+                      <td className="px-4 py-3 text-sm text-charcoal">{invite.email}</td>
+                      <td className="px-4 py-3 text-sm text-charcoal-500">{formatRole(invite.role)}</td>
+                      <td className="px-4 py-3 text-sm text-charcoal-500">{invite.status}</td>
+                      <td className="px-4 py-3 text-sm text-charcoal-500">{new Date(invite.sent_at ?? invite.created_at).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-sm text-charcoal-500">{invite.expires_at ? new Date(invite.expires_at).toLocaleString() : '-'}</td>
+                      <td className="px-4 py-3 text-right">
+                        {canInvite && (
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void onCopyInviteLink(invite.token)}
+                              className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                            >
+                              Copy link
+                            </button>
+                            {activeInvite && (
+                              <button
+                                type="button"
+                                disabled={inviteActionLoadingId === invite.id}
+                                onClick={() => void onResendInvite(invite.id)}
+                                className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                Resend
+                              </button>
+                            )}
+                            {activeInvite && (
+                              <button
+                                type="button"
+                                disabled={inviteActionLoadingId === invite.id}
+                                onClick={() => void onCancelInvite(invite.id)}
+                                className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </motion.div>
       </motion.div>

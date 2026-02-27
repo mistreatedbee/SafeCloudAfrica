@@ -1,10 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
-import type { Company, CompanyInvite, UUID } from '../../api/models/entities';
+import type { Company, CompanyInvite, Department, Site, UUID } from '../../api/models/entities';
 import type { CompanyRole } from '../../api/models/core';
 import { createInvite, type InviteCreateResult } from '../../api/services/tenantService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
+import { useAsync } from '../../api/hooks/useAsync';
+import { listDepartments } from '../../api/services/departmentsService';
+import { listSites } from '../../api/services/sitesService';
 
 export function InviteUserModal(props: {
   open: boolean;
@@ -17,9 +20,20 @@ export function InviteUserModal(props: {
 }) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<CompanyRole>(props.allowedRoles[0] ?? 'employee');
+  const [departmentId, setDepartmentId] = useState<string>('');
+  const [siteId, setSiteId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canSubmit = useMemo(() => email.trim().includes('@') && !!role, [email, role]);
+
+  const { data: departments } = useAsync<Department[]>(
+    async () => listDepartments(props.company.id),
+    [props.company.id]
+  );
+  const { data: sites } = useAsync<Site[]>(
+    async () => listSites(props.company.id),
+    [props.company.id]
+  );
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,12 +46,16 @@ export function InviteUserModal(props: {
         company: props.company,
         actorUserId: props.actorUserId,
         email,
-        role
+        role,
+        departmentId: departmentId || null,
+        siteId: siteId || null
       });
       props.onInviteResult?.(result, normalizedEmail);
       if (result.ok) {
         props.onInvited?.(result.invite);
         setEmail('');
+        setDepartmentId('');
+        setSiteId('');
         props.onClose();
         return;
       }
@@ -103,6 +121,39 @@ export function InviteUserModal(props: {
             <p className="text-xs text-charcoal-500 mt-1">
               Invited users will only see data within this company workspace.
             </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Department (optional)</label>
+              <select
+                value={departmentId}
+                onChange={(e) => setDepartmentId(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              >
+                <option value="">No department</option>
+                {(departments ?? []).map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Site (optional)</label>
+              <select
+                value={siteId}
+                onChange={(e) => setSiteId(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              >
+                <option value="">No site</option>
+                {(sites ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">
