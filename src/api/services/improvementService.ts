@@ -110,10 +110,11 @@ async function getOrCreateNextReferenceNumber(companyId: UUID): Promise<string> 
   const year = new Date().getFullYear();
   const nowIso = new Date().toISOString();
 
-  await insforge.database.from('improvement_reference_counter').upsert(
+  const { error: upsertError } = await insforge.database.from('improvement_reference_counter').upsert(
     { company_id: companyId, year, last_number: 0, updated_at: nowIso },
     { onConflict: 'company_id,year' }
   );
+  if (upsertError) throw new Error(getErrorMessage(upsertError));
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const { data: counter, error: readError } = await insforge.database
@@ -121,8 +122,12 @@ async function getOrCreateNextReferenceNumber(companyId: UUID): Promise<string> 
       .select('company_id, year, last_number')
       .eq('company_id', companyId)
       .eq('year', year)
-      .single();
+      .maybeSingle();
     if (readError) throw new Error(getErrorMessage(readError));
+    if (!counter) {
+      // Retry loop: row may not be visible yet due to transaction lag.
+      continue;
+    }
     const last = Number((counter as any)?.last_number ?? 0);
     const next = last + 1;
 
