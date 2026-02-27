@@ -93,7 +93,10 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
   const insforgeBase = configuredBaseUrl.replace(/\/+$/, '');
 
   const endpoints = [
+    `${insforgeBase}/api/functions/invoke/emailSend`,
     `${insforgeBase}/api/functions/emailSend`,
+    `${insforgeBase}/functions/invoke/emailSend`,
+    '/api/functions/invoke/emailSend',
     '/api/functions/emailSend'
   ];
   let lastError = sdkResult.error?.message || 'Email function invocation failed.';

@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/functions/(.*)",
-      "destination": "https://pas375jb.us-west.insforge.app/api/functions/$1"
+      "destination": "https://pas375jb.us-west.insforge.app/api/functions/invoke/$1"
     },
     {
       "source": "/api/(.*)",
