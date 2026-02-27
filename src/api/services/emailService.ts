@@ -80,7 +80,7 @@ const emailTemplates: Record<string, EmailTemplate> = {
  */
 export async function sendEmail(payload: EmailPayload): Promise<void> {
   await ensureInsforgeSession();
-  const { data, error } = await insforge.functions.invoke('emailSend', { body: payload });
+  const { data, error } = await insforge.functions.invoke('emailSend', { method: 'POST', body: payload });
   if (error) throw new Error(error.message);
   if (data && typeof data === 'object' && 'ok' in (data as Record<string, unknown>) && !(data as any).ok) {
     throw new Error(((data as any).error as string) || 'Failed to send email.');

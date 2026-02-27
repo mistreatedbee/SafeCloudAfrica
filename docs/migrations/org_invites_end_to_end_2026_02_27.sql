@@ -21,6 +21,25 @@ alter table public.company_invites
 comment on column public.company_invites.status is 'PENDING | SENT | FAILED | ACCEPTED | EXPIRED | CANCELLED.';
 
 -- 3) Only one active invite per org/email at a time
+-- De-duplicate historical active invites so unique index creation cannot fail.
+with ranked as (
+  select
+    id,
+    row_number() over (
+      partition by company_id, lower(email)
+      order by coalesce(sent_at, created_at) desc, created_at desc, id desc
+    ) as rn
+  from public.company_invites
+  where status in ('PENDING', 'SENT')
+)
+update public.company_invites i
+set
+  status = 'CANCELLED',
+  error_message = coalesce(i.error_message, 'Auto-cancelled during invite dedupe migration.')
+from ranked r
+where i.id = r.id
+  and r.rn > 1;
+
 create unique index if not exists idx_company_invites_active_unique
 on public.company_invites (company_id, lower(email))
 where status in ('PENDING', 'SENT');
