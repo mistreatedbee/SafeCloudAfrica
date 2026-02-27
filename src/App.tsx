@@ -36,6 +36,9 @@ import QualityCustomerComplaintsPage from './pages/QualityCustomerComplaintsPage
 import QualityInternalExternalIssuesPage from './pages/QualityInternalExternalIssuesPage';
 import CalibrationPage from './pages/CalibrationPage';
 import { RisksPage } from './pages/RisksPage';
+import { RiskAssessmentCreatePage } from './pages/risks/RiskAssessmentCreatePage';
+import { RiskAssessmentDetailPage } from './pages/risks/RiskAssessmentDetailPage';
+import { RiskAssessmentEditPage } from './pages/risks/RiskAssessmentEditPage';
 import { PPEPage } from './pages/PPEPage';
 import { LegalRegisterPage } from './pages/LegalRegisterPage';
 import { LegalRequirementDetailPage } from './pages/LegalRequirementDetailPage';
@@ -750,7 +753,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <NCRsPage />
+                  <Navigate to="/dashboard/management/ncrs" replace />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -896,7 +899,7 @@ export function App() {
             }
           />
           <Route
-            path="/risks"
+            path="/risk-assessments"
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
@@ -906,15 +909,58 @@ export function App() {
             }
           />
           <Route
-            path="/risks/dashboard"
+            path="/risk-assessments/new"
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <Navigate to="/risks" replace />
+                  <RiskAssessmentCreatePage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
           />
+          <Route
+            path="/risk-assessments/:id"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RiskAssessmentDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/risk-assessments/:id/edit"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RiskAssessmentEditPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route path="/risks" element={<Navigate to="/risk-assessments" replace />} />
+          <Route path="/risks/new" element={<Navigate to="/risk-assessments/new" replace />} />
+          <Route
+            path="/risks/:id"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RiskAssessmentDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/risks/:id/edit"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RiskAssessmentEditPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route path="/risks/dashboard" element={<Navigate to="/risk-assessments" replace />} />
           <Route
             path="/ppe"
             element={
@@ -1382,7 +1428,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RisksPage />
+                  <Navigate to="/risk-assessments" replace />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

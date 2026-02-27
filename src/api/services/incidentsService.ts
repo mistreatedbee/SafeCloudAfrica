@@ -277,12 +277,39 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
 
   // Lazy import to avoid circular dependency
   const { createActivityLog } = await import('./activityLogService');
+  const { createQualityNcr } = await import('./qualityNcrsService');
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,
     action: 'incidents.create',
     entityType: 'incident',
     entityId: (data as any).id as UUID
+  });
+
+  // Authoritative NCR integration: incidents auto-generate NCRs.
+  const createdIncident = data as Incident;
+  await createQualityNcr({
+    companyId: input.companyId,
+    module: input.module,
+    title: `Incident NCR: ${input.title}`,
+    description: input.description ?? undefined,
+    location: input.location ?? undefined,
+    process_involved: input.natureOfIncident ?? undefined,
+    activity_involved: input.subcategory ?? undefined,
+    responsible_role: input.reportedTo ?? undefined,
+    risk_classification: String(input.riskClassification ?? '').toLowerCase() || undefined,
+    risk_rating:
+      String(input.riskClassification ?? '').toLowerCase() === 'critical'
+        ? 'critical'
+        : String(input.riskClassification ?? '').toLowerCase() === 'high'
+          ? 'high'
+          : String(input.riskClassification ?? '').toLowerCase() === 'medium'
+            ? 'medium'
+            : 'low',
+    severity: input.severity,
+    createdByUserId: input.createdByUserId,
+    source_entity_type: 'incident',
+    source_entity_id: createdIncident.id
   });
 
   return data as Incident;

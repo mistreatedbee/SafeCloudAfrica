@@ -7,7 +7,7 @@ import { createQualityNcr, syncNcrEvidenceFromAttachments } from '../../api/serv
 import { createEvidence } from '../../api/services/evidenceService';
 import { insforge } from '../../api/insforge/client';
 
-type NcrSource = 'audit' | 'incident' | 'near_miss' | 'complaint' | 'risk_assessment' | 'inspection';
+type NcrSource = 'audit' | 'audit_finding' | 'incident' | 'complaint' | 'risk' | 'inspection' | 'pjo';
 type LinkedRequirementType = 'STANDARD' | 'POLICY' | 'PROCEDURE';
 type RiskClassification = 'Low' | 'Medium' | 'High' | 'Critical';
 
@@ -34,6 +34,7 @@ export function NcrCreateModal(props: {
   const [linkedRequirement, setLinkedRequirement] = useState('');
   const [riskClassification, setRiskClassification] = useState<RiskClassification>('Medium');
   const [rootCause, setRootCause] = useState('');
+  const [rootCauseSelections, setRootCauseSelections] = useState<Record<string, string>>({});
   const [correctiveActions, setCorrectiveActions] = useState('');
   const [responsiblePerson, setResponsiblePerson] = useState('');
   const [source, setSource] = useState<NcrSource>(props.linkedSource?.type || 'audit');
@@ -69,11 +70,23 @@ export function NcrCreateModal(props: {
     activity,
     responsibleRole,
     linkedRequirement,
-    rootCause,
+      rootCause,
     correctiveActions,
     responsiblePerson,
     evidenceBeforeFiles.length
-  ]);
+    ]);
+
+  const ROOT_CAUSE_OPTIONS = [
+    'Lack of training',
+    'Poor supervision',
+    'No procedure',
+    'Procedure not followed',
+    'Equipment failure',
+    'Communication failure',
+    'Risk not assessed',
+    'Resource constraints',
+    'Management system failure'
+  ];
 
   const appendFiles = (
     files: FileList | null,
@@ -132,6 +145,13 @@ export function NcrCreateModal(props: {
       descriptionParts.push(`Linked Requirement: ${linkedRequirement}`);
       descriptionParts.push(`Risk Classification: ${riskClassification}`);
       descriptionParts.push(`Root Cause: ${rootCause}`);
+      if (Object.keys(rootCauseSelections).length > 0) {
+        descriptionParts.push(
+          `Root Cause Categories: ${Object.entries(rootCauseSelections)
+            .map(([category, explanation]) => `${category}${explanation ? ` (${explanation})` : ''}`)
+            .join('; ')}`
+        );
+      }
       descriptionParts.push(`Corrective Actions: ${correctiveActions}`);
       descriptionParts.push(`Responsible Person: ${responsiblePerson}`);
       descriptionParts.push(`Source: ${source}`);
@@ -155,6 +175,10 @@ export function NcrCreateModal(props: {
         linked_requirement: linkedRequirement.trim(),
         risk_classification: riskClassification.toLowerCase(),
         root_cause: rootCause.trim(),
+        root_cause_categories: Object.entries(rootCauseSelections).map(([category, explanation]) => ({
+          category,
+          explanation: explanation || null
+        })),
         corrective_action: correctiveActions.trim(),
         corrective_action_due_date: new Date(ncrDate).toISOString().split('T')[0],
         source_entity_type: source,
@@ -190,6 +214,7 @@ export function NcrCreateModal(props: {
     setLinkedRequirement('');
     setRiskClassification('Medium');
     setRootCause('');
+    setRootCauseSelections({});
     setCorrectiveActions('');
     setResponsiblePerson('');
     setSource(props.linkedSource?.type || 'audit');
@@ -396,6 +421,46 @@ export function NcrCreateModal(props: {
                   required
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Root Cause Categories (multi-select)</label>
+                <div className="space-y-2">
+                  {ROOT_CAUSE_OPTIONS.map((option) => {
+                    const checked = option in rootCauseSelections;
+                    return (
+                      <div key={option} className="border border-surface-200 rounded-lg p-2">
+                        <label className="inline-flex items-center gap-2 text-sm text-charcoal">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              if (!e.target.checked) {
+                                setRootCauseSelections((prev) => {
+                                  const next = { ...prev };
+                                  delete next[option];
+                                  return next;
+                                });
+                              } else {
+                                setRootCauseSelections((prev) => ({ ...prev, [option]: prev[option] ?? '' }));
+                              }
+                            }}
+                          />
+                          {option}
+                        </label>
+                        {checked && (
+                          <input
+                            value={rootCauseSelections[option] ?? ''}
+                            onChange={(e) =>
+                              setRootCauseSelections((prev) => ({ ...prev, [option]: e.target.value }))
+                            }
+                            placeholder="Optional explanation"
+                            className="mt-2 w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -437,11 +502,12 @@ export function NcrCreateModal(props: {
                 required
               >
                 <option value="audit">Audit</option>
+                <option value="audit_finding">Audit finding</option>
                 <option value="incident">Incident</option>
-                <option value="near_miss">Near Miss</option>
                 <option value="complaint">Complaint</option>
-                <option value="risk_assessment">Risk Assessment</option>
+                <option value="risk">Risk Assessment</option>
                 <option value="inspection">Inspection</option>
+                <option value="pjo">PJO</option>
               </select>
               {props.linkedSource?.id && (
                 <p className="text-xs text-charcoal-500 mt-1">Linked to: {props.linkedSource.type} (ID: {props.linkedSource.id})</p>

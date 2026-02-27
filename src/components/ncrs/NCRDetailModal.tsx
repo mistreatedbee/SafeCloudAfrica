@@ -4,7 +4,13 @@ import { motion } from 'framer-motion';
 import type { NcrEvidenceReference, QualityNcr, UUID } from '../../api/models/entities';
 import { formatAuthError } from '../../auth/authMessages';
 import { createEvidence } from '../../api/services/evidenceService';
-import { listNcrEvidence, syncNcrEvidenceFromAttachments, updateQualityNcr } from '../../api/services/qualityNcrsService';
+import {
+  auditorVerifyQualityNcr,
+  listNcrEvidence,
+  managerSignOffQualityNcr,
+  syncNcrEvidenceFromAttachments,
+  updateQualityNcr
+} from '../../api/services/qualityNcrsService';
 import { insforge } from '../../api/insforge/client';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/services/documentsStorageService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
@@ -46,6 +52,7 @@ export default function NCRDetailModal({
   );
   const [linkedRequirementEdit, setLinkedRequirementEdit] = useState(ncr.linked_requirement ?? '');
   const [savingDetails, setSavingDetails] = useState(false);
+  const [workflowSaving, setWorkflowSaving] = useState<'manager' | 'auditor' | null>(null);
 
   const evidenceBefore = useMemo(
     () => (loadedBefore ?? ((ncr.evidence_before ?? []) as NcrEvidenceReference[])),
@@ -309,6 +316,54 @@ export default function NCRDetailModal({
           />
 
           <div className="border-t pt-4 flex gap-3">
+            {ncr.status !== 'closed' && !ncr.manager_signoff_user_id && (
+              <button
+                onClick={async () => {
+                  setError(null);
+                  setWorkflowSaving('manager');
+                  try {
+                    const updated = await managerSignOffQualityNcr({
+                      companyId,
+                      ncrId: ncr.id,
+                      managerUserId: actorUserId
+                    });
+                    onNcrUpdated(updated);
+                  } catch (err: any) {
+                    setError(formatAuthError(err));
+                  } finally {
+                    setWorkflowSaving(null);
+                  }
+                }}
+                disabled={workflowSaving !== null}
+                className="flex-1 px-4 py-2 bg-navy text-white rounded-lg hover:bg-navy-700 transition-colors font-medium disabled:opacity-60"
+              >
+                {workflowSaving === 'manager' ? 'Signing...' : 'Manager Sign-Off'}
+              </button>
+            )}
+            {ncr.status !== 'closed' && ncr.manager_signoff_user_id && !ncr.auditor_verify_user_id && (
+              <button
+                onClick={async () => {
+                  setError(null);
+                  setWorkflowSaving('auditor');
+                  try {
+                    const updated = await auditorVerifyQualityNcr({
+                      companyId,
+                      ncrId: ncr.id,
+                      auditorUserId: actorUserId
+                    });
+                    onNcrUpdated(updated);
+                  } catch (err: any) {
+                    setError(formatAuthError(err));
+                  } finally {
+                    setWorkflowSaving(null);
+                  }
+                }}
+                disabled={workflowSaving !== null}
+                className="flex-1 px-4 py-2 bg-teal text-white rounded-lg hover:bg-teal-700 transition-colors font-medium disabled:opacity-60"
+              >
+                {workflowSaving === 'auditor' ? 'Verifying...' : 'Auditor Verify'}
+              </button>
+            )}
             {ncr.status !== 'closed' && (
               <button
                 onClick={() => void handleCloseClick()}

@@ -2,6 +2,7 @@ import { insforge } from '../insforge/client';
 import type { ProgramAuditFinding, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { createQualityNcr } from './qualityNcrsService';
 
 export type ProgramAuditFindingStatus =
   | 'open'
@@ -78,6 +79,29 @@ export async function createProgramAuditFinding(
     created_by_user_id: created.created_by_user_id,
     deviation_type: (created as any).deviation_type ?? null
   }).catch(() => {});
+
+  // Authoritative NCR integration: non-conformance findings auto-generate NCR.
+  if (created.deviation_type === 'non_conformance') {
+    await createQualityNcr({
+      companyId: input.companyId,
+      module: 'quality',
+      title: `Audit Finding NCR: ${created.title}`,
+      description: created.required_action ?? created.title,
+      severity:
+        created.risk_level === 'critical'
+          ? 'critical'
+          : created.risk_level === 'high'
+            ? 'high'
+            : created.risk_level === 'medium'
+              ? 'medium'
+              : 'low',
+      createdByUserId: input.createdByUserId,
+      source_entity_type: 'audit_finding',
+      source_entity_id: created.id,
+      risk_rating: created.risk_level,
+      metadata: { auditId: input.auditId, findingId: created.id }
+    });
+  }
 
   return data as ProgramAuditFinding;
 }

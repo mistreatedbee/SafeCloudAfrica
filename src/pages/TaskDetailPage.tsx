@@ -235,7 +235,7 @@ export function TaskDetailPage() {
     if (!task?.source_entity_type || !task?.source_entity_id) return null;
     const type = String(task.source_entity_type);
     const id = task.source_entity_id;
-    if (type === 'ncr') return { label: 'NCR', path: `/quality/ncrs?highlight=${id}` };
+    if (type === 'ncr') return { label: 'NCR', path: `/dashboard/management/ncrs?highlight=${id}` };
     if (type === 'incident') return { label: 'Incident', path: `/incidents?highlight=${id}` };
     if (type === 'audit_finding' || type === 'audit') return { label: 'Audit finding', path: `/audits?highlight=${id}` };
     if (type === 'inspection_run_item') return { label: 'Inspection', path: `/inspections?highlight=${id}` };
@@ -664,3 +664,4 @@ export function TaskDetailPage() {
     </Layout>
   );
 }
+

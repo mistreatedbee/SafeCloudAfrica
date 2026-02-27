@@ -408,7 +408,7 @@ export default function QualityCustomerComplaintsPage() {
                         {row.linked_ncr_id && (
                           <button
                             type="button"
-                            onClick={() => navigate('/ncrs')}
+                            onClick={() => navigate('/dashboard/management/ncrs')}
                             className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50"
                           >
                             View NCR
@@ -632,7 +632,7 @@ export default function QualityCustomerComplaintsPage() {
                   {(complaints ?? []).find((x) => x.id === form.id)?.linked_ncr_id && (
                     <button
                       type="button"
-                      onClick={() => navigate('/ncrs')}
+                      onClick={() => navigate('/dashboard/management/ncrs')}
                       className="px-3 py-2 rounded-lg border border-surface-300 text-sm"
                     >
                       View NCR
@@ -674,3 +674,4 @@ export default function QualityCustomerComplaintsPage() {
     </Layout>
   );
 }
+

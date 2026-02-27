@@ -19,22 +19,31 @@ export function RiskAssessmentCreatePage() {
   const { activeCompanyId } = useTenant();
   const { user } = useUser();
   const [selectedType, setSelectedType] = useState<AssessmentType | null>(null);
+  const [title, setTitle] = useState('');
+  const [department, setDepartment] = useState('');
+  const [site, setSite] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleCreate = async (type: AssessmentType) => {
-    if (!activeCompanyId || !user?.id) return;
+  const handleCreate = async () => {
+    if (!activeCompanyId || !user?.id || !selectedType) return;
     setError(null);
     setLoading(true);
     try {
-      const prefix = type === 'baseline' ? 'Baseline' : type === 'task' ? 'Task' : type === 'critical_task' ? 'Critical Task' : 'Pre-work';
+      const prefix =
+        selectedType === 'baseline' ? 'Baseline' :
+        selectedType === 'task' ? 'Task' :
+        selectedType === 'critical_task' ? 'Critical Task' :
+        'Pre-work';
       const assessment = await createRiskAssessment({
         companyId: activeCompanyId,
-        assessmentType: type,
-        title: `${prefix} Risk Assessment - ${new Date().toLocaleDateString()}`,
+        assessmentType: selectedType,
+        title: title.trim() || `${prefix} Risk Assessment - ${new Date().toLocaleDateString()}`,
+        processInvolved: department.trim() || undefined,
+        location: site.trim() || undefined,
         createdByUserId: user.id as UUID
       });
-      navigate(`/risks/${assessment.id}`);
+      navigate(`/risk-assessments/${assessment.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create assessment');
     } finally {
@@ -57,9 +66,11 @@ export function RiskAssessmentCreatePage() {
             <button
               key={type}
               type="button"
-              onClick={() => handleCreate(type)}
+              onClick={() => setSelectedType(type)}
               disabled={loading}
-              className="bg-white border-2 rounded-lg p-6 text-left hover:border-blue-500 hover:bg-blue-50/50 transition disabled:opacity-60 border-gray-200"
+              className={`bg-white border-2 rounded-lg p-6 text-left hover:border-blue-500 hover:bg-blue-50/50 transition disabled:opacity-60 ${
+                selectedType === type ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200'
+              }`}
             >
               <div className="text-blue-600 mb-3">{icon}</div>
               <h3 className="font-semibold text-gray-900 mb-1">{label}</h3>
@@ -68,10 +79,51 @@ export function RiskAssessmentCreatePage() {
           ))}
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="text-sm">
+            <span className="block text-xs text-charcoal-500 mb-1">Title</span>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Assessment title"
+              className="w-full px-3 py-2 border border-surface-300 rounded-lg"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="block text-xs text-charcoal-500 mb-1">Department</span>
+            <input
+              type="text"
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+              placeholder="Department / process"
+              className="w-full px-3 py-2 border border-surface-300 rounded-lg"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="block text-xs text-charcoal-500 mb-1">Site</span>
+            <input
+              type="text"
+              value={site}
+              onChange={(e) => setSite(e.target.value)}
+              placeholder="Site / location"
+              className="w-full px-3 py-2 border border-surface-300 rounded-lg"
+            />
+          </label>
+        </div>
+
+        <div className="mt-6 flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate('/risks')}
+            onClick={handleCreate}
+            disabled={loading || !selectedType}
+            className="px-4 py-2 bg-teal text-white rounded-lg text-sm font-medium disabled:opacity-60"
+          >
+            {loading ? 'Creating...' : 'Create Assessment'}
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/risk-assessments')}
             className="text-gray-600 hover:text-gray-900 text-sm"
           >
             Cancel

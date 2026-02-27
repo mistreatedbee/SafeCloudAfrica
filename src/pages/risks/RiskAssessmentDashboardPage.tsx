@@ -68,13 +68,13 @@ export function RiskAssessmentDashboardPage() {
           </div>
           <div className="flex gap-2">
             <Link
-              to="/risks/new"
+              to="/risk-assessments/new"
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
             >
               New Assessment
             </Link>
             <Link
-              to="/risks"
+              to="/risk-assessments"
               className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium"
             >
               View All
@@ -89,28 +89,28 @@ export function RiskAssessmentDashboardPage() {
         {/* Status cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link
-            to="/risks?status=active"
+            to="/risk-assessments?status=active"
             className="bg-white rounded-lg shadow border border-gray-200 p-4 hover:border-blue-300 transition"
           >
             <div className="flex items-center gap-2 text-gray-600 text-sm font-medium mb-1">Active</div>
             <div className="text-2xl font-bold text-gray-900">{byStatus.active.length}</div>
           </Link>
           <Link
-            to="/risks?status=review_required"
+            to="/risk-assessments?status=review_required"
             className="bg-white rounded-lg shadow border border-amber-200 p-4 hover:border-amber-400 transition"
           >
             <div className="flex items-center gap-2 text-amber-700 text-sm font-medium mb-1">Review Required</div>
             <div className="text-2xl font-bold text-amber-800">{byStatus.review_required.length}</div>
           </Link>
           <Link
-            to="/risks?status=under_review"
+            to="/risk-assessments?status=under_review"
             className="bg-white rounded-lg shadow border border-blue-200 p-4 hover:border-blue-400 transition"
           >
             <div className="flex items-center gap-2 text-blue-700 text-sm font-medium mb-1">Under Review</div>
             <div className="text-2xl font-bold text-blue-800">{byStatus.under_review.length}</div>
           </Link>
           <Link
-            to="/risks?status=approved"
+            to="/risk-assessments?status=approved"
             className="bg-white rounded-lg shadow border border-green-200 p-4 hover:border-green-400 transition"
           >
             <div className="flex items-center gap-2 text-green-700 text-sm font-medium mb-1">Approved</div>
@@ -164,7 +164,7 @@ export function RiskAssessmentDashboardPage() {
               {needsReview.map((a) => (
                 <li key={a.id}>
                   <Link
-                    to={`/risks/${a.id}`}
+                    to={`/risk-assessments/${a.id}`}
                     className="text-blue-600 hover:underline font-medium"
                   >
                     {a.title || a.assessment_number} — {a.status}

@@ -1,18 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Layout } from '../../components/layout/Layout';
 import { Link } from 'react-router-dom';
+import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { listPreWorkInstances } from '../../api/services/risksService';
 
 export function PreWorkInstancesPage() {
   const { activeCompanyId } = useTenant();
-  const [instances, setInstances] = useState<{ id: string; risk_assessment_id: string; instance_date: string; supervisor_signed_at: string | null }[]>([]);
+  const [instances, setInstances] = useState<Array<{ id: string; risk_assessment_id: string; instance_date: string; supervisor_signed_at: string | null }>>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!activeCompanyId) return;
     listPreWorkInstances({ companyId: activeCompanyId })
-      .then((data) => setInstances(data as any))
+      .then((data) => setInstances(data as never))
       .catch(() => setInstances([]))
       .finally(() => setLoading(false));
   }, [activeCompanyId]);
@@ -25,11 +25,11 @@ export function PreWorkInstancesPage() {
           View daily pre-work risk assessment instances by date. Each instance shows employee signatures and supervisor sign-off.
         </p>
         {loading ? (
-          <p className="text-gray-500">Loading…</p>
+          <p className="text-gray-500">Loading...</p>
         ) : instances.length === 0 ? (
           <div className="bg-white rounded-lg border border-gray-200 p-6 text-center text-gray-500">
             <p>No pre-work instances yet.</p>
-            <Link to="/risks/new" className="text-blue-600 hover:underline mt-2 inline-block">Create a Pre-work Assessment</Link>
+            <Link to="/risk-assessments/new" className="text-blue-600 hover:underline mt-2 inline-block">Create a Pre-work Assessment</Link>
           </div>
         ) : (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -46,12 +46,12 @@ export function PreWorkInstancesPage() {
                   <tr key={inst.id}>
                     <td className="px-4 py-2 text-sm text-gray-900">{inst.instance_date}</td>
                     <td className="px-4 py-2 text-sm">
-                      <Link to={`/risks/${inst.risk_assessment_id}`} className="text-blue-600 hover:underline">
+                      <Link to={`/risk-assessments/${inst.risk_assessment_id}`} className="text-blue-600 hover:underline">
                         View assessment
                       </Link>
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-600">
-                      {inst.supervisor_signed_at ? new Date(inst.supervisor_signed_at).toLocaleString() : '—'}
+                      {inst.supervisor_signed_at ? new Date(inst.supervisor_signed_at).toLocaleString() : '-'}
                     </td>
                   </tr>
                 ))}
@@ -60,7 +60,7 @@ export function PreWorkInstancesPage() {
           </div>
         )}
         <div className="mt-4">
-          <Link to="/risks" className="text-gray-600 hover:text-gray-900 text-sm">← Back to Risk Assessments</Link>
+          <Link to="/risk-assessments" className="text-gray-600 hover:text-gray-900 text-sm">Back to Risk Assessments</Link>
         </div>
       </div>
     </Layout>

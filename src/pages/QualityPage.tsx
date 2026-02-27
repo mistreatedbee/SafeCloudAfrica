@@ -296,7 +296,7 @@ export function QualityPage() {
               )}
             </div>
             <div className="px-5 py-3 bg-surface-50 border-t border-surface-200">
-              <button type="button" onClick={() => navigate('/ncrs')} className="text-sm font-medium text-blue-500 hover:text-blue-700 transition-colors">
+              <button type="button" onClick={() => navigate('/dashboard/management/ncrs')} className="text-sm font-medium text-blue-500 hover:text-blue-700 transition-colors">
                 View all NCRs →
               </button>
             </div>
@@ -310,11 +310,6 @@ export function QualityPage() {
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-            {
-              icon: AlertCircleIcon,
-              label: 'Raise NCR',
-              color: '#E74C3C'
-            },
             {
               icon: ClipboardCheckIcon,
               label: 'Quality Audit',
@@ -345,7 +340,6 @@ export function QualityPage() {
               key={index}
               type="button"
               onClick={() => {
-                if (item.label === 'Raise NCR') navigate('/ncrs');
                 if (item.label === 'Quality Audit') navigate('/audits/new');
                 if (item.label === 'Document Control') navigate('/documents');
                 if (item.label === 'Customer Complaints') navigate('/dashboard/quality/complaints');

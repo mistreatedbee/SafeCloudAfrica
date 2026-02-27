@@ -490,7 +490,7 @@ function PjoResponseRow(props: {
           {hasNcr && (
             <button
               type="button"
-              onClick={() => navigate('/ncrs')}
+              onClick={() => navigate('/dashboard/management/ncrs')}
               className="text-[11px] text-critical underline"
             >
               View in NCR list
@@ -501,4 +501,5 @@ function PjoResponseRow(props: {
     </tr>
   );
 }
+
 

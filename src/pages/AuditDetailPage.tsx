@@ -138,11 +138,14 @@ export function AuditDetailPage() {
   } = useAsync<QualityNcr[]>(
     async () => {
       if (!activeCompanyId || !auditId) return [];
-      return await listQualityNcrs({
+      const rows = await listQualityNcrs({
         companyId: activeCompanyId,
-        sourceEntityType: 'audit',
-        sourceEntityId: auditId as UUID,
-        limit: 200
+        limit: 1000
+      });
+      return rows.filter((row: any) => {
+        if (row.source_entity_type === 'audit' && row.source_entity_id === (auditId as UUID)) return true;
+        if (row.source_entity_type === 'audit_finding' && row?.metadata?.auditId === (auditId as UUID)) return true;
+        return false;
       });
     },
     [activeCompanyId, auditId]

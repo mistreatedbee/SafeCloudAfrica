@@ -29,17 +29,20 @@ export default function NCRsPage() {
   const { user } = useUser();
   const [ncrs, setNcrs] = useState<QualityNcr[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [selectedSource, setSelectedSource] = useState<string>('all');
+  const [selectedRisk, setSelectedRisk] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [departmentIdFilter, setDepartmentIdFilter] = useState('');
+  const [assignedUserFilter, setAssignedUserFilter] = useState('');
+  const [assignedToMeOnly, setAssignedToMeOnly] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedNCR, setSelectedNCR] = useState<QualityNcr | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const canCreateNcr =
-    activeRole === 'admin' ||
-    activeRole === 'manager' ||
-    activeRole === 'supervisor' ||
-    activeRole === 'consultant';
+  const canCreateNcr = activeRole !== 'employee';
   const canCloseNcr = activeRole === 'admin' || activeRole === 'supervisor';
 
   const canUploadEvidenceForNcr = (ncr: QualityNcr): boolean => {
@@ -60,7 +63,7 @@ export default function NCRsPage() {
     if (activeCompanyId && user?.id) {
       loadNCRs();
     }
-  }, [activeCompanyId, selectedStatus]);
+  }, [activeCompanyId, selectedStatus, selectedSource, selectedRisk, dateFrom, dateTo, departmentIdFilter, assignedUserFilter, assignedToMeOnly, user?.id, activeRole]);
 
   async function loadNCRs() {
     try {
@@ -68,7 +71,15 @@ export default function NCRsPage() {
       setError('');
       const data = await listQualityNcrs({
         companyId: activeCompanyId,
-        status: selectedStatus === 'all' ? undefined : selectedStatus
+        status: selectedStatus === 'all' ? undefined : selectedStatus,
+        sourceEntityType: selectedSource === 'all' ? undefined : selectedSource,
+        riskRating: selectedRisk === 'all' ? undefined : (selectedRisk as any),
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        departmentId: (departmentIdFilter || undefined) as UUID | undefined,
+        assignedUserId: (assignedToMeOnly ? user?.id : assignedUserFilter || undefined) as UUID | undefined,
+        actorUserId: user?.id as UUID | undefined,
+        actorRole: activeRole ?? null
       });
       setNcrs(data);
     } catch (err) {
@@ -118,9 +129,7 @@ export default function NCRsPage() {
     }
   };
 
-  const filteredNCRs = selectedStatus === 'all'
-    ? ncrs
-    : ncrs.filter(n => n.status === selectedStatus);
+  const filteredNCRs = ncrs;
 
   return (
     <>
@@ -160,7 +169,7 @@ export default function NCRsPage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex gap-2 flex-wrap"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2"
           >
             <button
               onClick={() => setSelectedStatus('all')}
@@ -173,7 +182,7 @@ export default function NCRsPage() {
               <Filter className="w-4 h-4" />
               All ({ncrs.length})
             </button>
-            {['open', 'in-progress', 'closed'].map(status => {
+            {['open', 'in-progress', 'awaiting-evidence', 'under-review', 'approved', 'overdue', 'closed'].map(status => {
               const count = ncrs.filter(n => n.status === status).length;
               return (
                 <button
@@ -189,6 +198,41 @@ export default function NCRsPage() {
                 </button>
               );
             })}
+            <select value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)} className="px-3 py-2 rounded-lg border border-surface-300 text-sm">
+              <option value="all">All sources</option>
+              <option value="audit">Audit</option>
+              <option value="audit_finding">Audit finding</option>
+              <option value="incident">Incident</option>
+              <option value="inspection">Inspection</option>
+              <option value="pjo">PJO</option>
+              <option value="complaint">Complaint</option>
+              <option value="risk">Risk</option>
+            </select>
+            <select value={selectedRisk} onChange={(e) => setSelectedRisk(e.target.value)} className="px-3 py-2 rounded-lg border border-surface-300 text-sm">
+              <option value="all">All risk levels</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="px-3 py-2 rounded-lg border border-surface-300 text-sm" />
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="px-3 py-2 rounded-lg border border-surface-300 text-sm" />
+            <input
+              value={departmentIdFilter}
+              onChange={(e) => setDepartmentIdFilter(e.target.value)}
+              placeholder="Department ID"
+              className="px-3 py-2 rounded-lg border border-surface-300 text-sm"
+            />
+            <input
+              value={assignedUserFilter}
+              onChange={(e) => setAssignedUserFilter(e.target.value)}
+              placeholder="Assigned user ID"
+              className="px-3 py-2 rounded-lg border border-surface-300 text-sm"
+            />
+            <label className="inline-flex items-center gap-2 text-sm text-charcoal-600">
+              <input type="checkbox" checked={assignedToMeOnly} onChange={(e) => setAssignedToMeOnly(e.target.checked)} />
+              Assigned to me
+            </label>
           </motion.div>
 
           {/* NCR List */}

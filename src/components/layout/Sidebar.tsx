@@ -64,6 +64,7 @@ type NavGroup = {
 const GROUP_STORAGE_KEY = 'safecloud.sidebar.management-groups.v1';
 
 const managementRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
+const ncrRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor', 'consultant', 'auditor', 'employee'];
 const adminOnlyRoles: CompanyRole[] = ['owner', 'admin'];
 const moduleRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
 
@@ -169,6 +170,7 @@ const managementGroups: NavGroup[] = [
     roles: managementRoles,
     items: [
       { name: 'Quality Dashboard', path: '/modules/quality', icon: AwardIcon },
+      { name: 'Non-Conformance (NCR)', path: '/dashboard/management/ncrs', icon: AlertTriangleIcon, roles: ncrRoles },
       { name: 'Customer Complaint Log', path: '/dashboard/quality/complaints', icon: AlertCircleIcon },
       { name: 'Internal/External Issues', path: '/dashboard/quality/issues', icon: AlertOctagonIcon },
       { name: 'Calibration', path: '/dashboard/quality/calibration', icon: ClipboardCheckIcon },
@@ -181,7 +183,7 @@ const managementGroups: NavGroup[] = [
     icon: BriefcaseIcon,
     items: [
       { name: 'Tasks / CAPA', path: '/dashboard/management/tasks', icon: ClipboardCheckIcon },
-      { name: 'NCR / Non-Conformance Report', path: '/dashboard/management/ncrs', icon: AlertTriangleIcon, roles: managementRoles },
+      { name: 'NCR / Non-Conformance Report', path: '/dashboard/management/ncrs', icon: AlertTriangleIcon, roles: ncrRoles },
       { name: 'KPI', path: '/modules/hr/kpis', icon: TrendingUpIcon, roles: managementRoles, module: 'hr' },
       { name: 'Document Reviews', path: '/dashboard/management/document-reviews', icon: CalendarIcon },
       { name: 'Reports / Exports', path: '/dashboard/management/reports', icon: BarChart3Icon, roles: managementRoles },

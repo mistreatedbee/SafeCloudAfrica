@@ -373,6 +373,31 @@ export async function addRiskAssessmentItem(input: AddRiskAssessmentItemInput): 
     entityId: (data as any).id as UUID
   });
 
+  // Authoritative NCR integration for risk deviations.
+  if (riskLevel === 'high' || riskLevel === 'critical') {
+    const { createQualityNcr } = await import('./qualityNcrsService');
+    await createQualityNcr({
+      companyId: input.companyId,
+      module: 'general',
+      title: `Risk Deviation: ${input.hazardDescription}`,
+      description: input.improvementActions ?? input.existingControls ?? input.hazardDescription,
+      process_involved: input.hazardSource ?? undefined,
+      activity_involved: input.exposureFrequency ?? undefined,
+      risk_classification: riskLevel,
+      risk_rating: riskLevel,
+      severity: riskLevel === 'critical' ? 'critical' : riskLevel === 'high' ? 'high' : 'medium',
+      createdByUserId: input.createdByUserId,
+      source_entity_type: 'risk',
+      source_entity_id: input.riskAssessmentId,
+      metadata: {
+        riskAssessmentItemId: (data as any).id as UUID,
+        likelihood: input.likelihood,
+        consequence: input.consequence,
+        riskRating
+      }
+    });
+  }
+
   return data as RiskAssessmentItem;
 }
 
