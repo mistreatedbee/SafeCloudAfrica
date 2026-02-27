@@ -95,11 +95,19 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
   const endpoints = [
     `${insforgeBase}/api/functions/invoke/emailSend`,
     `${insforgeBase}/api/functions/emailSend`,
+    `${insforgeBase}/api/functions/emailSend/invoke`,
     `${insforgeBase}/functions/invoke/emailSend`,
+    `${insforgeBase}/functions/emailSend/invoke`,
+    `${insforgeBase}/functions/emailSend`,
     '/api/functions/invoke/emailSend',
-    '/api/functions/emailSend'
+    '/api/functions/emailSend',
+    '/api/functions/emailSend/invoke',
+    '/functions/invoke/emailSend',
+    '/functions/emailSend/invoke',
+    '/functions/emailSend'
   ];
   let lastError = sdkResult.error?.message || 'Email function invocation failed.';
+  let sawNotFound = false;
 
   for (const endpoint of endpoints) {
     try {
@@ -113,12 +121,16 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
       });
       const data = await response.json().catch(() => null as any);
       if (response.ok && (!data || data.ok !== false)) return;
+      if (response.status === 404) sawNotFound = true;
       lastError = data?.error || `${response.status} ${response.statusText}`;
     } catch (err: any) {
       lastError = err?.message || lastError;
     }
   }
 
+  if (sawNotFound) {
+    throw new Error('EMAIL_FUNCTION_NOT_FOUND: emailSend function is not deployed on this InsForge project.');
+  }
   throw new Error(`Email delivery failed. ${lastError}`);
 }
 

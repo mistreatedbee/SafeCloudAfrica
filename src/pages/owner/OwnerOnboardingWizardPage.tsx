@@ -197,7 +197,11 @@ export function OwnerOnboardingWizardPage() {
               onInvited={() => setRefresh((r) => r + 1)}
               onInviteResult={(result: InviteCreateResult, email: string) => {
                 if (result.ok) {
-                  setInviteFeedback({ type: 'success', text: `Email successfully sent to ${email}.` });
+                  if (result.status === 'FAILED') {
+                    setInviteFeedback({ type: 'error', text: result.message || `Invite created for ${email}, but email failed. Use Copy link to share manually.` });
+                  } else {
+                    setInviteFeedback({ type: 'success', text: `Email successfully sent to ${email}.` });
+                  }
                 } else {
                   setInviteFeedback({ type: 'error', text: result.message || 'Email failed to send, try again.' });
                 }
@@ -226,7 +230,11 @@ export function OwnerOnboardingWizardPage() {
               onInvited={() => setRefresh((r) => r + 1)}
               onInviteResult={(result: InviteCreateResult, email: string) => {
                 if (result.ok) {
-                  setInviteFeedback({ type: 'success', text: `Email successfully sent to ${email}.` });
+                  if (result.status === 'FAILED') {
+                    setInviteFeedback({ type: 'error', text: result.message || `Invite created for ${email}, but email failed. Use Copy link to share manually.` });
+                  } else {
+                    setInviteFeedback({ type: 'success', text: `Email successfully sent to ${email}.` });
+                  }
                 } else {
                   setInviteFeedback({ type: 'error', text: result.message || 'Email failed to send, try again.' });
                 }

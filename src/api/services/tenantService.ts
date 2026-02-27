@@ -206,8 +206,9 @@ export type InviteCreateErrorCode =
 export type InviteCreateResult =
   | {
       ok: true;
-      status: 'SENT';
+      status: 'SENT' | 'FAILED';
       invite: CompanyInvite;
+      message?: string;
     }
   | {
       ok: false;
@@ -442,15 +443,25 @@ export async function createInvite(input: {
         invite.sent_at = sentAt;
       }
     } catch (emailErr: any) {
+      const errMsg = getErrorMessage(emailErr);
       await insforge.database
         .from('company_invites')
-        .update({ status: 'FAILED', error_message: getErrorMessage(emailErr) })
+        .update({ status: 'FAILED', error_message: errMsg })
         .eq('id', invite.id);
+
+      const { data: failedInvite } = await insforge.database
+        .from('company_invites')
+        .select('*')
+        .eq('id', invite.id)
+        .single();
+
       return {
-        ok: false,
+        ok: true,
         status: 'FAILED',
-        code: 'INVITE_CREATE_FAILED',
-        message: 'Email failed to send, try again.'
+        invite: ((failedInvite as CompanyInvite) ?? { ...invite, status: 'FAILED', error_message: errMsg }),
+        message: errMsg.toLowerCase().includes('email_function_not_found')
+          ? 'Invite created, but email function is not deployed. Use "Copy link" to share manually.'
+          : 'Invite created, but email delivery failed. Use "Copy link" to share manually.'
       };
     }
 
