@@ -1,21 +1,52 @@
 import { insforge } from '../insforge/client';
-import type { Audit, UUID } from '../models/entities';
-import type { ModuleKey } from '../models/core';
+import type { UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+
+export interface Audit {
+  id: UUID;
+  company_id: UUID;
+  audit_number: string;
+  audit_type: 'internal' | 'external' | 'client' | 'supplier' | 'certification';
+  objectives: string;
+  audit_criteria: string;
+  scope_of_audit: string;
+  location: string;
+  auditor_user_ids: UUID[];
+  proposed_dates: string[];
+  selected_date: string | null;
+  approved_by_user_id: UUID | null;
+  approved_at: string | null;
+  status: 'planned' | 'scheduled' | 'in-progress' | 'completed' | 'reported';
+  planning_inputs?: {
+    organogram_document_url?: string;
+    process_maps_document_url?: string;
+    procedures_policies_document_url?: string;
+    risk_assessments_document_url?: string;
+    legal_register_document_url?: string;
+    previous_audit_reports_document_url?: string;
+    incident_reports_document_url?: string;
+    training_records_document_url?: string;
+    permits_registers_document_url?: string;
+    client_requirements_document_url?: string;
+  };
+  findings_count: number;
+  nonconformances_count: number;
+  observations_count: number;
+  report_document_url: string | null;
+  report_submitted_at: string | null;
+  related_ncr_ids: UUID[];
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface AuditQuestion {
   id: UUID;
   audit_id: UUID;
-  section?: string | null;
-  section_id?: string | null;
-  subheading_id?: string | null;
   question: string;
   expected_evidence?: string;
   question_order: number;
-  allocated_score?: number | null;
-  achieved_score?: number | null;
-  checklist_template_id?: UUID | null;
   created_by_user_id: UUID;
   created_at: string;
 }
@@ -27,10 +58,6 @@ export interface AuditResponse {
   finding: string | null;
   evidence_document_url: string | null;
   risk_rating: 'low' | 'medium' | 'high';
-  deviation_type?: 'observation' | 'finding' | 'non_conformance' | 'opportunity_for_improvement' | null;
-  allocated_score?: number | null;
-  achieved_score?: number | null;
-  evidence_files?: { storageBucket: string; storageKey: string; fileName: string }[] | null;
   answered_by_user_id: UUID;
   answered_at: string;
 }
@@ -85,9 +112,7 @@ export async function getAudit(auditId: UUID): Promise<Audit | null> {
 
 export async function createAudit(input: {
   companyId: UUID;
-  module?: ModuleKey;
   auditType: 'internal' | 'external' | 'client' | 'supplier' | 'certification';
-  title?: string;
   objectives: string;
   auditCriteria: string;
   scopeOfAudit: string;
@@ -95,12 +120,7 @@ export async function createAudit(input: {
   auditorUserIds: UUID[];
   proposedDates: string[];
   createdByUserId: UUID;
-  requiredDocumentList?: { key: string; label: string }[];
-  documentSubmissionDeadline?: string | null;
-  departmentsAuditeeIds?: UUID[];
-  companyRepresentativeUserIds?: UUID[];
-  leadAuditorUserId?: UUID | null;
-  checklistTemplateId?: UUID | null;
+  planningInputs?: Record<string, any>;
 }): Promise<Audit> {
   const auditNumber = generateAuditNumber();
 
@@ -108,9 +128,7 @@ export async function createAudit(input: {
     .from('audits')
     .insert({
       company_id: input.companyId,
-      module: input.module ?? 'safety',
       audit_number: auditNumber,
-      title: input.title ?? input.objectives?.slice(0, 255) ?? 'Audit',
       audit_type: input.auditType,
       objectives: input.objectives,
       audit_criteria: input.auditCriteria,
@@ -118,18 +136,12 @@ export async function createAudit(input: {
       location: input.location,
       auditor_user_ids: input.auditorUserIds,
       proposed_dates: input.proposedDates,
-      status: 'draft',
-      date_approval_status: 'pending',
-      required_document_list: input.requiredDocumentList ?? null,
-      document_submission_deadline: input.documentSubmissionDeadline ?? null,
-      departments_auditee_ids: input.departmentsAuditeeIds ?? null,
-      company_representative_user_ids: input.companyRepresentativeUserIds ?? null,
-      lead_auditor_user_id: input.leadAuditorUserId ?? null,
-      checklist_template_id: input.checklistTemplateId ?? null,
+      status: 'planned',
       findings_count: 0,
       nonconformances_count: 0,
       observations_count: 0,
       related_ncr_ids: [],
+      planning_inputs: input.planningInputs || {},
       created_by_user_id: input.createdByUserId
     })
     .select('*')
@@ -205,72 +217,6 @@ export async function scheduleAudit(
   );
 }
 
-export async function approveAuditDate(
-  auditId: UUID,
-  companyId: UUID,
-  chosenDate: string,
-  userId: UUID
-): Promise<Audit | null> {
-  const audit = await getAudit(auditId);
-  if (!audit) throw new Error('Audit not found.');
-  const auditeeIds = (audit as any).departments_auditee_ids as UUID[] | null;
-  const isAuditee = auditeeIds?.includes(userId);
-  if (!isAuditee) throw new Error('Only an assigned auditee can approve the audit date.');
-  const updated = await updateAudit(
-    auditId,
-    companyId,
-    {
-      selected_date: chosenDate,
-      approved_by_user_id: userId,
-      approved_at: new Date().toISOString(),
-      date_approval_status: 'approved',
-      date_decline_reason: null,
-      status: 'scheduled'
-    },
-    userId
-  );
-  await createActivityLog({
-    companyId,
-    actorUserId: userId,
-    action: 'audits.date_approved',
-    entityType: 'audit',
-    entityId: auditId,
-    metadata: { chosen_date: chosenDate }
-  });
-  return updated;
-}
-
-export async function declineAuditDate(
-  auditId: UUID,
-  companyId: UUID,
-  reason: string,
-  userId: UUID
-): Promise<Audit | null> {
-  const audit = await getAudit(auditId);
-  if (!audit) throw new Error('Audit not found.');
-  const auditeeIds = (audit as any).departments_auditee_ids as UUID[] | null;
-  const isAuditee = auditeeIds?.includes(userId);
-  if (!isAuditee) throw new Error('Only an assigned auditee can decline the audit date.');
-  const updated = await updateAudit(
-    auditId,
-    companyId,
-    {
-      date_approval_status: 'declined',
-      date_decline_reason: reason || null
-    },
-    userId
-  );
-  await createActivityLog({
-    companyId,
-    actorUserId: userId,
-    action: 'audits.date_declined',
-    entityType: 'audit',
-    entityId: auditId,
-    metadata: { reason }
-  });
-  return updated;
-}
-
 export async function startAudit(
   auditId: UUID,
   companyId: UUID,
@@ -294,7 +240,7 @@ export async function completeAudit(
     auditId,
     companyId,
     {
-      status: 'report-pending',
+      status: 'completed',
       report_document_url: reportDocumentUrl
     },
     actorUserId
@@ -311,7 +257,7 @@ export async function submitAuditReport(
     auditId,
     companyId,
     {
-      status: 'completed',
+      status: 'reported',
       report_document_url: reportDocumentUrl,
       report_submitted_at: new Date().toISOString()
     },
@@ -334,24 +280,18 @@ export async function listAuditQuestions(auditId: UUID): Promise<AuditQuestion[]
 
 export async function createAuditQuestion(input: {
   auditId: UUID;
-  section?: string;
   question: string;
   expectedEvidence?: string;
   questionOrder: number;
-  allocatedScore?: number;
-  achievedScore?: number;
   createdByUserId: UUID;
 }): Promise<AuditQuestion> {
   const { data, error } = await insforge.database
     .from('audit_questions')
     .insert({
       audit_id: input.auditId,
-      section: input.section ?? null,
       question: input.question,
       expected_evidence: input.expectedEvidence || null,
       question_order: input.questionOrder,
-      allocated_score: input.allocatedScore ?? null,
-      achieved_score: input.achievedScore ?? null,
       created_by_user_id: input.createdByUserId
     })
     .select('*')
@@ -419,51 +359,51 @@ export async function submitAuditResponse(input: {
   finding?: string;
   evidenceDocumentUrl?: string;
   riskRating: 'low' | 'medium' | 'high';
-  deviationType?: 'observation' | 'finding' | 'non_conformance' | 'opportunity_for_improvement';
-  allocatedScore?: number | null;
-  achievedScore?: number | null;
-  evidenceFiles?: { storageBucket: string; storageKey: string; fileName: string }[] | null;
   answeredByUserId: UUID;
 }): Promise<AuditResponse> {
+  // First try to get existing response
   const existing = await getOrCreateAuditResponse(
     input.auditQuestionId,
     input.answeredByUserId
   );
 
-  const payload = {
-    is_compliant: input.isCompliant,
-    finding: input.finding ?? existing?.finding ?? null,
-    evidence_document_url: input.evidenceDocumentUrl ?? existing?.evidence_document_url ?? null,
-    risk_rating: input.riskRating,
-    deviation_type: input.deviationType ?? existing?.deviation_type ?? null,
-    allocated_score: input.allocatedScore ?? (existing as any)?.allocated_score ?? null,
-    achieved_score: input.achievedScore ?? (existing as any)?.achieved_score ?? null,
-    evidence_files: input.evidenceFiles ?? (existing as any)?.evidence_files ?? null,
-    answered_at: new Date().toISOString()
-  };
-
   if (existing) {
+    // Update existing
     const { data, error } = await insforge.database
       .from('audit_responses')
-      .update(payload)
+      .update({
+        is_compliant: input.isCompliant,
+        finding: input.finding || null,
+        evidence_document_url: input.evidenceDocumentUrl || null,
+        risk_rating: input.riskRating,
+        answered_at: new Date().toISOString()
+      })
       .eq('id', existing.id)
       .select('*')
       .single();
+
     if (error) throw new Error(getErrorMessage(error));
     return data as AuditResponse;
   }
 
+  // Create new
   const { data, error } = await insforge.database
     .from('audit_responses')
     .insert({
       audit_question_id: input.auditQuestionId,
-      ...payload,
-      answered_by_user_id: input.answeredByUserId
+      is_compliant: input.isCompliant,
+      finding: input.finding || null,
+      evidence_document_url: input.evidenceDocumentUrl || null,
+      risk_rating: input.riskRating,
+      answered_by_user_id: input.answeredByUserId,
+      answered_at: new Date().toISOString()
     })
     .select('*')
     .single();
+
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to submit audit response.');
+
   return data as AuditResponse;
 }
 
@@ -475,26 +415,19 @@ export async function calculateAuditFindings(auditId: UUID): Promise<{
   observations_count: number;
 }> {
   const responses = await listAuditResponses(auditId);
-
+  
   let findings = 0;
   let nonconformances = 0;
   let observations = 0;
 
   responses.forEach(r => {
-    // Count any recorded finding text
-    if (r.finding && r.finding.trim().length > 0) {
+    if (!r.is_compliant && r.finding) {
       findings++;
-    }
-
-    // Nonconformances: any non-compliant response OR high-risk rating
-    if (!r.is_compliant || r.risk_rating === 'high') {
-      nonconformances++;
-      return;
-    }
-
-    // Observations: remaining findings with compliant response
-    if (r.finding && r.finding.trim().length > 0 && r.is_compliant) {
-      observations++;
+      if (r.risk_rating === 'high') {
+        nonconformances++;
+      } else {
+        observations++;
+      }
     }
   });
 

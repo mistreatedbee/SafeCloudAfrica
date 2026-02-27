@@ -13,6 +13,7 @@ Use this checklist when deploying the IDSMP upgrade to production.
 
 ## InsForge (Backend)
 
+- [ ] **Allowed origins (CORS)**: In your InsForge project settings, allow your production frontend origin (e.g. `https://safe-cloud-africa.vercel.app`). If this is missing, the browser will block API requests with "No 'Access-Control-Allow-Origin' header" even when the API returns 503 or other errors.
 - [ ] **Schema**: Apply `docs/phase2-schema.sql` to InsForge Postgres (all migrations; RLS enabled).
 - [ ] **Storage buckets** created and policies applied:
   - `sca-documents` — company documents

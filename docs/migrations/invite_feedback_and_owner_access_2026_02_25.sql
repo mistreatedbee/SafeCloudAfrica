@@ -10,6 +10,9 @@ alter table public.company_invites
   add column if not exists error_message text null;
 
 -- 2) Normalize status values to uppercase lifecycle states
+-- Drop old constraint first (it may only allow lowercase values).
+alter table public.company_invites drop constraint if exists company_invites_status_check;
+
 update public.company_invites
 set status = case
   when upper(coalesce(status, '')) in ('PENDING') then 'PENDING'
@@ -22,10 +25,30 @@ set status = case
   else 'PENDING'
 end;
 
+-- Normalize incoming status values from older clients (e.g. 'pending') before constraints apply.
+create or replace function public.normalize_company_invite_status()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.status is null then
+    new.status := 'PENDING';
+  else
+    new.status := upper(trim(new.status));
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_company_invites_normalize_status on public.company_invites;
+create trigger trg_company_invites_normalize_status
+before insert or update on public.company_invites
+for each row
+execute function public.normalize_company_invite_status();
+
 alter table public.company_invites
   alter column status set default 'PENDING';
 
-alter table public.company_invites drop constraint if exists company_invites_status_check;
 alter table public.company_invites
   add constraint company_invites_status_check
   check (status in ('PENDING', 'SENT', 'FAILED', 'ACCEPTED', 'EXPIRED'));

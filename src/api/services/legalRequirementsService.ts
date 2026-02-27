@@ -435,7 +435,7 @@ export async function listLegalUpdates(filters: LegalUpdateFilters): Promise<Leg
 
   let query = insforge.database
     .from('legal_updates')
-    .select('*, legal_requirements(requirement_standard)', { count: 'exact' })
+    .select('*', { count: 'exact' })
     .eq('company_id', filters.companyId)
     .order('deadline', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false })
@@ -467,9 +467,25 @@ export async function listLegalUpdates(filters: LegalUpdateFilters): Promise<Leg
   const { data, error, count } = await query;
   if (error) throw new Error(getErrorMessage(error));
 
-  const rows = ((data ?? []) as any[]).map((row) => ({
-    ...(row as LegalUpdate),
-    requirement_standard: row.legal_requirements?.requirement_standard ?? ''
+  const updates = (data ?? []) as LegalUpdate[];
+  const requirementIds = [...new Set(updates.map((row) => row.legal_requirement_id).filter(Boolean))];
+
+  const requirementLabelMap = new Map<string, string>();
+  if (requirementIds.length > 0) {
+    const { data: requirements, error: reqError } = await insforge.database
+      .from('legal_requirements')
+      .select('id, requirement_standard')
+      .eq('company_id', filters.companyId)
+      .in('id', requirementIds);
+    if (reqError) throw new Error(getErrorMessage(reqError));
+    for (const row of requirements ?? []) {
+      requirementLabelMap.set((row as any).id as string, String((row as any).requirement_standard ?? ''));
+    }
+  }
+
+  const rows = updates.map((row) => ({
+    ...row,
+    requirement_standard: requirementLabelMap.get(row.legal_requirement_id) ?? ''
   }));
 
   return {

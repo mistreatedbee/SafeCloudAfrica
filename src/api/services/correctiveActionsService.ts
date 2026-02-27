@@ -11,7 +11,7 @@ export interface CorrectiveAction {
   title: string;
   description: string | null;
   action_type: 'corrective' | 'preventive';
-  source_type: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation' | 'inspection';
+  source_type: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation';
   source_id: UUID;
   status: 'open' | 'assigned' | 'in-progress' | 'completed' | 'verified' | 'closed';
   priority: 'low' | 'medium' | 'high' | 'urgent';
@@ -43,7 +43,7 @@ export type CreateCorrectiveActionInput = {
   title: string;
   description?: string;
   actionType: 'corrective' | 'preventive';
-  sourceType: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation' | 'inspection';
+  sourceType: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation';
   sourceId: UUID;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   dueDate: string;
@@ -324,7 +324,9 @@ export async function countOverdueCorrectiveActions(companyId: UUID, input?: { m
   const { count, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
-}export async function deleteCorrectiveAction(
+}
+
+export async function deleteCorrectiveAction(
   actionId: UUID,
   companyId: UUID,
   deletedByUserId: UUID

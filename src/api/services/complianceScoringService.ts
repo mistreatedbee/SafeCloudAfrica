@@ -126,16 +126,15 @@ export async function calculateComplianceScore(
     case 'environment':
     case 'health':
     case 'legal':
-    case 'hr': {
-      // Gather from program audits tagged to this module
+    case 'hr':
+      // Gather from audits and compliance items for these modules
       const audits = await listAudits({ companyId, module, limit: 500 });
       items = audits.map(a => ({
         status: a.status,
-        due_date: a.selected_date ?? null,
+        due_date: a.audit_date,
         priority: 'medium'
       }));
       break;
-    }
   }
 
   // Count items

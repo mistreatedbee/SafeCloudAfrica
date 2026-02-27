@@ -3,7 +3,6 @@ import type { UUID } from '../models/entities';
 import type { ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
-import { requireModuleEnabled } from './orgModulesService';
 
 export interface ModuleContent {
   id: UUID;
@@ -38,7 +37,6 @@ export type CreateModuleContentInput = {
 };
 
 export async function createModuleContent(input: CreateModuleContentInput): Promise<ModuleContent> {
-  await requireModuleEnabled(input.companyId, input.moduleKey);
   const { data, error } = await insforge.database
     .from('module_content')
     .insert({
@@ -81,7 +79,6 @@ export type ListModuleContentInput = {
 };
 
 export async function listModuleContent(input: ListModuleContentInput): Promise<ModuleContent[]> {
-  if (input.moduleKey) await requireModuleEnabled(input.companyId, input.moduleKey);
   let query = insforge.database
     .from('module_content')
     .select('*')

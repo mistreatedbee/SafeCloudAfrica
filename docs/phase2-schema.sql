@@ -151,11 +151,20 @@ returns boolean
 language sql
 stable
 as $$
-  select exists (
-    select 1
-    from public.company_memberships m
-    where m.company_id = p_company_id
-      and m.user_id = public.request_user_id()
+  select (
+    exists (
+      select 1
+      from public.company_memberships m
+      where m.company_id = p_company_id
+        and m.user_id = public.request_user_id()
+        and coalesce(nullif(to_jsonb(m)->>'status', ''), 'ACTIVE') = 'ACTIVE'
+    )
+    or exists (
+      select 1
+      from public.companies c
+      where c.id = p_company_id
+        and c.primary_admin_user_id = public.request_user_id()
+    )
   );
 $$;
 
@@ -164,11 +173,23 @@ returns text
 language sql
 stable
 as $$
-  select m.role
-  from public.company_memberships m
-  where m.company_id = p_company_id
-    and m.user_id = public.request_user_id()
-  limit 1;
+  select coalesce(
+    (
+      select m.role
+      from public.company_memberships m
+      where m.company_id = p_company_id
+        and m.user_id = public.request_user_id()
+        and coalesce(nullif(to_jsonb(m)->>'status', ''), 'ACTIVE') = 'ACTIVE'
+      limit 1
+    ),
+    (
+      select 'owner'
+      from public.companies c
+      where c.id = p_company_id
+        and c.primary_admin_user_id = public.request_user_id()
+      limit 1
+    )
+  );
 $$;
 
 create or replace function public.is_company_admin(p_company_id uuid)
@@ -184,7 +205,7 @@ returns boolean
 language sql
 stable
 as $$
-  select public.company_role(p_company_id) in ('admin','manager');
+  select public.company_role(p_company_id) in ('owner','admin','manager');
 $$;
 
 create or replace function public.is_company_supervisor(p_company_id uuid)
@@ -192,7 +213,7 @@ returns boolean
 language sql
 stable
 as $$
-  select public.company_role(p_company_id) in ('admin','manager','supervisor');
+  select public.company_role(p_company_id) in ('owner','admin','manager','supervisor');
 $$;
 
 create or replace function public.is_company_consultant(p_company_id uuid)
@@ -218,7 +239,7 @@ stable
 as $$
   -- Backwards-compatible helper name used by existing policies/services.
   -- Phase 2 intent: "management + consultant" can see company-wide data.
-  select public.company_role(p_company_id) in ('admin','manager','supervisor','consultant');
+  select public.company_role(p_company_id) in ('owner','admin','manager','supervisor','consultant');
 $$;
 
 create table if not exists public.company_invites (
@@ -241,93 +262,46 @@ create table if not exists public.quality_ncrs (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   module text not null default 'quality' check (module in ('quality')),
-  site_id uuid null,
   
   -- NCR Identification
   nc_number text unique not null, -- Auto-generated
   title text not null,
   description text null,
-  date_identified date null,
   
   -- NCR Details
   occurrence_date timestamptz not null default now(),
   location text null,
   department_id uuid null,
   process_involved text null,
-  project_client text null,
   
   -- Non-Conformance Information
   activity_involved text null,
   responsible_role text null, -- Not blame, but role responsible
   linked_requirement text null, -- ISO/legal/internal
   risk_classification text null, -- 'critical', 'high', 'medium', 'low'
-  risk_rating text null,
-  ncr_type text null,
-  ncr_category text null,
-  requirement_reference_type text null,
-  requirement_reference_text text null,
-  
-  -- Evidence (structured)
-  evidence_document_url text null,
-  evidence_documents jsonb null,
-  evidence_photos jsonb null,
-  evidence_interviews jsonb null,
-  evidence_observations jsonb null,
   
   -- Root Cause & Corrective Actions
   root_cause text null,
-  root_cause_categories jsonb null,
   corrective_action text null,
   corrective_action_owner_user_id uuid null,
   corrective_action_due_date timestamptz null,
   corrective_action_completed_date timestamptz null,
-  progress_updates jsonb null,
-  evidence_uploads jsonb null,
   
   -- Severity & Status
   severity text not null check (severity in ('critical','high','medium','low')) default 'medium',
-  status text not null default 'open',
+  status text not null check (status in ('open','in-progress','closed')) default 'open',
   
-  -- Participants
-  auditor_user_id uuid null,
-  auditee_user_id uuid null,
-  department_manager_user_id uuid null,
-  
-  -- Evidence & Signatures / Verification & Closure
-  raised_by_user_id uuid null,
+  -- Evidence & Signatures
+  evidence_document_url text null,
+  raised_by_user_id uuid not null,
   approved_by_user_id uuid null,
   approved_at timestamptz null,
   signed_by_user_id uuid null,
   signed_at timestamptz null,
-  manager_signoff_user_id uuid null,
-  manager_signoff_at timestamptz null,
-  manager_signoff_comment text null,
-  manager_signature_method text null,
-  auditor_verify_user_id uuid null,
-  auditor_verify_at timestamptz null,
-  effectiveness_verified boolean null,
-  auditor_comment text null,
-  effectiveness_check_date date null,
-  closure_comments text null,
-  date_closed date null,
-  closed_at timestamptz null,
-  closed_by_user_id uuid null,
   
   -- Linking to source entities
   source_entity_type text null, -- 'incident', 'audit', 'inspection', 'complaint', 'risk_assessment'
   source_entity_id uuid null,
-  
-  -- Reporting / computed fields
-  linked_audit_score numeric null,
-  previous_similar_ncr_ids text[] null,
-  repeat_finding boolean null,
-  risk_trend jsonb null,
-  closure_time_days numeric null,
-  auditor_name text null,
-  company_representative_ack text null,
-  reopen_reason text null,
-  reopen_at timestamptz null,
-  metadata jsonb null,
   
   created_by_user_id uuid not null,
   created_at timestamptz not null default now(),
@@ -336,97 +310,38 @@ create table if not exists public.quality_ncrs (
 
 -- Ensure columns exist if table was created before
 alter table if exists public.quality_ncrs
-  add column if not exists site_id uuid,
   add column if not exists nc_number text unique,
   add column if not exists title text,
   add column if not exists description text,
-  add column if not exists date_identified date,
   add column if not exists occurrence_date timestamptz default now(),
   add column if not exists location text,
   add column if not exists department_id uuid,
   add column if not exists process_involved text,
-  add column if not exists project_client text,
   add column if not exists activity_involved text,
   add column if not exists responsible_role text,
   add column if not exists linked_requirement text,
   add column if not exists risk_classification text,
-  add column if not exists risk_rating text,
-  add column if not exists ncr_type text,
-  add column if not exists ncr_category text,
-  add column if not exists requirement_reference_type text,
-  add column if not exists requirement_reference_text text,
-  add column if not exists evidence_document_url text,
-  add column if not exists evidence_documents jsonb,
-  add column if not exists evidence_photos jsonb,
-  add column if not exists evidence_interviews jsonb,
-  add column if not exists evidence_observations jsonb,
   add column if not exists root_cause text,
-  add column if not exists root_cause_categories jsonb,
   add column if not exists corrective_action text,
   add column if not exists corrective_action_owner_user_id uuid,
   add column if not exists corrective_action_due_date timestamptz,
   add column if not exists corrective_action_completed_date timestamptz,
-  add column if not exists progress_updates jsonb,
-  add column if not exists evidence_uploads jsonb,
   add column if not exists severity text default 'medium',
   add column if not exists status text default 'open',
-  add column if not exists auditor_user_id uuid,
-  add column if not exists auditee_user_id uuid,
-  add column if not exists department_manager_user_id uuid,
+  add column if not exists evidence_document_url text,
   add column if not exists raised_by_user_id uuid,
   add column if not exists approved_by_user_id uuid,
   add column if not exists approved_at timestamptz,
   add column if not exists signed_by_user_id uuid,
   add column if not exists signed_at timestamptz,
-  add column if not exists manager_signoff_user_id uuid,
-  add column if not exists manager_signoff_at timestamptz,
-  add column if not exists manager_signoff_comment text,
-  add column if not exists manager_signature_method text,
-  add column if not exists auditor_verify_user_id uuid,
-  add column if not exists auditor_verify_at timestamptz,
-  add column if not exists effectiveness_verified boolean,
-  add column if not exists auditor_comment text,
-  add column if not exists effectiveness_check_date date,
-  add column if not exists closure_comments text,
-  add column if not exists date_closed date,
-  add column if not exists closed_at timestamptz,
-  add column if not exists closed_by_user_id uuid,
   add column if not exists source_entity_type text,
   add column if not exists source_entity_id uuid,
-  add column if not exists linked_audit_score numeric,
-  add column if not exists previous_similar_ncr_ids text[],
-  add column if not exists repeat_finding boolean,
-  add column if not exists risk_trend jsonb,
-  add column if not exists closure_time_days numeric,
-  add column if not exists auditor_name text,
-  add column if not exists company_representative_ack text,
-  add column if not exists reopen_reason text,
-  add column if not exists reopen_at timestamptz,
-  add column if not exists metadata jsonb,
   add column if not exists created_by_user_id uuid,
-  add column if not exists created_at timestamptz default now(),
   add column if not exists updated_at timestamptz default now();
 
 create index if not exists idx_quality_ncrs_company on public.quality_ncrs(company_id, occurrence_date desc);
 create index if not exists idx_quality_ncrs_number on public.quality_ncrs(nc_number);
 create index if not exists idx_quality_ncrs_source on public.quality_ncrs(source_entity_type, source_entity_id);
-
--- Ensure expanded status lifecycle matches application workflow
-alter table if exists public.quality_ncrs
-  drop constraint if exists quality_ncrs_status_check;
-alter table if exists public.quality_ncrs
-  add constraint quality_ncrs_status_check
-  check (
-    status in (
-      'open',
-      'in-progress',
-      'awaiting-evidence',
-      'under-review',
-      'approved',
-      'overdue',
-      'closed'
-    )
-  );
 
 -- =========================
 -- Audits (Phase 2 - Separate from Inspections)
@@ -456,17 +371,13 @@ create table if not exists public.audits (
   
   -- Audit Criteria
   audit_criteria text null, -- ISO, legal, client, company procedures
-  criteria_standards text[] null, -- e.g. ['ISO 9001', 'ISO 45001', 'Legal', 'Client', 'Other']
   
   -- Audit Team & Scope
   auditor_user_ids text[] null, -- JSON array
   scope_of_audit text null,
   location text null,
-  departments_auditee_ids uuid[] null,
-  company_representative_user_ids uuid[] null,
   
   -- Planning Inputs
-  required_document_list jsonb null, -- required docs (types + custom)
   organogram_document_url text null,
   process_maps_document_url text null,
   procedures_policies_document_url text null,
@@ -479,21 +390,7 @@ create table if not exists public.audits (
   client_requirements_document_url text null,
   
   -- Status
-  status text not null check (
-    status in (
-      'draft',
-      'scheduled',
-      'awaiting-documents',
-      'ready-for-audit',
-      'in-progress',
-      'report-pending',
-      'corrective-actions-open',
-      'under-closure-review',
-      'completed',
-      'archived',
-      'reported' -- kept for backward compatibility
-    )
-  ) default 'draft',
+  status text not null check (status in ('planned', 'scheduled', 'in-progress', 'completed', 'reported')) default 'planned',
   
   -- Results & Findings
   findings_count integer not null default 0,
@@ -534,12 +431,10 @@ create table if not exists public.audit_questions (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   audit_id uuid not null references public.audits(id) on delete cascade,
-  section text null,
+  
   question text not null,
   expected_evidence text null,
   question_order integer not null,
-  allocated_score numeric null,
-  achieved_score numeric null,
   
   created_by_user_id uuid not null,
   created_at timestamptz not null default now()
@@ -565,13 +460,11 @@ create table if not exists public.audit_responses (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   audit_question_id uuid not null references public.audit_questions(id) on delete cascade,
+  
   is_compliant boolean not null default false,
   finding text null,
   evidence_document_url text null,
   risk_rating text check (risk_rating in ('low', 'medium', 'high')),
-  deviation_type text null check (
-    deviation_type in ('observation','finding','non_conformance','opportunity_for_improvement')
-  ),
   
   answered_by_user_id uuid not null,
   answered_at timestamptz not null default now()
@@ -592,91 +485,7 @@ on public.audit_responses for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
--- ---------- Audits module extensions (digital audit management) ----------
-alter table public.audits
-  add column if not exists document_submission_deadline timestamptz null,
-  add column if not exists date_approval_status text null check (date_approval_status is null or date_approval_status in ('pending','approved','declined')),
-  add column if not exists date_decline_reason text null,
-  add column if not exists lead_auditor_user_id uuid null;
-
-create table if not exists public.audit_checklist_templates (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  source_type text not null default 'googleDoc' check (source_type in ('googleDoc','manual')),
-  google_doc_id text null,
-  google_doc_url text null,
-  name text not null,
-  sections jsonb null,
-  questions jsonb null,
-  created_by_user_id uuid not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create index if not exists idx_audit_checklist_templates_company on public.audit_checklist_templates(company_id);
-alter table public.audit_checklist_templates enable row level security;
-drop policy if exists audit_checklist_templates_select_member on public.audit_checklist_templates;
-create policy audit_checklist_templates_select_member on public.audit_checklist_templates for select
-  using (public.is_company_member(company_id) or public.is_platform_admin());
-drop policy if exists audit_checklist_templates_write_management on public.audit_checklist_templates;
-create policy audit_checklist_templates_write_management on public.audit_checklist_templates for all
-  using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-  with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-alter table public.audits add column if not exists checklist_template_id uuid null references public.audit_checklist_templates(id) on delete set null;
-
-create table if not exists public.audit_pre_submissions (
-  id uuid primary key default gen_random_uuid(),
-  audit_id uuid not null references public.audits(id) on delete cascade,
-  company_id uuid not null references public.companies(id) on delete cascade,
-  status text not null check (status in ('pending','submitted','late','approved_for_audit')) default 'pending',
-  uploaded_docs jsonb null,
-  missing_docs jsonb null,
-  submitted_at timestamptz null,
-  approved_for_audit_at timestamptz null,
-  approved_by_user_id uuid null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (audit_id)
-);
-create index if not exists idx_audit_pre_submissions_audit on public.audit_pre_submissions(audit_id);
-alter table public.audit_pre_submissions enable row level security;
-drop policy if exists audit_pre_submissions_select_member on public.audit_pre_submissions;
-create policy audit_pre_submissions_select_member on public.audit_pre_submissions for select
-  using (public.is_company_member(company_id) or public.is_platform_admin());
-drop policy if exists audit_pre_submissions_write_member on public.audit_pre_submissions;
-create policy audit_pre_submissions_write_member on public.audit_pre_submissions for all
-  using (public.is_company_member(company_id) or public.is_platform_admin())
-  with check (public.is_company_member(company_id) or public.is_platform_admin());
-
-alter table public.audit_questions
-  add column if not exists checklist_template_id uuid null references public.audit_checklist_templates(id) on delete set null,
-  add column if not exists section_id text null,
-  add column if not exists subheading_id text null;
-
-alter table public.audit_responses
-  add column if not exists allocated_score numeric null,
-  add column if not exists achieved_score numeric null,
-  add column if not exists evidence_files jsonb null;
-
-create table if not exists public.audit_reports (
-  id uuid primary key default gen_random_uuid(),
-  audit_id uuid not null references public.audits(id) on delete cascade,
-  company_id uuid not null references public.companies(id) on delete cascade,
-  generated_report_data jsonb not null,
-  pdf_url text null,
-  created_by_user_id uuid not null,
-  created_at timestamptz not null default now()
-);
-create index if not exists idx_audit_reports_audit on public.audit_reports(audit_id);
-alter table public.audit_reports enable row level security;
-drop policy if exists audit_reports_select_member on public.audit_reports;
-create policy audit_reports_select_member on public.audit_reports for select
-  using (public.is_company_member(company_id) or public.is_platform_admin());
-drop policy if exists audit_reports_insert_management on public.audit_reports;
-create policy audit_reports_insert_management on public.audit_reports for insert
-  with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
--- ---------- end Audits module extensions ----------
-
+-- Safety/General: Inspections (safety inspections, site checks, etc.)
 create table if not exists public.inspections (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
@@ -686,17 +495,7 @@ create table if not exists public.inspections (
   status text not null check (status in ('scheduled','in-progress','completed','overdue')) default 'scheduled',
   scheduled_at timestamptz null,
   completed_at timestamptz null,
-  -- Location & hierarchy
   location text null,
-  site_id uuid null,
-  department_id uuid null,
-  -- Roles & participants
-  inspector_user_id uuid null,
-  auditor_user_id uuid null,
-  auditee_user_id uuid null,
-  -- Inspection method metadata
-  inspection_method text null check (inspection_method in ('physical-observation','record-review','interview','other')) default 'physical-observation',
-  inspection_date date null,
   findings_count integer not null default 0,
   nonconformances_count integer not null default 0,
   assignee_user_id uuid null,
@@ -705,252 +504,6 @@ create table if not exists public.inspections (
   updated_at timestamptz not null default now()
 );
 create index if not exists idx_inspections_company on public.inspections(company_id, scheduled_at desc);
-
--- Ensure newer metadata columns exist if table was created before
-alter table if exists public.inspections
-  add column if not exists site_id uuid,
-  add column if not exists department_id uuid,
-  add column if not exists inspector_user_id uuid,
-  add column if not exists auditor_user_id uuid,
-  add column if not exists auditee_user_id uuid,
-  add column if not exists inspection_method text,
-  add column if not exists inspection_date date;
-
--- Inspection checklist templates (reusable checklists for inspections)
-create table if not exists public.inspection_checklist_templates (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  module text not null check (module in ('safety','quality','environment','health','legal','hr','general','security')) default 'safety',
-  name text not null,
-  description text null,
-  scope text not null check (scope in ('global','site','department')) default 'global',
-  site_id uuid null,
-  department_id uuid null,
-  is_active boolean not null default true,
-  -- Google Docs source & defaults
-  google_doc_id text null,
-  google_doc_url text null,
-  default_sector text null,
-  frequency text not null check (frequency in ('ad-hoc','daily','monthly','quarterly')) default 'ad-hoc',
-  created_by_user_id uuid not null,
-  updated_by_user_id uuid null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_inspection_checklist_templates_company on public.inspection_checklist_templates(company_id, module, is_active);
-
-alter table if exists public.inspection_checklist_templates
-  add column if not exists google_doc_id text,
-  add column if not exists google_doc_url text,
-  add column if not exists default_sector text,
-  add column if not exists frequency text default 'ad-hoc';
-
--- Individual items/questions within a checklist template
-create table if not exists public.inspection_checklist_items (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  template_id uuid not null references public.inspection_checklist_templates(id) on delete cascade,
-  item_order integer not null default 0,
-  section text null,
-  -- Specification alignment
-  audit_section_or_category text null,
-  question text not null,
-  expected_evidence text null,
-  requirement_reference text null,
-  risk_area text null,
-  default_risk_rating text null,
-  default_nc_severity text null,
-  inspection_method_default text null check (inspection_method_default in ('physical-observation','record-review','interview','other')),
-  evidence_required_default boolean not null default false,
-  risk_level_default text null check (risk_level_default in ('low','medium','high')),
-  question_fingerprint text null,
-  is_mandatory boolean not null default false,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_inspection_checklist_items_template on public.inspection_checklist_items(template_id, item_order);
-
-alter table if exists public.inspection_checklist_items
-  add column if not exists audit_section_or_category text,
-  add column if not exists requirement_reference text,
-  add column if not exists inspection_method_default text,
-  add column if not exists evidence_required_default boolean default false,
-  add column if not exists risk_level_default text,
-  add column if not exists question_fingerprint text;
-
--- Individual inspection runs (each execution of a checklist for an inspection)
-create table if not exists public.inspection_runs (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  inspection_id uuid not null references public.inspections(id) on delete cascade,
-  template_id uuid not null references public.inspection_checklist_templates(id) on delete cascade,
-  module text not null check (module in ('safety','quality','environment','health','legal','hr','general','security')) default 'safety',
-  site_id uuid null,
-  department_id uuid null,
-  run_number integer not null default 1,
-  started_at timestamptz null,
-  completed_at timestamptz null,
-  status text not null check (status in ('in-progress','completed','cancelled')) default 'in-progress',
-  inspector_user_id uuid null,
-   -- Auditee/self-assessment tracking
-  auditee_user_id uuid null,
-  auditee_submission_status text null check (auditee_submission_status in ('draft','submitted')),
-  auditee_submitted_at timestamptz null,
-  items_total integer not null default 0,
-  items_nc integer not null default 0,
-  ncrs_created_count integer not null default 0,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_inspection_runs_inspection on public.inspection_runs(inspection_id, run_number);
-create index if not exists idx_inspection_runs_company on public.inspection_runs(company_id, started_at desc);
-
--- Individual checklist items for a specific inspection run
-create table if not exists public.inspection_run_items (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  run_id uuid not null references public.inspection_runs(id) on delete cascade,
-  template_item_id uuid null references public.inspection_checklist_items(id) on delete set null,
-  item_order integer not null default 0,
-  section text null,
-  question text not null,
-  expected_evidence text null,
-  risk_area text null,
-  risk_rating text null,
-  nc_severity text null,
-  -- Rating & scoring
-  compliance_status text not null check (compliance_status in ('C','NC','NA')) default 'C',
-  inspection_rating text null check (inspection_rating in ('C','PC','NC')),
-  score integer null,
-  max_score integer null,
-  -- Evidence & comments
-  evidence_required boolean not null default false,
-  evidence_notes text null,
-  comments text null,
-  auditor_comments text null,
-  inspection_method text null check (inspection_method in ('physical-observation','record-review','interview','other')),
-  evidence_document_url text null,
-  photo_url text null,
-  -- Risk and NC flags
-  risk_level text null check (risk_level in ('low','medium','high')),
-  nonconformance_flag boolean not null default false,
-  corrective_action_required boolean not null default false,
-  -- Responsibility & dates
-  responsible_person_id uuid null,
-  responsible_person_name text null,
-  due_date date null,
-  status text not null check (status in ('open','in-progress','awaiting-evidence','under-review','approved','closed','overdue')) default 'open',
-  -- Linking & fingerprints
-  question_fingerprint text null,
-  auto_ncr_id uuid null references public.quality_ncrs(id) on delete set null,
-  corrective_action_id uuid null references public.corrective_actions(id) on delete set null,
-  -- Closure workflow
-  closure_requested_at timestamptz null,
-  closure_evidence_submitted_at timestamptz null,
-  manager_approved_by_user_id uuid null,
-  manager_approved_at timestamptz null,
-  auditor_verified_by_user_id uuid null,
-  auditor_verified_at timestamptz null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_inspection_run_items_run on public.inspection_run_items(run_id, item_order);
-create index if not exists idx_inspection_run_items_auto_ncr on public.inspection_run_items(auto_ncr_id);
-
-alter table if exists public.inspection_run_items
-  add column if not exists inspection_rating text,
-  add column if not exists score integer,
-  add column if not exists max_score integer,
-  add column if not exists evidence_required boolean default false,
-  add column if not exists evidence_notes text,
-  add column if not exists auditor_comments text,
-  add column if not exists inspection_method text,
-  add column if not exists risk_level text,
-  add column if not exists corrective_action_required boolean default false,
-  add column if not exists responsible_person_id uuid,
-  add column if not exists responsible_person_name text,
-  add column if not exists due_date date,
-  add column if not exists status text default 'open',
-  add column if not exists question_fingerprint text,
-  add column if not exists corrective_action_id uuid,
-  add column if not exists closure_requested_at timestamptz,
-  add column if not exists closure_evidence_submitted_at timestamptz,
-  add column if not exists manager_approved_by_user_id uuid,
-  add column if not exists manager_approved_at timestamptz,
-  add column if not exists auditor_verified_by_user_id uuid,
-  add column if not exists auditor_verified_at timestamptz;
-
--- Evidence uploads linked to individual checklist items
-create table if not exists public.inspection_item_evidence (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  run_item_id uuid not null references public.inspection_run_items(id) on delete cascade,
-  evidence_type text not null check (evidence_type in ('initial','closure')),
-  file_url text not null,
-  original_filename text null,
-  mime_type text null,
-  size_bytes bigint null,
-  uploaded_by_user_id uuid not null,
-  uploaded_at timestamptz not null default now(),
-  description text null,
-  metadata jsonb null
-);
-
-create index if not exists idx_inspection_item_evidence_item on public.inspection_item_evidence(run_item_id, uploaded_at desc);
-
--- Audit trail for checklist item changes
-create table if not exists public.inspection_item_audit_trail (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  run_item_id uuid not null references public.inspection_run_items(id) on delete cascade,
-  changed_by_user_id uuid not null,
-  changed_at timestamptz not null default now(),
-  change_type text null,
-  from_values jsonb null,
-  to_values jsonb null,
-  change_reason text null
-);
-
-create index if not exists idx_inspection_item_audit_trail_item on public.inspection_item_audit_trail(run_item_id, changed_at desc);
-
--- Auditee submissions for self-assessments and uploads
-create table if not exists public.inspection_auditee_submissions (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  run_id uuid not null references public.inspection_runs(id) on delete cascade,
-  submitted_by_user_id uuid not null,
-  submission_type text not null check (submission_type in ('self-assessment','document-upload','inspection-record')),
-  status text not null check (status in ('draft','submitted')) default 'draft',
-  created_at timestamptz not null default now(),
-  submitted_at timestamptz null,
-  updated_at timestamptz not null default now(),
-  metadata jsonb null
-);
-
-create index if not exists idx_inspection_auditee_submissions_run on public.inspection_auditee_submissions(run_id, status);
-
--- Summaries for reporting/analytics
-create table if not exists public.inspection_run_summaries (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  run_id uuid not null references public.inspection_runs(id) on delete cascade,
-  department_id uuid null,
-  site_id uuid null,
-  total_score integer not null default 0,
-  max_score integer not null default 0,
-  compliance_percent numeric(5,2) not null default 0,
-  high_risk_count integer not null default 0,
-  nc_count integer not null default 0,
-  pc_count integer not null default 0,
-  run_completed_at timestamptz null,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_inspection_run_summaries_company_dept on public.inspection_run_summaries(company_id, department_id, run_completed_at desc);
 
 -- Risks: risk register / assessments
 create table if not exists public.risks (
@@ -988,12 +541,6 @@ create table if not exists public.risk_assessments (
   task_id uuid null,
   task_name text null,
   task_steps text null,
-  -- Critical/prework classification flags
-  is_critical boolean not null default false,
-  is_prework boolean not null default false,
-  -- Source linkage (incident / NCR / change)
-  source_entity_type text null,
-  source_entity_id uuid null,
   status text not null check (status in ('draft', 'in-progress', 'reviewed', 'approved', 'closed')) default 'draft',
   assessment_date date null,
   reviewed_by_user_id uuid null,
@@ -1006,24 +553,12 @@ create table if not exists public.risk_assessments (
   low_risks integer not null default 0,
   assessment_document_url text null,
   evidence_document_url text null,
-  -- Review scheduling
-  review_due_at timestamptz null,
   created_by_user_id uuid not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
--- Ensure new risk assessment columns exist on existing databases
-alter table if exists public.risk_assessments
-  add column if not exists is_critical boolean not null default false,
-  add column if not exists is_prework boolean not null default false,
-  add column if not exists source_entity_type text null,
-  add column if not exists source_entity_id uuid null,
-  add column if not exists review_due_at timestamptz null;
-
 create index if not exists idx_risk_assessments_company on public.risk_assessments(company_id, assessment_date desc);
-create index if not exists idx_risk_assessments_source on public.risk_assessments(source_entity_type, source_entity_id);
-create index if not exists idx_risk_assessments_review_due on public.risk_assessments(review_due_at);
 create index if not exists idx_risk_assessments_number on public.risk_assessments(assessment_number);
 
 -- Risk Assessment Items (Hazards + Controls)
@@ -1056,219 +591,32 @@ create table if not exists public.risk_assessment_items (
 create index if not exists idx_risk_assessment_items_assessment on public.risk_assessment_items(risk_assessment_id);
 create index if not exists idx_risk_assessment_items_level on public.risk_assessment_items(risk_assessment_id, risk_level);
 
--- RLS Policies for Risk Assessments (use is_company_member so no session variable is required)
+-- RLS Policies for Risk Assessments
 alter table risk_assessments enable row level security;
 drop policy if exists "risk_assessments_tenant_isolation" on public.risk_assessments;
 create policy "risk_assessments_tenant_isolation" on public.risk_assessments
-  for all using (public.is_company_member(company_id) or public.is_platform_admin());
+  for all
+  using (public.is_company_member(company_id) or public.is_platform_admin())
+  with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 alter table risk_assessment_items enable row level security;
 drop policy if exists "risk_assessment_items_isolation" on public.risk_assessment_items;
 create policy "risk_assessment_items_isolation" on public.risk_assessment_items
-  for all using (
-    risk_assessment_id in (
-      select id from public.risk_assessments ra
-      where public.is_company_member(ra.company_id) or public.is_platform_admin()
+  for all
+  using (
+    exists (
+      select 1
+      from public.risk_assessments ra
+      where ra.id = risk_assessment_id
+        and (public.is_company_member(ra.company_id) or public.is_platform_admin())
     )
-  );
-
--- ---------------------------------------------------------------------------
--- Risk Assessment Module (Phase 2 full spec): settings, extended tables, junctions, versioning, signatures
--- ---------------------------------------------------------------------------
-
--- Risk index thresholds (configurable per company): RR <= low_max -> Low, RR <= medium_max -> Medium, else High
-create table if not exists public.risk_assessment_settings (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  key text not null,
-  value numeric not null,
-  created_at timestamptz not null default now(),
-  unique(company_id, key)
-);
-create index if not exists idx_risk_assessment_settings_company on public.risk_assessment_settings(company_id);
-
--- Default threshold seeds (optional; app can use 6 and 15 if no row)
--- insert defaults per company on first use or via migration
-
--- Extend risk_assessments: assessment_type (baseline, task, critical_task, pre_work), status (review_required etc), area/activity, personnel, dates
-alter table public.risk_assessments
-  add column if not exists area_location text null,
-  add column if not exists activity_process_operation text null,
-  add column if not exists last_approved_at timestamptz null,
-  add column if not exists next_review_date date null,
-  add column if not exists reference text null,
-  add column if not exists risk_assessor_user_id uuid null,
-  add column if not exists risk_assessor_name text null,
-  add column if not exists responsible_personnel_user_id uuid null,
-  add column if not exists responsible_personnel_name text null,
-  add column if not exists target_date date null,
-  add column if not exists completion_date date null;
-
--- Allow new assessment types and statuses (keep task-based for backward compat)
-alter table public.risk_assessments drop constraint if exists risk_assessments_assessment_type_check;
-alter table public.risk_assessments add constraint risk_assessments_assessment_type_check
-  check (assessment_type in ('baseline','task','task-based','critical_task','pre_work'));
-
-alter table public.risk_assessments drop constraint if exists risk_assessments_status_check;
-alter table public.risk_assessments add constraint risk_assessments_status_check
-  check (status in ('draft','in-progress','reviewed','approved','closed','active','review_required','under_review','archived'));
-
-create index if not exists idx_risk_assessments_status on public.risk_assessments(company_id, status);
-create index if not exists idx_risk_assessments_next_review on public.risk_assessments(company_id, next_review_date);
-
--- Junction: many-to-many risk assessment <-> incidents
-create table if not exists public.risk_assessment_incidents (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  risk_assessment_id uuid not null references public.risk_assessments(id) on delete cascade,
-  incident_id uuid not null references public.incidents(id) on delete cascade,
-  created_at timestamptz not null default now(),
-  unique(risk_assessment_id, incident_id)
-);
-create index if not exists idx_ra_incidents_ra on public.risk_assessment_incidents(risk_assessment_id);
-create index if not exists idx_ra_incidents_incident on public.risk_assessment_incidents(incident_id);
-
--- Junction: risk assessment <-> NCRs
-create table if not exists public.risk_assessment_ncrs (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  risk_assessment_id uuid not null references public.risk_assessments(id) on delete cascade,
-  ncr_id uuid not null references public.quality_ncrs(id) on delete cascade,
-  created_at timestamptz not null default now(),
-  unique(risk_assessment_id, ncr_id)
-);
-create index if not exists idx_ra_ncrs_ra on public.risk_assessment_ncrs(risk_assessment_id);
-create index if not exists idx_ra_ncrs_ncr on public.risk_assessment_ncrs(ncr_id);
-
--- Change triggers (manual "change in operation/activity")
-create table if not exists public.risk_assessment_change_triggers (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  risk_assessment_id uuid null references public.risk_assessments(id) on delete set null,
-  area_location text null,
-  activity_process_operation text null,
-  description text not null,
-  requested_by_user_id uuid not null,
-  status text not null check (status in ('open','closed')) default 'open',
-  created_at timestamptz not null default now()
-);
-create index if not exists idx_ra_change_triggers_company on public.risk_assessment_change_triggers(company_id);
-create index if not exists idx_ra_change_triggers_ra on public.risk_assessment_change_triggers(risk_assessment_id);
-
--- Signatures / approvals (Pre-work + optional approvals)
-create table if not exists public.risk_assessment_signatures (
-  id uuid primary key default gen_random_uuid(),
-  risk_assessment_id uuid not null references public.risk_assessments(id) on delete cascade,
-  pre_work_instance_id uuid null,
-  signer_user_id uuid not null,
-  signer_name text null,
-  role text not null check (role in ('Employee','Supervisor')),
-  signed_at timestamptz not null default now(),
-  signature_method text null,
-  comment text null
-);
-create index if not exists idx_ra_signatures_ra on public.risk_assessment_signatures(risk_assessment_id);
-
--- Pre-work daily instances (each instance = one day, one assessment, list of employees + supervisor sign-off)
-create table if not exists public.pre_work_instances (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  risk_assessment_id uuid not null references public.risk_assessments(id) on delete cascade,
-  instance_date date not null,
-  supervisor_signed_at timestamptz null,
-  supervisor_user_id uuid null,
-  created_at timestamptz not null default now(),
-  unique(risk_assessment_id, instance_date)
-);
-create index if not exists idx_pre_work_instances_ra on public.pre_work_instances(risk_assessment_id);
-create index if not exists idx_pre_work_instances_date on public.pre_work_instances(company_id, instance_date);
-
-alter table public.risk_assessment_signatures
-  add column if not exists pre_work_instance_id uuid null;
-alter table public.risk_assessment_signatures
-  drop constraint if exists risk_assessment_signatures_pre_work_instance_id_fkey;
-alter table public.risk_assessment_signatures
-  add constraint risk_assessment_signatures_pre_work_instance_id_fkey
-  foreign key (pre_work_instance_id) references public.pre_work_instances(id) on delete set null;
-
--- Versioning: snapshot of assessment + items when "Review & Update" is done
-create table if not exists public.risk_assessment_versions (
-  id uuid primary key default gen_random_uuid(),
-  risk_assessment_id uuid not null references public.risk_assessments(id) on delete cascade,
-  version_number integer not null,
-  snapshot jsonb not null,
-  created_by_user_id uuid not null,
-  created_at timestamptz not null default now()
-);
-create index if not exists idx_ra_versions_ra on public.risk_assessment_versions(risk_assessment_id);
-
--- Extend risk_assessment_items: S/L/RR/risk_index, residual, type_of_risk, spec fields (keep existing columns for backward compat)
-alter table public.risk_assessment_items
-  add column if not exists hazard text null,
-  add column if not exists aspect_hazard_flaw text null,
-  add column if not exists potential_risk text null,
-  add column if not exists risk text null,
-  add column if not exists who_is_at_risk text null,
-  add column if not exists type_of_risk text null check (type_of_risk is null or type_of_risk in ('Safety','Health','Environmental','Quality','Operational','Financial')),
-  add column if not exists severity_s integer null check (severity_s is null or (severity_s between 1 and 5)),
-  add column if not exists likelihood_l integer null check (likelihood_l is null or (likelihood_l between 1 and 5)),
-  add column if not exists raw_risk_rating_rr integer null,
-  add column if not exists risk_index text null check (risk_index is null or risk_index in ('Low','Medium','High')),
-  add column if not exists residual_severity_s integer null check (residual_severity_s is null or (residual_severity_s between 1 and 5)),
-  add column if not exists residual_likelihood_l integer null check (residual_likelihood_l is null or (residual_likelihood_l between 1 and 5)),
-  add column if not exists residual_rr integer null,
-  add column if not exists residual_risk_index text null check (residual_risk_index is null or residual_risk_index in ('Low','Medium','High')),
-  add column if not exists additional_controls text null,
-  add column if not exists current_year_non_conformances text null,
-  add column if not exists current_year_ncr_ids jsonb null,
-  add column if not exists by_who text null,
-  add column if not exists by_when date null,
-  add column if not exists responsible_person text null,
-  add column if not exists due_date date null,
-  add column if not exists evidence_uploads jsonb null;
-
--- Incidents: add area and activity for risk assessment matching
-alter table public.incidents
-  add column if not exists area text null,
-  add column if not exists activity text null;
-
--- RLS for new risk assessment tables
-alter table public.risk_assessment_settings enable row level security;
-drop policy if exists ra_settings_tenant on public.risk_assessment_settings;
-create policy ra_settings_tenant on public.risk_assessment_settings
-  for all using (public.is_company_member(company_id) or public.is_platform_admin());
-
-alter table public.risk_assessment_incidents enable row level security;
-drop policy if exists ra_incidents_tenant on public.risk_assessment_incidents;
-create policy ra_incidents_tenant on public.risk_assessment_incidents
-  for all using (public.is_company_member(company_id) or public.is_platform_admin());
-
-alter table public.risk_assessment_ncrs enable row level security;
-drop policy if exists ra_ncrs_tenant on public.risk_assessment_ncrs;
-create policy ra_ncrs_tenant on public.risk_assessment_ncrs
-  for all using (public.is_company_member(company_id) or public.is_platform_admin());
-
-alter table public.risk_assessment_change_triggers enable row level security;
-drop policy if exists ra_change_triggers_tenant on public.risk_assessment_change_triggers;
-create policy ra_change_triggers_tenant on public.risk_assessment_change_triggers
-  for all using (public.is_company_member(company_id) or public.is_platform_admin());
-
-alter table public.risk_assessment_signatures enable row level security;
-drop policy if exists ra_signatures_via_ra on public.risk_assessment_signatures;
-create policy ra_signatures_via_ra on public.risk_assessment_signatures
-  for all using (
-    risk_assessment_id in (select id from public.risk_assessments ra where public.is_company_member(ra.company_id) or public.is_platform_admin())
-  );
-
-alter table public.pre_work_instances enable row level security;
-drop policy if exists pre_work_instances_tenant on public.pre_work_instances;
-create policy pre_work_instances_tenant on public.pre_work_instances
-  for all using (public.is_company_member(company_id) or public.is_platform_admin());
-
-alter table public.risk_assessment_versions enable row level security;
-drop policy if exists ra_versions_via_ra on public.risk_assessment_versions;
-create policy ra_versions_via_ra on public.risk_assessment_versions
-  for all using (
-    risk_assessment_id in (select id from public.risk_assessments ra where public.is_company_member(ra.company_id) or public.is_platform_admin())
+  )
+  with check (
+    exists (
+      select 1
+      from public.risk_assessments ra
+      where ra.id = risk_assessment_id
+        and (public.is_company_consultant_or_admin(ra.company_id) or public.is_platform_admin())
+    )
   );
 
 -- Corrective Actions: Link NCRs, Risk Assessments, and Incidents to corrective/preventive tasks
@@ -1279,7 +627,7 @@ create table if not exists public.corrective_actions (
   title text not null,
   description text null,
   action_type text not null check (action_type in ('corrective', 'preventive')) default 'corrective',
-  source_type text not null check (source_type in ('ncr', 'risk_assessment', 'incident', 'audit', 'observation','inspection')),
+  source_type text not null check (source_type in ('ncr', 'risk_assessment', 'incident', 'audit', 'observation')),
   source_id uuid not null,
   status text not null check (status in ('open', 'assigned', 'in-progress', 'completed', 'verified', 'closed')) default 'open',
   priority text not null check (priority in ('low', 'medium', 'high', 'urgent')) default 'medium',
@@ -1323,23 +671,19 @@ alter table if exists public.corrective_actions
   add column if not exists created_by_user_id uuid,
   add column if not exists updated_at timestamptz default now();
 
--- Ensure source_type constraint allows inspection linkage
-alter table if exists public.corrective_actions
-  drop constraint if exists corrective_actions_source_type_check,
-  add constraint corrective_actions_source_type_check
-    check (source_type in ('ncr', 'risk_assessment', 'incident', 'audit', 'observation','inspection'));
-
 create index if not exists idx_corrective_actions_company on public.corrective_actions(company_id, status);
 create index if not exists idx_corrective_actions_number on public.corrective_actions(action_number);
 create index if not exists idx_corrective_actions_source on public.corrective_actions(source_type, source_id);
 create index if not exists idx_corrective_actions_assigned on public.corrective_actions(assigned_to_user_id, status);
 create index if not exists idx_corrective_actions_due on public.corrective_actions(due_date, status);
 
--- RLS for Corrective Actions (use is_company_member so no session variable is required)
+-- RLS for Corrective Actions
 alter table corrective_actions enable row level security;
 drop policy if exists "corrective_actions_tenant_isolation" on public.corrective_actions;
 create policy "corrective_actions_tenant_isolation" on public.corrective_actions
-  for all using (public.is_company_member(company_id) or public.is_platform_admin());
+  for all
+  using (public.is_company_member(company_id) or public.is_platform_admin())
+  with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
 -- PPE: simple register + issue/return tracking
 create table if not exists public.ppe_items (
@@ -1365,217 +709,6 @@ create table if not exists public.ppe_issues (
   notes text null
 );
 create index if not exists idx_ppe_issues_company on public.ppe_issues(company_id, issued_at desc);
-
--- PPE Issue Tracker (non-compliance, damaged/expired PPE, incorrect use, etc.)
-create table if not exists public.ppe_issue_tracker (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-
-  -- General Information
-  date_reported timestamptz not null default now(),
-  reported_by_user_id uuid not null,
-  reported_by_name text null,
-  department_id uuid null,
-  department_name_text text null,
-  site_id uuid null,
-  site_name_text text null,
-  contractor_or_employee_name text null,
-  employee_number text null,
-  job_role_or_task text null,
-  supervisor_user_id uuid null,
-  supervisor_name_text text null,
-
-  -- PPE Issue Details
-  ppe_type text not null check (
-    ppe_type in (
-      'helmet',
-      'gloves',
-      'safety_boots',
-      'eye_protection',
-      'hearing_protection',
-      'respirator_mask',
-      'reflective_vest',
-      'chainsaw_ppe',
-      'chemical_ppe',
-      'other'
-    )
-  ),
-  ppe_type_other text null,
-  issue_category text not null check (
-    issue_category in (
-      'missing_ppe',
-      'damaged_ppe',
-      'expired_ppe',
-      'incorrect_ppe',
-      'ppe_not_worn',
-      'poor_condition',
-      'insufficient_supply',
-      'non_approved_ppe'
-    )
-  ),
-  description_of_issue text not null,
-  risk_level text not null check (risk_level in ('low','medium','high','critical')),
-
-  -- Immediate Action Taken
-  immediate_work_stopped boolean not null default false,
-  immediate_ppe_issued boolean not null default false,
-  immediate_employee_removed boolean not null default false,
-  immediate_toolbox_talk boolean not null default false,
-  immediate_supervisor_notified boolean not null default false,
-  immediate_action_notes text null,
-
-  -- Evidence & Inspection Links
-  inspection_reference_text text null,
-  audit_id uuid null references public.audits(id) on delete set null,
-  pjo_id uuid null references public.pjo_observations(id) on delete set null,
-  checklist_instance_id uuid null,
-  checklist_item_id uuid null,
-  witness_interview_notes text null,
-
-  -- Corrective Action Management
-  corrective_action_required boolean not null default false,
-  responsible_user_id uuid null,
-  responsible_user_name text null,
-  corrective_department_id uuid null,
-  corrective_department_name text null,
-  target_completion_date date null,
-  replacement_ppe_issued boolean not null default false,
-  training_required boolean not null default false,
-  disciplinary_action text null,
-
-  -- Progress Tracking
-  status text not null check (
-    status in (
-      'open',
-      'in_progress',
-      'awaiting_ppe',
-      'awaiting_training',
-      'awaiting_evidence',
-      'under_review',
-      'closed',
-      'overdue'
-    )
-  ) default 'open',
-  progress_updates jsonb not null default '[]'::jsonb,
-  follow_up_inspection_date date null,
-
-  -- Closure & Verification
-  department_manager_user_id uuid null,
-  department_manager_signed_at timestamptz null,
-  department_manager_signature_method text null,
-  department_manager_comment text null,
-  safety_officer_user_id uuid null,
-  safety_officer_verified_at timestamptz null,
-  safety_officer_comment text null,
-  auditor_user_id uuid null,
-  auditor_confirmed_at timestamptz null,
-  auditor_comment text null,
-  closure_date timestamptz null,
-  effectiveness_verified boolean null,
-  repeat_issue_indicator boolean null,
-  source_requires_auditor_confirmation boolean null,
-
-  -- Optional links to PPE inventory / items
-  ppe_item_id uuid null references public.ppe_items(id) on delete set null,
-  stock_id uuid null references public.ppe_stock(id) on delete set null,
-
-  created_by_user_id uuid not null,
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_ppe_issue_tracker_company_status
-on public.ppe_issue_tracker(company_id, status, date_reported desc);
-
-create index if not exists idx_ppe_issue_tracker_location
-on public.ppe_issue_tracker(company_id, site_id, department_id, risk_level);
-
--- PPE stock inventory per site + department
-create table if not exists public.ppe_stock (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  site_id uuid null,
-  department_id uuid null,
-  ppe_item_id uuid not null references public.ppe_items(id) on delete cascade,
-  on_hand_qty integer not null default 0,
-  reserved_qty integer not null default 0,
-  reorder_level integer not null default 0,
-  reorder_qty integer not null default 0,
-  is_active boolean not null default true,
-  created_by_user_id uuid not null,
-  updated_by_user_id uuid null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (company_id, site_id, department_id, ppe_item_id)
-);
-
-create index if not exists idx_ppe_stock_company_item on public.ppe_stock(company_id, ppe_item_id);
-create index if not exists idx_ppe_stock_location on public.ppe_stock(company_id, site_id, department_id);
-
--- PPE stock movements (in/out/adjust/return)
-create table if not exists public.ppe_stock_movements (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  stock_id uuid not null references public.ppe_stock(id) on delete cascade,
-  movement_type text not null check (movement_type in ('in','out','adjust','return')),
-  quantity integer not null check (quantity > 0),
-  reason text null,
-  reference_type text null,
-  reference_id uuid null,
-  ppe_issue_id uuid null references public.ppe_issues(id) on delete set null,
-  old_on_hand_qty integer null,
-  new_on_hand_qty integer null,
-  created_by_user_id uuid not null,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_ppe_stock_movements_stock on public.ppe_stock_movements(stock_id, created_at desc);
-create index if not exists idx_ppe_stock_movements_company on public.ppe_stock_movements(company_id, created_at desc);
-
--- PPE reorder requests for stock below reorder levels
-create table if not exists public.ppe_reorder_requests (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  stock_id uuid not null references public.ppe_stock(id) on delete cascade,
-  requested_qty integer not null check (requested_qty > 0),
-  reason text null,
-  status text not null check (status in ('draft','requested','approved','rejected','ordered','received')) default 'requested',
-  requested_by_user_id uuid not null,
-  approved_by_user_id uuid null,
-  approved_at timestamptz null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_ppe_reorder_requests_company on public.ppe_reorder_requests(company_id, status, created_at desc);
-create index if not exists idx_ppe_reorder_requests_stock on public.ppe_reorder_requests(stock_id, created_at desc);
-
--- Link PPE issues to multiple NCRs (quality_ncrs)
-create table if not exists public.ppe_issue_ncr_links (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  ppe_issue_id uuid not null references public.ppe_issues(id) on delete cascade,
-  ncr_id uuid not null references public.quality_ncrs(id) on delete cascade,
-  created_by_user_id uuid not null,
-  created_at timestamptz not null default now(),
-  unique (company_id, ppe_issue_id, ncr_id)
-);
-
-create index if not exists idx_ppe_issue_ncr_links_issue on public.ppe_issue_ncr_links(company_id, ppe_issue_id);
-create index if not exists idx_ppe_issue_ncr_links_ncr on public.ppe_issue_ncr_links(company_id, ncr_id);
-
--- Link PPE issues to multiple CAPA / corrective actions
-create table if not exists public.ppe_issue_capa_links (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  ppe_issue_id uuid not null references public.ppe_issues(id) on delete cascade,
-  corrective_action_id uuid not null references public.corrective_actions(id) on delete cascade,
-  created_by_user_id uuid not null,
-  created_at timestamptz not null default now(),
-  unique (company_id, ppe_issue_id, corrective_action_id)
-);
-
-create index if not exists idx_ppe_issue_capa_links_issue on public.ppe_issue_capa_links(company_id, ppe_issue_id);
-create index if not exists idx_ppe_issue_capa_links_capa on public.ppe_issue_capa_links(company_id, corrective_action_id);
 
 -- Environment: aspects register
 create table if not exists public.environment_aspects (
@@ -1616,7 +749,8 @@ create table if not exists public.legal_requirements (
   evidence_key text null,
   created_by_user_id uuid not null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz null
 );
 create index if not exists idx_legal_requirements_company on public.legal_requirements(company_id, created_at desc);
 
@@ -1716,38 +850,6 @@ create table if not exists public.planning_kpis (
   created_at timestamptz not null default now()
 );
 create index if not exists idx_planning_kpis_company on public.planning_kpis(company_id, plan_id);
-
--- HR KPIs (employee/project performance with close-out)
-create table if not exists public.hr_kpis (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  kpi_title text not null,
-  assessment_type text not null check (assessment_type in ('employee','project')),
-  employee_user_id uuid null,
-  project_ref text null,
-  manager_user_id uuid not null,
-  importance text not null check (importance in ('low','medium','high')) default 'medium',
-  target_value_numeric numeric null,
-  target_value_text text null,
-  actual_value_numeric numeric null,
-  actual_value_text text null,
-  achieved boolean null,
-  employee_self_rating integer null check (employee_self_rating between 1 and 5),
-  manager_rating integer null check (manager_rating between 1 and 5),
-  manager_remarks text null,
-  employee_comments text null,
-  period_start date null,
-  period_end date null,
-  linked_task_id uuid null references public.tasks(id) on delete set null,
-  closure_evidence_url text null,
-  closed_out_at timestamptz null,
-  closed_out_by_user_id uuid null,
-  performance_bonus_score numeric null,
-  created_by_user_id uuid not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create index if not exists idx_hr_kpis_company on public.hr_kpis(company_id, assessment_type, created_at desc);
 
 -- Approvals & signatures (Phase 2 baseline)
 create table if not exists public.approvals (
@@ -1856,84 +958,6 @@ create index if not exists idx_incidents_company on public.incidents(company_id,
 create index if not exists idx_incidents_assignee on public.incidents(company_id, assignee_user_id);
 create index if not exists idx_incidents_creator on public.incidents(company_id, created_by_user_id);
 
--- Add new columns for enhanced incident management
-alter table public.incidents
-  add column if not exists incident_type text null,
-  add column if not exists type_of_incident text null,
-  add column if not exists category_id uuid null,
-  add column if not exists category_name text null,
-  add column if not exists subcategory_id uuid null,
-  add column if not exists subcategory_name text null,
-  add column if not exists subcategory_custom_text text null,
-  add column if not exists affected_person_id uuid null,
-  add column if not exists affected_person_name text null,
-  add column if not exists loss_types text[] null,
-  add column if not exists loss_production_value numeric null,
-  add column if not exists loss_financial_value numeric null,
-  add column if not exists risk_category text null check (risk_category is null or risk_category in ('Low', 'Medium', 'High')),
-  add column if not exists reported_to_user_ids uuid[] null,
-  add column if not exists copy_to_emails text[] null,
-  add column if not exists instruction_breakdown text null,
-  add column if not exists task_sequence text null,
-  add column if not exists consequence text null,
-  add column if not exists incident_event_timelines jsonb null,
-  add column if not exists immediate_causes_unsafe_acts jsonb null,
-  add column if not exists immediate_causes_unsafe_conditions jsonb null,
-  add column if not exists root_cause_human_factors jsonb null,
-  add column if not exists root_cause_workplace_factors jsonb null,
-  add column if not exists system_failure jsonb null,
-  add column if not exists contributing_factors text null,
-  add column if not exists contributing_factor_tags text[] null,
-  add column if not exists prepared_by_user_id uuid null,
-  add column if not exists distributions_to_user_ids uuid[] null,
-  add column if not exists distributions_to_emails text[] null;
-
--- Incident Categories & Subcategories (normalized lookup tables for future admin management)
-create table if not exists public.incident_categories (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  name text not null,
-  display_order integer not null default 0,
-  created_at timestamptz not null default now(),
-  unique(company_id, name)
-);
-
-create table if not exists public.incident_subcategories (
-  id uuid primary key default gen_random_uuid(),
-  category_id uuid not null references public.incident_categories(id) on delete cascade,
-  company_id uuid not null references public.companies(id) on delete cascade,
-  name text not null,
-  display_order integer not null default 0,
-  created_at timestamptz not null default now(),
-  unique(category_id, name)
-);
-
-create index if not exists idx_incident_categories_company on public.incident_categories(company_id, display_order);
-create index if not exists idx_incident_subcategories_category on public.incident_subcategories(category_id, display_order);
-
--- Incident Corrective Actions table
-create table if not exists public.incident_corrective_actions (
-  id uuid primary key default gen_random_uuid(),
-  incident_id uuid not null references public.incidents(id) on delete cascade,
-  company_id uuid not null references public.companies(id) on delete cascade,
-  action_title text not null,
-  action_description text null,
-  owner_user_id uuid null,
-  due_date date null,
-  status text not null check (status in ('Open', 'In Progress', 'Awaiting Evidence', 'Under Review', 'Closed')) default 'Open',
-  evidence_document_urls text[] null,
-  closure_notes text null,
-  manager_approval_user_id uuid null,
-  manager_approval_at timestamptz null,
-  created_by_user_id uuid not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_incident_corrective_actions_incident on public.incident_corrective_actions(incident_id, created_at desc);
-create index if not exists idx_incident_corrective_actions_company on public.incident_corrective_actions(company_id);
-create index if not exists idx_incident_corrective_actions_owner on public.incident_corrective_actions(company_id, owner_user_id);
-
 -- ---------------------------------------------------------------------------
 -- Tasks (Phase 2 shared system)
 -- ---------------------------------------------------------------------------
@@ -1944,60 +968,11 @@ create table if not exists public.tasks (
   module text not null check (module in ('safety','hr','legal','quality','health','environment','general','security')),
   title text not null,
   description text null,
-  category text null check (
-    category in (
-      'audit_action',
-      'capa',
-      'inspection',
-      'ppe_issue',
-      'safety_action',
-      'env_action',
-      'quality_action',
-      'project_task',
-      'maintenance',
-      'training',
-      'kpi_follow_up'
-    )
-  ),
-  risk_level text null check (risk_level in ('low','medium','high','critical')),
   priority text not null check (priority in ('critical','high','medium','low')) default 'medium',
-  status text not null check (
-    status in (
-      'draft',
-      'assigned',
-      'accepted',
-      'in-progress',
-      'awaiting-evidence',
-      'under-review',
-      'approved',
-      'closed',
-      'reopened',
-      'overdue'
-    )
-  ) default 'draft',
-  site_id uuid null,
-  department_id uuid null,
-  project_ref text null,
-  task_owner_user_id uuid null,
-  allocated_by_user_id uuid null,
-  supporting_team_user_ids uuid[] null,
-  source_entity_type text null, -- e.g. 'audit','ncr','incident','inspection','ppe_issue','kpi','risk_assessment'
-  source_entity_id uuid null,
-  planned_start_date date null,
-  planned_completion_date date null,
-  estimated_hours numeric null,
-  actual_start_at timestamptz null,
-  actual_completion_at timestamptz null,
-  time_spent_minutes integer null,
-  delay_reason text null,
-  extension_approved_by_user_id uuid null,
-  extension_approved_at timestamptz null,
+  status text not null check (status in ('pending','in-progress','completed','overdue')) default 'pending',
   due_at timestamptz null,
   assignee_user_id uuid null,
   created_by_user_id uuid not null,
-  closure_date timestamptz null,
-  final_status text null,
-  lessons_learned text null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -2133,23 +1108,9 @@ alter table public.documents enable row level security;
 alter table public.form_templates enable row level security;
 alter table public.quality_ncrs enable row level security;
 alter table public.inspections enable row level security;
-alter table public.inspection_checklist_templates enable row level security;
-alter table public.inspection_checklist_items enable row level security;
-alter table public.inspection_runs enable row level security;
-alter table public.inspection_run_items enable row level security;
-alter table public.inspection_item_evidence enable row level security;
-alter table public.inspection_item_audit_trail enable row level security;
-alter table public.inspection_auditee_submissions enable row level security;
-alter table public.inspection_run_summaries enable row level security;
 alter table public.risks enable row level security;
 alter table public.ppe_items enable row level security;
 alter table public.ppe_issues enable row level security;
-alter table public.ppe_issue_tracker enable row level security;
-alter table public.ppe_stock enable row level security;
-alter table public.ppe_stock_movements enable row level security;
-alter table public.ppe_reorder_requests enable row level security;
-alter table public.ppe_issue_ncr_links enable row level security;
-alter table public.ppe_issue_capa_links enable row level security;
 alter table public.environment_aspects enable row level security;
 alter table public.environment_monitoring enable row level security;
 alter table public.legal_requirements enable row level security;
@@ -2278,67 +1239,6 @@ on public.incidents for update
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
--- Incident Categories & Subcategories RLS
-alter table public.incident_categories enable row level security;
-alter table public.incident_subcategories enable row level security;
-
-drop policy if exists incident_categories_select_member on public.incident_categories;
-create policy incident_categories_select_member
-on public.incident_categories for select
-using (public.is_company_member(company_id) or public.is_platform_admin());
-
-drop policy if exists incident_categories_write_admin on public.incident_categories;
-create policy incident_categories_write_admin
-on public.incident_categories for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists incident_subcategories_select_member on public.incident_subcategories;
-create policy incident_subcategories_select_member
-on public.incident_subcategories for select
-using (public.is_company_member(company_id) or public.is_platform_admin());
-
-drop policy if exists incident_subcategories_write_admin on public.incident_subcategories;
-create policy incident_subcategories_write_admin
-on public.incident_subcategories for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
--- Incident Corrective Actions RLS
-alter table public.incident_corrective_actions enable row level security;
-
-drop policy if exists incident_corrective_actions_select_role on public.incident_corrective_actions;
-create policy incident_corrective_actions_select_role
-on public.incident_corrective_actions for select
-using (
-  public.is_company_consultant_or_admin(company_id)
-  or public.is_company_auditor(company_id)
-  or owner_user_id = public.request_user_id()
-  or created_by_user_id = public.request_user_id()
-  or public.is_platform_admin()
-);
-
-drop policy if exists incident_corrective_actions_insert_member on public.incident_corrective_actions;
-create policy incident_corrective_actions_insert_member
-on public.incident_corrective_actions for insert
-with check (public.is_company_member(company_id));
-
-drop policy if exists incident_corrective_actions_update_role on public.incident_corrective_actions;
-create policy incident_corrective_actions_update_role
-on public.incident_corrective_actions for update
-using (
-  public.is_company_consultant_or_admin(company_id)
-  or owner_user_id = public.request_user_id()
-  or created_by_user_id = public.request_user_id()
-  or public.is_platform_admin()
-)
-with check (
-  public.is_company_consultant_or_admin(company_id)
-  or owner_user_id = public.request_user_id()
-  or created_by_user_id = public.request_user_id()
-  or public.is_platform_admin()
-);
-
 -- Tasks:
 -- - Admin/Consultant: full company visibility
 -- - Employee: only tasks assigned to them
@@ -2405,7 +1305,7 @@ drop policy if exists submissions_select_member on public.form_submissions;
 create policy submissions_select_member
 on public.form_submissions for select
 using (
-  submitted_by_user_id = auth.uid() or
+  submitted_by_user_id = public.request_user_id() or
   public.is_company_consultant_or_admin((select company_id from form_templates where id = template_id)) or
   public.is_platform_admin()
 );
@@ -2413,7 +1313,7 @@ using (
 drop policy if exists submissions_insert_member on public.form_submissions;
 create policy submissions_insert_member
 on public.form_submissions for insert
-with check (submitted_by_user_id = auth.uid());
+with check (submitted_by_user_id = public.request_user_id() or public.is_platform_admin());
 
 drop policy if exists submissions_update_admin on public.form_submissions;
 create policy submissions_update_admin
@@ -2429,9 +1329,6 @@ using (
   public.is_company_consultant_or_admin(company_id)
   or public.is_company_auditor(company_id)
   or created_by_user_id = public.request_user_id()
-  or auditee_user_id = public.request_user_id()
-  or auditor_user_id = public.request_user_id()
-  or department_manager_user_id = public.request_user_id()
   or public.is_platform_admin()
 );
 
@@ -2453,126 +1350,6 @@ using (
 drop policy if exists inspections_write_management on public.inspections;
 create policy inspections_write_management
 on public.inspections for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
--- Inspection checklist templates
-drop policy if exists inspection_checklist_templates_select_role on public.inspection_checklist_templates;
-create policy inspection_checklist_templates_select_role
-on public.inspection_checklist_templates for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists inspection_checklist_templates_write_management on public.inspection_checklist_templates;
-create policy inspection_checklist_templates_write_management
-on public.inspection_checklist_templates for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
--- Inspection checklist items
-drop policy if exists inspection_checklist_items_select_role on public.inspection_checklist_items;
-create policy inspection_checklist_items_select_role
-on public.inspection_checklist_items for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists inspection_checklist_items_write_management on public.inspection_checklist_items;
-create policy inspection_checklist_items_write_management
-on public.inspection_checklist_items for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
--- Inspection runs
-drop policy if exists inspection_runs_select_role on public.inspection_runs;
-create policy inspection_runs_select_role
-on public.inspection_runs for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists inspection_runs_write_management on public.inspection_runs;
-create policy inspection_runs_write_management
-on public.inspection_runs for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
--- Inspection run items
-drop policy if exists inspection_run_items_select_role on public.inspection_run_items;
-create policy inspection_run_items_select_role
-on public.inspection_run_items for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists inspection_run_items_write_management on public.inspection_run_items;
-create policy inspection_run_items_write_management
-on public.inspection_run_items for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
--- Inspection item evidence
-drop policy if exists inspection_item_evidence_select_role on public.inspection_item_evidence;
-create policy inspection_item_evidence_select_role
-on public.inspection_item_evidence for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists inspection_item_evidence_write_management on public.inspection_item_evidence;
-create policy inspection_item_evidence_write_management
-on public.inspection_item_evidence for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
--- Inspection item audit trail
-drop policy if exists inspection_item_audit_trail_select_role on public.inspection_item_audit_trail;
-create policy inspection_item_audit_trail_select_role
-on public.inspection_item_audit_trail for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists inspection_item_audit_trail_write_management on public.inspection_item_audit_trail;
-create policy inspection_item_audit_trail_write_management
-on public.inspection_item_audit_trail for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
--- Inspection auditee submissions
-drop policy if exists inspection_auditee_submissions_select_role on public.inspection_auditee_submissions;
-create policy inspection_auditee_submissions_select_role
-on public.inspection_auditee_submissions for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists inspection_auditee_submissions_write_role on public.inspection_auditee_submissions;
-create policy inspection_auditee_submissions_write_role
-on public.inspection_auditee_submissions for all
-using (public.is_company_member(company_id) or public.is_platform_admin())
-with check (public.is_company_member(company_id) or public.is_platform_admin());
-
--- Inspection run summaries
-drop policy if exists inspection_run_summaries_select_role on public.inspection_run_summaries;
-create policy inspection_run_summaries_select_role
-on public.inspection_run_summaries for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists inspection_run_summaries_write_management on public.inspection_run_summaries;
-create policy inspection_run_summaries_write_management
-on public.inspection_run_summaries for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
@@ -2608,72 +1385,6 @@ using (public.is_company_member(company_id) or public.is_platform_admin());
 drop policy if exists ppe_issues_write_management on public.ppe_issues;
 create policy ppe_issues_write_management
 on public.ppe_issues for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_issue_tracker_select_member on public.ppe_issue_tracker;
-create policy ppe_issue_tracker_select_member
-on public.ppe_issue_tracker for select
-using (public.is_company_member(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_issue_tracker_write_management on public.ppe_issue_tracker;
-create policy ppe_issue_tracker_write_management
-on public.ppe_issue_tracker for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_stock_select_member on public.ppe_stock;
-create policy ppe_stock_select_member
-on public.ppe_stock for select
-using (public.is_company_member(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_stock_write_management on public.ppe_stock;
-create policy ppe_stock_write_management
-on public.ppe_stock for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_stock_movements_select_member on public.ppe_stock_movements;
-create policy ppe_stock_movements_select_member
-on public.ppe_stock_movements for select
-using (public.is_company_member(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_stock_movements_write_management on public.ppe_stock_movements;
-create policy ppe_stock_movements_write_management
-on public.ppe_stock_movements for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_reorder_requests_select_member on public.ppe_reorder_requests;
-create policy ppe_reorder_requests_select_member
-on public.ppe_reorder_requests for select
-using (public.is_company_member(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_reorder_requests_write_management on public.ppe_reorder_requests;
-create policy ppe_reorder_requests_write_management
-on public.ppe_reorder_requests for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_issue_ncr_links_select_member on public.ppe_issue_ncr_links;
-create policy ppe_issue_ncr_links_select_member
-on public.ppe_issue_ncr_links for select
-using (public.is_company_member(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_issue_ncr_links_write_management on public.ppe_issue_ncr_links;
-create policy ppe_issue_ncr_links_write_management
-on public.ppe_issue_ncr_links for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_issue_capa_links_select_member on public.ppe_issue_capa_links;
-create policy ppe_issue_capa_links_select_member
-on public.ppe_issue_capa_links for select
-using (public.is_company_member(company_id) or public.is_platform_admin());
-
-drop policy if exists ppe_issue_capa_links_write_management on public.ppe_issue_capa_links;
-create policy ppe_issue_capa_links_write_management
-on public.ppe_issue_capa_links for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
@@ -2845,175 +1556,8 @@ using (public.is_company_consultant_or_admin(company_id) or public.is_platform_a
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
 -- =========================
--- Phase 2 Feature Modules (PJO, BBS, Contractors/Visitors, Emergency, Templates)
+-- Phase 2 Feature Modules (BBS, Contractors/Visitors, Emergency, Templates)
 -- =========================
-
--- Planned Job Observations (PJO) - HR / Behavioural safety
-create table if not exists public.pjo_observations (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  module text not null check (module in ('hr')) default 'hr',
-
-  -- Observation header
-  employee_user_id uuid null,
-  employee_name text not null,
-  conducted_by_user_id uuid not null,
-  reason text not null,
-  department text null,
-  site text null,
-  job_observed text not null,
-  observed_at date not null,
-  next_observation_at date null,
-
-  -- Status
-  status text not null check (status in ('open','closed')) default 'open',
-  closed_at timestamptz null,
-  closed_by_user_id uuid null,
-
-  metadata jsonb null,
-  created_by_user_id uuid not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_pjo_observations_company on public.pjo_observations(company_id, observed_at desc);
-
--- Individual checklist responses per PJO
-create table if not exists public.pjo_responses (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  pjo_id uuid not null references public.pjo_observations(id) on delete cascade,
-
-  question_no integer not null,
-  question_text text not null,
-
-  yes_no boolean null,
-  rating integer null check (rating between 1 and 3),
-  deviation text null,
-  suggested_corrective_action text null,
-  responsible_person text null,
-  responsible_department text null,
-
-  corrective_action_implemented boolean not null default false,
-  implemented_at date null,
-
-  manager_signoff_user_id uuid null,
-  manager_signoff_at timestamptz null,
-
-  closed boolean not null default false,
-  closed_at timestamptz null,
-  closed_by_user_id uuid null,
-
-  -- Links to NCR / CAPA
-  ncr_id uuid null references public.quality_ncrs(id) on delete set null,
-
-  -- Template metadata (optional; allows configurable checklists)
-  template_id uuid null,
-  template_item_id uuid null,
-  category text null,
-
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_pjo_responses_pjo on public.pjo_responses(pjo_id, question_no);
-
--- Optional: company-specific PJO checklist templates
-create table if not exists public.pjo_checklist_templates (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  module text not null check (module in ('hr')) default 'hr',
-  name text not null,
-  description text null,
-  scope text not null check (scope in ('global','site','department')) default 'global',
-  site_id uuid null,
-  department_id uuid null,
-  is_active boolean not null default true,
-  created_by_user_id uuid not null,
-  updated_by_user_id uuid null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_pjo_checklist_templates_company on public.pjo_checklist_templates(company_id, module, is_active);
-
-create table if not exists public.pjo_checklist_items (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  template_id uuid not null references public.pjo_checklist_templates(id) on delete cascade,
-  question_no integer not null default 0,
-  question_text text not null,
-  category text null,
-  default_rating_weight integer null,
-  is_active boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_pjo_checklist_items_template on public.pjo_checklist_items(template_id, question_no);
-
--- RLS and policies for PJO tables
-alter table public.pjo_observations enable row level security;
-alter table public.pjo_responses enable row level security;
-alter table public.pjo_checklist_templates enable row level security;
-alter table public.pjo_checklist_items enable row level security;
-
--- Planned Job Observations (PJO) policies
-drop policy if exists pjo_observations_select_role on public.pjo_observations;
-create policy pjo_observations_select_role
-on public.pjo_observations for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists pjo_observations_write_management on public.pjo_observations;
-create policy pjo_observations_write_management
-on public.pjo_observations for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists pjo_responses_select_role on public.pjo_responses;
-create policy pjo_responses_select_role
-on public.pjo_responses for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists pjo_responses_write_management on public.pjo_responses;
-create policy pjo_responses_write_management
-on public.pjo_responses for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists pjo_checklist_templates_select_role on public.pjo_checklist_templates;
-create policy pjo_checklist_templates_select_role
-on public.pjo_checklist_templates for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists pjo_checklist_templates_write_management on public.pjo_checklist_templates;
-create policy pjo_checklist_templates_write_management
-on public.pjo_checklist_templates for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
-drop policy if exists pjo_checklist_items_select_role on public.pjo_checklist_items;
-create policy pjo_checklist_items_select_role
-on public.pjo_checklist_items for select
-using (
-  public.is_company_member(company_id)
-  or public.is_platform_admin()
-);
-
-drop policy if exists pjo_checklist_items_write_management on public.pjo_checklist_items;
-create policy pjo_checklist_items_write_management
-on public.pjo_checklist_items for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
 -- Behaviour-Based Safety (BBS) observations
 create table if not exists public.bbs_observations (
@@ -3231,54 +1775,6 @@ on public.evidence_attachments for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
--- Program Audit Findings (linked to audits, distinct from inspection findings)
-create table if not exists public.program_audit_findings (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  audit_id uuid not null references public.audits(id) on delete cascade,
-  audit_question_id uuid null references public.audit_questions(id) on delete set null,
-  title text not null,
-  deviation_type text not null check (
-    deviation_type in ('observation','finding','non_conformance','opportunity_for_improvement')
-  ),
-  risk_level text not null check (risk_level in ('low','medium','high','critical')) default 'medium',
-  required_action text null,
-  responsible_user_id uuid null,
-  due_date date null,
-  evidence_requirements text null,
-  status text not null check (
-    status in ('open','in-progress','awaiting-evidence','under-review','approved','closed')
-  ) default 'open',
-  closure_evidence_url text null,
-  manager_signoff_user_id uuid null,
-  manager_signoff_at timestamptz null,
-  auditor_verify_user_id uuid null,
-  auditor_verify_at timestamptz null,
-  closed_at timestamptz null,
-  created_by_user_id uuid not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create index if not exists idx_program_audit_findings_company on public.program_audit_findings(company_id, created_at desc);
-create index if not exists idx_program_audit_findings_audit on public.program_audit_findings(audit_id, status);
-alter table public.program_audit_findings
-  add column if not exists action_plan text null,
-  add column if not exists progress_updates jsonb null,
-  add column if not exists evidence_uploads jsonb null,
-  add column if not exists reopen_reason text null;
-alter table public.program_audit_findings enable row level security;
-
-drop policy if exists program_audit_findings_select_member on public.program_audit_findings;
-create policy program_audit_findings_select_member
-on public.program_audit_findings for select
-using (public.is_company_member(company_id) or public.is_platform_admin());
-
-drop policy if exists program_audit_findings_write_management on public.program_audit_findings;
-create policy program_audit_findings_write_management
-on public.program_audit_findings for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
-
 -- Audit findings (linked to inspections)
 create table if not exists public.audit_findings (
   id uuid primary key default gen_random_uuid(),
@@ -3426,11 +1922,13 @@ create index if not exists idx_module_content_company on public.module_content(c
 create index if not exists idx_module_content_type on public.module_content(module_key, content_type);
 create index if not exists idx_module_content_published on public.module_content(company_id, is_published);
 
--- RLS for Module Content (use is_company_member so no session variable is required)
+-- RLS for Module Content
 alter table module_content enable row level security;
 drop policy if exists "module_content_tenant_isolation" on public.module_content;
 create policy "module_content_tenant_isolation" on public.module_content
-  for all using (public.is_company_member(company_id) or public.is_platform_admin());
+  for all
+  using (public.is_company_member(company_id) or public.is_platform_admin())
+  with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
 -- Compliance Scoring: Real-time compliance score per organization (Phase 3)
 create table if not exists public.compliance_scores (
@@ -3449,11 +1947,13 @@ create table if not exists public.compliance_scores (
 
 create index if not exists idx_compliance_scores_company on public.compliance_scores(company_id, module);
 
--- RLS for Compliance Scores (use is_company_member so no session variable is required)
+-- RLS for Compliance Scores
 alter table compliance_scores enable row level security;
 drop policy if exists "compliance_scores_tenant_isolation" on public.compliance_scores;
 create policy "compliance_scores_tenant_isolation" on public.compliance_scores
-  for all using (public.is_company_member(company_id) or public.is_platform_admin());
+  for all
+  using (public.is_company_member(company_id) or public.is_platform_admin())
+  with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
 -- User settings (notifications, security, etc.)
 create table if not exists public.user_settings (
