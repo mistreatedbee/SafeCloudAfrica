@@ -172,7 +172,7 @@ const managementGroups: NavGroup[] = [
       { name: 'Customer Complaint Log', path: '/dashboard/quality/complaints', icon: AlertCircleIcon },
       { name: 'Internal/External Issues', path: '/dashboard/quality/issues', icon: AlertOctagonIcon },
       { name: 'Calibration', path: '/dashboard/quality/calibration', icon: ClipboardCheckIcon },
-      { name: 'Quality Forms / SOPs', path: '/forms?module=quality', icon: FileTextIcon }
+      { name: 'Quality Docs / SOPs', path: '/documents?module=quality', icon: FileTextIcon }
     ]
   },
   {

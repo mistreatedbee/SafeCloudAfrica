@@ -20,7 +20,6 @@ import { EnvironmentWastePage } from './pages/environment/EnvironmentWastePage';
 import { EnvironmentWaterPage } from './pages/environment/EnvironmentWaterPage';
 import { EnvironmentAirPage } from './pages/environment/EnvironmentAirPage';
 import { DocumentsPage } from './pages/DocumentsPage';
-import { FormsPage } from './pages/FormsPage';
 import { TasksPage } from './pages/TasksPage';
 import { IncidentsPage } from './pages/IncidentsPage';
 import { TrainingPage } from './pages/TrainingPage';
@@ -679,7 +678,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <FormsPage />
+                  <Navigate to="/documents" replace />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -689,7 +688,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <FormsPage />
+                  <Navigate to="/documents" replace />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -699,7 +698,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <FormsPage />
+                  <Navigate to="/documents" replace />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
