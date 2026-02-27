@@ -3,6 +3,9 @@
  * Scheduled job: low stock / near-expiry PPE; create ppe_reorder_requests and notify.
  */
 const { createInternalClient, getUserSettings, getUserProfileEmail, buildEscalationChain } = require('./escalationUtils');
+const EMAIL_API_URL = (typeof process !== 'undefined' && process.env && process.env.EMAIL_API_URL)
+  ? process.env.EMAIL_API_URL
+  : 'https://safe-cloud-africa.vercel.app/api/email/send';
 
 module.exports = async function (request) {
   const cors = {
@@ -104,17 +107,20 @@ async function handleLowStock(client, stock) {
       const email = await getUserProfileEmail(client, companyId, userId);
       if (email) {
         try {
-          const { data, error } = await client.functions.invoke('emailSend', {
-            body: {
+          const response = await fetch(EMAIL_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
               to: email,
               subject: 'Low PPE Stock',
               html: `<p>A PPE stock item has fallen below its reorder level. Stock ID: ${
                 stock.id
               }, On hand: ${stock.on_hand_qty}, Reorder level: ${stock.reorder_level}.</p>`
-            }
+            })
           });
-          if (error || (data && data.ok === false)) {
-            console.error('cronPpeReorderChecks: failed to send email', error || data);
+          const data = await response.json().catch(() => null);
+          if (!response.ok || (data && data.ok === false)) {
+            console.error('cronPpeReorderChecks: failed to send email', data || response.statusText);
           }
         } catch (e) {
           console.error('cronPpeReorderChecks: exception sending email', e);
@@ -123,4 +129,3 @@ async function handleLowStock(client, stock) {
     }
   }
 }
-

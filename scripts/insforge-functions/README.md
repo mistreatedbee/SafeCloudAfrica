@@ -6,7 +6,6 @@ These scripts are stubs for SafeCloud Africa serverless functions. Deploy them v
 
 | File | Purpose |
 |------|--------|
-| `emailSend.js` | Send email (SendGrid/Mailgun via env) |
 | `auditProposalsSend.js` | Send 3 audit date proposals to auditees |
 | `auditProposalRespond.js` | Auditee selects/declines date; update audit status |
 | `cronDailyComplianceReminders.js` | Daily: document review, expiring training/medical, upcoming audits |
@@ -27,9 +26,10 @@ module.exports = async function (request) {
 };
 ```
 
-Use the InsForge **create-function** or **update-function** MCP tool with the corresponding `codeFile` path (e.g. `scripts/insforge-functions/emailSend.js`).
+Use the InsForge **create-function** or **update-function** MCP tool for cron jobs.
 
 ## Environment
 
-- **emailSend**: Set `SENDGRID_API_KEY` or `MAILGUN_API_KEY` (and related Mailgun vars) in the function’s environment.
+- **Email API**: Configure `EMAIL_API_URL` for cron functions (defaults to `https://safe-cloud-africa.vercel.app/api/email/send`).
+- **Vercel**: Set `RESEND_API_KEY` and `EMAIL_FROM` for `/api/email/send`.
 - **Cron functions**: Run with a service/admin key so they can query all companies and send notifications.

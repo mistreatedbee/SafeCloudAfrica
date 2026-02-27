@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/email/send",
+      "destination": "/api/email/send"
+    },
+    {
       "source": "/functions/(.*)",
       "destination": "https://pas375jb.us-west.insforge.app/api/functions/invoke/$1"
     },

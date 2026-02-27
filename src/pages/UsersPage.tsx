@@ -187,15 +187,15 @@ export function UsersPage() {
     }
   }
 
-  const onInviteResult = (result: InviteCreateResult, email: string) => {
+  const onInviteResult = (result: InviteCreateResult, _email: string) => {
     if (result.ok) {
       if (result.status === 'FAILED') {
         setInviteFeedback({
           type: 'error',
-          text: result.message || `Invite created for ${email}, but email failed. Use Copy link to share manually.`
+          text: result.message || 'Invite created, but email failed. Copy link and send manually.'
         });
       } else {
-        setInviteFeedback({ type: 'success', text: `Email successfully sent to ${email}.` });
+        setInviteFeedback({ type: 'success', text: 'Invite email sent successfully.' });
       }
       void refreshUsersData();
       return;

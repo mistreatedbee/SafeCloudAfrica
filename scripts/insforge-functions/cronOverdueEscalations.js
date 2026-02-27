@@ -3,6 +3,9 @@
  * Scheduled job: overdue CAPA, overdue NCR, missing pre-audit docs. Escalate to management.
  */
 const { createInternalClient, buildEscalationChain, getUserSettings, getUserProfileEmail } = require('./escalationUtils');
+const EMAIL_API_URL = (typeof process !== 'undefined' && process.env && process.env.EMAIL_API_URL)
+  ? process.env.EMAIL_API_URL
+  : 'https://safe-cloud-africa.vercel.app/api/email/send';
 
 module.exports = async function (request) {
   const cors = {
@@ -183,11 +186,14 @@ async function createNotificationRow(client, companyId, userId, severity, title,
 
 async function sendEmailNotification(client, payload) {
   try {
-    const { data, error } = await client.functions.invoke('emailSend', {
-      body: payload
+    const response = await fetch(EMAIL_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
-    if (error || (data && data.ok === false)) {
-      console.error('Failed to send escalation email', error || data);
+    const data = await response.json().catch(() => null);
+    if (!response.ok || (data && data.ok === false)) {
+      console.error('Failed to send escalation email', data || response.statusText);
     }
   } catch (e) {
     console.error('Exception sending escalation email', e);
@@ -202,4 +208,3 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
-

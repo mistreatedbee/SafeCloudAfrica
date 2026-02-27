@@ -4,6 +4,9 @@
  * Training: expiry windows (30/14/7/0 days), outstanding training, escalation to supervisor/admin.
  */
 const { createInternalClient, getUserSettings, getUserProfileEmail, buildEscalationChain } = require('./escalationUtils');
+const EMAIL_API_URL = (typeof process !== 'undefined' && process.env && process.env.EMAIL_API_URL)
+  ? process.env.EMAIL_API_URL
+  : 'https://safe-cloud-africa.vercel.app/api/email/send';
 
 const TRAINING_EXPIRY_WINDOWS = [
   { days: 30, type: 'expiry_30' },
@@ -291,15 +294,18 @@ async function notifyOwner(client, { companyId, userId, title, severity, message
     const email = await getUserProfileEmail(client, companyId, userId);
     if (email) {
       try {
-        const { data, error } = await client.functions.invoke('emailSend', {
-          body: {
+        const response = await fetch(EMAIL_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             to: email,
             subject: emailSubject,
             html: emailHtml
-          }
+          })
         });
-        if (error || (data && data.ok === false)) {
-          console.error('cronDailyComplianceReminders: failed to send email', error || data);
+        const data = await response.json().catch(() => null);
+        if (!response.ok || (data && data.ok === false)) {
+          console.error('cronDailyComplianceReminders: failed to send email', data || response.statusText);
         }
       } catch (e) {
         console.error('cronDailyComplianceReminders: exception sending email', e);
@@ -316,4 +322,3 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
-

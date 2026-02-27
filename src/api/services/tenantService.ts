@@ -425,7 +425,9 @@ export async function createInvite(input: {
         inviterName: inviter.inviterName,
         inviterEmail: inviter.inviterEmail,
         inviteToken: invite.token,
-        expiresAtIso: invite.expires_at
+        expiresAtIso: invite.expires_at,
+        orgId: input.company.id,
+        inviteId: invite.id
       });
       const sentAt = new Date().toISOString();
       const { data: sentInvite } = await insforge.database
@@ -460,7 +462,9 @@ export async function createInvite(input: {
         status: 'FAILED',
         invite: ((failedInvite as CompanyInvite) ?? { ...invite, status: 'FAILED', error_message: errMsg }),
         message: errMsg.toLowerCase().includes('email_function_not_found')
-          ? 'Invite created, but email function is not deployed. Use "Copy link" to share manually.'
+          ? 'Invite created, but email endpoint is not deployed. Use "Copy link" to share manually.'
+          : errMsg.toLowerCase().includes('email_endpoint_not_found')
+            ? 'Invite created, but email endpoint is not deployed. Use "Copy link" to share manually.'
           : 'Invite created, but email delivery failed. Use "Copy link" to share manually.'
       };
     }
@@ -653,7 +657,9 @@ export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID })
       inviterName: inviter.inviterName,
       inviterEmail: inviter.inviterEmail,
       inviteToken: token,
-      expiresAtIso
+      expiresAtIso,
+      orgId: (invite as any).company_id,
+      inviteId: input.inviteId
     });
   } catch (emailErr: any) {
     await insforge.database

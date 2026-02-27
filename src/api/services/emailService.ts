@@ -1,6 +1,3 @@
-import { insforge } from '../insforge/client';
-import { ensureInsforgeSession } from '../insforge/ensureSession';
-
 export interface EmailTemplate {
   type: 'overdue_task' | 'incident_created' | 'approval_request' | 'document_review' | 'training_expiry';
   subject: string;
@@ -14,6 +11,7 @@ export interface EmailPayload {
   text?: string;
   replyTo?: string;
   from?: string;
+  meta?: Record<string, unknown>;
 }
 
 const emailTemplates: Record<string, EmailTemplate> = {
@@ -76,62 +74,21 @@ const emailTemplates: Record<string, EmailTemplate> = {
 };
 
 /**
- * Send email using InsForge's edge function
+ * Send email using the canonical Vercel API endpoint.
  */
 export async function sendEmail(payload: EmailPayload): Promise<void> {
-  const session = await ensureInsforgeSession();
-
-  const sdkResult = await insforge.functions.invoke('emailSend', { method: 'POST', body: payload });
-  if (!sdkResult.error) {
-    const data = sdkResult.data as any;
-    if (!data || typeof data !== 'object' || data.ok !== false) return;
+  const response = await fetch('/api/email/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => null as any);
+  if (response.ok && data?.ok !== false) return;
+  const message = data?.error || `${response.status} ${response.statusText}`;
+  if (response.status === 404) {
+    throw new Error('EMAIL_ENDPOINT_NOT_FOUND: /api/email/send is not available.');
   }
-
-  const configuredBaseUrl =
-    ((import.meta as any)?.env?.VITE_INSFORGE_BASE_URL as string | undefined) ??
-    'https://pas375jb.us-west.insforge.app';
-  const insforgeBase = configuredBaseUrl.replace(/\/+$/, '');
-
-  const endpoints = [
-    `${insforgeBase}/api/functions/invoke/emailSend`,
-    `${insforgeBase}/api/functions/emailSend`,
-    `${insforgeBase}/api/functions/emailSend/invoke`,
-    `${insforgeBase}/functions/invoke/emailSend`,
-    `${insforgeBase}/functions/emailSend/invoke`,
-    `${insforgeBase}/functions/emailSend`,
-    '/api/functions/invoke/emailSend',
-    '/api/functions/emailSend',
-    '/api/functions/emailSend/invoke',
-    '/functions/invoke/emailSend',
-    '/functions/emailSend/invoke',
-    '/functions/emailSend'
-  ];
-  let lastError = sdkResult.error?.message || 'Email function invocation failed.';
-  let sawNotFound = false;
-
-  for (const endpoint of endpoints) {
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.accessToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await response.json().catch(() => null as any);
-      if (response.ok && (!data || data.ok !== false)) return;
-      if (response.status === 404) sawNotFound = true;
-      lastError = data?.error || `${response.status} ${response.statusText}`;
-    } catch (err: any) {
-      lastError = err?.message || lastError;
-    }
-  }
-
-  if (sawNotFound) {
-    throw new Error('EMAIL_FUNCTION_NOT_FOUND: emailSend function is not deployed on this InsForge project.');
-  }
-  throw new Error(`Email delivery failed. ${lastError}`);
+  throw new Error(`Email delivery failed. ${message}`);
 }
 
 /**
@@ -258,6 +215,8 @@ export async function sendOrganizationInviteEmail(input: {
   inviterEmail: string;
   inviteToken: string;
   expiresAtIso: string;
+  orgId?: string;
+  inviteId?: string;
   supportEmail?: string;
   appUrl?: string;
 }): Promise<void> {
@@ -303,5 +262,15 @@ export async function sendOrganizationInviteEmail(input: {
     `Support: ${support}`
   ].join('\n');
 
-  await sendEmail({ to: input.to, subject, html, text });
+  await sendEmail({
+    to: input.to,
+    subject,
+    html,
+    text,
+    meta: {
+      orgId: input.orgId ?? null,
+      inviteId: input.inviteId ?? null,
+      role: input.role
+    }
+  });
 }

@@ -3,6 +3,9 @@
  * Scheduled job: next meeting reminders + review action due/overdue escalation.
  */
 const { createInternalClient, getUserSettings, getUserProfileEmail, buildEscalationChain } = require('./escalationUtils');
+const EMAIL_API_URL = (typeof process !== 'undefined' && process.env && process.env.EMAIL_API_URL)
+  ? process.env.EMAIL_API_URL
+  : 'https://safe-cloud-africa.vercel.app/api/email/send';
 
 const OVERDUE_ADMIN_ESCALATION_DAYS = 3;
 
@@ -205,9 +208,18 @@ async function notifyUser(client, { companyId, userId, title, severity, message 
 }
 
 async function sendEmail(client, payload) {
-  const { data, error } = await client.functions.invoke('emailSend', { body: payload });
-  if (error || (data && data.ok === false)) {
-    console.error('cronReviewMeetingReminders: failed to send email', error || data);
+  try {
+    const response = await fetch(EMAIL_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || (data && data.ok === false)) {
+      console.error('cronReviewMeetingReminders: failed to send email', data || response.statusText);
+    }
+  } catch (error) {
+    console.error('cronReviewMeetingReminders: failed to send email', error);
   }
 }
 
