@@ -222,12 +222,39 @@ function generateIncidentHTML(
           <span class="field-label">Location:</span>
           <span class="field-value">${incident.location || 'Not specified'}</span>
         </div>
+        <div class="field">
+          <span class="field-label">Nature:</span>
+          <span class="field-value">${incident.nature_of_incident || 'Not specified'}</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Cause:</span>
+          <span class="field-value">${incident.cause_of_incident || incident.cause || 'Not specified'}</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Affected Person:</span>
+          <span class="field-value">${incident.affected_person || 'Not specified'}</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Risk Matrix:</span>
+          <span class="field-value">${incident.risk_likelihood_1_5 ?? '-'} x ${incident.risk_severity_1_5 ?? '-'} = ${incident.risk_rating_product ?? '-'} (${incident.risk_classification ?? '-'})</span>
+        </div>
         ${incident.description ? `
         <div class="field">
           <span class="field-label">Description:</span>
         </div>
         <div style="margin-left: 150px; white-space: pre-wrap;">${incident.description}</div>
         ` : ''}
+      </div>
+
+      <div class="section">
+        <div class="section-title">Losses</div>
+        <div class="field"><span class="field-label">Production:</span><span class="field-value">${incident.loss_production_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Financial:</span><span class="field-value">${incident.loss_financial_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Reputational:</span><span class="field-value">${incident.loss_reputational_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Damage/Asset:</span><span class="field-value">${incident.loss_damage_asset_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Illness/Injury:</span><span class="field-value">${incident.loss_illness_injury_value ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Other:</span><span class="field-value">${incident.loss_other_text ?? '-'}</span></div>
+        <div class="field"><span class="field-label">Loss Notes:</span><span class="field-value">${incident.loss_notes ?? '-'}</span></div>
       </div>
 
       ${options.includeEvidence ? `

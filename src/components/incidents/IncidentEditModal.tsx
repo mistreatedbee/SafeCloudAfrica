@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { XIcon } from 'lucide-react';
-import type { Incident } from '../api/models/entities';
-import { incidentsService } from '../api/services/incidentsService';
+import type { Incident } from '../../api/models/entities';
+import { incidentsService } from '../../api/services/incidentsService';
 
 interface IncidentEditModalProps {
   incident: Incident;

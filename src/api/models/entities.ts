@@ -228,6 +228,11 @@ export type Incident = {
   loss_types?: string[] | null;
   loss_production_value?: number | null;
   loss_financial_value?: number | null;
+  loss_reputational_value?: number | null;
+  loss_damage_asset_value?: number | null;
+  loss_illness_injury_value?: number | null;
+  loss_other_text?: string | null;
+  loss_notes?: string | null;
   nature_of_incident?: string | null;
   risk_likelihood?: number | null;
   risk_consequence?: number | null;

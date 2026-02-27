@@ -1,6 +1,6 @@
 import { insforge } from '../insforge/client';
 import type { Incident, UUID } from '../models/entities';
-import type { IncidentCategory, IncidentStatus, ModuleKey, Severity } from '../models/core';
+import type { IncidentCategory, IncidentStatus, ModuleKey, Severity, IncidentRiskCategory } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 
 export type ListIncidentsInput = {
@@ -182,6 +182,30 @@ export type CreateIncidentInput = {
   subcategory: string;
   title: string;
   description?: string;
+  incidentType?: string;
+  projectClient?: string;
+  natureOfIncident?: string;
+  causeOfIncident?: string;
+  affectedPerson?: string;
+  reportedBy?: string;
+  reportedTo?: string;
+  copyToEmails?: string[];
+  investigationRequired?: boolean;
+  unsafeActs?: Array<{ group: string; item: string; note?: string }>;
+  unsafeConditions?: Array<{ group: string; item: string; note?: string }>;
+  losses?: {
+    productionLoss?: number | null;
+    financialLoss?: number | null;
+    reputationalLoss?: number | null;
+    damageAssetLoss?: number | null;
+    illnessInjuryImpact?: number | null;
+    other?: string | null;
+    notes?: string | null;
+  };
+  riskSeverity1To5?: number | null;
+  riskLikelihood1To5?: number | null;
+  riskRatingProduct?: number | null;
+  riskClassification?: IncidentRiskCategory | null;
   severity: Severity;
   occurredAt: string; // ISO string
   location?: string;
@@ -190,6 +214,7 @@ export type CreateIncidentInput = {
 };
 
 export async function createIncident(input: CreateIncidentInput): Promise<Incident> {
+  const losses = input.losses ?? {};
   const { data, error } = await insforge.database
     .from('incidents')
     .insert({
@@ -199,6 +224,28 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
       subcategory: input.subcategory,
       title: input.title,
       description: input.description ?? null,
+      incident_type: input.incidentType ?? null,
+      project_client: input.projectClient ?? null,
+      nature_of_incident: input.natureOfIncident ?? null,
+      cause_of_incident: input.causeOfIncident ?? null,
+      affected_person: input.affectedPerson ?? null,
+      reported_by: input.reportedBy ?? null,
+      reported_to: input.reportedTo ?? null,
+      copy_to_emails: input.copyToEmails ?? null,
+      investigation_required: input.investigationRequired ?? false,
+      immediate_causes_unsafe_acts: input.unsafeActs ?? null,
+      immediate_causes_unsafe_conditions: input.unsafeConditions ?? null,
+      loss_production_value: losses.productionLoss ?? null,
+      loss_financial_value: losses.financialLoss ?? null,
+      loss_reputational_value: losses.reputationalLoss ?? null,
+      loss_damage_asset_value: losses.damageAssetLoss ?? null,
+      loss_illness_injury_value: losses.illnessInjuryImpact ?? null,
+      loss_other_text: losses.other ?? null,
+      loss_notes: losses.notes ?? null,
+      risk_severity_1_5: input.riskSeverity1To5 ?? null,
+      risk_likelihood_1_5: input.riskLikelihood1To5 ?? null,
+      risk_rating_product: input.riskRatingProduct ?? null,
+      risk_classification: input.riskClassification ?? null,
       severity: input.severity,
       status: 'open' satisfies IncidentStatus,
       occurred_at: input.occurredAt,
@@ -224,3 +271,91 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
 
   return data as Incident;
 }
+
+export type UpdateIncidentPatch = Partial<{
+  category: IncidentCategory;
+  subcategory: string;
+  title: string;
+  description: string | null;
+  severity: Severity;
+  status: IncidentStatus;
+  occurredAt: string;
+  location: string | null;
+  incidentType: string | null;
+  projectClient: string | null;
+  natureOfIncident: string | null;
+  causeOfIncident: string | null;
+  affectedPerson: string | null;
+  reportedBy: string | null;
+  reportedTo: string | null;
+  copyToEmails: string[] | null;
+  investigationRequired: boolean;
+  unsafeActs: Array<{ group: string; item: string; note?: string }> | null;
+  unsafeConditions: Array<{ group: string; item: string; note?: string }> | null;
+  lossProductionValue: number | null;
+  lossFinancialValue: number | null;
+  lossReputationalValue: number | null;
+  lossDamageAssetValue: number | null;
+  lossIllnessInjuryValue: number | null;
+  lossOtherText: string | null;
+  lossNotes: string | null;
+  riskSeverity1To5: number | null;
+  riskLikelihood1To5: number | null;
+  riskRatingProduct: number | null;
+  riskClassification: IncidentRiskCategory | null;
+}>;
+
+export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatch): Promise<Incident> {
+  const updateData: Record<string, unknown> = {
+    updated_at: new Date().toISOString()
+  };
+
+  if (patch.category !== undefined) updateData.category = patch.category;
+  if (patch.subcategory !== undefined) updateData.subcategory = patch.subcategory;
+  if (patch.title !== undefined) updateData.title = patch.title;
+  if (patch.description !== undefined) updateData.description = patch.description;
+  if (patch.severity !== undefined) updateData.severity = patch.severity;
+  if (patch.status !== undefined) updateData.status = patch.status;
+  if (patch.occurredAt !== undefined) updateData.occurred_at = patch.occurredAt;
+  if (patch.location !== undefined) updateData.location = patch.location;
+  if (patch.incidentType !== undefined) updateData.incident_type = patch.incidentType;
+  if (patch.projectClient !== undefined) updateData.project_client = patch.projectClient;
+  if (patch.natureOfIncident !== undefined) updateData.nature_of_incident = patch.natureOfIncident;
+  if (patch.causeOfIncident !== undefined) updateData.cause_of_incident = patch.causeOfIncident;
+  if (patch.affectedPerson !== undefined) updateData.affected_person = patch.affectedPerson;
+  if (patch.reportedBy !== undefined) updateData.reported_by = patch.reportedBy;
+  if (patch.reportedTo !== undefined) updateData.reported_to = patch.reportedTo;
+  if (patch.copyToEmails !== undefined) updateData.copy_to_emails = patch.copyToEmails;
+  if (patch.investigationRequired !== undefined) updateData.investigation_required = patch.investigationRequired;
+  if (patch.unsafeActs !== undefined) updateData.immediate_causes_unsafe_acts = patch.unsafeActs;
+  if (patch.unsafeConditions !== undefined) updateData.immediate_causes_unsafe_conditions = patch.unsafeConditions;
+  if (patch.lossProductionValue !== undefined) updateData.loss_production_value = patch.lossProductionValue;
+  if (patch.lossFinancialValue !== undefined) updateData.loss_financial_value = patch.lossFinancialValue;
+  if (patch.lossReputationalValue !== undefined) updateData.loss_reputational_value = patch.lossReputationalValue;
+  if (patch.lossDamageAssetValue !== undefined) updateData.loss_damage_asset_value = patch.lossDamageAssetValue;
+  if (patch.lossIllnessInjuryValue !== undefined) updateData.loss_illness_injury_value = patch.lossIllnessInjuryValue;
+  if (patch.lossOtherText !== undefined) updateData.loss_other_text = patch.lossOtherText;
+  if (patch.lossNotes !== undefined) updateData.loss_notes = patch.lossNotes;
+  if (patch.riskSeverity1To5 !== undefined) updateData.risk_severity_1_5 = patch.riskSeverity1To5;
+  if (patch.riskLikelihood1To5 !== undefined) updateData.risk_likelihood_1_5 = patch.riskLikelihood1To5;
+  if (patch.riskRatingProduct !== undefined) updateData.risk_rating_product = patch.riskRatingProduct;
+  if (patch.riskClassification !== undefined) updateData.risk_classification = patch.riskClassification;
+
+  const { data, error } = await insforge.database
+    .from('incidents')
+    .update(updateData)
+    .eq('id', incidentId)
+    .select('*')
+    .single();
+
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update incident.');
+  return data as Incident;
+}
+
+export const incidentsService = {
+  listIncidents,
+  listIncidentsWithFilters,
+  createIncident,
+  updateIncident
+};

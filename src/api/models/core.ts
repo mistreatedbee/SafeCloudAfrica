@@ -78,8 +78,24 @@ export type IncidentType = (typeof INCIDENT_TYPES)[number];
 export const RISK_LEVELS = ['low', 'medium', 'high', 'critical'] as const;
 export type RiskLevel = (typeof RISK_LEVELS)[number];
 
-export const RISK_CATEGORIES = ['Low', 'Medium', 'High'] as const;
+export const RISK_CATEGORIES = ['Low', 'Medium', 'High', 'Critical'] as const;
 export type RiskCategory = (typeof RISK_CATEGORIES)[number];
+
+export const INCIDENT_RISK_CATEGORY_THRESHOLDS = {
+  lowMax: 5,
+  mediumMax: 12,
+  highMax: 19
+} as const;
+
+export type IncidentRiskCategory = 'Low' | 'Medium' | 'High' | 'Critical';
+
+export function getIncidentRiskCategory(product: number): IncidentRiskCategory {
+  const score = Math.max(1, Math.min(25, Math.round(product)));
+  if (score <= INCIDENT_RISK_CATEGORY_THRESHOLDS.lowMax) return 'Low';
+  if (score <= INCIDENT_RISK_CATEGORY_THRESHOLDS.mediumMax) return 'Medium';
+  if (score <= INCIDENT_RISK_CATEGORY_THRESHOLDS.highMax) return 'High';
+  return 'Critical';
+}
 
 export const LOSS_TYPES = [
   'production loss',
