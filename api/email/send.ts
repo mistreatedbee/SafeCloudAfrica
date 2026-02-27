@@ -22,35 +22,36 @@ export default async function handler(req: any, res: any) {
   if (!apiKey || !from) {
     return res.status(500).json({
       ok: false,
-      error: 'Email provider not configured. Set RESEND_API_KEY (replace re_xxxxxxxxx with your real key) and EMAIL_FROM.'
+      error: 'Email provider not configured. Set RESEND_API_KEY and EMAIL_FROM.'
     });
   }
   const resend = new Resend(apiKey);
 
   const body = (req.body ?? {}) as EmailRequest;
-  const to = asArray(body.to ?? []).map((entry) => String(entry || '').trim()).filter(Boolean);
-  const subject = String(body.subject ?? '').trim();
-  const html = String(body.html ?? '').trim();
-  const text = String(body.text ?? '').trim();
+  const to = asArray((body.to ?? '') as string | string[]).map((entry) => String(entry || '').trim()).filter(Boolean);
+  const subject = String(body.subject ?? 'SafeCloud Africa Invite').trim() || 'SafeCloud Africa Invite';
+  const html = body.html && body.html.trim().length ? body.html : null;
+  const text = body.text && body.text.trim().length ? body.text : null;
 
-  if (to.length === 0 || !subject || (!html && !text)) {
+  if (to.length === 0) {
     return res.status(400).json({ ok: false, error: 'Invalid payload' });
   }
 
   try {
-    const { error } = await resend.emails.send({
-        from,
-        to,
-        subject,
-        html: html || undefined,
-        text: text || undefined
-    });
+    const emailPayload =
+      html ? { from, to, subject, html } :
+      text ? { from, to, subject, text } :
+      { from, to, subject, text: 'Hello' };
+
+    const { error } = await resend.emails.send(emailPayload as any);
     if (error) {
-      return res.status(502).json({ ok: false, error: error.message || 'Resend send failed' });
+      console.error('EMAIL_SEND_ERROR', error);
+      return res.status(500).json({ ok: false, error: String(error.message || error) });
     }
 
     return res.status(200).json({ ok: true });
-  } catch (error: any) {
-    return res.status(500).json({ ok: false, error: error?.message ?? 'Email request failed' });
+  } catch (err: any) {
+    console.error('EMAIL_SEND_ERROR', err);
+    return res.status(500).json({ ok: false, error: String(err?.message || err) });
   }
 }
