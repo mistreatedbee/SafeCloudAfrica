@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Plus, Search, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { AlertTriangleIcon, PlusIcon, SearchIcon, Loader2Icon } from 'lucide-react';
 import { useUser } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
+import { Layout } from '../components/layout/Layout';
+import { StatusBadge } from '../components/ui/StatusBadge';
 import {
   createRiskAssessment,
   listRiskAssessments,
@@ -21,6 +24,14 @@ const CREATE_TYPES: Array<{ type: AssessmentType; title: string; blurb: string }
 ];
 
 type RiskLevelFilter = 'all' | 'low' | 'medium' | 'high' | 'critical';
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
+};
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0 }
+};
 
 export function RisksPage() {
   const { activeCompanyId, activeRole } = useTenant();
@@ -147,60 +158,81 @@ export function RisksPage() {
   }, [assessments]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+    <Layout title="Risk Assessments">
+      <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="w-8 h-8 text-orange-600" />
-            <h1 className="text-3xl font-bold text-gray-900">Risk Assessments</h1>
+            <AlertTriangleIcon className="w-7 h-7 text-warning" />
+            <div>
+              <h1 className="text-2xl font-bold text-charcoal">Risk Assessments</h1>
+              <p className="text-sm text-charcoal-500">Updated baseline, task, critical-task and pre-work forms.</p>
+            </div>
           </div>
           <button
+            type="button"
             onClick={() => setShowCreate((s) => !s)}
             disabled={!canCreate}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <Plus className="w-5 h-5" />
+            <PlusIcon className="w-4 h-4" />
             New Assessment
           </button>
-        </div>
+        </motion.div>
 
         {showCreate && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6 border border-blue-200">
-            <h3 className="font-semibold text-gray-900 mb-4">Select Updated Assessment Type</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
+            <h3 className="font-semibold text-charcoal mb-4">Select Assessment Type</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {CREATE_TYPES.map((entry) => (
                 <button
                   key={entry.type}
+                  type="button"
                   onClick={() => void handleCreateAssessment(entry.type)}
-                  className="bg-blue-50 hover:bg-blue-100 border border-blue-300 rounded-lg p-4 text-left transition"
+                  className="text-left rounded-xl border border-surface-300 bg-surface-50 hover:bg-surface-100 p-4 transition-colors"
                 >
-                  <h4 className="font-semibold text-blue-900 mb-1">{entry.title}</h4>
-                  <p className="text-sm text-blue-700">{entry.blurb}</p>
+                  <p className="font-semibold text-charcoal">{entry.title}</p>
+                  <p className="text-sm text-charcoal-500 mt-1">{entry.blurb}</p>
                 </button>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
 
-        {error && <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-red-700">{error}</div>}
+        {error && (
+          <motion.div variants={itemVariants} className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">
+            <p className="text-sm font-semibold text-critical">Unable to load risk assessments</p>
+            <p className="text-sm text-charcoal-500 mt-1">{error}</p>
+          </motion.div>
+        )}
 
-        <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-3">
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg"
-            />
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} className="px-3 py-2 border border-gray-300 rounded-lg">
+        <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="relative">
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
+              <input
+                type="text"
+                placeholder="Search assessments..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-3 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+              />
+            </div>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as any)}
+              className="px-3 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            >
               <option value="all">All Types</option>
               <option value="baseline">Baseline</option>
               <option value="task">Task</option>
               <option value="critical_task">Critical Task</option>
-              <option value="pre_work">Pre-Work Daily</option>
+              <option value="pre_work">Pre-Work</option>
             </select>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className="px-3 py-2 border border-gray-300 rounded-lg">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="px-3 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            >
               <option value="all">All Status</option>
               <option value="draft">Draft</option>
               <option value="in-progress">In Progress</option>
@@ -210,60 +242,74 @@ export function RisksPage() {
               <option value="approved">Approved</option>
               <option value="closed">Closed</option>
             </select>
-            <select value={riskLevelFilter} onChange={(e) => setRiskLevelFilter(e.target.value as RiskLevelFilter)} className="px-3 py-2 border border-gray-300 rounded-lg">
+            <select
+              value={riskLevelFilter}
+              onChange={(e) => setRiskLevelFilter(e.target.value as RiskLevelFilter)}
+              className="px-3 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            >
               <option value="all">All Risk Levels</option>
               <option value="high">High / Critical</option>
               <option value="medium">Medium</option>
               <option value="low">Low</option>
             </select>
-            <select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg">
+            <select
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              className="px-3 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            >
               <option value="all">All Months</option>
               {monthOptions.map((m) => (
-                <option key={m} value={m}>{m}</option>
+                <option key={m} value={m}>
+                  {m}
+                </option>
               ))}
             </select>
             <input
               type="text"
-              placeholder="Department"
+              placeholder="Filter department"
               value={departmentFilter}
               onChange={(e) => setDepartmentFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg"
+              className="px-3 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
             />
             <input
               type="text"
-              placeholder="Site"
+              placeholder="Filter site"
               value={siteFilter}
               onChange={(e) => setSiteFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg"
+              className="px-3 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
             />
           </div>
-        </div>
+        </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-md overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="font-semibold text-gray-900">Assessments ({filteredAssessments.length})</h2>
+            <div className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">
+              <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between">
+                <h2 className="font-semibold text-charcoal">Assessments</h2>
+                <span className="text-sm text-charcoal-400">{filteredAssessments.length}</span>
               </div>
               <div className="divide-y max-h-[32rem] overflow-y-auto">
                 {loading ? (
                   <div className="p-6 text-center">
-                    <Loader2 className="w-8 h-8 text-gray-400 animate-spin mx-auto" />
+                    <Loader2Icon className="w-8 h-8 text-charcoal-400 animate-spin mx-auto" />
                   </div>
                 ) : filteredAssessments.length === 0 ? (
-                  <div className="p-6 text-center text-gray-500">No assessments found</div>
+                  <div className="p-6 text-center text-sm text-charcoal-500">No assessments found.</div>
                 ) : (
                   filteredAssessments.map((assessment) => (
                     <button
                       key={assessment.id}
+                      type="button"
                       onClick={() => handleSelectAssessment(assessment)}
-                      className={`w-full text-left p-4 hover:bg-gray-50 transition ${selectedAssessment?.id === assessment.id ? 'bg-blue-50 border-l-4 border-blue-600' : ''}`}
+                      className={`w-full text-left p-4 transition-colors hover:bg-surface-50 ${
+                        selectedAssessment?.id === assessment.id ? 'bg-teal/10 border-l-4 border-teal' : ''
+                      }`}
                     >
-                      <p className="font-medium text-gray-900 truncate">{assessment.assessment_number}</p>
-                      <p className="text-sm text-gray-600 truncate">{assessment.title}</p>
-                      <div className="flex gap-2 mt-2">
-                        <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">{getAssessmentLabel(assessment)}</span>
-                        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">{assessment.status}</span>
+                      <p className="font-medium text-charcoal truncate">{assessment.assessment_number}</p>
+                      <p className="text-sm text-charcoal-500 truncate mt-0.5">{assessment.title}</p>
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <span className="text-xs px-2 py-1 rounded bg-surface-100 text-charcoal-600">{getAssessmentLabel(assessment)}</span>
+                        <StatusBadge status={assessment.status as any} size="sm" />
                       </div>
                     </button>
                   ))
@@ -274,63 +320,69 @@ export function RisksPage() {
 
           <div className="lg:col-span-2">
             {selectedAssessment ? (
-              <div className="bg-white rounded-lg shadow-md overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                  <h2 className="font-semibold text-gray-900">{selectedAssessment.title}</h2>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {selectedAssessment.assessment_number} | {getAssessmentLabel(selectedAssessment)} | {selectedAssessment.status}
+              <div className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">
+                <div className="px-5 py-4 border-b border-surface-200 bg-surface-50">
+                  <h2 className="font-semibold text-charcoal">{selectedAssessment.title}</h2>
+                  <p className="text-sm text-charcoal-500 mt-1">
+                    {selectedAssessment.assessment_number} • {getAssessmentLabel(selectedAssessment)}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Department: {selectedAssessment.process_involved ?? 'N/A'} | Site: {selectedAssessment.location ?? 'N/A'}
+                  <p className="text-xs text-charcoal-500 mt-1">
+                    Department: {selectedAssessment.process_involved ?? 'N/A'} • Site: {selectedAssessment.location ?? 'N/A'}
                   </p>
                 </div>
-                <div className="p-6">
-                  <div className="grid grid-cols-4 gap-4 mb-6">
-                    <div className="bg-red-50 rounded-lg p-4 text-center">
-                      <p className="text-2xl font-bold text-red-600">{selectedAssessment.high_risks}</p>
-                      <p className="text-xs text-red-700 mt-1">High/Critical</p>
+                <div className="p-5 space-y-6">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="bg-critical/10 rounded-xl p-3 text-center">
+                      <p className="text-xl font-bold text-critical">{selectedAssessment.high_risks}</p>
+                      <p className="text-xs text-charcoal-500 mt-1">High/Critical</p>
                     </div>
-                    <div className="bg-yellow-50 rounded-lg p-4 text-center">
-                      <p className="text-2xl font-bold text-yellow-600">{selectedAssessment.medium_risks}</p>
-                      <p className="text-xs text-yellow-700 mt-1">Medium</p>
+                    <div className="bg-warning/10 rounded-xl p-3 text-center">
+                      <p className="text-xl font-bold text-warning">{selectedAssessment.medium_risks}</p>
+                      <p className="text-xs text-charcoal-500 mt-1">Medium</p>
                     </div>
-                    <div className="bg-green-50 rounded-lg p-4 text-center">
-                      <p className="text-2xl font-bold text-green-600">{selectedAssessment.low_risks}</p>
-                      <p className="text-xs text-green-700 mt-1">Low</p>
+                    <div className="bg-success/10 rounded-xl p-3 text-center">
+                      <p className="text-xl font-bold text-success">{selectedAssessment.low_risks}</p>
+                      <p className="text-xs text-charcoal-500 mt-1">Low</p>
                     </div>
-                    <div className="bg-blue-50 rounded-lg p-4 text-center">
-                      <p className="text-2xl font-bold text-blue-600">{selectedAssessment.total_risks}</p>
-                      <p className="text-xs text-blue-700 mt-1">Total</p>
+                    <div className="bg-teal/10 rounded-xl p-3 text-center">
+                      <p className="text-xl font-bold text-teal">{selectedAssessment.total_risks}</p>
+                      <p className="text-xs text-charcoal-500 mt-1">Total</p>
                     </div>
                   </div>
 
-                  <h3 className="font-semibold text-gray-900 mb-4">Risk Items ({assessmentItems.length})</h3>
-                  {assessmentItems.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">No risk items captured yet.</div>
-                  ) : (
-                    <div className="space-y-3 max-h-80 overflow-y-auto">
-                      {assessmentItems.map((item) => (
-                        <div key={item.id} className="border border-gray-200 rounded-lg p-4">
-                          <p className="font-medium text-gray-900">{item.hazard_description}</p>
-                          <p className="text-xs text-gray-600 mt-2">
-                            Level: {item.risk_level.toUpperCase()} | Rating: {item.risk_rating} | S x L: {item.consequence} x {item.likelihood}
-                          </p>
-                          {item.existing_controls && <p className="text-xs text-gray-600 mt-1">Controls: {item.existing_controls}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div>
+                    <h3 className="font-semibold text-charcoal mb-3">Risk Items ({assessmentItems.length})</h3>
+                    {assessmentItems.length === 0 ? (
+                      <div className="bg-surface-50 border border-surface-200 rounded-xl p-6 text-center text-sm text-charcoal-500">
+                        No risk items captured yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-80 overflow-y-auto">
+                        {assessmentItems.map((item) => (
+                          <div key={item.id} className="border border-surface-300 rounded-xl p-4">
+                            <p className="font-medium text-charcoal">{item.hazard_description}</p>
+                            <p className="text-xs text-charcoal-500 mt-2">
+                              Level: {item.risk_level.toUpperCase()} • Rating: {item.risk_rating} • S x L: {item.consequence} x {item.likelihood}
+                            </p>
+                            {item.existing_controls && (
+                              <p className="text-xs text-charcoal-500 mt-1">Controls: {item.existing_controls}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-lg shadow-md p-12 text-center">
-                <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">Select an assessment to view details</p>
+              <div className="bg-white rounded-xl border border-surface-300 p-12 text-center shadow-card">
+                <AlertTriangleIcon className="w-12 h-12 text-charcoal-300 mx-auto mb-3" />
+                <p className="text-sm text-charcoal-500">Select an assessment to view details.</p>
               </div>
             )}
           </div>
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      </motion.div>
+    </Layout>
   );
 }
