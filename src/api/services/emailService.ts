@@ -87,7 +87,15 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
     if (!data || typeof data !== 'object' || data.ok !== false) return;
   }
 
-  const endpoints = ['/api/functions/emailSend', '/functions/emailSend'];
+  const configuredBaseUrl =
+    ((import.meta as any)?.env?.VITE_INSFORGE_BASE_URL as string | undefined) ??
+    'https://pas375jb.us-west.insforge.app';
+  const insforgeBase = configuredBaseUrl.replace(/\/+$/, '');
+
+  const endpoints = [
+    `${insforgeBase}/api/functions/emailSend`,
+    '/api/functions/emailSend'
+  ];
   let lastError = sdkResult.error?.message || 'Email function invocation failed.';
 
   for (const endpoint of endpoints) {
