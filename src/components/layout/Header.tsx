@@ -38,10 +38,12 @@ function SeatsRemainingBadge() {
 }
 
 export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed, title }: HeaderProps) {
-  const { activeCompanyId } = useTenant();
+  const { activeCompanyId, activeRole, isPlatformAdmin } = useTenant();
   const { user } = useUser();
   const { organisationName, roleLabel } = useIdentity();
   const [items, setItems] = useState<NotificationItem[]>([]);
+  const canSeeVersion = isPlatformAdmin || activeRole === 'owner' || activeRole === 'admin';
+  const appVersion = __APP_VERSION__ || 'dev';
 
   useEffect(() => {
     let isMounted = true;
@@ -117,6 +119,11 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed, title
             <span className="px-2 py-0.5 rounded bg-teal/10 text-teal font-medium text-xs">
               {roleLabel}
             </span>
+            {canSeeVersion && (
+              <span className="px-2 py-0.5 rounded bg-surface-100 border border-surface-300 text-charcoal-500 font-medium text-[11px]">
+                Release {appVersion}
+              </span>
+            )}
           </div>
           <SeatsRemainingBadge />
           <button

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader } from 'lucide-react';
-import { formsService } from '../../api/services/formsService';
+import { submitForm } from '../../api/services/formsService';
 
 interface FormField {
   id: string;
@@ -8,7 +8,7 @@ interface FormField {
   type: 'text' | 'textarea' | 'select' | 'checkbox' | 'radio' | 'date' | 'file';
   placeholder?: string;
   required: boolean;
-  options?: { value: string; label: string }[];
+  options?: string[];
 }
 
 interface FormSubmissionFormProps {
@@ -59,7 +59,7 @@ export function FormSubmissionForm({ templateId, template, onSubmitSuccess }: Fo
     setSubmitError(null);
 
     try {
-      await formsService.submitForm(templateId, formData);
+      await submitForm({ templateId, data: formData });
       setSubmitStatus('success');
       setFormData({});
       setValidationErrors({});
@@ -197,8 +197,8 @@ export function FormSubmissionForm({ templateId, template, onSubmitSuccess }: Fo
                   >
                     <option value="">Select an option</option>
                     {field.options?.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
+                      <option key={opt} value={opt}>
+                        {opt}
                       </option>
                     ))}
                   </select>
@@ -219,16 +219,16 @@ export function FormSubmissionForm({ templateId, template, onSubmitSuccess }: Fo
                 {field.type === 'radio' && (
                   <div className="space-y-2">
                     {field.options?.map((opt) => (
-                      <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                      <label key={opt} className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="radio"
                           name={field.id}
-                          value={opt.value}
-                          checked={formData[field.id] === opt.value}
+                          value={opt}
+                          checked={formData[field.id] === opt}
                           onChange={(e) => handleFieldChange(field.id, e.target.value)}
                           className="w-4 h-4 cursor-pointer"
                         />
-                        <span className="text-gray-700">{opt.label}</span>
+                        <span className="text-gray-700">{opt}</span>
                       </label>
                     ))}
                   </div>

@@ -68,7 +68,6 @@ export async function createFormTemplate(input: CreateFormTemplateInput): Promis
 
   let storage_bucket: StorageBucket | undefined;
   let storage_key: string | undefined;
-  let pdf_url: string | undefined;
 
   // Upload PDF if provided
   if (input.pdfFile) {
@@ -78,13 +77,12 @@ export async function createFormTemplate(input: CreateFormTemplateInput): Promis
       metadata: {
         company_id: input.companyId,
         module: input.module,
-        title: input.title
+        name: input.name
       }
     });
 
     storage_bucket = uploadResult.bucket;
     storage_key = uploadResult.key;
-    pdf_url = uploadResult.url;
   }
 
   const { data, error } = await insforge.database
@@ -170,8 +168,8 @@ export async function deleteFormTemplate(templateId: UUID): Promise<void> {
   if (error) throw new Error(`Failed to delete form template: ${error.message}`);
 
   // Delete associated files
-  if (template.storage_key && template.storage_bucket) {
-    await deleteFile(template.storage_bucket, template.storage_key);
+  if (template.original_pdf_key && template.original_pdf_bucket) {
+    await deleteFile(template.original_pdf_bucket, template.original_pdf_key);
   }
 }
 

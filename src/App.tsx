@@ -685,6 +685,26 @@ export function App() {
             }
           />
           <Route
+            path="/dashboard/forms"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <FormsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/forms"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <FormsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/tasks"
             element={
               <RequireSignedIn>
