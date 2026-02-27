@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { XIcon, FileTextIcon, ImageIcon, Trash2Icon, ExternalLinkIcon } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { XIcon, FileTextIcon, ImageIcon, Trash2Icon, ExternalLinkIcon, DownloadIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { UUID } from '../../api/models/core';
@@ -11,7 +12,8 @@ import {
   IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS,
   getIncidentRiskCategory
 } from '../../api/models/core';
-import { createIncident } from '../../api/services/incidentsService';
+import type { Incident } from '../../api/models/entities';
+import { createIncident, updateIncident } from '../../api/services/incidentsService';
 import { createEvidence } from '../../api/services/evidenceService';
 import { uploadFile } from '../../api/services/storageService';
 
@@ -58,9 +60,13 @@ export function IncidentCreateModal(props: {
   onClose: () => void;
   companyId: UUID;
   createdByUserId: UUID;
+  incident?: Incident | null;
   defaultModule?: ModuleKey;
   onCreated?: () => void;
+  onUpdated?: (incident: Incident) => void;
 }) {
+  const editingIncident = props.incident ?? null;
+  const isEditing = Boolean(editingIncident);
   const [module, setModule] = useState<ModuleKey>(props.defaultModule ?? 'safety');
   const [incidentType, setIncidentType] = useState('Accident');
   const [category, setCategory] = useState<IncidentCategory>(INCIDENT_CATEGORIES[0]);
@@ -173,6 +179,77 @@ export function IncidentCreateModal(props: {
     setError(null);
   }
 
+  useEffect(() => {
+    if (!props.open) return;
+    if (!editingIncident) {
+      resetForm();
+      return;
+    }
+    releasePreviews(evidenceUploads);
+    releasePreviews(investigationUploads);
+    const occurred = new Date(editingIncident.occurred_at);
+    const isValidOccurred = !Number.isNaN(occurred.getTime());
+    const datePart = isValidOccurred ? occurred.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const timePart = isValidOccurred ? `${String(occurred.getHours()).padStart(2, '0')}:${String(occurred.getMinutes()).padStart(2, '0')}` : '08:00';
+
+    setModule((editingIncident.module as ModuleKey) ?? (props.defaultModule ?? 'safety'));
+    setIncidentType((editingIncident as any).incident_type ?? (editingIncident as any).type_of_incident ?? 'Accident');
+    setCategory(editingIncident.category ?? INCIDENT_CATEGORIES[0]);
+    setSubcategory(editingIncident.subcategory ?? '');
+    setSubcategoryManual('');
+    setUseManualSubcategory(false);
+    setTitle(editingIncident.title ?? '');
+    setProjectClient((editingIncident as any).project_client ?? '');
+    setIncidentDate(datePart);
+    setIncidentTime(timePart);
+    setLocation(editingIncident.location ?? '');
+    setNatureOfIncident((editingIncident as any).nature_of_incident ?? '');
+    setCauseOfIncident((editingIncident as any).cause_of_incident ?? (editingIncident as any).cause ?? '');
+    setAffectedPerson((editingIncident as any).affected_person ?? '');
+    setReportedBy((editingIncident as any).reported_by ?? '');
+    setReportedTo((editingIncident as any).reported_to ?? '');
+    setCopyTo(Array.isArray((editingIncident as any).copy_to_emails) ? (editingIncident as any).copy_to_emails.join(', ') : '');
+    setRiskLikelihood(Math.max(1, Math.min(5, Number((editingIncident as any).risk_likelihood_1_5 ?? 3))) as 1 | 2 | 3 | 4 | 5);
+    setRiskSeverity(Math.max(1, Math.min(5, Number((editingIncident as any).risk_severity_1_5 ?? 3))) as 1 | 2 | 3 | 4 | 5);
+    setInvestigationRequired(Boolean((editingIncident as any).investigation_required));
+    setLossProduction((editingIncident as any).loss_production_value != null ? String((editingIncident as any).loss_production_value) : '');
+    setLossFinancial((editingIncident as any).loss_financial_value != null ? String((editingIncident as any).loss_financial_value) : '');
+    setLossReputational((editingIncident as any).loss_reputational_value != null ? String((editingIncident as any).loss_reputational_value) : '');
+    setLossDamageAsset((editingIncident as any).loss_damage_asset_value != null ? String((editingIncident as any).loss_damage_asset_value) : '');
+    setLossIllnessInjury((editingIncident as any).loss_illness_injury_value != null ? String((editingIncident as any).loss_illness_injury_value) : '');
+    setLossOther((editingIncident as any).loss_other_text ?? '');
+    setLossNotes((editingIncident as any).loss_notes ?? '');
+
+    const mapCauseEntries = (value: unknown) => {
+      const next: Record<string, UnsafeCauseEntry> = {};
+      if (!Array.isArray(value)) return next;
+      for (const entry of value as Array<any>) {
+        if (!entry || typeof entry !== 'object') continue;
+        const group = String(entry.group ?? '').trim();
+        const item = String(entry.item ?? '').trim();
+        if (!group || !item) continue;
+        const key = makeCauseKey(group, item);
+        next[key] = { group, item, note: String(entry.note ?? '') };
+      }
+      return next;
+    };
+
+    setUnsafeActs(mapCauseEntries((editingIncident as any).immediate_causes_unsafe_acts));
+    setUnsafeConditions(mapCauseEntries((editingIncident as any).immediate_causes_unsafe_conditions));
+    setEvidenceUploads([]);
+    setInvestigationUploads([]);
+    setError(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open, editingIncident?.id]);
+
+  useEffect(() => {
+    return () => {
+      releasePreviews(evidenceUploads);
+      releasePreviews(investigationUploads);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function addUploads(files: FileList | null, section: 'evidence' | 'investigation') {
     if (!files) return;
     const drafts = Array.from(files).map(buildUploadDraft);
@@ -260,50 +337,91 @@ export function IncidentCreateModal(props: {
       setLoading(true);
       const occurredAt = new Date(`${incidentDate}T${incidentTime}`).toISOString();
 
-      const incident = await createIncident({
-        companyId: props.companyId,
-        module,
-        category,
-        subcategory: finalSubcategory,
-        title: title.trim(),
-        description: null,
-        incidentType: incidentType.trim() || undefined,
-        projectClient: projectClient.trim() || undefined,
-        natureOfIncident: natureOfIncident.trim(),
-        causeOfIncident: causeOfIncident.trim(),
-        affectedPerson: affectedPerson.trim() || undefined,
-        reportedBy: reportedBy.trim(),
-        reportedTo: reportedTo.trim(),
-        copyToEmails: copyTo
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean),
-        investigationRequired,
-        unsafeActs: Object.values(unsafeActs),
-        unsafeConditions: Object.values(unsafeConditions),
-        losses: {
-          productionLoss: parseOptionalNumber(lossProduction),
-          financialLoss: parseOptionalNumber(lossFinancial),
-          reputationalLoss: parseOptionalNumber(lossReputational),
-          damageAssetLoss: parseOptionalNumber(lossDamageAsset),
-          illnessInjuryImpact: parseOptionalNumber(lossIllnessInjury),
-          other: lossOther.trim() || null,
-          notes: lossNotes.trim() || null
-        },
-        riskSeverity1To5: riskSeverity,
-        riskLikelihood1To5: riskLikelihood,
-        riskRatingProduct: calculatedRisk,
-        riskClassification: calculatedRiskCategory,
-        severity: toLegacySeverity(riskSeverity),
-        occurredAt,
-        location: location.trim() || undefined,
-        createdByUserId: props.createdByUserId
-      });
+      const copyToEmails = copyTo
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const unsafeActsData = Object.values(unsafeActs);
+      const unsafeConditionsData = Object.values(unsafeConditions);
 
-      await uploadEvidenceForIncident(incident.id, evidenceUploads, 'incident');
-      await uploadEvidenceForIncident(incident.id, investigationUploads, 'incident_investigation');
+      if (isEditing && editingIncident) {
+        const updated = await updateIncident(editingIncident.id, {
+          module,
+          category,
+          subcategory: finalSubcategory,
+          title: title.trim(),
+          description: null,
+          incidentType: incidentType.trim() || null,
+          projectClient: projectClient.trim() || null,
+          natureOfIncident: natureOfIncident.trim() || null,
+          causeOfIncident: causeOfIncident.trim() || null,
+          affectedPerson: affectedPerson.trim() || null,
+          reportedBy: reportedBy.trim() || null,
+          reportedTo: reportedTo.trim() || null,
+          copyToEmails: copyToEmails.length > 0 ? copyToEmails : null,
+          investigationRequired,
+          unsafeActs: unsafeActsData,
+          unsafeConditions: unsafeConditionsData,
+          lossProductionValue: parseOptionalNumber(lossProduction),
+          lossFinancialValue: parseOptionalNumber(lossFinancial),
+          lossReputationalValue: parseOptionalNumber(lossReputational),
+          lossDamageAssetValue: parseOptionalNumber(lossDamageAsset),
+          lossIllnessInjuryValue: parseOptionalNumber(lossIllnessInjury),
+          lossOtherText: lossOther.trim() || null,
+          lossNotes: lossNotes.trim() || null,
+          riskSeverity1To5: riskSeverity,
+          riskLikelihood1To5: riskLikelihood,
+          riskRatingProduct: calculatedRisk,
+          riskClassification: calculatedRiskCategory,
+          severity: toLegacySeverity(riskSeverity),
+          occurredAt,
+          location: location.trim() || null
+        } as any);
+        await uploadEvidenceForIncident(updated.id, evidenceUploads, 'incident');
+        await uploadEvidenceForIncident(updated.id, investigationUploads, 'incident_investigation');
+        props.onUpdated?.(updated);
+      } else {
+        const incident = await createIncident({
+          companyId: props.companyId,
+          module,
+          category,
+          subcategory: finalSubcategory,
+          title: title.trim(),
+          description: null,
+          incidentType: incidentType.trim() || undefined,
+          projectClient: projectClient.trim() || undefined,
+          natureOfIncident: natureOfIncident.trim(),
+          causeOfIncident: causeOfIncident.trim(),
+          affectedPerson: affectedPerson.trim() || undefined,
+          reportedBy: reportedBy.trim(),
+          reportedTo: reportedTo.trim(),
+          copyToEmails,
+          investigationRequired,
+          unsafeActs: unsafeActsData,
+          unsafeConditions: unsafeConditionsData,
+          losses: {
+            productionLoss: parseOptionalNumber(lossProduction),
+            financialLoss: parseOptionalNumber(lossFinancial),
+            reputationalLoss: parseOptionalNumber(lossReputational),
+            damageAssetLoss: parseOptionalNumber(lossDamageAsset),
+            illnessInjuryImpact: parseOptionalNumber(lossIllnessInjury),
+            other: lossOther.trim() || null,
+            notes: lossNotes.trim() || null
+          },
+          riskSeverity1To5: riskSeverity,
+          riskLikelihood1To5: riskLikelihood,
+          riskRatingProduct: calculatedRisk,
+          riskClassification: calculatedRiskCategory,
+          severity: toLegacySeverity(riskSeverity),
+          occurredAt,
+          location: location.trim() || undefined,
+          createdByUserId: props.createdByUserId
+        });
 
-      props.onCreated?.();
+        await uploadEvidenceForIncident(incident.id, evidenceUploads, 'incident');
+        await uploadEvidenceForIncident(incident.id, investigationUploads, 'incident_investigation');
+        props.onCreated?.();
+      }
       props.onClose();
       resetForm();
     } catch (err: any) {
@@ -317,7 +435,12 @@ export function IncidentCreateModal(props: {
     return (
       <div className="space-y-3">
         <label className="block text-sm font-semibold text-charcoal">{titleText}</label>
-        <input type="file" multiple onChange={(e) => addUploads(e.target.files, section)} className="w-full text-sm" />
+        <input
+          type="file"
+          multiple
+          onChange={(e) => addUploads(e.target.files, section)}
+          className="w-full text-sm"
+        />
         {items.length > 0 && (
           <div className="space-y-2">
             {items.map((entry) => (
@@ -335,16 +458,27 @@ export function IncidentCreateModal(props: {
                       className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal"
                     />
                     {entry.previewUrl && (
+                      <img src={entry.previewUrl} alt={entry.displayName || entry.file.name} className="w-24 h-24 object-cover rounded-lg border border-surface-200" />
+                    )}
+                    <div className="flex items-center gap-3 text-xs">
                       <a
-                        href={entry.previewUrl}
+                        href={entry.previewUrl ?? '#'}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-teal hover:text-teal-700"
+                        className={`inline-flex items-center gap-1 ${entry.previewUrl ? 'text-teal hover:text-teal-700' : 'text-charcoal-400 pointer-events-none'}`}
                       >
                         <ExternalLinkIcon className="w-3.5 h-3.5" />
-                        Preview image
+                        Open
                       </a>
-                    )}
+                      <a
+                        href={entry.previewUrl ?? '#'}
+                        download={entry.displayName || entry.file.name}
+                        className={`inline-flex items-center gap-1 ${entry.previewUrl ? 'text-charcoal-600 hover:text-charcoal' : 'text-charcoal-400 pointer-events-none'}`}
+                      >
+                        <DownloadIcon className="w-3.5 h-3.5" />
+                        Download
+                      </a>
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -408,14 +542,13 @@ export function IncidentCreateModal(props: {
   }
 
   if (!props.open) return null;
-
-  return (
-    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto p-3 sm:p-6">
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-3 pt-16 sm:p-6 sm:pt-20">
       <div className="absolute inset-0 bg-black/45" onClick={props.onClose} />
       <div className="relative w-full max-w-6xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-surface-200 px-5 py-4 flex items-center justify-between z-10">
           <div>
-            <p className="text-sm font-semibold text-charcoal">Updated Incident Form</p>
+            <p className="text-sm font-semibold text-charcoal">{isEditing ? 'Edit Incident (Updated Form)' : 'Updated Incident Form'}</p>
             <p className="text-xs text-charcoal-500 mt-0.5">Likelihood and severity use 1-5 scale. Risk is auto-calculated.</p>
           </div>
           <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
@@ -724,11 +857,12 @@ export function IncidentCreateModal(props: {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-critical text-white text-sm font-semibold hover:bg-critical-600 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading && <LoadingSpinner size={16} />}
-              Save incident
+              {isEditing ? 'Save changes' : 'Save incident'}
             </button>
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

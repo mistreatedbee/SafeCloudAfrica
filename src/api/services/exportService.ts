@@ -97,6 +97,12 @@ export function exportIncidentsCSV(incidents: Incident[]): Blob {
     'Severity',
     'Status',
     'Location',
+    'Likelihood (1-5)',
+    'Severity (1-5)',
+    'Calculated Risk',
+    'Risk Category',
+    'Unsafe Acts',
+    'Unsafe Conditions',
     'Occurred Date',
     'Created By',
     'Created Date',
@@ -111,6 +117,12 @@ export function exportIncidentsCSV(incidents: Incident[]): Blob {
     incident.severity,
     incident.status,
     incident.location || '',
+    String((incident as any).risk_likelihood_1_5 ?? ''),
+    String((incident as any).risk_severity_1_5 ?? ''),
+    String((incident as any).risk_rating_product ?? ''),
+    String((incident as any).risk_classification ?? ''),
+    summarizeUnsafeItems((incident as any).immediate_causes_unsafe_acts),
+    summarizeUnsafeItems((incident as any).immediate_causes_unsafe_conditions),
     new Date(incident.occurred_at).toLocaleDateString(),
     incident.created_by_user_id.slice(0, 8),
     new Date(incident.created_at).toLocaleDateString(),
@@ -122,6 +134,18 @@ export function exportIncidentsCSV(incidents: Incident[]): Blob {
   ].join('\n');
 
   return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+}
+
+function summarizeUnsafeItems(value: unknown): string {
+  if (!Array.isArray(value)) return '';
+  return value
+    .map((entry: any) => {
+      const item = String(entry?.item ?? '').trim();
+      const note = String(entry?.note ?? '').trim();
+      return note ? `${item} (${note})` : item;
+    })
+    .filter(Boolean)
+    .join('; ');
 }
 
 /**
@@ -159,6 +183,8 @@ function generateIncidentHTML(
   options: { includeEvidence: boolean; includeSignatures: boolean; fontSize: number; companyName?: string }
 ): string {
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString();
+  const unsafeActs = summarizeUnsafeItems((incident as any).immediate_causes_unsafe_acts) || 'Not specified';
+  const unsafeConditions = summarizeUnsafeItems((incident as any).immediate_causes_unsafe_conditions) || 'Not specified';
 
   return `
     <!DOCTYPE html>
@@ -255,6 +281,12 @@ function generateIncidentHTML(
         <div class="field"><span class="field-label">Illness/Injury:</span><span class="field-value">${incident.loss_illness_injury_value ?? '-'}</span></div>
         <div class="field"><span class="field-label">Other:</span><span class="field-value">${incident.loss_other_text ?? '-'}</span></div>
         <div class="field"><span class="field-label">Loss Notes:</span><span class="field-value">${incident.loss_notes ?? '-'}</span></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Unsafe Acts & Conditions</div>
+        <div class="field"><span class="field-label">Unsafe Acts:</span><span class="field-value">${unsafeActs}</span></div>
+        <div class="field"><span class="field-label">Unsafe Conditions:</span><span class="field-value">${unsafeConditions}</span></div>
       </div>
 
       ${options.includeEvidence ? `

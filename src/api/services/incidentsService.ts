@@ -273,6 +273,7 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
 }
 
 export type UpdateIncidentPatch = Partial<{
+  module: ModuleKey;
   category: IncidentCategory;
   subcategory: string;
   title: string;
@@ -311,6 +312,7 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
   };
 
   if (patch.category !== undefined) updateData.category = patch.category;
+  if (patch.module !== undefined) updateData.module = patch.module;
   if (patch.subcategory !== undefined) updateData.subcategory = patch.subcategory;
   if (patch.title !== undefined) updateData.title = patch.title;
   if (patch.description !== undefined) updateData.description = patch.description;

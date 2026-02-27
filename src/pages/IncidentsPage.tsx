@@ -18,6 +18,7 @@ import type { Incident } from '../api/models/entities';
 import { useUser } from '@insforge/react';
 
 const IncidentCreateModal = lazy(() => import('../components/incidents/IncidentCreateModal').then(m => ({ default: m.IncidentCreateModal })));
+const IncidentDetailModal = lazy(() => import('../components/incidents/IncidentDetailModal').then(m => ({ default: m.IncidentDetailModal })));
 
 function formatDateZA(iso: string): string {
   const d = new Date(iso);
@@ -72,6 +73,8 @@ export function IncidentsPage() {
   const { user } = useUser();
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
+  const [editingIncident, setEditingIncident] = useState<Incident | null>(null);
+  const [viewIncident, setViewIncident] = useState<Incident | null>(null);
 
   useEffect(() => {
     setCreateOpen(isNew);
@@ -110,15 +113,32 @@ export function IncidentsPage() {
       {activeCompanyId && user?.id && (
         <Suspense fallback={null}>
           <IncidentCreateModal
-            open={createOpen}
+            open={createOpen || Boolean(editingIncident)}
             onClose={() => {
               setCreateOpen(false);
+              setEditingIncident(null);
               if (isNew) navigate('/dashboard/incidents/management', { replace: true });
             }}
             companyId={activeCompanyId}
             createdByUserId={user.id}
+            incident={editingIncident}
             defaultModule="safety"
-            onCreated={() => navigate('/dashboard/incidents/management', { replace: true })}
+            onCreated={() => {
+              void retry();
+              navigate('/dashboard/incidents/management', { replace: true });
+            }}
+            onUpdated={() => {
+              setEditingIncident(null);
+              void retry();
+            }}
+          />
+          <IncidentDetailModal
+            open={Boolean(viewIncident)}
+            onClose={() => setViewIncident(null)}
+            companyId={activeCompanyId}
+            incident={viewIncident}
+            actorUserId={user.id}
+            canEditInvestigation
           />
         </Suspense>
       )}
@@ -261,6 +281,7 @@ export function IncidentsPage() {
           {list.map((incident) => (
           <div
             key={incident.id}
+            onClick={() => setViewIncident(incident)}
             className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer">
 
               <div className="flex items-start gap-4">
@@ -289,7 +310,17 @@ export function IncidentsPage() {
                       >
                         Create Improvement/CAPA
                       </button>
-                      <button className="text-blue hover:text-blue-600 text-sm">Edit</button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingIncident(incident);
+                          setCreateOpen(false);
+                        }}
+                        className="text-blue hover:text-blue-600 text-sm"
+                      >
+                        Edit
+                      </button>
                       <button className="text-critical hover:text-critical-600 text-sm">Delete</button>
                     </div>
                   </div>

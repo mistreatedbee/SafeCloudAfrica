@@ -10,7 +10,6 @@ import { exportIncidentPDF, downloadFile } from '../../api/services/exportServic
 import { useIdentity } from '../../hooks/useIdentity';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listIncidentCorrectiveActions } from '../../api/services/incidentCorrectiveActionsService';
-import type { IncidentCorrectiveAction } from '../../api/models/entities';
 import { IncidentCorrectiveActionsList } from './IncidentCorrectiveActionsList';
 import { IncidentCorrectiveActionModal } from './IncidentCorrectiveActionModal';
 
@@ -27,6 +26,7 @@ export function IncidentDetailModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<EvidenceAttachment[]>([]);
+  const [investigationEvidence, setInvestigationEvidence] = useState<EvidenceAttachment[]>([]);
   const [evidenceRenamingId, setEvidenceRenamingId] = useState<string | null>(null);
   const [evidenceRenameValue, setEvidenceRenameValue] = useState('');
   const [investigation, setInvestigation] = useState<IncidentInvestigation | null>(null);
@@ -64,6 +64,7 @@ export function IncidentDetailModal(props: {
     setTab('details');
     setError(null);
     setEvidence([]);
+    setInvestigationEvidence([]);
     setInvestigation(null);
     setNotes('');
     setInstructionBreakdown('');
@@ -86,11 +87,13 @@ export function IncidentDetailModal(props: {
     (async () => {
       try {
         setLoading(true);
-        const [ev, inv] = await Promise.all([
+        const [ev, invEvidence, inv] = await Promise.all([
           listEvidence(props.companyId, { entityType: 'incident', entityId: incident.id, limit: 200 }),
+          listEvidence(props.companyId, { entityType: 'incident_investigation', entityId: incident.id, limit: 200 }),
           getIncidentInvestigation(props.companyId, incident.id)
         ]);
         setEvidence(ev);
+        setInvestigationEvidence(invEvidence);
         setInvestigation(inv);
         if (inv) {
           setNotes(inv.notes ?? '');
@@ -121,8 +124,8 @@ export function IncidentDetailModal(props: {
 
   const riskSummary = useMemo(() => {
     if (!incident) return '—';
-    const score = (incident as any).risk_score ?? null;
-    const rating = (incident as any).risk_rating ?? (incident as any)?.metadata?.riskLevel ?? null;
+    const score = (incident as any).risk_rating_product ?? (incident as any).risk_score ?? null;
+    const rating = (incident as any).risk_classification ?? (incident as any).risk_rating ?? (incident as any)?.metadata?.riskLevel ?? null;
     if (!score && !rating) return '—';
     return [score ? `Score ${score}` : null, rating ? String(rating).toUpperCase() : null].filter(Boolean).join(' • ');
   }, [incident]);
@@ -197,7 +200,7 @@ export function IncidentDetailModal(props: {
   if (!props.open || !incident) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
       <div className="relative w-full max-w-4xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
@@ -278,6 +281,10 @@ export function IncidentDetailModal(props: {
                     <div>
                       <p className="text-xs text-charcoal-500">Risk</p>
                       <p className="text-charcoal">{riskSummary}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-charcoal-500">Likelihood x Severity</p>
+                      <p className="text-charcoal">{(incident as any).risk_likelihood_1_5 ?? '—'} x {(incident as any).risk_severity_1_5 ?? '—'}</p>
                     </div>
                     <div className="sm:col-span-2">
                       <p className="text-xs text-charcoal-500">Cause</p>
@@ -384,6 +391,65 @@ export function IncidentDetailModal(props: {
                       {String((incident as any).metadata.investigationNotes)}
                     </p>
                   )}
+                </div>
+
+                <div className="rounded-xl border border-surface-200 p-4">
+                  <p className="text-sm font-semibold text-charcoal">Losses</p>
+                  <div className="mt-2 space-y-1 text-sm text-charcoal-600">
+                    <p>Production: {(incident as any).loss_production_value ?? '—'}</p>
+                    <p>Financial: {(incident as any).loss_financial_value ?? '—'}</p>
+                    <p>Reputational: {(incident as any).loss_reputational_value ?? '—'}</p>
+                    <p>Damage/Asset: {(incident as any).loss_damage_asset_value ?? '—'}</p>
+                    <p>Illness/Injury: {(incident as any).loss_illness_injury_value ?? '—'}</p>
+                    <p>Other: {(incident as any).loss_other_text ?? '—'}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-surface-200 p-4">
+                  <p className="text-sm font-semibold text-charcoal">Unsafe acts & conditions</p>
+                  <div className="mt-2 space-y-2 text-xs text-charcoal-600">
+                    <p className="font-semibold text-charcoal-700">Acts</p>
+                    {Array.isArray((incident as any).immediate_causes_unsafe_acts) && (incident as any).immediate_causes_unsafe_acts.length > 0 ? (
+                      (incident as any).immediate_causes_unsafe_acts.map((entry: any, index: number) => (
+                        <div key={`act-${index}`} className="rounded border border-surface-200 p-2">
+                          <p className="font-medium text-charcoal">{entry.item ?? '—'}</p>
+                          <p>{entry.group ?? '—'}</p>
+                          <p>{entry.note ?? 'No notes'}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p>No unsafe acts recorded.</p>
+                    )}
+                    <p className="font-semibold text-charcoal-700 pt-1">Conditions</p>
+                    {Array.isArray((incident as any).immediate_causes_unsafe_conditions) && (incident as any).immediate_causes_unsafe_conditions.length > 0 ? (
+                      (incident as any).immediate_causes_unsafe_conditions.map((entry: any, index: number) => (
+                        <div key={`condition-${index}`} className="rounded border border-surface-200 p-2">
+                          <p className="font-medium text-charcoal">{entry.item ?? '—'}</p>
+                          <p>{entry.group ?? '—'}</p>
+                          <p>{entry.note ?? 'No notes'}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p>No unsafe conditions recorded.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-surface-200 p-4">
+                  <p className="text-sm font-semibold text-charcoal">Investigation evidence</p>
+                  <div className="mt-2 space-y-2">
+                    {investigationEvidence.length === 0 && <p className="text-sm text-charcoal-500">No investigation evidence uploaded yet.</p>}
+                    {investigationEvidence.map((ev) => {
+                      const url = getPublicUrl(ev.storage_bucket as any, ev.storage_key);
+                      const displayName = ev.display_title ?? ev.title ?? (ev as any).original_filename ?? ev.storage_key?.split('/').pop() ?? '—';
+                      return (
+                        <a key={ev.id} href={url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-2 px-2 py-1.5 rounded border border-surface-200 text-sm text-charcoal hover:bg-surface-50">
+                          <span className="truncate">{displayName}</span>
+                          <ExternalLinkIcon className="w-3.5 h-3.5 shrink-0 text-charcoal-400" />
+                        </a>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
