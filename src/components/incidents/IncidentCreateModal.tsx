@@ -1,40 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { XIcon, UploadIcon, FileIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { UUID } from '../../api/models/core';
-import type { ModuleKey, Severity, IncidentCategory, IncidentType, LossType } from '../../api/models/core';
-import { INCIDENT_CATEGORIES, INCIDENT_TYPES, LOSS_TYPES } from '../../api/models/core';
+import type { ModuleKey, Severity, IncidentCategory, RiskLevel } from '../../api/models/core';
+import { INCIDENT_CATEGORIES, INCIDENT_SUBCATEGORIES, calculateRiskLevel } from '../../api/models/core';
 import { createIncident } from '../../api/services/incidentsService';
-import { getMergedOptions, getBuiltInOptionsForIncidentSubcategory, getBuiltInOptions } from '../../api/services/dynamicOptionsService';
-import type { OptionItem } from '../../api/services/dynamicOptionsService';
-import { UserMultiSelect } from '../ui/UserMultiSelect';
-import { SelectOrType } from '../ui/SelectOrType';
-import { AffectedPersonSelector } from './AffectedPersonSelector';
-import { IncidentTimelineBuilder } from './IncidentTimelineBuilder';
-import { CauseMultiSelectGroups } from './CauseMultiSelectGroups';
-import { createEvidence } from '../../api/services/evidenceService';
-
-type EvidenceFileItem = { file: File; displayTitle: string };
-
-type AffectedPersonRow = { userId: UUID | null; displayName: string; taskOperation: string; machineryEquipmentTools: string };
-
-function getFileKind(file: File): 'image' | 'document' {
-  const t = (file.type || '').toLowerCase();
-  if (t.startsWith('image/')) return 'image';
-  return 'document';
-}
-import { insforge } from '../../api/insforge/client';
-import { useUser } from '@insforge/react';
-import {
-  IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS,
-  IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS,
-  ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES,
-  ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES,
-  SYSTEM_FAILURE_OPTIONS
-} from '../../api/models/core';
-
-const EVIDENCE_BUCKET = 'evidence';
 
 export function IncidentCreateModal(props: {
   open: boolean;
@@ -44,105 +15,59 @@ export function IncidentCreateModal(props: {
   defaultModule?: ModuleKey;
   onCreated?: () => void;
 }) {
-  const { user } = useUser();
   const [module, setModule] = useState<ModuleKey>(props.defaultModule ?? 'safety');
-  const [category, setCategory] = useState<IncidentCategory>(INCIDENT_CATEGORIES[0]);
+  const [category, setCategory] = useState<IncidentCategory>('Near Miss');
   const [subcategory, setSubcategory] = useState('');
   const [subcategoryManual, setSubcategoryManual] = useState('');
   const [useManualSubcategory, setUseManualSubcategory] = useState(false);
-  const [subcategoryOptions, setSubcategoryOptions] = useState<OptionItem[]>([]);
-
-  useEffect(() => {
-    if (!props.open || !props.companyId) return;
-    const builtIn = getBuiltInOptionsForIncidentSubcategory(category);
-    getMergedOptions(
-      { companyId: props.companyId, moduleKey: 'incidents', fieldKey: `incidentSubcategory_${category}` },
-      builtIn
-    ).then(setSubcategoryOptions).catch(() => setSubcategoryOptions(builtIn.map((v) => ({ id: `builtin:${v}`, value: v, label: v }))));
-  }, [props.open, props.companyId, category]);
-
-  const [incidentTypeOptions, setIncidentTypeOptions] = useState<OptionItem[]>([]);
-  useEffect(() => {
-    if (!props.open || !props.companyId) return;
-    const builtIn = getBuiltInOptions('incidents', 'incidentType');
-    getMergedOptions(
-      { companyId: props.companyId, moduleKey: 'incidents', fieldKey: 'incidentType' },
-      builtIn
-    ).then(setIncidentTypeOptions).catch(() => setIncidentTypeOptions(builtIn.map((v) => ({ id: `builtin:${v}`, value: v, label: v }))));
-  }, [props.open, props.companyId]);
-
+  
   // MANDATORY FIELDS
   const [projectClient, setProjectClient] = useState('');
-  const [incidentType, setIncidentType] = useState<string>(INCIDENT_TYPES[0]);
   const [incidentDate, setIncidentDate] = useState(new Date().toISOString().slice(0, 10));
   const [incidentTime, setIncidentTime] = useState(new Date().toTimeString().slice(0, 5));
   const [natureOfIncident, setNatureOfIncident] = useState('');
   const [causeOfIncident, setCauseOfIncident] = useState('');
-  const [affectedPersons, setAffectedPersons] = useState<AffectedPersonRow[]>([{ userId: null, displayName: '', taskOperation: '', machineryEquipmentTools: '' }]);
-  const [lossTypes, setLossTypes] = useState<string[]>([]);
-  const [lossOtherText, setLossOtherText] = useState('');
-  const [lossProductionValue, setLossProductionValue] = useState<number | undefined>();
-  const [lossFinancialValue, setLossFinancialValue] = useState<number | undefined>();
-  const [correctiveActionsSummary, setCorrectiveActionsSummary] = useState('');
-  const [requiredBehaviour, setRequiredBehaviour] = useState('');
-  const [incidentTypeOther, setIncidentTypeOther] = useState('');
+  const [affectedPerson, setAffectedPerson] = useState('');
+  const [lossType, setLossType] = useState<'Production' | 'Financial' | 'Reputational' | ''>('');
+  const [likelihood, setLikelihood] = useState<1 | 2 | 3 | 4 | 5>(3);
+  const [correctiveActions, setCorrectiveActions] = useState('');
   const [location, setLocation] = useState('');
   const [severity, setSeverity] = useState<Severity>('medium');
-  const [lostDays, setLostDays] = useState<number | undefined>();
-
-  // Risk Rating: Severity (1-5) × Likelihood (1-5) → product, classification (Low/Medium/High)
-  const [riskSeverity1To5, setRiskSeverity1To5] = useState<1 | 2 | 3 | 4 | 5>(3);
-  const [likelihood, setLikelihood] = useState<1 | 2 | 3 | 4 | 5>(3);
-  const riskRatingProduct = useMemo(() => riskSeverity1To5 * likelihood, [riskSeverity1To5, likelihood]);
-  const riskClassification = useMemo(() => {
-    if (riskRatingProduct <= 5) return 'Low' as const;
-    if (riskRatingProduct <= 12) return 'Medium' as const;
-    return 'High' as const;
-  }, [riskRatingProduct]);
   
-  const [reportedByUserId, setReportedByUserId] = useState<UUID | null>(user?.id as UUID | null);
-  const [reportedToUserIds, setReportedToUserIds] = useState<UUID[]>([]);
-  const [copyToUserIds, setCopyToUserIds] = useState<UUID[]>([]);
-  const [copyToEmails, setCopyToEmails] = useState<string[]>([]);
+  // Auto-calculate risk level from severity and likelihood
+  const calculatedRiskLevel = useMemo(() => {
+    return calculateRiskLevel(severity, likelihood);
+  }, [severity, likelihood]);
+  const [reportedBy, setReportedBy] = useState('');
+  const [reportedTo, setReportedTo] = useState('');
+  const [copyTo, setCopyTo] = useState('');
   const [investigationRequired, setInvestigationRequired] = useState(false);
   
   // Investigation fields (dynamic expansion)
-  const [instructionBreakdown, setInstructionBreakdown] = useState('');
-  const [taskSequence, setTaskSequence] = useState('');
   const [risk, setRisk] = useState('');
   const [riskProfile, setRiskProfile] = useState('');
-  const [consequence, setConsequence] = useState('');
-  const [incidentEventTimelines, setIncidentEventTimelines] = useState<Array<{ timestamp: string; notes: string }>>([]);
-  const [immediateCausesUnsafeActs, setImmediateCausesUnsafeActs] = useState<Record<string, Array<string | { other: string }>>>({});
-  const [immediateCausesUnsafeConditions, setImmediateCausesUnsafeConditions] = useState<Record<string, Array<string | { other: string }>>>({});
-  const [rootCauseHumanFactors, setRootCauseHumanFactors] = useState<Record<string, Array<string | { other: string }>>>({});
-  const [rootCauseWorkplaceFactors, setRootCauseWorkplaceFactors] = useState<Record<string, Array<string | { other: string }>>>({});
-  const [systemFailure, setSystemFailure] = useState<Array<string | { other: string }>>([]);
-  const [contributingFactors, setContributingFactors] = useState('');
-  const [contributingFactorTags, setContributingFactorTags] = useState<string[]>([]);
-  const [lessonsLearnt, setLessonsLearnt] = useState('');
-  const [investigationTeamUserIds, setInvestigationTeamUserIds] = useState<UUID[]>([]);
-  const [investigationTeamEmails, setInvestigationTeamEmails] = useState<string[]>([]);
-  const [conclusion, setConclusion] = useState('');
-  const [preparedByUserId, setPreparedByUserId] = useState<UUID | null>(user?.id as UUID | null);
-  const [distributionsToUserIds, setDistributionsToUserIds] = useState<UUID[]>([]);
-  const [distributionsToEmails, setDistributionsToEmails] = useState<string[]>([]);
-  
-  // Legacy fields for backward compatibility (will be removed later)
   const [incidentTimeline, setIncidentTimeline] = useState('');
   const [unsafeActs, setUnsafeActs] = useState('');
   const [unsafeConditions, setUnsafeConditions] = useState('');
   const [rootCauseHuman, setRootCauseHuman] = useState('');
   const [rootCauseWorkplace, setRootCauseWorkplace] = useState('');
+  const [systemFailure, setSystemFailure] = useState('');
+  const [correctiveActionInvestigation, setCorrectiveActionInvestigation] = useState('');
+  const [lessonsLearnt, setLessonsLearnt] = useState('');
   const [investigationTeam, setInvestigationTeam] = useState('');
+  const [conclusion, setConclusion] = useState('');
   
-  // Evidence uploads (file + editable display name per item)
-  const [evidenceFiles, setEvidenceFiles] = useState<EvidenceFileItem[]>([]);
-  const [investigationFiles, setInvestigationFiles] = useState<EvidenceFileItem[]>([]);
+  // Evidence uploads
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [investigationFiles, setInvestigationFiles] = useState<File[]>([]);
   const [uploadInvestigationFirst, setUploadInvestigationFirst] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const availableSubcategories = useMemo(() => {
+    return INCIDENT_SUBCATEGORIES[category] || [];
+  }, [category]);
 
   const finalSubcategory = useMemo(() => {
     if (useManualSubcategory) {
@@ -151,62 +76,44 @@ export function IncidentCreateModal(props: {
     return subcategory.trim();
   }, [useManualSubcategory, subcategory, subcategoryManual]);
 
-  const finalIncidentType = useMemo(() => {
-    return incidentType === 'Other' ? incidentTypeOther.trim() : incidentType;
-  }, [incidentType, incidentTypeOther]);
-
-  const finalLossTypes = useMemo(() => {
-    const other = lossOtherText.trim();
-    if (!other) return lossTypes;
-    return lossTypes.includes(other) ? lossTypes : [...lossTypes, other];
-  }, [lossTypes, lossOtherText]);
-
-  // Minimal required to submit: project/client, category, reporter. All other fields optional (soft validation).
   const canSubmit = useMemo(() => {
-    return (
+    const mandatoryFields = 
       projectClient.trim().length > 0 &&
       finalSubcategory.length > 0 &&
-      reportedByUserId !== null
-    );
-  }, [projectClient, finalSubcategory, reportedByUserId]);
+      natureOfIncident.trim().length > 0 &&
+      causeOfIncident.trim().length > 0 &&
+      affectedPerson.trim().length > 0 &&
+      lossType.length > 0 &&
+      correctiveActions.trim().length > 0 &&
+      reportedBy.trim().length > 0 &&
+      reportedTo.trim().length > 0;
+    
+    // If investigation required, check investigation fields
+    if (investigationRequired && !uploadInvestigationFirst) {
+      return mandatoryFields && 
+             risk.trim().length > 0 &&
+             riskProfile.trim().length > 0 &&
+             incidentTimeline.trim().length > 0 &&
+             investigationTeam.trim().length > 0 &&
+             conclusion.trim().length > 0;
+    }
+    
+    return mandatoryFields;
+  }, [
+    projectClient, finalSubcategory, natureOfIncident, causeOfIncident, 
+    affectedPerson, lossType, correctiveActions, reportedBy, reportedTo,
+    investigationRequired, uploadInvestigationFirst, risk, riskProfile,
+    incidentTimeline, investigationTeam, conclusion
+  ]);
 
-  const recommendedMissing = useMemo(() => {
-    const missing: string[] = [];
-    if (!finalIncidentType.length) missing.push('Type of Incident');
-    if (!natureOfIncident.trim().length) missing.push('Nature of Incident');
-    if (!causeOfIncident.trim().length) missing.push('Cause of Incident');
-    if (!finalLossTypes.length) missing.push('Loss / Potential Loss');
-    if (!correctiveActionsSummary.trim().length) missing.push('Corrective Actions Summary');
-    if (!reportedToUserIds.length) missing.push('Reported To');
-    return missing;
-  }, [finalIncidentType, natureOfIncident, causeOfIncident, finalLossTypes, correctiveActionsSummary, reportedToUserIds]);
-
-  const handleEvidenceFileUpload = (files: FileList | null) => {
+  const handleFileUpload = (files: FileList | null, setter: (files: File[]) => void) => {
     if (!files) return;
-    const items: EvidenceFileItem[] = Array.from(files).map(file => ({ file, displayTitle: file.name }));
-    setEvidenceFiles(prev => [...prev, ...items]);
+    const fileArray = Array.from(files);
+    setter(prev => [...prev, ...fileArray]);
   };
 
-  const handleInvestigationFileUpload = (files: FileList | null) => {
-    if (!files) return;
-    const items: EvidenceFileItem[] = Array.from(files).map(file => ({ file, displayTitle: `Investigation: ${file.name}` }));
-    setInvestigationFiles(prev => [...prev, ...items]);
-  };
-
-  const setEvidenceDisplayTitle = (index: number, displayTitle: string) => {
-    setEvidenceFiles(prev => prev.map((item, i) => i === index ? { ...item, displayTitle } : item));
-  };
-
-  const setInvestigationDisplayTitle = (index: number, displayTitle: string) => {
-    setInvestigationFiles(prev => prev.map((item, i) => i === index ? { ...item, displayTitle } : item));
-  };
-
-  const removeEvidenceFile = (index: number) => {
-    setEvidenceFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const removeInvestigationFile = (index: number) => {
-    setInvestigationFiles(prev => prev.filter((_, i) => i !== index));
+  const removeFile = (index: number, setter: React.Dispatch<React.SetStateAction<File[]>>) => {
+    setter(prev => prev.filter((_, i) => i !== index));
   };
 
   async function onSubmit(e: React.FormEvent) {
@@ -219,126 +126,73 @@ export function IncidentCreateModal(props: {
       // Combine date and time
       const occurredAt = new Date(`${incidentDate}T${incidentTime}`).toISOString();
       
-      // Build comprehensive description with all fields (for backward compatibility)
+      // Build comprehensive description with all fields
       const descriptionParts: string[] = [];
+      
+      // Core incident data
       descriptionParts.push(`Project/Client: ${projectClient}`);
-      descriptionParts.push(`Type of Incident: ${finalIncidentType}`);
       descriptionParts.push(`Nature of Incident: ${natureOfIncident}`);
       descriptionParts.push(`Cause of Incident: ${causeOfIncident}`);
-      const apNames = affectedPersons.filter(p => p.displayName.trim()).map(p => p.displayName.trim());
-      if (apNames.length) descriptionParts.push(`Affected Person(s): ${apNames.join('; ')}`);
-      descriptionParts.push(`Loss / Potential Loss: ${finalLossTypes.join(', ')}`);
+      descriptionParts.push(`Affected Person: ${affectedPerson}`);
+      descriptionParts.push(`Loss Type: ${lossType}`);
       descriptionParts.push(`Severity: ${severity}`);
-      descriptionParts.push(`Risk Rating: ${riskClassification} (${riskRatingProduct})`);
-      descriptionParts.push(`Corrective Actions Summary: ${correctiveActionsSummary}`);
+      descriptionParts.push(`Likelihood: ${likelihood} (1=Rare, 5=Almost Certain)`);
+      descriptionParts.push(`Calculated Risk Level: ${calculatedRiskLevel}`);
+      descriptionParts.push(`Corrective Actions: ${correctiveActions}`);
+      descriptionParts.push(`Reported By: ${reportedBy}`);
+      descriptionParts.push(`Reported To: ${reportedTo}`);
+      if (copyTo) descriptionParts.push(`Copy To (Escalation): ${copyTo}`);
       if (location) descriptionParts.push(`Location: ${location}`);
       
+      // Investigation data
+      if (investigationRequired) {
+        descriptionParts.push('\n--- INVESTIGATION DETAILS ---');
+        if (risk) descriptionParts.push(`Risk: ${risk}`);
+        if (riskProfile) descriptionParts.push(`Risk Profile: ${riskProfile}`);
+        if (incidentTimeline) descriptionParts.push(`Incident Event Timeline: ${incidentTimeline}`);
+        if (unsafeActs) descriptionParts.push(`Unsafe Acts: ${unsafeActs}`);
+        if (unsafeConditions) descriptionParts.push(`Unsafe Conditions: ${unsafeConditions}`);
+        if (rootCauseHuman) descriptionParts.push(`Root Cause - Human Factors: ${rootCauseHuman}`);
+        if (rootCauseWorkplace) descriptionParts.push(`Root Cause - Workplace Factors: ${rootCauseWorkplace}`);
+        if (systemFailure) descriptionParts.push(`System Failure: ${systemFailure}`);
+        if (correctiveActionInvestigation) descriptionParts.push(`Corrective Action: ${correctiveActionInvestigation}`);
+        if (lessonsLearnt) descriptionParts.push(`Lessons Learnt: ${lessonsLearnt}`);
+        if (investigationTeam) descriptionParts.push(`Investigation Team: ${investigationTeam}`);
+        if (conclusion) descriptionParts.push(`Conclusion: ${conclusion}`);
+        
+        if (investigationFiles.length > 0) {
+          descriptionParts.push(`\nInvestigation Evidence: ${investigationFiles.length} file(s) uploaded`);
+          investigationFiles.forEach((f, i) => {
+            descriptionParts.push(`  - File ${i + 1}: ${f.name} (${(f.size / 1024).toFixed(2)} KB)`);
+          });
+        }
+      }
+      
+      if (evidenceFiles.length > 0) {
+        descriptionParts.push(`\nEvidence Files: ${evidenceFiles.length} file(s) uploaded`);
+        evidenceFiles.forEach((f, i) => {
+          descriptionParts.push(`  - File ${i + 1}: ${f.name} (${(f.size / 1024).toFixed(2)} KB)`);
+        });
+      }
+
       const fullDescription = descriptionParts.join('\n\n');
 
-      // Create incident with all new fields
-      const incident = await createIncident({
+      await createIncident({
         companyId: props.companyId,
         module,
         category,
         subcategory: finalSubcategory,
-        title: projectClient.trim(),
+        title: projectClient.trim(), // Use Project/Client as title
         description: fullDescription,
         severity,
         occurredAt,
         location: location.trim() || undefined,
-        createdByUserId: props.createdByUserId,
-        // New base fields
-        incidentType: finalIncidentType,
-        typeOfIncident: finalIncidentType,
-        categoryName: category,
-        subcategoryName: finalSubcategory,
-        subcategoryCustomText: useManualSubcategory ? subcategoryManual : null,
-        causeOfIncident: causeOfIncident,
-        affectedPersonId: affectedPersons[0]?.userId ?? undefined,
-        affectedPersonName: affectedPersons[0]?.displayName?.trim() || undefined,
-        affectedPersons: affectedPersons
-          .filter(p => p.displayName.trim() || p.userId)
-          .map(p => ({ userId: p.userId, displayName: p.displayName.trim() || null, taskOperation: p.taskOperation.trim() || null, machineryEquipmentTools: p.machineryEquipmentTools.trim() || null })),
-        lossTypes: finalLossTypes,
-        lossProductionValue: lossProductionValue,
-        lossFinancialValue: lossFinancialValue,
-        riskCategory: riskClassification,
-        riskSeverity1To5,
-        riskLikelihood1To5,
-        reportedByUserId: reportedByUserId || undefined,
-        reportedToUserIds: reportedToUserIds,
-        copyToUserIds: copyToUserIds,
-        copyToEmails: copyToEmails,
-        investigationRequired: investigationRequired,
-        projectClient: projectClient,
-        // Investigation fields (if investigation required)
-        ...(investigationRequired ? {
-          instructionBreakdown: instructionBreakdown || undefined,
-          taskSequence: taskSequence || undefined,
-          consequence: consequence || undefined,
-          incidentEventTimelines: incidentEventTimelines.length > 0 ? incidentEventTimelines : undefined,
-          immediateCausesUnsafeActs: immediateCausesUnsafeActs || undefined,
-          immediateCausesUnsafeConditions: immediateCausesUnsafeConditions || undefined,
-          rootCauseHumanFactors: rootCauseHumanFactors || undefined,
-          rootCauseWorkplaceFactors: rootCauseWorkplaceFactors || undefined,
-          systemFailure: systemFailure.length > 0 ? systemFailure : undefined,
-          contributingFactors: contributingFactors || undefined,
-          contributingFactorTags: contributingFactorTags || undefined,
-          lessonsLearnt: lessonsLearnt || undefined,
-          investigationTeamUserIds: investigationTeamUserIds,
-          conclusion: conclusion || undefined,
-          preparedByUserId: preparedByUserId || undefined,
-        distributionsToUserIds: distributionsToUserIds,
-        distributionsToEmails: distributionsToEmails
-        } : {}),
-      requiredBehaviour: requiredBehaviour.trim() || undefined,
-        lostDays: lostDays != null ? lostDays : undefined
+        createdByUserId: props.createdByUserId
       });
-
-      // Upload evidence files (with original filename, display title, file kind)
-      if (evidenceFiles.length > 0) {
-        for (const item of evidenceFiles) {
-          const key = `${props.companyId}/incident/${incident.id}/${Date.now()}-${item.file.name}`.replace(/\s+/g, '_');
-          const { error: uploadError } = await insforge.storage.from(EVIDENCE_BUCKET).upload(key, item.file);
-          if (uploadError) throw uploadError;
-          await createEvidence({
-            companyId: props.companyId,
-            entityType: 'incident',
-            entityId: incident.id,
-            title: item.displayTitle || item.file.name,
-            storageBucket: EVIDENCE_BUCKET,
-            storageKey: key,
-            createdByUserId: props.createdByUserId,
-            originalFilename: item.file.name,
-            displayTitle: item.displayTitle || item.file.name,
-            fileKind: getFileKind(item.file)
-          });
-        }
-      }
-
-      // Upload investigation files
-      if (investigationRequired && investigationFiles.length > 0) {
-        for (const item of investigationFiles) {
-          const key = `${props.companyId}/incident/${incident.id}/investigation/${Date.now()}-${item.file.name}`.replace(/\s+/g, '_');
-          const { error: uploadError } = await insforge.storage.from(EVIDENCE_BUCKET).upload(key, item.file);
-          if (uploadError) throw uploadError;
-          await createEvidence({
-            companyId: props.companyId,
-            entityType: 'incident',
-            entityId: incident.id,
-            title: item.displayTitle || item.file.name,
-            storageBucket: EVIDENCE_BUCKET,
-            storageKey: key,
-            createdByUserId: props.createdByUserId,
-            originalFilename: item.file.name,
-            displayTitle: item.displayTitle || item.file.name,
-            fileKind: getFileKind(item.file)
-          });
-        }
-      }
       
       props.onCreated?.();
       props.onClose();
+      // Reset form
       resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
@@ -348,78 +202,52 @@ export function IncidentCreateModal(props: {
   }
 
   function resetForm() {
-    setCategory(INCIDENT_CATEGORIES[0]);
+    setCategory('Near Miss');
     setSubcategory('');
     setSubcategoryManual('');
     setUseManualSubcategory(false);
     setProjectClient('');
-    setIncidentType(INCIDENT_TYPES[0]);
-    setIncidentTypeOther('');
     setIncidentDate(new Date().toISOString().slice(0, 10));
     setIncidentTime(new Date().toTimeString().slice(0, 5));
     setNatureOfIncident('');
     setCauseOfIncident('');
-    setAffectedPersons([{ userId: null, displayName: '', taskOperation: '', machineryEquipmentTools: '' }]);
-    setLossTypes([]);
-    setLossOtherText('');
-    setRequiredBehaviour('');
-    setIncidentTypeOther('');
-    setLossProductionValue(undefined);
-    setLossFinancialValue(undefined);
-    setCorrectiveActionsSummary('');
+    setAffectedPerson('');
+    setLossType('');
     setSeverity('medium');
-    setRiskSeverity1To5(3);
-    setLikelihood(3);
-    setReportedByUserId(user?.id as UUID | null);
-    setReportedToUserIds([]);
-    setCopyToUserIds([]);
-    setCopyToEmails([]);
+    setCorrectiveActions('');
+    setReportedBy('');
+    setReportedTo('');
+    setCopyTo('');
     setInvestigationRequired(false);
-    setInstructionBreakdown('');
-    setTaskSequence('');
     setRisk('');
     setRiskProfile('');
-    setConsequence('');
-    setIncidentEventTimelines([]);
-    setImmediateCausesUnsafeActs({});
-    setImmediateCausesUnsafeConditions({});
-    setRootCauseHumanFactors({});
-    setRootCauseWorkplaceFactors({});
-    setSystemFailure([]);
-    setContributingFactors('');
-    setContributingFactorTags([]);
-    setLessonsLearnt('');
-    setInvestigationTeamUserIds([]);
-    setInvestigationTeamEmails([]);
-    setConclusion('');
-    setPreparedByUserId(user?.id as UUID | null);
-    setDistributionsToUserIds([]);
-    setDistributionsToEmails([]);
-    setEvidenceFiles([]);
-    setInvestigationFiles([]);
-    setUploadInvestigationFirst(false);
-    setLocation('');
-    setLostDays(undefined);
-    setModule(props.defaultModule ?? 'safety');
-    // Legacy fields
     setIncidentTimeline('');
     setUnsafeActs('');
     setUnsafeConditions('');
     setRootCauseHuman('');
     setRootCauseWorkplace('');
+    setSystemFailure('');
+    setCorrectiveActionInvestigation('');
+    setLessonsLearnt('');
     setInvestigationTeam('');
+    setConclusion('');
+    setEvidenceFiles([]);
+    setInvestigationFiles([]);
+    setUploadInvestigationFirst(false);
+    setLocation('');
+    setModule(props.defaultModule ?? 'safety');
   }
 
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-5xl mx-4 my-8 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[95vh] overflow-y-auto">
+      <div className="relative w-full max-w-5xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-surface-200 px-5 py-4 flex items-center justify-between z-10">
           <div>
             <p className="text-sm font-semibold text-charcoal">Report Incident</p>
-            <p className="text-xs text-charcoal-500 mt-0.5">Only Project/Client, Category and Reporter are required. You can save and complete other fields later.</p>
+            <p className="text-xs text-charcoal-500 mt-0.5">All fields marked with * are mandatory. Investigation section expands when required.</p>
           </div>
           <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
             <XIcon className="w-4 h-4" />
@@ -431,12 +259,6 @@ export function IncidentCreateModal(props: {
             <div className="bg-critical/5 border border-critical/20 rounded-xl p-3">
               <p className="text-sm font-semibold text-critical">Could not create incident</p>
               <p className="text-sm text-charcoal-600 mt-1">{error}</p>
-            </div>
-          )}
-          {recommendedMissing.length > 0 && (
-            <div className="bg-warning/5 border border-warning/20 rounded-xl p-3">
-              <p className="text-sm font-semibold text-charcoal">Recommended fields missing</p>
-              <p className="text-sm text-charcoal-600 mt-1">You can save now and complete later: {recommendedMissing.join(', ')}</p>
             </div>
           )}
 
@@ -471,27 +293,6 @@ export function IncidentCreateModal(props: {
                   required
                 />
               </div>
-              <SelectOrType
-                label="Type of Incident"
-                value={finalIncidentType}
-                onChange={(v, isCustom) => {
-                  if (isCustom) {
-                    setIncidentType('Other');
-                    setIncidentTypeOther(v);
-                  } else {
-                    setIncidentType(v);
-                    setIncidentTypeOther('');
-                  }
-                }}
-                options={incidentTypeOptions}
-                placeholder="Select type"
-                otherLabel="Other / Type manually"
-                allowCreate
-                companyId={props.companyId}
-                moduleKey="incidents"
-                fieldKey="incidentType"
-                createdByUserId={props.createdByUserId}
-              />
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Incident Category *</label>
                 <select
@@ -511,30 +312,46 @@ export function IncidentCreateModal(props: {
                   ))}
                 </select>
               </div>
-              <SelectOrType
-                label="Incident Subcategory *"
-                value={finalSubcategory}
-                onChange={(v, isCustom) => {
-                  if (isCustom) {
-                    setUseManualSubcategory(true);
-                    setSubcategoryManual(v);
-                    setSubcategory('');
-                  } else {
-                    setUseManualSubcategory(false);
-                    setSubcategory(v);
-                    setSubcategoryManual('');
-                  }
-                }}
-                options={subcategoryOptions}
-                placeholder="Select subcategory"
-                otherLabel="Other / Type manually"
-                required
-                allowCreate
-                companyId={props.companyId}
-                moduleKey="incidents"
-                fieldKey={`incidentSubcategory_${category}`}
-                createdByUserId={props.createdByUserId}
-              />
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Incident Subcategory *</label>
+                <div className="space-y-2">
+                  {availableSubcategories.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="useManual"
+                        checked={useManualSubcategory}
+                        onChange={(e) => setUseManualSubcategory(e.target.checked)}
+                        className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
+                      />
+                      <label htmlFor="useManual" className="text-xs text-charcoal-500">Type manually</label>
+                    </div>
+                  )}
+                  {!useManualSubcategory && availableSubcategories.length > 0 ? (
+                    <select
+                      value={subcategory}
+                      onChange={(e) => setSubcategory(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                      required
+                    >
+                      <option value="">Select subcategory</option>
+                      {availableSubcategories.map((sc) => (
+                        <option key={sc} value={sc}>
+                          {sc}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={subcategoryManual}
+                      onChange={(e) => setSubcategoryManual(e.target.value)}
+                      placeholder="Enter subcategory manually"
+                      className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                      required
+                    />
+                  )}
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Date *</label>
                 <input
@@ -577,20 +394,6 @@ export function IncidentCreateModal(props: {
                   <option value="critical">Critical</option>
                 </select>
               </div>
-              {category === 'Injury' && (
-                <div>
-                  <label className="block text-sm font-medium text-charcoal mb-1.5">Lost days (optional, for Severity Rate)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={lostDays ?? ''}
-                    onChange={(e) => setLostDays(e.target.value === '' ? undefined : Math.max(0, parseInt(e.target.value, 10)))}
-                    placeholder="Days lost"
-                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                  />
-                </div>
-              )}
             </div>
           </div>
 
@@ -599,179 +402,58 @@ export function IncidentCreateModal(props: {
             <h3 className="text-sm font-semibold text-charcoal mb-4">Incident Details (All Mandatory)</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Nature of Incident</label>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Nature of Incident *</label>
                 <textarea
                   value={natureOfIncident}
                   onChange={(e) => setNatureOfIncident(e.target.value)}
                   rows={3}
                   placeholder="Describe what happened..."
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Cause of Incident</label>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Cause of Incident *</label>
                 <textarea
                   value={causeOfIncident}
                   onChange={(e) => setCauseOfIncident(e.target.value)}
                   rows={3}
                   placeholder="What caused this incident?"
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Affected Person(s)</label>
-                <p className="text-xs text-charcoal-500 mb-2">Add each affected person with their task/operation and machinery involved (for analytics).</p>
-                <div className="space-y-3">
-                  {affectedPersons.map((row, index) => (
-                    <div key={index} className="p-3 border border-surface-200 rounded-lg space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex-1 min-w-[160px]">
-                          <AffectedPersonSelector
-                            companyId={props.companyId}
-                            selectedPersonId={row.userId}
-                            selectedPersonName={row.displayName || null}
-                            onChange={(id, name) => {
-                              setAffectedPersons(prev => prev.map((r, i) => i === index ? { ...r, userId: id, displayName: name || '' } : r));
-                            }}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setAffectedPersons(prev => prev.filter((_, i) => i !== index))}
-                          disabled={affectedPersons.length <= 1}
-                          className="text-xs text-critical hover:text-critical-600 disabled:opacity-40"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          value={row.taskOperation}
-                          onChange={(e) => setAffectedPersons(prev => prev.map((r, i) => i === index ? { ...r, taskOperation: e.target.value } : r))}
-                          placeholder="Task / Operation"
-                          className="px-3 py-2 text-sm border border-surface-300 rounded-lg"
-                        />
-                        <input
-                          type="text"
-                          value={row.machineryEquipmentTools}
-                          onChange={(e) => setAffectedPersons(prev => prev.map((r, i) => i === index ? { ...r, machineryEquipmentTools: e.target.value } : r))}
-                          placeholder="Machinery / Equipment / Tools"
-                          className="px-3 py-2 text-sm border border-surface-300 rounded-lg"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setAffectedPersons(prev => [...prev, { userId: null, displayName: '', taskOperation: '', machineryEquipmentTools: '' }])}
-                    className="text-sm text-teal hover:text-teal-600 font-medium"
-                  >
-                    + Add another affected person
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Loss / Potential Loss</label>
-                <div className="space-y-2">
-                  {LOSS_TYPES.map((lossType) => (
-                    <label key={lossType} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={lossTypes.includes(lossType)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setLossTypes([...lossTypes, lossType]);
-                          } else {
-                            setLossTypes(lossTypes.filter(lt => lt !== lossType));
-                          }
-                        }}
-                        className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
-                      />
-                      <span className="text-sm text-charcoal">{lossType}</span>
-                    </label>
-                  ))}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm text-charcoal">Other:</span>
-                    <input
-                      type="text"
-                      value={lossOtherText}
-                      onChange={(e) => setLossOtherText(e.target.value)}
-                      placeholder="Type manually"
-                      className="flex-1 min-w-[140px] px-3 py-1.5 text-sm border border-surface-300 rounded-lg"
-                    />
-                  </div>
-                </div>
-                {finalLossTypes.includes('production loss') && (
-                  <div className="mt-2">
-                    <input
-                      type="number"
-                      value={lossProductionValue || ''}
-                      onChange={(e) => setLossProductionValue(e.target.value ? parseFloat(e.target.value) : undefined)}
-                      placeholder="Production loss value"
-                      className="w-full px-4 py-2 bg-white border border-surface-300 rounded-lg text-sm"
-                    />
-                  </div>
-                )}
-                {finalLossTypes.includes('financial loss') && (
-                  <div className="mt-2">
-                    <input
-                      type="number"
-                      value={lossFinancialValue || ''}
-                      onChange={(e) => setLossFinancialValue(e.target.value ? parseFloat(e.target.value) : undefined)}
-                      placeholder="Financial loss value"
-                      className="w-full px-4 py-2 bg-white border border-surface-300 rounded-lg text-sm"
-                    />
-                  </div>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Corrective Actions Summary</label>
-                <textarea
-                  value={correctiveActionsSummary}
-                  onChange={(e) => setCorrectiveActionsSummary(e.target.value)}
-                  rows={3}
-                  placeholder="Summary of actions taken or planned..."
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Affected Person *</label>
+                <input
+                  value={affectedPerson}
+                  onChange={(e) => setAffectedPerson(e.target.value)}
+                  placeholder="Name of affected person(s)"
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Required Behaviour (optional)</label>
-                <textarea
-                  value={requiredBehaviour}
-                  onChange={(e) => setRequiredBehaviour(e.target.value)}
-                  rows={2}
-                  placeholder="e.g. Follow procedure, Use PPE, Report hazard — or type manually"
-                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Risk Rating: Severity (1-5) × Likelihood (1-5), auto-calculated, read-only result */}
-          <div className="border-b border-surface-200 pb-4">
-            <h3 className="text-sm font-semibold text-charcoal mb-4">Risk Rating</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Severity (1–5)</label>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Loss Type *</label>
                 <select
-                  value={riskSeverity1To5}
-                  onChange={(e) => setRiskSeverity1To5(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
+                  value={lossType}
+                  onChange={(e) => setLossType(e.target.value as typeof lossType)}
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  required
                 >
-                  <option value={1}>1</option>
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                  <option value={4}>4</option>
-                  <option value={5}>5</option>
+                  <option value="">Select loss type</option>
+                  <option value="Production">Production</option>
+                  <option value="Financial">Financial</option>
+                  <option value="Reputational">Reputational</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Likelihood (1–5)</label>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Likelihood * (1=Rare, 5=Almost Certain)</label>
                 <select
                   value={likelihood}
                   onChange={(e) => setLikelihood(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  required
                 >
                   <option value={1}>1 - Rare</option>
                   <option value={2}>2 - Unlikely</option>
@@ -781,64 +463,62 @@ export function IncidentCreateModal(props: {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Risk Rating (read-only)</label>
-                <div className="w-full px-4 py-2.5 rounded-lg text-sm font-semibold bg-surface-100 border border-surface-200">
-                  {riskSeverity1To5} × {likelihood} = {riskRatingProduct}
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated Risk Level</label>
+                <div className={`w-full px-4 py-2.5 rounded-lg text-sm font-semibold ${
+                  calculatedRiskLevel === 'Critical' ? 'bg-critical text-white' :
+                  calculatedRiskLevel === 'High' ? 'bg-warning text-white' :
+                  calculatedRiskLevel === 'Medium' ? 'bg-teal text-white' :
+                  'bg-success text-white'
+                }`}>
+                  {calculatedRiskLevel}
                 </div>
+                <p className="text-xs text-charcoal-500 mt-1">Auto-calculated from Severity × Likelihood</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Risk Classification (read-only)</label>
-                <div
-                  className={`w-full px-4 py-2.5 rounded-lg text-sm font-semibold ${
-                    riskClassification === 'High' ? 'bg-critical text-white' :
-                    riskClassification === 'Medium' ? 'bg-warning text-white' :
-                    'bg-success text-white'
-                  }`}
-                >
-                  {riskClassification}
-                </div>
-                <p className="text-xs text-charcoal-500 mt-1">1–5 Low, 6–12 Medium, 13–25 High</p>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Corrective Actions *</label>
+                <textarea
+                  value={correctiveActions}
+                  onChange={(e) => setCorrectiveActions(e.target.value)}
+                  rows={3}
+                  placeholder="Actions taken or planned..."
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  required
+                />
               </div>
             </div>
           </div>
 
           {/* Reporting & Escalation */}
           <div className="border-b border-surface-200 pb-4">
-            <h3 className="text-sm font-semibold text-charcoal mb-4">Reporting & Escalation</h3>
-            <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-charcoal mb-4">Reporting & Escalation (All Mandatory)</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Reported By *</label>
-                <UserMultiSelect
-                  companyId={props.companyId}
-                  selectedUserIds={reportedByUserId ? [reportedByUserId] : []}
-                  onChange={(userIds) => setReportedByUserId(userIds[0] || null)}
-                  placeholder="Select reporter (defaults to you)"
-                  allowExternalEmails={false}
+                <input
+                  value={reportedBy}
+                  onChange={(e) => setReportedBy(e.target.value)}
+                  placeholder="Name of person reporting"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  required
                 />
-                <p className="text-xs text-charcoal-500 mt-1">Defaults to your account. Admin can override.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Reported To *</label>
-                <UserMultiSelect
-                  companyId={props.companyId}
-                  selectedUserIds={reportedToUserIds}
-                  onChange={(userIds) => setReportedToUserIds(userIds)}
-                  placeholder="Select recipients"
-                  allowExternalEmails={false}
+                <input
+                  value={reportedTo}
+                  onChange={(e) => setReportedTo(e.target.value)}
+                  placeholder="Name/role of person receiving report"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  required
                 />
               </div>
-              <div>
+              <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Copy To (Escalation)</label>
-                <UserMultiSelect
-                  companyId={props.companyId}
-                  selectedUserIds={copyToUserIds}
-                  selectedEmails={copyToEmails}
-                  onChange={(userIds, emails) => {
-                    setCopyToUserIds(userIds);
-                    setCopyToEmails(emails);
-                  }}
-                  placeholder="Select additional recipients or add external emails"
-                  allowExternalEmails={true}
+                <input
+                  value={copyTo}
+                  onChange={(e) => setCopyTo(e.target.value)}
+                  placeholder="Additional recipients (comma-separated)"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                 />
               </div>
             </div>
@@ -848,33 +528,26 @@ export function IncidentCreateModal(props: {
           <div className="border-b border-surface-200 pb-4">
             <h3 className="text-sm font-semibold text-charcoal mb-4">Evidence Uploads</h3>
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Upload Evidence Files (photos and documents)</label>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Upload Evidence Files</label>
               <input
                 type="file"
                 multiple
-                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
-                onChange={(e) => handleEvidenceFileUpload(e.target.files)}
+                onChange={(e) => handleFileUpload(e.target.files, setEvidenceFiles)}
                 className="w-full text-sm"
               />
               {evidenceFiles.length > 0 && (
-                <div className="mt-2 space-y-2">
-                  {evidenceFiles.map((item, index) => (
-                    <div key={index} className="flex flex-wrap items-center gap-2 p-2 bg-surface-50 rounded-lg">
-                      <FileIcon className="w-4 h-4 text-charcoal-400 shrink-0" />
-                      <span className="text-sm text-charcoal-500 shrink-0">{item.file.name}</span>
-                      <span className="text-xs text-charcoal-400">({(item.file.size / 1024).toFixed(2)} KB)</span>
-                      <label className="sr-only">Display name</label>
-                      <input
-                        type="text"
-                        value={item.displayTitle}
-                        onChange={(e) => setEvidenceDisplayTitle(index, e.target.value)}
-                        placeholder="Display name in report"
-                        className="flex-1 min-w-[120px] px-2 py-1 text-sm border border-surface-300 rounded"
-                      />
+                <div className="mt-2 space-y-1">
+                  {evidenceFiles.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 bg-surface-50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <FileIcon className="w-4 h-4 text-charcoal-400" />
+                        <span className="text-sm text-charcoal-600">{file.name}</span>
+                        <span className="text-xs text-charcoal-400">({(file.size / 1024).toFixed(2)} KB)</span>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => removeEvidenceFile(index)}
-                        className="text-xs text-critical hover:text-critical-600 shrink-0"
+                        onClick={() => removeFile(index, setEvidenceFiles)}
+                        className="text-xs text-critical hover:text-critical-600"
                       >
                         Remove
                       </button>
@@ -921,27 +594,21 @@ export function IncidentCreateModal(props: {
                       <input
                         type="file"
                         multiple
-                        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
-                        onChange={(e) => handleInvestigationFileUpload(e.target.files)}
+                        onChange={(e) => handleFileUpload(e.target.files, setInvestigationFiles)}
                         className="w-full text-sm"
                       />
                       {investigationFiles.length > 0 && (
-                        <div className="mt-2 space-y-2">
-                          {investigationFiles.map((item, index) => (
-                            <div key={index} className="flex flex-wrap items-center gap-2 p-2 bg-white rounded-lg">
-                              <FileIcon className="w-4 h-4 text-charcoal-400 shrink-0" />
-                              <span className="text-sm text-charcoal-500 shrink-0">{item.file.name}</span>
-                              <input
-                                type="text"
-                                value={item.displayTitle}
-                                onChange={(e) => setInvestigationDisplayTitle(index, e.target.value)}
-                                placeholder="Display name"
-                                className="flex-1 min-w-[120px] px-2 py-1 text-sm border border-surface-300 rounded"
-                              />
+                        <div className="mt-2 space-y-1">
+                          {investigationFiles.map((file, index) => (
+                            <div key={index} className="flex items-center justify-between p-2 bg-white rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <FileIcon className="w-4 h-4 text-charcoal-400" />
+                                <span className="text-sm text-charcoal-600">{file.name}</span>
+                              </div>
                               <button
                                 type="button"
-                                onClick={() => removeInvestigationFile(index)}
-                                className="text-xs text-critical hover:text-critical-600 shrink-0"
+                                onClick={() => removeFile(index, setInvestigationFiles)}
+                                className="text-xs text-critical hover:text-critical-600"
                               >
                                 Remove
                               </button>
@@ -955,183 +622,99 @@ export function IncidentCreateModal(props: {
 
                 {!uploadInvestigationFirst && (
                   <>
-                    <h3 className="text-sm font-semibold text-charcoal mt-4 mb-2">Incident Flow</h3>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Instruction Breakdown / Flow</label>
-                      <textarea
-                        value={instructionBreakdown}
-                        onChange={(e) => setInstructionBreakdown(e.target.value)}
-                        rows={3}
-                        placeholder="Breakdown of instructions/flow..."
-                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Task Sequence</label>
-                      <textarea
-                        value={taskSequence}
-                        onChange={(e) => setTaskSequence(e.target.value)}
-                        rows={3}
-                        placeholder="Task sequence or ordered list..."
-                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                      />
-                    </div>
                     <div>
                       <label className="block text-sm font-medium text-charcoal mb-1.5">Risk *</label>
-                      <select
+                      <textarea
                         value={risk}
                         onChange={(e) => setRisk(e.target.value)}
+                        rows={2}
+                        placeholder="Describe the risk..."
                         className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                      >
-                        <option value="">Select risk level</option>
-                        <option value="Low">Low</option>
-                        <option value="Medium">Medium</option>
-                        <option value="High">High</option>
-                      </select>
+                        required={investigationRequired && !uploadInvestigationFirst}
+                      />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Risk Profile / Hazards *</label>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Risk Profile *</label>
                       <textarea
                         value={riskProfile}
                         onChange={(e) => setRiskProfile(e.target.value)}
-                        rows={3}
-                        placeholder="Updated risk assessment and hazards..."
+                        rows={2}
+                        placeholder="Updated risk assessment..."
                         className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                        required={investigationRequired && !uploadInvestigationFirst}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Consequence / Potential Consequence</label>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Incident Event Timeline *</label>
                       <textarea
-                        value={consequence}
-                        onChange={(e) => setConsequence(e.target.value)}
+                        value={incidentTimeline}
+                        onChange={(e) => setIncidentTimeline(e.target.value)}
+                        rows={4}
+                        placeholder="Chronological sequence of events..."
+                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                        required={investigationRequired && !uploadInvestigationFirst}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Unsafe Acts</label>
+                      <textarea
+                        value={unsafeActs}
+                        onChange={(e) => setUnsafeActs(e.target.value)}
                         rows={3}
-                        placeholder="Describe consequences..."
+                        placeholder="Identify unsafe acts..."
                         className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                       />
                     </div>
                     <div>
-                      <IncidentTimelineBuilder
-                        events={incidentEventTimelines}
-                        onChange={(events) => {
-                          setIncidentEventTimelines(events);
-                          // Also update legacy field for backward compatibility
-                          setIncidentTimeline(events.map(e => `${e.timestamp}: ${e.notes}`).join('\n'));
-                        }}
-                      />
-                    </div>
-                    <h3 className="text-sm font-semibold text-charcoal mt-4 mb-2">Unsafe Acts</h3>
-                    <div>
-                      <CauseMultiSelectGroups
-                        groups={IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS}
-                        selected={immediateCausesUnsafeActs}
-                        onChange={(selected) => {
-                          setImmediateCausesUnsafeActs(selected);
-                          const text = Object.entries(selected)
-                            .map(([group, items]) => `${group}: ${items.map(i => typeof i === 'string' ? i : i.other).join(', ')}`)
-                            .join('\n');
-                          setUnsafeActs(text);
-                        }}
-                        label="Immediate Causes: Unsafe Acts"
-                      />
-                    </div>
-                    <h3 className="text-sm font-semibold text-charcoal mt-4 mb-2">Unsafe Conditions</h3>
-                    <div>
-                      <CauseMultiSelectGroups
-                        groups={IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS}
-                        selected={immediateCausesUnsafeConditions}
-                        onChange={(selected) => {
-                          setImmediateCausesUnsafeConditions(selected);
-                          const text = Object.entries(selected)
-                            .map(([group, items]) => `${group}: ${items.map(i => typeof i === 'string' ? i : i.other).join(', ')}`)
-                            .join('\n');
-                          setUnsafeConditions(text);
-                        }}
-                        label="Immediate Causes: Unsafe Conditions"
-                      />
-                    </div>
-                    <h3 className="text-sm font-semibold text-charcoal mt-4 mb-2">Root Causes</h3>
-                    <div>
-                      <CauseMultiSelectGroups
-                        groups={ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES}
-                        selected={rootCauseHumanFactors}
-                        onChange={(selected) => {
-                          setRootCauseHumanFactors(selected);
-                          const text = Object.entries(selected)
-                            .map(([group, items]) => `${group}: ${items.map(i => typeof i === 'string' ? i : i.other).join(', ')}`)
-                            .join('\n');
-                          setRootCauseHuman(text);
-                        }}
-                        label="Root Cause (Human Factors)"
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Unsafe Conditions</label>
+                      <textarea
+                        value={unsafeConditions}
+                        onChange={(e) => setUnsafeConditions(e.target.value)}
+                        rows={3}
+                        placeholder="Identify unsafe conditions..."
+                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                       />
                     </div>
                     <div>
-                      <CauseMultiSelectGroups
-                        groups={ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES}
-                        selected={rootCauseWorkplaceFactors}
-                        onChange={(selected) => {
-                          setRootCauseWorkplaceFactors(selected);
-                          const text = Object.entries(selected)
-                            .map(([group, items]) => `${group}: ${items.map(i => typeof i === 'string' ? i : i.other).join(', ')}`)
-                            .join('\n');
-                          setRootCauseWorkplace(text);
-                        }}
-                        label="Root Cause (Workplace Factors)"
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Root Cause – Human Factors</label>
+                      <textarea
+                        value={rootCauseHuman}
+                        onChange={(e) => setRootCauseHuman(e.target.value)}
+                        rows={3}
+                        placeholder="Human factor contributions..."
+                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                       />
                     </div>
-                    <h3 className="text-sm font-semibold text-charcoal mt-4 mb-2">System Failures</h3>
                     <div>
-                      <label className="block text-sm font-medium text-charcoal mb-2">System Failure</label>
-                      <div className="space-y-2 border border-surface-300 rounded-lg p-3 max-h-64 overflow-y-auto">
-                        {SYSTEM_FAILURE_OPTIONS.map((option) => {
-                          const isSelected = systemFailure.some(
-                            s => (typeof s === 'string' && s === option) || (typeof s === 'object' && s.other !== undefined && option === 'Other')
-                          );
-                          return (
-                            <div key={option} className="space-y-1">
-                              <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      if (option === 'Other') {
-                                        setSystemFailure([...systemFailure, { other: '' }]);
-                                      } else {
-                                        setSystemFailure([...systemFailure, option]);
-                                      }
-                                    } else {
-                                      setSystemFailure(systemFailure.filter(
-                                        s => !(typeof s === 'string' && s === option) && !(typeof s === 'object' && s.other !== undefined && option === 'Other')
-                                      ));
-                                    }
-                                  }}
-                                  className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
-                                />
-                                <span className="text-sm text-charcoal">{option}</span>
-                              </label>
-                              {option === 'Other' && isSelected && (
-                                <input
-                                  type="text"
-                                  value={systemFailure.find(s => typeof s === 'object' && s.other !== undefined) && typeof systemFailure.find(s => typeof s === 'object' && s.other !== undefined) === 'object' ? (systemFailure.find(s => typeof s === 'object' && s.other !== undefined) as { other: string }).other : ''}
-                                  onChange={(e) => {
-                                    const updated = systemFailure.map(s => {
-                                      if (typeof s === 'object' && s.other !== undefined) {
-                                        return { other: e.target.value };
-                                      }
-                                      return s;
-                                    });
-                                    setSystemFailure(updated);
-                                  }}
-                                  placeholder="Specify other..."
-                                  className="ml-6 w-full px-3 py-1.5 text-sm border border-surface-300 rounded focus:outline-none focus:ring-2 focus:ring-teal"
-                                />
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Root Cause – Workplace Factors</label>
+                      <textarea
+                        value={rootCauseWorkplace}
+                        onChange={(e) => setRootCauseWorkplace(e.target.value)}
+                        rows={3}
+                        placeholder="Workplace factor contributions..."
+                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                      />
                     </div>
-                    <h3 className="text-sm font-semibold text-charcoal mt-4 mb-2">Corrective Actions / Lessons Learnt</h3>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">System Failure</label>
+                      <textarea
+                        value={systemFailure}
+                        onChange={(e) => setSystemFailure(e.target.value)}
+                        rows={3}
+                        placeholder="System failures identified..."
+                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Corrective Action</label>
+                      <textarea
+                        value={correctiveActionInvestigation}
+                        onChange={(e) => setCorrectiveActionInvestigation(e.target.value)}
+                        rows={3}
+                        placeholder="Corrective actions from investigation..."
+                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                      />
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-charcoal mb-1.5">Lessons Learnt</label>
                       <textarea
@@ -1143,41 +726,15 @@ export function IncidentCreateModal(props: {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Contributing Factors</label>
-                      <textarea
-                        value={contributingFactors}
-                        onChange={(e) => setContributingFactors(e.target.value)}
-                        rows={3}
-                        placeholder="Contributing factors..."
-                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                      />
-                    </div>
-                    <div>
                       <label className="block text-sm font-medium text-charcoal mb-1.5">Investigation Team *</label>
-                      <UserMultiSelect
-                        companyId={props.companyId}
-                        selectedUserIds={investigationTeamUserIds}
-                        selectedEmails={investigationTeamEmails}
-                        onChange={(userIds, emails) => {
-                          setInvestigationTeamUserIds(userIds);
-                          setInvestigationTeamEmails(emails);
-                        }}
-                        placeholder="Select investigation team members or add external emails"
-                        allowExternalEmails={true}
-                      />
-                      <p className="text-xs text-charcoal-500 mt-1">Select team members or enter names manually via external emails</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Prepared By</label>
-                      <UserMultiSelect
-                        companyId={props.companyId}
-                        selectedUserIds={preparedByUserId ? [preparedByUserId] : []}
-                        onChange={(userIds) => setPreparedByUserId(userIds[0] || null)}
-                        placeholder="Select preparer (defaults to you)"
-                        allowExternalEmails={false}
+                      <input
+                        value={investigationTeam}
+                        onChange={(e) => setInvestigationTeam(e.target.value)}
+                        placeholder="Names/roles of investigation team members"
+                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                        required={investigationRequired && !uploadInvestigationFirst}
                       />
                     </div>
-                    <h3 className="text-sm font-semibold text-charcoal mt-4 mb-2">Conclusion</h3>
                     <div>
                       <label className="block text-sm font-medium text-charcoal mb-1.5">Conclusion *</label>
                       <textarea
@@ -1186,21 +743,7 @@ export function IncidentCreateModal(props: {
                         rows={3}
                         placeholder="Investigation conclusion..."
                         className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                      />
-                    </div>
-                    <h3 className="text-sm font-semibold text-charcoal mt-4 mb-2">Distribution (Copy To)</h3>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Distributions (Copy) To</label>
-                      <UserMultiSelect
-                        companyId={props.companyId}
-                        selectedUserIds={distributionsToUserIds}
-                        selectedEmails={distributionsToEmails}
-                        onChange={(userIds, emails) => {
-                          setDistributionsToUserIds(userIds);
-                          setDistributionsToEmails(emails);
-                        }}
-                        placeholder="Select distribution recipients"
-                        allowExternalEmails={true}
+                        required={investigationRequired && !uploadInvestigationFirst}
                       />
                     </div>
                     <div>
@@ -1208,27 +751,21 @@ export function IncidentCreateModal(props: {
                       <input
                         type="file"
                         multiple
-                        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
-                        onChange={(e) => handleInvestigationFileUpload(e.target.files)}
+                        onChange={(e) => handleFileUpload(e.target.files, setInvestigationFiles)}
                         className="w-full text-sm"
                       />
                       {investigationFiles.length > 0 && (
-                        <div className="mt-2 space-y-2">
-                          {investigationFiles.map((item, index) => (
-                            <div key={index} className="flex flex-wrap items-center gap-2 p-2 bg-surface-50 rounded-lg">
-                              <FileIcon className="w-4 h-4 text-charcoal-400 shrink-0" />
-                              <span className="text-sm text-charcoal-500 shrink-0">{item.file.name}</span>
-                              <input
-                                type="text"
-                                value={item.displayTitle}
-                                onChange={(e) => setInvestigationDisplayTitle(index, e.target.value)}
-                                placeholder="Display name"
-                                className="flex-1 min-w-[120px] px-2 py-1 text-sm border border-surface-300 rounded"
-                              />
+                        <div className="mt-2 space-y-1">
+                          {investigationFiles.map((file, index) => (
+                            <div key={index} className="flex items-center justify-between p-2 bg-surface-50 rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <FileIcon className="w-4 h-4 text-charcoal-400" />
+                                <span className="text-sm text-charcoal-600">{file.name}</span>
+                              </div>
                               <button
                                 type="button"
-                                onClick={() => removeInvestigationFile(index)}
-                                className="text-xs text-critical hover:text-critical-600 shrink-0"
+                                onClick={() => removeFile(index, setInvestigationFiles)}
+                                className="text-xs text-critical hover:text-critical-600"
                               >
                                 Remove
                               </button>

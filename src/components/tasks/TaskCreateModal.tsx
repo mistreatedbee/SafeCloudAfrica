@@ -163,9 +163,9 @@ export function TaskCreateModal(props: {
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-4xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
             <p className="text-sm font-semibold text-charcoal">Create task</p>
@@ -439,4 +439,3 @@ export function TaskCreateModal(props: {
     </div>
   );
 }
-
