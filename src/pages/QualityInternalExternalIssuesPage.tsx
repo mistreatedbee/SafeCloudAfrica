@@ -511,7 +511,7 @@ export default function QualityInternalExternalIssuesPage() {
         </div>
       </div>
       {modalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
           <div className="w-full max-w-5xl bg-white rounded-xl border border-surface-300 overflow-hidden">
             <div className="px-5 py-4 border-b border-surface-200">
               <h2 className="text-lg font-semibold">{formMode === 'create' ? 'Add Issue Row' : formMode === 'edit' ? `Edit Issue #${issueForm.refNo ?? ''}` : `View Issue #${issueForm.refNo ?? ''}`}</h2>

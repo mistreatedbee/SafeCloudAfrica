@@ -371,7 +371,7 @@ export function CalibrationPage(props: { title?: string; defaultModuleTag?: Cali
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setModalOpen(false)} />
           <div className="relative w-full max-w-5xl bg-white rounded-2xl border border-surface-300 shadow-xl max-h-[95vh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between"><h2 className="text-lg font-semibold text-charcoal">{formMode === 'create' ? 'Create Calibration' : formMode === 'edit' ? 'Edit Calibration' : 'Calibration Details'}</h2><button type="button" onClick={() => setModalOpen(false)} className="px-3 py-1.5 rounded border border-surface-300 text-sm">Close</button></div>

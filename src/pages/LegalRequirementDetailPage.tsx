@@ -314,7 +314,7 @@ export function LegalRequirementDetailPage() {
       </div>
 
       {closingUpdateId && activeCompanyId && user?.id && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setClosingUpdateId(null)} />
           <div className="relative bg-white border border-surface-300 rounded-xl p-4 w-full max-w-md space-y-3">
             <p className="font-semibold text-charcoal">Close legal update</p>

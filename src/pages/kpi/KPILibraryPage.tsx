@@ -105,7 +105,7 @@ export function KPILibraryPage() {
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setModalOpen(false)} />
           <div className="relative w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 p-5">
             <div className="flex items-center justify-between mb-4">
