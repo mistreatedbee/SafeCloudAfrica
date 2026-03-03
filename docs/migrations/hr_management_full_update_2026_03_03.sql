@@ -102,9 +102,9 @@ select
   lt.requires_proof,
   lt.default_days_per_year,
   lt.carry_over_allowed,
-  cm.user_id
+  coalesce(cm.user_id, c.primary_admin_user_id)
 from public.companies c
-cross join lateral (
+left join lateral (
   select m.user_id
   from public.company_memberships m
   where m.company_id = c.id
@@ -117,7 +117,7 @@ cross join lateral (
       else 5
     end
   limit 1
-) cm
+) cm on true
 cross join (
   values
     ('Annual Leave', true, false, 15::numeric, true),

@@ -109,6 +109,51 @@ export type HrDashboardStats = {
   disciplinaryOpen: number;
   disciplinaryRepeatOffence: number;
   hrDocsExpiringSoon: number;
+  hrDocsExpired: number;
+  acknowledgementCompletionPercent: number;
+};
+
+export type HrDocumentExpiryStatus = 'active' | 'expiring_30' | 'expiring_7' | 'expired' | 'archived';
+
+export type HrPersonalDocumentRow = HrSimpleRecord & {
+  employee_id: UUID;
+  doc_type: string;
+  title: string;
+  doc_name?: string | null;
+  file_ids: UUID[];
+  issue_date: string | null;
+  expiry_date: string | null;
+  notes: string | null;
+  status: 'ACTIVE' | 'EXPIRED' | 'ARCHIVED';
+  uploaded_by_user_id: UUID;
+  visible_to_employee: boolean;
+};
+
+export type HrAckDocumentRow = HrSimpleRecord & {
+  title: string;
+  category: string;
+  file_ids: UUID[];
+  version: string | null;
+  effective_date: string | null;
+  review_date: string | null;
+  assigned_all: boolean;
+  assigned_department_ids: UUID[] | null;
+  assigned_roles: string[] | null;
+  acknowledgement_required: boolean;
+  signature_required: boolean;
+  created_by_user_id: UUID;
+};
+
+export type HrAckReceiptRow = HrSimpleRecord & {
+  ack_document_id: UUID;
+  employee_id: UUID;
+  employee_user_id: UUID | null;
+  status: 'PENDING' | 'ACKNOWLEDGED' | 'SIGNED';
+  acknowledged_at: string | null;
+  signed_at: string | null;
+  acknowledgement_method: string | null;
+  ip_address: string | null;
+  device_info: string | null;
 };
 
 async function getCount(table: string, companyId: UUID, eq?: Record<string, string | number | boolean>): Promise<number> {
@@ -316,7 +361,9 @@ export async function listHrRecords(companyId: UUID, table:
   | 'hr_vacancies'
   | 'hr_applicants'
   | 'hr_interview_notes'
-  | 'hr_monthly_hours',
+  | 'hr_monthly_hours'
+  | 'hr_ack_documents'
+  | 'hr_ack_receipts',
   filters?: Record<string, string | number | boolean | null>
 ): Promise<HrSimpleRecord[]> {
   return listTable<HrSimpleRecord>(table, companyId, filters);
@@ -334,7 +381,9 @@ export async function createHrRecord(
     | 'hr_vacancies'
     | 'hr_applicants'
     | 'hr_interview_notes'
-    | 'hr_monthly_hours',
+    | 'hr_monthly_hours'
+    | 'hr_ack_documents'
+    | 'hr_ack_receipts',
   payload: Record<string, unknown>
 ): Promise<HrSimpleRecord> {
   const row = await insertTable<HrSimpleRecord>(table, payload);
@@ -366,7 +415,9 @@ export async function updateHrRecord(
     | 'hr_interview_notes'
     | 'hr_leave_requests'
     | 'hr_timesheets'
-    | 'hr_monthly_hours',
+    | 'hr_monthly_hours'
+    | 'hr_ack_documents'
+    | 'hr_ack_receipts',
   input: {
     companyId: UUID;
     rowId: UUID;
@@ -541,6 +592,22 @@ export async function getHrDashboardStats(companyId: UUID, selectedFromDate?: st
     .eq('company_id', companyId)
     .lte('expiry_date', date30.toISOString().slice(0, 10));
 
+  const { count: hrDocsExpired } = await insforge.database
+    .from('hr_employee_documents')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', companyId)
+    .or(`status.eq.EXPIRED,expiry_date.lt.${now.toISOString().slice(0, 10)}`);
+
+  const { count: ackTotal } = await insforge.database
+    .from('hr_ack_receipts')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', companyId);
+  const { count: ackDone } = await insforge.database
+    .from('hr_ack_receipts')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', companyId)
+    .in('status', ['ACKNOWLEDGED', 'SIGNED']);
+
   const { count: trainingCompleted } = await insforge.database.from('training_records').select('*', { count: 'exact', head: true }).eq('company_id', companyId).eq('status', 'COMPLETED');
   const { count: trainingTotal } = await insforge.database.from('training_records').select('*', { count: 'exact', head: true }).eq('company_id', companyId);
 
@@ -559,7 +626,9 @@ export async function getHrDashboardStats(companyId: UUID, selectedFromDate?: st
     trainingCompliancePercent: trainingTotal ? Math.round(((trainingCompleted ?? 0) / trainingTotal) * 100) : 0,
     disciplinaryOpen,
     disciplinaryRepeatOffence,
-    hrDocsExpiringSoon: hrDocsExpiringSoon ?? 0
+    hrDocsExpiringSoon: hrDocsExpiringSoon ?? 0,
+    hrDocsExpired: hrDocsExpired ?? 0,
+    acknowledgementCompletionPercent: ackTotal ? Math.round(((ackDone ?? 0) / ackTotal) * 100) : 0
   };
 }
 
@@ -687,6 +756,382 @@ export async function getHrDisciplinaryExportRows(companyId: UUID): Promise<Arra
     status: row.status,
     createdAt: row.created_at
   }));
+}
+
+function dayDiff(dateIso: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(dateIso);
+  d.setHours(0, 0, 0, 0);
+  const ms = d.getTime() - today.getTime();
+  return Math.floor(ms / (24 * 60 * 60 * 1000));
+}
+
+export function getDocumentExpiryStatus(row: {
+  expiry_date?: string | null;
+  status?: string | null;
+}): HrDocumentExpiryStatus {
+  if (String(row.status ?? '').toUpperCase() === 'ARCHIVED') return 'archived';
+  if (!row.expiry_date) return 'active';
+  const diff = dayDiff(row.expiry_date);
+  if (diff < 0) return 'expired';
+  if (diff <= 7) return 'expiring_7';
+  if (diff <= 30) return 'expiring_30';
+  return 'active';
+}
+
+export async function listHrPersonalDocuments(input: {
+  companyId: UUID;
+  actorRole: string | null;
+  actorUserId: UUID;
+  employeeId?: UUID;
+}): Promise<HrPersonalDocumentRow[]> {
+  let q = insforge.database
+    .from('hr_employee_documents')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .order('created_at', { ascending: false });
+
+  if (input.employeeId) q = q.eq('employee_id', input.employeeId);
+  const role = input.actorRole ?? '';
+  if (role === 'employee') {
+    const me = await getHrEmployeeByUserId(input.companyId, input.actorUserId);
+    if (!me) return [];
+    q = q.eq('employee_id', me.id);
+  } else if (role === 'supervisor') {
+    const { data: team, error: teamError } = await insforge.database
+      .from('hr_employees')
+      .select('id')
+      .eq('company_id', input.companyId)
+      .eq('supervisor_user_id', input.actorUserId);
+    if (teamError) throw new Error(getErrorMessage(teamError));
+    const teamIds = (team ?? []).map((x: any) => x.id as UUID);
+    if (teamIds.length === 0) return [];
+    q = q.in('employee_id', teamIds);
+  } else if (role === 'owner') {
+    return [];
+  }
+
+  const { data, error } = await q;
+  if (error) throw new Error(getErrorMessage(error));
+  return ((data ?? []) as HrPersonalDocumentRow[]).map((row) => ({
+    ...row,
+    doc_name: row.doc_name ?? row.title,
+    status: getDocumentExpiryStatus(row) === 'expired' ? 'EXPIRED' : row.status
+  }));
+}
+
+export async function createHrPersonalDocument(input: {
+  companyId: UUID;
+  employeeId: UUID;
+  docType: string;
+  docName: string;
+  fileIds: UUID[];
+  issueDate?: string | null;
+  expiryDate?: string | null;
+  notes?: string | null;
+  uploadedByUserId: UUID;
+}): Promise<HrPersonalDocumentRow> {
+  const { data, error } = await insforge.database
+    .from('hr_employee_documents')
+    .insert({
+      company_id: input.companyId,
+      employee_id: input.employeeId,
+      doc_type: input.docType,
+      title: input.docName,
+      doc_name: input.docName,
+      file_ids: input.fileIds,
+      issue_date: input.issueDate ?? null,
+      expiry_date: input.expiryDate ?? null,
+      notes: input.notes ?? null,
+      status: getDocumentExpiryStatus({ expiry_date: input.expiryDate }) === 'expired' ? 'EXPIRED' : 'ACTIVE',
+      visible_to_employee: true,
+      uploaded_by_user_id: input.uploadedByUserId
+    })
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to create personal HR document.');
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.uploadedByUserId,
+    action: 'hr.personal_document.create',
+    entityType: 'hr_employee_document',
+    entityId: (data as any).id as UUID
+  });
+  return data as HrPersonalDocumentRow;
+}
+
+export async function updateHrPersonalDocument(input: {
+  companyId: UUID;
+  documentId: UUID;
+  actorUserId: UUID;
+  patch: Partial<Pick<HrPersonalDocumentRow, 'doc_name' | 'doc_type' | 'issue_date' | 'expiry_date' | 'notes' | 'status'>>;
+}): Promise<HrPersonalDocumentRow> {
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (typeof input.patch.doc_name !== 'undefined') {
+    patch.doc_name = input.patch.doc_name;
+    patch.title = input.patch.doc_name;
+  }
+  if (typeof input.patch.doc_type !== 'undefined') patch.doc_type = input.patch.doc_type;
+  if (typeof input.patch.issue_date !== 'undefined') patch.issue_date = input.patch.issue_date;
+  if (typeof input.patch.expiry_date !== 'undefined') patch.expiry_date = input.patch.expiry_date;
+  if (typeof input.patch.notes !== 'undefined') patch.notes = input.patch.notes;
+  if (typeof input.patch.status !== 'undefined') patch.status = input.patch.status;
+
+  const { data, error } = await insforge.database
+    .from('hr_employee_documents')
+    .update(patch)
+    .eq('company_id', input.companyId)
+    .eq('id', input.documentId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update personal HR document.');
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr.personal_document.update',
+    entityType: 'hr_employee_document',
+    entityId: input.documentId
+  });
+  return data as HrPersonalDocumentRow;
+}
+
+export async function createHrAcknowledgementDocument(input: {
+  companyId: UUID;
+  actorUserId: UUID;
+  title: string;
+  category: string;
+  fileIds: UUID[];
+  version?: string | null;
+  effectiveDate?: string | null;
+  reviewDate?: string | null;
+  assignedAll: boolean;
+  assignedDepartmentIds?: UUID[] | null;
+  assignedRoles?: string[] | null;
+  acknowledgementRequired: boolean;
+  signatureRequired: boolean;
+}): Promise<HrAckDocumentRow> {
+  const { data, error } = await insforge.database
+    .from('hr_ack_documents')
+    .insert({
+      company_id: input.companyId,
+      title: input.title,
+      category: input.category,
+      file_ids: input.fileIds,
+      version: input.version ?? null,
+      effective_date: input.effectiveDate ?? null,
+      review_date: input.reviewDate ?? null,
+      assigned_all: input.assignedAll,
+      assigned_department_ids: input.assignedDepartmentIds ?? null,
+      assigned_roles: input.assignedRoles ?? null,
+      acknowledgement_required: input.acknowledgementRequired,
+      signature_required: input.signatureRequired,
+      created_by_user_id: input.actorUserId
+    })
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to create acknowledgement document.');
+
+  const { data: employees, error: empError } = await insforge.database
+    .from('hr_employees')
+    .select('id,user_id,department_id')
+    .eq('company_id', input.companyId)
+    .in('employment_status', ['ONBOARDING', 'ACTIVE', 'ON_LEAVE', 'SUSPENDED']);
+  if (empError) throw new Error(getErrorMessage(empError));
+
+  const assignedRoleSet = new Set((input.assignedRoles ?? []).map((r) => r.toLowerCase()));
+  const assignedDeptSet = new Set((input.assignedDepartmentIds ?? []).map((x) => String(x)));
+
+  let eligible = (employees ?? []) as any[];
+  if (!input.assignedAll && (assignedDeptSet.size > 0 || assignedRoleSet.size > 0)) {
+    let membershipMap = new Map<string, string>();
+    if (assignedRoleSet.size > 0) {
+      const userIds = eligible.map((e) => e.user_id).filter(Boolean);
+      if (userIds.length > 0) {
+        const { data: memberships } = await insforge.database
+          .from('company_memberships')
+          .select('user_id, role')
+          .eq('company_id', input.companyId)
+          .in('user_id', userIds);
+        for (const m of memberships ?? []) membershipMap.set(String((m as any).user_id), String((m as any).role).toLowerCase());
+      }
+    }
+    eligible = eligible.filter((e) => {
+      const deptOk = assignedDeptSet.size === 0 || (e.department_id && assignedDeptSet.has(String(e.department_id)));
+      const roleVal = e.user_id ? membershipMap.get(String(e.user_id)) : null;
+      const roleOk = assignedRoleSet.size === 0 || (roleVal ? assignedRoleSet.has(roleVal) : false);
+      return deptOk && roleOk;
+    });
+  }
+
+  const rows = eligible.map((e) => ({
+    company_id: input.companyId,
+    ack_document_id: (data as any).id as UUID,
+    employee_id: e.id as UUID,
+    employee_user_id: (e.user_id as UUID | null) ?? null,
+    status: 'PENDING'
+  }));
+  if (rows.length > 0) {
+    await insforge.database.from('hr_ack_receipts').upsert(rows, { onConflict: 'company_id,ack_document_id,employee_id' });
+  }
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr.ack_document.create',
+    entityType: 'hr_ack_document',
+    entityId: (data as any).id as UUID
+  });
+  return data as HrAckDocumentRow;
+}
+
+export async function listHrAcknowledgementDocuments(input: {
+  companyId: UUID;
+  actorRole: string | null;
+  actorUserId: UUID;
+}): Promise<Array<HrAckDocumentRow & { receipts?: HrAckReceiptRow[] }>> {
+  const { data, error } = await insforge.database
+    .from('hr_ack_documents')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(getErrorMessage(error));
+  const docs = (data ?? []) as HrAckDocumentRow[];
+
+  const role = input.actorRole ?? '';
+  if (role === 'employee') {
+    const me = await getHrEmployeeByUserId(input.companyId, input.actorUserId);
+    if (!me) return [];
+    const { data: rec } = await insforge.database
+      .from('hr_ack_receipts')
+      .select('*')
+      .eq('company_id', input.companyId)
+      .eq('employee_id', me.id);
+    const recByDoc = new Map<UUID, HrAckReceiptRow[]>();
+    for (const r of (rec ?? []) as HrAckReceiptRow[]) {
+      const list = recByDoc.get(r.ack_document_id) ?? [];
+      list.push(r);
+      recByDoc.set(r.ack_document_id, list);
+    }
+    return docs.filter((d) => recByDoc.has(d.id)).map((d) => ({ ...d, receipts: recByDoc.get(d.id) ?? [] }));
+  }
+
+  const { data: receipts } = await insforge.database
+    .from('hr_ack_receipts')
+    .select('*')
+    .eq('company_id', input.companyId);
+  const recByDoc = new Map<UUID, HrAckReceiptRow[]>();
+  for (const r of (receipts ?? []) as HrAckReceiptRow[]) {
+    const list = recByDoc.get(r.ack_document_id) ?? [];
+    list.push(r);
+    recByDoc.set(r.ack_document_id, list);
+  }
+  return docs.map((d) => ({ ...d, receipts: recByDoc.get(d.id) ?? [] }));
+}
+
+export async function submitHrAcknowledgement(input: {
+  companyId: UUID;
+  actorUserId: UUID;
+  ackDocumentId: UUID;
+  action: 'acknowledge' | 'sign';
+  ipAddress?: string | null;
+  deviceInfo?: string | null;
+}): Promise<HrAckReceiptRow> {
+  const me = await getHrEmployeeByUserId(input.companyId, input.actorUserId);
+  if (!me) throw new Error('No linked employee profile.');
+
+  const nextStatus = input.action === 'sign' ? 'SIGNED' : 'ACKNOWLEDGED';
+  const patch: Record<string, unknown> = {
+    status: nextStatus,
+    acknowledgement_method: input.action === 'sign' ? 'Signature' : 'Click',
+    ip_address: input.ipAddress ?? null,
+    device_info: input.deviceInfo ?? null,
+    updated_at: new Date().toISOString()
+  };
+  if (input.action === 'sign') patch.signed_at = new Date().toISOString();
+  else patch.acknowledged_at = new Date().toISOString();
+
+  const { data, error } = await insforge.database
+    .from('hr_ack_receipts')
+    .upsert({
+      company_id: input.companyId,
+      ack_document_id: input.ackDocumentId,
+      employee_id: me.id,
+      employee_user_id: me.user_id,
+      ...patch
+    }, { onConflict: 'company_id,ack_document_id,employee_id' })
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to record acknowledgement.');
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: input.action === 'sign' ? 'hr.ack_document.sign' : 'hr.ack_document.acknowledge',
+    entityType: 'hr_ack_receipt',
+    entityId: (data as any).id as UUID
+  });
+  return data as HrAckReceiptRow;
+}
+
+export async function sendHrDocumentExpiryAlerts(companyId: UUID, actorUserId: UUID): Promise<number> {
+  const docs = await listHrPersonalDocuments({
+    companyId,
+    actorRole: 'admin',
+    actorUserId
+  });
+  const toNotify = docs.filter((d) => {
+    if (!d.expiry_date) return false;
+    const diff = dayDiff(d.expiry_date);
+    return diff === 30 || diff === 7 || diff < 0;
+  });
+  if (toNotify.length === 0) return 0;
+
+  const employees = await listHrEmployees(companyId);
+  const employeeById = new Map(employees.map((e) => [e.id, e]));
+  const hrRecipients = await listHrManagersAndAdmins(companyId).catch(() => []);
+  let count = 0;
+
+  for (const doc of toNotify) {
+    const status = getDocumentExpiryStatus(doc);
+    const employee = employeeById.get(doc.employee_id);
+    const title = status === 'expired' ? 'HR document expired' : 'HR document nearing expiry';
+    const message = `${doc.doc_name ?? doc.title} for ${employee ? `${employee.first_name} ${employee.last_name}` : doc.employee_id} is ${status === 'expired' ? 'expired' : `expiring soon (${doc.expiry_date})`}.`;
+
+    const recipients = new Set<UUID>();
+    for (const userId of hrRecipients) recipients.add(userId);
+    if (employee?.supervisor_user_id) recipients.add(employee.supervisor_user_id);
+    if (employee?.user_id) recipients.add(employee.user_id);
+
+    for (const recipient of recipients) {
+      await createNotification(
+        companyId,
+        recipient,
+        status === 'expired' ? 'warning' : 'info',
+        title,
+        message,
+        { module: 'hr', route: '/dashboard/hr/documents', employeeId: doc.employee_id, documentId: doc.id, expiryStatus: status }
+      ).catch(() => {});
+      count += 1;
+    }
+  }
+
+  await createActivityLog({
+    companyId,
+    actorUserId,
+    action: 'hr.documents.expiry_alerts.sent',
+    entityType: 'hr_employee_document',
+    entityId: toNotify[0]?.id ?? actorUserId,
+    metadata: { documents: toNotify.length, notifications: count }
+  }).catch(() => {});
+
+  return count;
 }
 
 export function recommendDisciplinaryAction(input: { repeatCount: number; caseType: string }): string {

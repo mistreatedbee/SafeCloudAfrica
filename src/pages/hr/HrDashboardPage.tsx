@@ -70,6 +70,8 @@ export function HrDashboardPage() {
           <Stat label="Hours Worked" value={String(Math.round(stats?.hoursWorkedSelectedPeriod ?? 0))} subtitle={`Training ${stats?.trainingCompliancePercent ?? 0}%`} />
           <Stat label="Disciplinary Open" value={String(stats?.disciplinaryOpen ?? 0)} subtitle={`Repeat ${stats?.disciplinaryRepeatOffence ?? 0}`} />
           <Stat label="HR Docs Expiring" value={String(stats?.hrDocsExpiringSoon ?? 0)} subtitle="Next 30 days" />
+          <Stat label="HR Docs Expired" value={String(stats?.hrDocsExpired ?? 0)} subtitle="Compliance gap" />
+          <Stat label="Ack Completion" value={`${stats?.acknowledgementCompletionPercent ?? 0}%`} subtitle="Policies/sign-offs" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
