@@ -63,7 +63,7 @@ export function KPILibraryPage() {
         </button>
       </div>
       <p className="text-sm text-charcoal-500">
-        Reusable KPI templates for assessments. You can also add custom KPIs when creating an assessment.
+        Reusable KPI Questionnaire templates for KPI Assessment. You can also add custom questionnaires when creating an assessment.
       </p>
 
       {loading && (
@@ -75,7 +75,7 @@ export function KPILibraryPage() {
 
       {!loading && (items ?? []).length === 0 && (
         <div className="bg-white rounded-xl border border-surface-300 p-6 shadow-card">
-          <p className="text-charcoal-500">No KPI templates yet. Add one or use custom KPIs when creating assessments.</p>
+          <p className="text-charcoal-500">No KPI templates yet. Add one or use custom KPI Questionnaires when creating assessments.</p>
         </div>
       )}
 
@@ -84,7 +84,7 @@ export function KPILibraryPage() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="text-left text-charcoal-500 border-b border-surface-200 bg-surface-50">
-                <th className="py-3 px-4">KPI (title)</th>
+                <th className="py-3 px-4">KPI Questionnaire</th>
                 <th className="py-3 px-4">Description</th>
                 <th className="py-3 px-4">Default importance</th>
                 <th className="py-3 px-4">Active</th>
@@ -116,7 +116,7 @@ export function KPILibraryPage() {
             </div>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1">KPI title *</label>
+                <label className="block text-sm font-medium text-charcoal mb-1">KPI Questionnaire *</label>
                 <input
                   type="text"
                   value={title}

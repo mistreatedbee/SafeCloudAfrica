@@ -13,6 +13,10 @@ import { createActivityLog } from './activityLogService';
 
 const IMPORTANCE_WEIGHT: Record<KpiImportance, number> = { low: 1, medium: 1.5, high: 2 };
 
+function getImportanceWeight(importance: KpiImportance): number {
+  return IMPORTANCE_WEIGHT[importance] ?? 1;
+}
+
 export function getOverallRatingBand(score: number): string {
   if (score >= 5) return 'Exceptional';
   if (score >= 4) return 'Exceeds';
@@ -35,8 +39,42 @@ export function computeOverallScore(lines: { manager_rating: number | null; impo
   return Math.round((sumWeighted / sumWeight) * 100) / 100;
 }
 
+export function computeAchievementPercentage(lines: { manager_rating: number | null; importance_rating: KpiImportance }[]): number | null {
+  const withRating = lines.filter((l) => l.manager_rating != null);
+  if (withRating.length === 0) return null;
+  let weightedSum = 0;
+  let weightedMax = 0;
+  for (const l of withRating) {
+    const w = getImportanceWeight(l.importance_rating);
+    weightedSum += (l.manager_rating ?? 0) * w;
+    weightedMax += 5 * w;
+  }
+  if (weightedMax === 0) return null;
+  return Math.round((weightedSum / weightedMax) * 10000) / 100;
+}
+
+export function normalizeAssessmentStatus(status: KpiAssessmentStatus): Exclude<KpiAssessmentStatus, 'submitted' | 'finalized'> {
+  if (status === 'submitted') return 'in_progress';
+  if (status === 'finalized') return 'completed';
+  return status;
+}
+
+function canTransitionStatus(current: KpiAssessmentStatus, next: KpiAssessmentStatus): boolean {
+  const from = normalizeAssessmentStatus(current);
+  const to = normalizeAssessmentStatus(next);
+  const transitions: Record<Exclude<KpiAssessmentStatus, 'submitted' | 'finalized'>, Array<Exclude<KpiAssessmentStatus, 'submitted' | 'finalized'>>> = {
+    draft: ['in_progress'],
+    in_progress: ['under_review'],
+    under_review: ['completed'],
+    completed: ['closed'],
+    closed: []
+  };
+  return from === to || transitions[from].includes(to);
+}
+
 export type CreateKPIAssessmentInput = {
   organizationId: UUID;
+  assessmentName?: string;
   assessmentType: KpiAssessmentType;
   employeeId?: UUID | null;
   employeeNameSnapshot?: string | null;
@@ -50,7 +88,13 @@ export type CreateKPIAssessmentInput = {
   periodStartDate: string;
   periodEndDate: string;
   createdByUserId: UUID;
-  lines: Array<{
+  lines?: Array<{
+    kpiItemId?: UUID | null;
+    customKpiTitle?: string | null;
+    kpiTitle: string;
+    importanceRating: KpiImportance;
+  }>;
+  questionnaires?: Array<{
     kpiItemId?: UUID | null;
     customKpiTitle?: string | null;
     kpiTitle: string;
@@ -59,10 +103,17 @@ export type CreateKPIAssessmentInput = {
 };
 
 export async function createKPIAssessment(input: CreateKPIAssessmentInput): Promise<KPIAssessment> {
+  const assessmentName =
+    input.assessmentName?.trim() ||
+    (input.assessmentType === 'employee'
+      ? `${input.employeeNameSnapshot ?? 'Employee'} ${input.periodType} KPI Assessment`
+      : `${input.projectName ?? 'Project'} ${input.periodType} KPI Assessment`);
+
   const { data: assessment, error: errAssess } = await insforge.database
     .from('kpi_assessments')
     .insert({
       organization_id: input.organizationId,
+      assessment_name: assessmentName,
       assessment_type: input.assessmentType,
       employee_id: input.employeeId ?? null,
       employee_name_snapshot: input.employeeNameSnapshot ?? null,
@@ -85,9 +136,10 @@ export async function createKPIAssessment(input: CreateKPIAssessmentInput): Prom
   if (!assessment) throw new Error('Failed to create KPI assessment.');
 
   const assessmentId = (assessment as KPIAssessment).assessment_id;
+  const questionnaires = input.questionnaires ?? input.lines ?? [];
 
-  if (input.lines.length > 0) {
-    const lineRows = input.lines.map((l) => ({
+  if (questionnaires.length > 0) {
+    const lineRows = questionnaires.map((l) => ({
       assessment_id: assessmentId,
       kpi_item_id: l.kpiItemId ?? null,
       custom_kpi_title: l.customKpiTitle ?? null,
@@ -133,14 +185,32 @@ export async function listKPIAssessmentLines(assessmentId: UUID): Promise<KPIAss
   return (data ?? []) as KPIAssessmentLine[];
 }
 
+export async function listKPIAssessmentLinesByAssessmentIds(assessmentIds: UUID[]): Promise<KPIAssessmentLine[]> {
+  if (!assessmentIds.length) return [];
+  const { data, error } = await insforge.database
+    .from('kpi_assessment_lines')
+    .select('*')
+    .in('assessment_id', assessmentIds);
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as KPIAssessmentLine[];
+}
+
 export async function refreshAssessmentOverallScore(assessmentId: UUID, organizationId: UUID): Promise<void> {
   const lines = await listKPIAssessmentLines(assessmentId);
   const score = computeOverallScore(lines);
+  const achievement = computeAchievementPercentage(lines);
   const band = score != null ? getOverallRatingBand(score) : null;
+  const weightedScoreTotal = lines
+    .filter((l) => l.manager_rating != null)
+    .reduce((sum, l) => sum + (l.manager_rating ?? 0) * getImportanceWeight(l.importance_rating), 0);
+
   const { error } = await insforge.database
     .from('kpi_assessments')
     .update({
       overall_score: score,
+      achievement_percentage: achievement,
+      employee_overall_performance_score: score,
+      weighted_score_total: Math.round(weightedScoreTotal * 100) / 100,
       overall_rating_band: band,
       updated_at: new Date().toISOString()
     })
@@ -188,6 +258,7 @@ export async function listKPIAssessments(filters: ListKPIAssessmentsFilters): Pr
     const term = filters.search.trim().toLowerCase();
     result = result.filter(
       (a) =>
+        (a.assessment_name?.toLowerCase().includes(term)) ||
         (a.employee_name_snapshot?.toLowerCase().includes(term)) ||
         (a.manager_name_snapshot?.toLowerCase().includes(term)) ||
         (a.project_name?.toLowerCase().includes(term))
@@ -202,10 +273,30 @@ export async function updateKPIAssessment(
   patch: Partial<Pick<KPIAssessment, 'status' | 'employee_comments' | 'manager_remarks' | 'employee_name_snapshot' | 'manager_name_snapshot'>>,
   actorUserId: UUID
 ): Promise<KPIAssessment> {
+  const current = await getKPIAssessment(assessmentId, organizationId);
+  if (!current) throw new Error('KPI assessment not found.');
+
+  if (patch.status) {
+    const currentStatus = normalizeAssessmentStatus(current.status);
+    const nextStatus = normalizeAssessmentStatus(patch.status);
+    if (!canTransitionStatus(currentStatus, nextStatus)) {
+      throw new Error(`Invalid assessment status transition: ${currentStatus} -> ${nextStatus}.`);
+    }
+
+    if (nextStatus === 'completed' || nextStatus === 'closed') {
+      const lines = await listKPIAssessmentLines(assessmentId);
+      const unrated = lines.filter((l) => l.manager_rating == null);
+      if (unrated.length > 0) {
+        throw new Error('Manager rating is required for all KPI Questionnaires before completion/closure.');
+      }
+    }
+  }
+
   const { data, error } = await insforge.database
     .from('kpi_assessments')
     .update({
       ...(patch as any),
+      ...(patch.status ? { status: normalizeAssessmentStatus(patch.status) } : {}),
       updated_at: new Date().toISOString()
     })
     .eq('assessment_id', assessmentId)

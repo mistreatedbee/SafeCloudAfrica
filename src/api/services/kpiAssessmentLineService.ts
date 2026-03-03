@@ -17,12 +17,18 @@ export async function updateKPIAssessmentLine(
   lineId: UUID,
   assessmentId: UUID,
   organizationId: UUID,
-  patch: Partial<Pick<KPIAssessmentLine, 'employee_own_rating' | 'manager_rating' | 'notes' | 'importance_rating' | 'kpi_title'>>
+  patch: Partial<Pick<KPIAssessmentLine, 'employee_own_rating' | 'manager_rating' | 'notes' | 'importance_rating' | 'kpi_title' | 'kpi_questionnaire'>>
 ): Promise<KPIAssessmentLine> {
+  const nextPatch: Record<string, unknown> = { ...(patch as any) };
+  if (typeof patch.kpi_questionnaire === 'string') {
+    nextPatch.kpi_title = patch.kpi_questionnaire;
+    nextPatch.kpi_questionnaire = patch.kpi_questionnaire;
+  }
+
   const { data, error } = await insforge.database
     .from('kpi_assessment_lines')
     .update({
-      ...(patch as any),
+      ...nextPatch,
       updated_at: new Date().toISOString()
     })
     .eq('line_id', lineId)
@@ -30,7 +36,7 @@ export async function updateKPIAssessmentLine(
     .single();
 
   if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to update KPI line.');
+  if (!data) throw new Error('Failed to update KPI Questionnaire.');
 
   await refreshAssessmentOverallScore(assessmentId, organizationId);
   return data as KPIAssessmentLine;
@@ -59,7 +65,7 @@ export async function addKPIAssessmentLine(
     .single();
 
   if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to add KPI line.');
+  if (!data) throw new Error('Failed to add KPI Questionnaire.');
   await refreshAssessmentOverallScore(assessmentId, organizationId);
   return data as KPIAssessmentLine;
 }

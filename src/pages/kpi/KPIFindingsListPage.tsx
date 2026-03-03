@@ -177,7 +177,7 @@ export function KPIFindingsListPage() {
                     onClick={() => navigate(`/modules/hr/kpis/assessments/${f.assessment_id}`)}
                     className="text-sm text-teal hover:underline"
                   >
-                    View assessment
+                    View KPI Assessment
                   </button>
                 </div>
               </div>

@@ -2057,7 +2057,7 @@ export type HrKpi = {
 export type KpiImportance = 'low' | 'medium' | 'high';
 export type KpiAssessmentType = 'employee' | 'project';
 export type KpiPeriodType = 'monthly' | 'quarterly' | 'annual';
-export type KpiAssessmentStatus = 'draft' | 'submitted' | 'under_review' | 'finalized' | 'closed';
+export type KpiAssessmentStatus = 'draft' | 'in_progress' | 'under_review' | 'completed' | 'closed' | 'submitted' | 'finalized';
 export type KpiFindingStatus = 'open' | 'in_progress' | 'awaiting_evidence' | 'under_review' | 'closed' | 'overdue';
 
 export type KPIItem = {
@@ -2077,6 +2077,7 @@ export type KPIItem = {
 export type KPIAssessment = {
   assessment_id: UUID;
   organization_id: UUID;
+  assessment_name: string | null;
   assessment_type: KpiAssessmentType;
   employee_id: UUID | null;
   employee_name_snapshot: string | null;
@@ -2093,6 +2094,9 @@ export type KPIAssessment = {
   employee_comments: string | null;
   manager_remarks: string | null;
   overall_score: number | null;
+  achievement_percentage: number | null;
+  employee_overall_performance_score: number | null;
+  weighted_score_total: number | null;
   overall_rating_band: string | null;
   bonus_score: number | null;
   created_by_user_id: UUID;
@@ -2105,10 +2109,13 @@ export type KPIAssessmentLine = {
   assessment_id: UUID;
   kpi_item_id: UUID | null;
   custom_kpi_title: string | null;
+  kpi_questionnaire: string | null;
   kpi_title: string;
   importance_rating: KpiImportance;
   employee_own_rating: number | null;
   manager_rating: number | null;
+  achievement_status: 'not_achieved' | 'partially_achieved' | 'achieved' | null;
+  weighted_score: number | null;
   achieved: boolean | null;
   not_achieved: boolean | null;
   notes: string | null;

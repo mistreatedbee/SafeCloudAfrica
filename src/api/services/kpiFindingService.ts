@@ -2,6 +2,8 @@ import { insforge } from '../insforge/client';
 import type { KPIFinding, KPIFindingProofUpload, KpiFindingStatus, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { createTask } from './tasksService';
+import { createNotification } from './notificationsService';
 
 export type CreateKPIFindingInput = {
   organizationId: UUID;
@@ -48,6 +50,31 @@ export async function createKPIFinding(input: CreateKPIFindingInput): Promise<KP
     entityType: 'kpi_finding',
     entityId: finding.finding_id
   });
+
+  // Best-effort task integration for corrective action workflow when KPI is not achieved.
+  await createTask({
+    companyId: input.organizationId,
+    module: 'hr',
+    title: `KPI corrective action: ${input.description.slice(0, 64)}`,
+    description: input.description,
+    category: 'kpi_follow_up',
+    priority: 'medium',
+    dueAt: input.dueDate,
+    assigneeUserId: input.assignedLineManagerId,
+    taskOwnerUserId: input.assignedLineManagerId,
+    sourceEntityType: 'kpi_finding',
+    sourceEntityId: finding.finding_id,
+    createdByUserId: input.assignedLineManagerId
+  }).catch(() => undefined);
+
+  await createNotification(
+    input.organizationId,
+    input.assignedLineManagerId,
+    'warning',
+    'KPI review pending',
+    'A KPI Questionnaire was marked Not Achieved and needs manager follow-up.',
+    { assessmentId: input.assessmentId, findingId: finding.finding_id }
+  ).catch(() => undefined);
 
   return finding;
 }

@@ -1,4 +1,4 @@
-import type { KPIAssessment, KPIFinding } from '../models/entities';
+import type { KPIAssessment, KPIAssessmentLine, KPIFinding } from '../models/entities';
 
 function escapeHtml(s: string): string {
   return String(s)
@@ -9,113 +9,115 @@ function escapeHtml(s: string): string {
 }
 
 export type KPIReportInput = {
-  reportType: 'employee' | 'project' | 'department_ranking';
+  reportType: 'individual_history' | 'department_trends' | 'achieved_vs_not_achieved' | 'manager_rating_distribution' | 'period_comparison';
   organizationId: string;
   assessments: KPIAssessment[];
+  lines: KPIAssessmentLine[];
   findings: KPIFinding[];
   periodFrom?: string;
   periodTo?: string;
 };
 
-export async function exportKPIReports(input: KPIReportInput, format: 'pdf' | 'csv'): Promise<Blob> {
-  if (format === 'csv') return exportKPIReportsCSV(input);
+export async function exportKPIReports(input: KPIReportInput, format: 'pdf' | 'excel'): Promise<Blob> {
+  if (format === 'excel') return exportKPIReportsCSV(input);
   return exportKPIReportsHTML(input);
 }
 
 function exportKPIReportsCSV(input: KPIReportInput): Promise<Blob> {
-  const { reportType, assessments } = input;
-  let headers: string[];
-  let rows: string[][];
-
-  if (reportType === 'employee' || reportType === 'project') {
-    headers = ['Name', 'Manager', 'Type', 'Period start', 'Period end', 'Status', 'Overall score', 'Rating band'];
-    rows = assessments.map((a) => [
-      a.employee_name_snapshot || a.project_name || '',
-      a.manager_name_snapshot || '',
-      a.assessment_type,
-      a.period_start_date,
-      a.period_end_date,
-      a.status,
-      a.overall_score != null ? String(a.overall_score) : '',
-      a.overall_rating_band || ''
-    ]);
-  } else {
-    const byDept: Record<string, { sum: number; count: number }> = {};
-    assessments.forEach((a) => {
-      const key = (a.department_id as string) ?? 'Unassigned';
-      if (!byDept[key]) byDept[key] = { sum: 0, count: 0 };
-      if (a.overall_score != null) {
-        byDept[key].sum += a.overall_score;
-        byDept[key].count += 1;
-      }
-    });
-    headers = ['Department', 'Avg score', 'Count'];
-    rows = Object.entries(byDept)
-      .filter(([, v]) => v.count > 0)
-      .map(([id, v]) => [id, (v.sum / v.count).toFixed(2), String(v.count)])
-      .sort((a, b) => Number(b[1]) - Number(a[1]));
-  }
-
+  const table = buildReportTable(input);
   const csvContent = [
-    headers.join(','),
-    ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    table.headers.join(','),
+    ...table.rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
   ].join('\n');
   return Promise.resolve(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
 }
 
-function exportKPIReportsHTML(input: KPIReportInput): Promise<Blob> {
-  const { reportType, assessments } = input;
-  let title: string;
-  let tableRows: string;
+function buildReportTable(input: KPIReportInput): { title: string; headers: string[]; rows: string[][] } {
+  const { reportType, assessments, lines } = input;
 
-  if (reportType === 'employee' || reportType === 'project') {
-    title = reportType === 'employee' ? 'Employee KPI Report' : 'Project KPI Report';
-    tableRows = assessments
-      .map(
-        (a) => `
-      <tr>
-        <td>${escapeHtml(a.employee_name_snapshot || a.project_name || '')}</td>
-        <td>${escapeHtml(a.manager_name_snapshot || '')}</td>
-        <td>${escapeHtml(a.assessment_type)}</td>
-        <td>${escapeHtml(a.period_start_date)}</td>
-        <td>${escapeHtml(a.period_end_date)}</td>
-        <td>${escapeHtml(a.status)}</td>
-        <td>${a.overall_score != null ? a.overall_score.toFixed(2) : ''}</td>
-        <td>${escapeHtml(a.overall_rating_band || '')}</td>
-      </tr>`
-      )
-      .join('');
-  } else {
-    title = 'Department Ranking Report';
-    const byDept: Record<string, { sum: number; count: number }> = {};
-    assessments.forEach((a) => {
-      const key = (a.department_id as string) ?? 'Unassigned';
-      if (!byDept[key]) byDept[key] = { sum: 0, count: 0 };
-      if (a.overall_score != null) {
-        byDept[key].sum += a.overall_score;
-        byDept[key].count += 1;
-      }
-    });
-    const sorted = Object.entries(byDept)
-      .filter(([, v]) => v.count > 0)
-      .map(([id, v]) => ({ id, avg: v.sum / v.count, count: v.count }))
-      .sort((a, b) => b.avg - a.avg);
-    tableRows = sorted
-      .map(
-        (d) => `
-      <tr>
-        <td>${escapeHtml(d.id)}</td>
-        <td>${d.avg.toFixed(2)}</td>
-        <td>${d.count}</td>
-      </tr>`
-      )
-      .join('');
+  if (reportType === 'individual_history') {
+    return {
+      title: 'Individual KPI History',
+      headers: ['KPI Assessment', 'Employee / Project', 'Manager', 'Period Start', 'Period End', 'Status', 'Overall Score', 'Achievement %'],
+      rows: assessments.map((a) => [
+        a.assessment_name || 'KPI Assessment',
+        a.employee_name_snapshot || a.project_name || '',
+        a.manager_name_snapshot || '',
+        a.period_start_date,
+        a.period_end_date,
+        a.status,
+        a.overall_score != null ? String(a.overall_score) : '',
+        a.achievement_percentage != null ? String(a.achievement_percentage) : ''
+      ])
+    };
   }
 
-  const th =
-    reportType === 'department_ranking'
-      ? '<tr><th>Department</th><th>Avg score</th><th>Count</th></tr>'
-      : '<tr><th>Name</th><th>Manager</th><th>Type</th><th>Period start</th><th>Period end</th><th>Status</th><th>Score</th><th>Band</th></tr>';
+  if (reportType === 'department_trends') {
+    const byDeptPeriod: Record<string, { dept: string; period: string; sum: number; count: number }> = {};
+    assessments.forEach((a) => {
+      if (a.overall_score == null) return;
+      const dept = (a.department_id as string) || 'Unassigned';
+      const period = a.period_start_date.slice(0, 7);
+      const key = `${dept}::${period}`;
+      if (!byDeptPeriod[key]) byDeptPeriod[key] = { dept, period, sum: 0, count: 0 };
+      byDeptPeriod[key].sum += a.overall_score;
+      byDeptPeriod[key].count += 1;
+    });
+    return {
+      title: 'Department KPI Trends',
+      headers: ['Department', 'Period', 'Average Score', 'Assessments'],
+      rows: Object.values(byDeptPeriod)
+        .sort((a, b) => a.period.localeCompare(b.period) || a.dept.localeCompare(b.dept))
+        .map((x) => [x.dept, x.period, (x.sum / x.count).toFixed(2), String(x.count)])
+    };
+  }
+
+  if (reportType === 'achieved_vs_not_achieved') {
+    const achieved = lines.filter((l) => (l.manager_rating ?? 0) >= 4).length;
+    const partial = lines.filter((l) => l.manager_rating === 3).length;
+    const notAchieved = lines.filter((l) => (l.manager_rating ?? 0) <= 2 && l.manager_rating != null).length;
+    return {
+      title: 'Achieved vs Not Achieved',
+      headers: ['Status', 'Count'],
+      rows: [
+        ['Achieved', String(achieved)],
+        ['Partially Achieved', String(partial)],
+        ['Not Achieved', String(notAchieved)]
+      ]
+    };
+  }
+
+  if (reportType === 'manager_rating_distribution') {
+    const counts = [1, 2, 3, 4, 5].map((n) => [String(n), String(lines.filter((l) => l.manager_rating === n).length)]);
+    return {
+      title: 'Manager Rating Distribution',
+      headers: ['Manager Rating', 'Count'],
+      rows: counts
+    };
+  }
+
+  const byPeriod: Record<string, { sum: number; count: number }> = {};
+  assessments.forEach((a) => {
+    const key = a.period_type;
+    if (!byPeriod[key]) byPeriod[key] = { sum: 0, count: 0 };
+    if (a.overall_score != null) {
+      byPeriod[key].sum += a.overall_score;
+      byPeriod[key].count += 1;
+    }
+  });
+  return {
+    title: 'Period Comparison',
+    headers: ['Period Type', 'Average Score', 'Assessments'],
+    rows: Object.entries(byPeriod).map(([period, v]) => [period, v.count ? (v.sum / v.count).toFixed(2) : '0.00', String(v.count)])
+  };
+}
+
+function exportKPIReportsHTML(input: KPIReportInput): Promise<Blob> {
+  const table = buildReportTable(input);
+  const headers = table.headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('');
+  const rows = table.rows
+    .map((row) => `<tr>${row.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`)
+    .join('');
 
   const html = `
     <!DOCTYPE html>
@@ -131,17 +133,16 @@ function exportKPIReportsHTML(input: KPIReportInput): Promise<Blob> {
     </style></head>
     <body>
       <div class="header">
-        <h1>${escapeHtml(title)}</h1>
+        <h1>${escapeHtml(table.title)}</h1>
         <p>Generated on ${new Date().toLocaleString()}</p>
       </div>
       <table>
-        <thead>${th}</thead>
-        <tbody>${tableRows || '<tr><td colspan="8">No data</td></tr>'}</tbody>
+        <thead><tr>${headers}</tr></thead>
+        <tbody>${rows || `<tr><td colspan="${table.headers.length}">No data</td></tr>`}</tbody>
       </table>
-      <div class="footer">
-        SafeCloud Africa – KPI Module. Print to save as PDF.
-      </div>
+      <div class="footer">SafeCloud Africa - KPI Assessment reports.</div>
     </body>
     </html>`;
+
   return Promise.resolve(new Blob([html], { type: 'text/html;charset=utf-8' }));
 }

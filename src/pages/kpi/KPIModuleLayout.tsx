@@ -4,7 +4,7 @@ import { Layout } from '../../components/layout/Layout';
 
 const kpiNav = [
   { to: '/modules/hr/kpis', end: true, label: 'Dashboard' },
-  { to: '/modules/hr/kpis/assessments', end: false, label: 'Assessments' },
+  { to: '/modules/hr/kpis/assessments', end: false, label: 'KPI Assessment' },
   { to: '/modules/hr/kpis/library', end: true, label: 'Library' },
   { to: '/modules/hr/kpis/findings', end: true, label: 'Findings' },
   { to: '/modules/hr/kpis/reports', end: true, label: 'Reports' },
@@ -13,8 +13,8 @@ const kpiNav = [
 
 export function KPIModuleLayout() {
   return (
-    <Layout title="Performance KPIs">
-      <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+    <Layout title="KPI Assessment">
+      <div className="max-w-7xl mx-auto px-4 pt-6 pb-4 space-y-4">
         <nav className="flex flex-wrap gap-1 border-b border-surface-200 pb-2">
           {kpiNav.map(({ to, end, label }) => (
             <NavLink

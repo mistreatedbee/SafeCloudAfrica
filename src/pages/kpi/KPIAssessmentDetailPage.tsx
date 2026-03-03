@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
@@ -6,15 +6,23 @@ import { useAsync } from '../../api/hooks/useAsync';
 import {
   getKPIAssessment,
   listKPIAssessmentLines,
-  updateKPIAssessment,
-  getOverallRatingBand
+  normalizeAssessmentStatus,
+  updateKPIAssessment
 } from '../../api/services/kpiAssessmentService';
 import { updateKPIAssessmentLine } from '../../api/services/kpiAssessmentLineService';
-import { createKPIFinding } from '../../api/services/kpiFindingService';
-import { listKPIFindings } from '../../api/services/kpiFindingService';
-import type { KPIAssessment, KPIAssessmentLine, KPIFinding } from '../../api/models/entities';
+import { createKPIFinding, listKPIFindings } from '../../api/services/kpiFindingService';
+import { listActivityLogsByEntity } from '../../api/services/activityLogService';
+import type { KPIAssessment, KPIAssessmentLine, KPIFinding, KpiAssessmentStatus } from '../../api/models/entities';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { KPI_RATING_LEGEND } from '../../constants/kpiRatingLegend';
+
+function getAchievementLabel(line: KPIAssessmentLine): 'Not Achieved' | 'Partially Achieved' | 'Achieved' | '-' {
+  const rating = line.manager_rating;
+  if (rating == null) return '-';
+  if (rating <= 2) return 'Not Achieved';
+  if (rating === 3) return 'Partially Achieved';
+  return 'Achieved';
+}
 
 export function KPIAssessmentDetailPage() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
@@ -22,6 +30,8 @@ export function KPIAssessmentDetailPage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
   const [refresher, setRefresher] = useState(0);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const { data: assessment, loading: loadingAssess } = useAsync<KPIAssessment | null>(
     async () => {
@@ -47,68 +57,112 @@ export function KPIAssessmentDetailPage() {
     [activeCompanyId, assessmentId, refresher]
   );
 
-  const canEdit = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
-  const isEmployee = assessment?.employee_id === user?.id;
-  const canEditOwnRating = (assessment?.status === 'draft' || assessment?.status === 'submitted') && (isEmployee || canEdit);
-  const canEditManagerRating = canEdit && (assessment?.status === 'submitted' || assessment?.status === 'under_review');
+  const { data: auditTrail } = useAsync(
+    async () => {
+      if (!activeCompanyId || !assessmentId) return [];
+      return listActivityLogsByEntity({
+        companyId: activeCompanyId,
+        entityType: 'kpi_assessment',
+        entityId: assessmentId as any,
+        limit: 40
+      });
+    },
+    [activeCompanyId, assessmentId, refresher]
+  );
 
-  const handleStatusChange = async (status: KPIAssessment['status']) => {
+  const normalizedStatus = normalizeAssessmentStatus(assessment?.status ?? 'draft');
+  const isEmployeeAssignee = assessment?.employee_id === user?.id;
+  const isManagerAssignee = assessment?.manager_id === user?.id;
+  const isAdmin = activeRole === 'owner' || activeRole === 'admin';
+  const isManagerRole = activeRole === 'manager' || activeRole === 'supervisor';
+
+  const canView = !!assessment;
+  const canEditEmployeeInputs = !!assessment && (isEmployeeAssignee || isAdmin) && (normalizedStatus === 'draft' || normalizedStatus === 'in_progress');
+  const canEditManagerRatings = !!assessment && (isManagerAssignee || isManagerRole || isAdmin) && (normalizedStatus === 'under_review' || normalizedStatus === 'in_progress');
+  const canCloseAssessment = !!assessment && (isManagerAssignee || isManagerRole || isAdmin);
+
+  const unratedCount = useMemo(() => (lines ?? []).filter((line) => line.manager_rating == null).length, [lines]);
+
+  const handleStatusChange = async (status: KpiAssessmentStatus) => {
     if (!activeCompanyId || !assessmentId || !user?.id) return;
-    await updateKPIAssessment(
-      assessmentId as any,
-      activeCompanyId,
-      { status },
-      user.id as any
-    );
-    setRefresher((r) => r + 1);
+    setError(null);
+    setMessage(null);
+
+    if ((status === 'completed' || status === 'closed') && unratedCount > 0) {
+      setError('Manager rating is required for all KPI Questionnaires before completion or closure.');
+      return;
+    }
+
+    try {
+      await updateKPIAssessment(assessmentId as any, activeCompanyId, { status }, user.id as any);
+      setMessage('KPI Assessment status updated successfully.');
+      setRefresher((r) => r + 1);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to update KPI Assessment status.');
+    }
   };
 
   const handleUpdateLine = async (
     lineId: string,
-    patch: { employee_own_rating?: number; manager_rating?: number; notes?: string }
+    patch: { employee_own_rating?: number; manager_rating?: number; notes?: string; kpi_questionnaire?: string }
   ) => {
     if (!activeCompanyId || !assessmentId || !assessment) return;
-    await updateKPIAssessmentLine(lineId as any, assessment.assessment_id, activeCompanyId, patch);
-    setRefresher((r) => r + 1);
+    setError(null);
+    try {
+      await updateKPIAssessmentLine(lineId as any, assessment.assessment_id, activeCompanyId, patch as any);
+      setMessage('KPI Questionnaire saved.');
+      setRefresher((r) => r + 1);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to save KPI Questionnaire.');
+    }
   };
 
   const handleUpdateAssessmentComments = async (patch: { employee_comments?: string; manager_remarks?: string }) => {
     if (!activeCompanyId || !assessmentId || !user?.id) return;
-    await updateKPIAssessment(assessmentId as any, activeCompanyId, patch, user.id as any);
-    setRefresher((r) => r + 1);
+    try {
+      await updateKPIAssessment(assessmentId as any, activeCompanyId, patch, user.id as any);
+      setMessage('Comments saved successfully.');
+      setRefresher((r) => r + 1);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to save comments.');
+    }
   };
 
   const handleGenerateFinding = async (line: KPIAssessmentLine) => {
-    if (!activeCompanyId || !assessment || !user?.id) return;
-    if (line.finding_generated) return;
-    await createKPIFinding({
-      organizationId: activeCompanyId,
-      assessmentId: assessment.assessment_id,
-      lineId: line.line_id,
-      employeeId: assessment.employee_id ?? undefined,
-      projectId: assessment.project_id ?? undefined,
-      description: `Not achieved: ${line.kpi_title}. Corrective action required.`,
-      assignedLineManagerId: assessment.manager_id,
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    });
-    setRefresher((r) => r + 1);
+    if (!activeCompanyId || !assessment || !user?.id || line.finding_generated) return;
+    try {
+      await createKPIFinding({
+        organizationId: activeCompanyId,
+        assessmentId: assessment.assessment_id,
+        lineId: line.line_id,
+        employeeId: assessment.employee_id ?? undefined,
+        projectId: assessment.project_id ?? undefined,
+        description: `Not Achieved KPI Questionnaire: ${line.kpi_title}. Corrective action required.`,
+        assignedLineManagerId: assessment.manager_id,
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      });
+      setMessage('Corrective action finding generated.');
+      setRefresher((r) => r + 1);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to generate finding.');
+    }
   };
 
   if (loadingAssess || !assessmentId) {
     return (
       <div className="flex items-center gap-3 p-6">
         <LoadingSpinner size={24} />
-        <span className="text-charcoal-500">Loading assessment…</span>
+        <span className="text-charcoal-500">Loading KPI Assessment...</span>
       </div>
     );
   }
 
-  if (!assessment) {
+  if (!canView || !assessment) {
     return (
       <div className="p-6">
-        <p className="text-charcoal-500">Assessment not found.</p>
+        <p className="text-charcoal-500">KPI Assessment not found.</p>
         <button type="button" onClick={() => navigate('/modules/hr/kpis/assessments')} className="mt-2 text-teal hover:underline">
-          Back to list
+          Back to KPI Assessment
         </button>
       </div>
     );
@@ -120,78 +174,79 @@ export function KPIAssessmentDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <button
-          type="button"
-          onClick={() => navigate('/modules/hr/kpis/assessments')}
-          className="text-sm text-charcoal-500 hover:text-charcoal"
-        >
-          ← Back to assessments
+        <button type="button" onClick={() => navigate('/modules/hr/kpis/assessments')} className="text-sm text-charcoal-500 hover:text-charcoal">
+          Back to KPI Assessment
         </button>
       </div>
+
+      {error && <div className="bg-critical/5 border border-critical/20 rounded-lg p-3 text-sm text-critical">{error}</div>}
+      {message && <div className="bg-teal/5 border border-teal/20 rounded-lg p-3 text-sm text-teal-700">{message}</div>}
 
       <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <div>
+            <p className="text-xs text-charcoal-500">KPI Assessment</p>
+            <p className="font-medium text-charcoal">{assessment.assessment_name || 'KPI Assessment'}</p>
+          </div>
+          <div>
             <p className="text-xs text-charcoal-500">Employee / Project</p>
-            <p className="font-medium text-charcoal">{assessment.employee_name_snapshot || assessment.project_name || '—'}</p>
+            <p className="font-medium text-charcoal">{assessment.employee_name_snapshot || assessment.project_name || '-'}</p>
           </div>
           <div>
             <p className="text-xs text-charcoal-500">Manager</p>
-            <p className="font-medium text-charcoal">{assessment.manager_name_snapshot || '—'}</p>
+            <p className="font-medium text-charcoal">{assessment.manager_name_snapshot || '-'}</p>
           </div>
           <div>
             <p className="text-xs text-charcoal-500">Period</p>
-            <p className="font-medium text-charcoal">{assessment.period_start_date} – {assessment.period_end_date}</p>
+            <p className="font-medium text-charcoal">{assessment.period_start_date} to {assessment.period_end_date}</p>
           </div>
           <div>
             <p className="text-xs text-charcoal-500">Overall score</p>
-            <p className="font-medium text-charcoal">
-              {assessment.overall_score != null ? `${assessment.overall_score.toFixed(2)} (${assessment.overall_rating_band ?? getOverallRatingBand(assessment.overall_score)})` : '—'}
-            </p>
+            <p className="font-medium text-charcoal">{assessment.overall_score != null ? assessment.overall_score.toFixed(2) : '-'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-charcoal-500">Achievement percentage</p>
+            <p className="font-medium text-charcoal">{assessment.achievement_percentage != null ? `${assessment.achievement_percentage.toFixed(1)}%` : '-'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-charcoal-500">Unrated Questionnaires</p>
+            <p className="font-medium text-charcoal">{unratedCount}</p>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
           <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-surface-200 text-charcoal-700 capitalize">
-            {assessment.status.replace('_', ' ')}
+            {normalizedStatus.replace('_', ' ')}
           </span>
-          {canEdit && assessment.status === 'draft' && (
-            <button
-              type="button"
-              onClick={() => handleStatusChange('submitted')}
-              className="px-3 py-1 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
-            >
-              Submit
+
+          {canCloseAssessment && normalizedStatus === 'draft' && (
+            <button type="button" onClick={() => handleStatusChange('in_progress')} className="px-3 py-1 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600">
+              Start
             </button>
           )}
-          {canEdit && assessment.status === 'submitted' && (
-            <button
-              type="button"
-              onClick={() => handleStatusChange('under_review')}
-              className="px-3 py-1 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
-            >
-              Start review
+          {canCloseAssessment && normalizedStatus === 'in_progress' && (
+            <button type="button" onClick={() => handleStatusChange('under_review')} className="px-3 py-1 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600">
+              Send to Review
             </button>
           )}
-          {canEdit && (assessment.status === 'under_review' || assessment.status === 'submitted') && (
-            <button
-              type="button"
-              onClick={() => handleStatusChange('finalized')}
-              className="px-3 py-1 rounded-lg bg-navy text-white text-sm font-medium hover:bg-navy-800"
-            >
-              Finalize
+          {canCloseAssessment && normalizedStatus === 'under_review' && (
+            <button type="button" onClick={() => handleStatusChange('completed')} className="px-3 py-1 rounded-lg bg-navy text-white text-sm font-medium hover:bg-navy-800">
+              Complete
+            </button>
+          )}
+          {canCloseAssessment && normalizedStatus === 'completed' && (
+            <button type="button" onClick={() => handleStatusChange('closed')} className="px-3 py-1 rounded-lg bg-charcoal text-white text-sm font-medium hover:bg-charcoal-800">
+              Close Assessment
             </button>
           )}
         </div>
       </div>
 
       <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
-        <h3 className="font-semibold text-charcoal mb-2">Rating scale (1–5)</h3>
-        <div className="text-sm text-charcoal-600 mb-4 p-3 bg-surface-50 rounded-lg">
-          {KPI_RATING_LEGEND}
-        </div>
+        <h3 className="font-semibold text-charcoal mb-2">Rating scale (1-5)</h3>
+        <div className="text-sm text-charcoal-600 mb-4 p-3 bg-surface-50 rounded-lg">{KPI_RATING_LEGEND}</div>
 
-        <h3 className="font-semibold text-charcoal mb-3">KPI lines</h3>
+        <h3 className="font-semibold text-charcoal mb-3">KPI Assessment</h3>
         {loadingLines ? (
           <LoadingSpinner size={20} />
         ) : (
@@ -199,98 +254,96 @@ export function KPIAssessmentDetailPage() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="text-left text-charcoal-500 border-b border-surface-200">
-                  <th className="py-2 pr-4">KPI</th>
+                  <th className="py-2 pr-4">KPI Questionnaire</th>
                   <th className="py-2 pr-4">Importance</th>
-                  <th className="py-2 pr-4">Own rating</th>
+                  <th className="py-2 pr-4">Employee input</th>
                   <th className="py-2 pr-4">Manager rating</th>
-                  <th className="py-2 pr-4">Not achieved</th>
-                  <th className="py-2 pr-4">Notes</th>
-                  {canEdit && <th className="py-2 pr-4"></th>}
+                  <th className="py-2 pr-4">Achievement status</th>
+                  <th className="py-2 pr-4">Weighted score</th>
+                  <th className="py-2 pr-4">Comments</th>
+                  {canCloseAssessment && <th className="py-2 pr-4"></th>}
                 </tr>
               </thead>
               <tbody>
-                {lineList.map((line) => (
-                  <tr key={line.line_id} className="border-b border-surface-100 last:border-0">
-                    <td className="py-2 pr-4 font-medium text-charcoal">{line.kpi_title}</td>
-                    <td className="py-2 pr-4 capitalize">{line.importance_rating}</td>
-                    <td className="py-2 pr-4">
-                      {canEditOwnRating ? (
-                        <select
-                          value={line.employee_own_rating ?? ''}
-                          onChange={(e) => {
-                            const v = e.target.value ? Number(e.target.value) : undefined;
-                            handleUpdateLine(line.line_id, { employee_own_rating: v });
-                          }}
-                          className="text-sm border border-surface-300 rounded px-2 py-1"
-                        >
-                          <option value="">—</option>
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <option key={n} value={n}>{n}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        line.employee_own_rating ?? '—'
-                      )}
-                    </td>
-                    <td className="py-2 pr-4">
-                      {canEditManagerRating ? (
-                        <select
-                          value={line.manager_rating ?? ''}
-                          onChange={(e) => {
-                            const v = e.target.value ? Number(e.target.value) : undefined;
-                            handleUpdateLine(line.line_id, { manager_rating: v });
-                          }}
-                          className="text-sm border border-surface-300 rounded px-2 py-1"
-                        >
-                          <option value="">—</option>
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <option key={n} value={n}>{n}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        line.manager_rating ?? '—'
-                      )}
-                    </td>
-                    <td className="py-2 pr-4">
-                      {line.not_achieved === true ? (
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-critical/10 text-critical">Not achieved</span>
-                      ) : line.achieved === true ? (
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-teal/10 text-teal">Achieved</span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="py-2 pr-4 text-charcoal-600">
-                      {canEditOwnRating || canEditManagerRating ? (
-                        <input
-                          type="text"
-                          defaultValue={line.notes ?? ''}
-                          onBlur={(e) => {
-                            const v = e.target.value.trim();
-                            if (v !== (line.notes ?? '')) handleUpdateLine(line.line_id, { notes: v || undefined });
-                          }}
-                          className="text-sm border border-surface-300 rounded px-2 py-1 w-32"
-                          placeholder="Notes"
-                        />
-                      ) : (
-                        line.notes || '—'
-                      )}
-                    </td>
-                    {canEdit && (
+                {lineList.map((line) => {
+                  const label = getAchievementLabel(line);
+                  return (
+                    <tr key={line.line_id} className="border-b border-surface-100 last:border-0">
+                      <td className="py-2 pr-4 font-medium text-charcoal">{line.kpi_questionnaire || line.kpi_title}</td>
+                      <td className="py-2 pr-4 capitalize">{line.importance_rating}</td>
                       <td className="py-2 pr-4">
-                        {line.not_achieved && !line.finding_generated && (
-                          <button
-                            type="button"
-                            onClick={() => handleGenerateFinding(line)}
-                            className="text-sm text-teal hover:underline"
+                        {canEditEmployeeInputs ? (
+                          <select
+                            value={line.employee_own_rating ?? ''}
+                            onChange={(e) => {
+                              const v = e.target.value ? Number(e.target.value) : undefined;
+                              handleUpdateLine(line.line_id, { employee_own_rating: v });
+                            }}
+                            className="text-sm border border-surface-300 rounded px-2 py-1"
                           >
-                            Generate finding
-                          </button>
+                            <option value="">-</option>
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <option key={n} value={n}>{n}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          line.employee_own_rating ?? '-'
                         )}
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      <td className="py-2 pr-4">
+                        {canEditManagerRatings ? (
+                          <select
+                            value={line.manager_rating ?? ''}
+                            onChange={(e) => {
+                              const v = e.target.value ? Number(e.target.value) : undefined;
+                              handleUpdateLine(line.line_id, { manager_rating: v });
+                            }}
+                            className="text-sm border border-surface-300 rounded px-2 py-1"
+                          >
+                            <option value="">Select</option>
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <option key={n} value={n}>{n}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          line.manager_rating ?? '-'
+                        )}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {label === 'Not Achieved' && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-critical/10 text-critical">Not Achieved</span>}
+                        {label === 'Partially Achieved' && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Partially Achieved</span>}
+                        {label === 'Achieved' && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-teal/10 text-teal">Achieved</span>}
+                        {label === '-' && '-'}
+                      </td>
+                      <td className="py-2 pr-4">{line.weighted_score != null ? line.weighted_score.toFixed(2) : '-'}</td>
+                      <td className="py-2 pr-4 text-charcoal-600">
+                        {(canEditEmployeeInputs || canEditManagerRatings) ? (
+                          <input
+                            type="text"
+                            defaultValue={line.notes ?? ''}
+                            onBlur={(e) => {
+                              const v = e.target.value.trim();
+                              if (v !== (line.notes ?? '')) handleUpdateLine(line.line_id, { notes: v || undefined });
+                            }}
+                            className="text-sm border border-surface-300 rounded px-2 py-1 w-40"
+                            placeholder="Comments"
+                          />
+                        ) : (
+                          line.notes || '-'
+                        )}
+                      </td>
+                      {canCloseAssessment && (
+                        <td className="py-2 pr-4">
+                          {label === 'Not Achieved' && !line.finding_generated && (
+                            <button type="button" onClick={() => handleGenerateFinding(line)} className="text-sm text-teal hover:underline">
+                              Create action
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -300,61 +353,69 @@ export function KPIAssessmentDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
           <h3 className="font-semibold text-charcoal mb-2">Employee comments</h3>
-          {canEditOwnRating ? (
-            <>
-              <textarea
-                defaultValue={assessment.employee_comments ?? ''}
-                onBlur={(e) => {
-                  const v = e.target.value.trim();
-                  if (v !== (assessment.employee_comments ?? ''))
-                    handleUpdateAssessmentComments({ employee_comments: v || undefined });
-                }}
-                className="w-full text-sm border border-surface-300 rounded-lg px-3 py-2 min-h-[80px]"
-                placeholder="Add your comments…"
-              />
-            </>
+          {canEditEmployeeInputs ? (
+            <textarea
+              defaultValue={assessment.employee_comments ?? ''}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v !== (assessment.employee_comments ?? '')) handleUpdateAssessmentComments({ employee_comments: v || undefined });
+              }}
+              className="w-full text-sm border border-surface-300 rounded-lg px-3 py-2 min-h-[90px]"
+              placeholder="Add employee comments"
+            />
           ) : (
-            <p className="text-sm text-charcoal-600 whitespace-pre-wrap">{assessment.employee_comments || '—'}</p>
+            <p className="text-sm text-charcoal-600 whitespace-pre-wrap">{assessment.employee_comments || '-'}</p>
           )}
         </div>
+
         <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
-          <h3 className="font-semibold text-charcoal mb-2">Manager remarks</h3>
-          {canEditManagerRating ? (
+          <h3 className="font-semibold text-charcoal mb-2">Manager comments</h3>
+          {canEditManagerRatings ? (
             <textarea
               defaultValue={assessment.manager_remarks ?? ''}
               onBlur={(e) => {
                 const v = e.target.value.trim();
-                if (v !== (assessment.manager_remarks ?? ''))
-                  handleUpdateAssessmentComments({ manager_remarks: v || undefined });
+                if (v !== (assessment.manager_remarks ?? '')) handleUpdateAssessmentComments({ manager_remarks: v || undefined });
               }}
-              className="w-full text-sm border border-surface-300 rounded-lg px-3 py-2 min-h-[80px]"
-              placeholder="Add manager remarks…"
+              className="w-full text-sm border border-surface-300 rounded-lg px-3 py-2 min-h-[90px]"
+              placeholder="Add manager comments"
             />
           ) : (
-            <p className="text-sm text-charcoal-600 whitespace-pre-wrap">{assessment.manager_remarks || '—'}</p>
+            <p className="text-sm text-charcoal-600 whitespace-pre-wrap">{assessment.manager_remarks || '-'}</p>
           )}
         </div>
       </div>
 
       <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
-        <h3 className="font-semibold text-charcoal mb-3">Findings</h3>
+        <h3 className="font-semibold text-charcoal mb-3">Corrective actions</h3>
         {findingList.length === 0 ? (
-          <p className="text-sm text-charcoal-500">No findings from this assessment.</p>
+          <p className="text-sm text-charcoal-500">No corrective actions from this KPI Assessment.</p>
         ) : (
           <ul className="space-y-2">
             {findingList.map((f) => (
               <li key={f.finding_id} className="flex items-center justify-between py-2 border-b border-surface-100 last:border-0">
                 <div>
-                  <p className="text-sm font-medium text-charcoal">{f.description.slice(0, 80)}…</p>
-                  <p className="text-xs text-charcoal-500">Due: {f.due_date} · Status: {f.status}</p>
+                  <p className="text-sm font-medium text-charcoal">{f.description.slice(0, 90)}</p>
+                  <p className="text-xs text-charcoal-500">Due: {f.due_date} | Status: {f.status.replace('_', ' ')}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => navigate('/modules/hr/kpis/findings')}
-                  className="text-sm text-teal hover:underline"
-                >
+                <button type="button" onClick={() => navigate('/modules/hr/kpis/findings')} className="text-sm text-teal hover:underline">
                   View
                 </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
+        <h3 className="font-semibold text-charcoal mb-2">Audit trail</h3>
+        {(auditTrail ?? []).length === 0 ? (
+          <p className="text-sm text-charcoal-500">No audit records found for this assessment.</p>
+        ) : (
+          <ul className="space-y-2">
+            {(auditTrail ?? []).map((entry: any) => (
+              <li key={entry.id} className="text-sm text-charcoal-600 border-b border-surface-100 pb-2">
+                <span className="font-medium text-charcoal">{entry.action}</span> at {new Date(entry.created_at).toLocaleString()}
               </li>
             ))}
           </ul>

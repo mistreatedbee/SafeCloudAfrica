@@ -1,21 +1,22 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listKPIAssessments } from '../../api/services/kpiAssessmentService';
-import { listKPIFindings } from '../../api/services/kpiFindingService';
-import type { KPIAssessment } from '../../api/models/entities';
+import { listKPIAssessments, listKPIAssessmentLinesByAssessmentIds } from '../../api/services/kpiAssessmentService';
+import type { KPIAssessment, KPIAssessmentLine } from '../../api/models/entities';
 import { exportKPIReports } from '../../api/services/kpiExportService';
 import { downloadFile } from '../../api/services/exportService';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 
-type ReportType = 'employee' | 'project' | 'department_ranking';
+type ReportType = 'individual_history' | 'department_trends' | 'achieved_vs_not_achieved' | 'manager_rating_distribution' | 'period_comparison';
 
 export function KPIReportsPage() {
   const { activeCompanyId } = useTenant();
-  const [reportType, setReportType] = useState<ReportType>('employee');
+  const [reportType, setReportType] = useState<ReportType>('individual_history');
   const [periodFrom, setPeriodFrom] = useState('');
   const [periodTo, setPeriodTo] = useState('');
-  const [exporting, setExporting] = useState<'pdf' | 'csv' | null>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
+  const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
+  const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null);
 
   const { data: assessments, loading } = useAsync<KPIAssessment[]>(
     async () => {
@@ -24,39 +25,73 @@ export function KPIReportsPage() {
         organizationId: activeCompanyId,
         periodFrom: periodFrom || undefined,
         periodTo: periodTo || undefined,
-        limit: 500
+        limit: 1000
       });
     },
     [activeCompanyId, periodFrom, periodTo]
   );
 
-  const { data: findings } = useAsync(
+  const assessmentIds = useMemo(() => (assessments ?? []).map((a) => a.assessment_id), [assessments]);
+
+  const { data: lines } = useAsync<KPIAssessmentLine[]>(
     async () => {
-      if (!activeCompanyId) return [];
-      return listKPIFindings({ organizationId: activeCompanyId, limit: 1000 });
+      if (!assessmentIds.length) return [];
+      return listKPIAssessmentLinesByAssessmentIds(assessmentIds as any);
     },
-    [activeCompanyId]
+    [assessmentIds.join('|')]
   );
 
-  const list = assessments ?? [];
-  const openFindings = (findings ?? []).filter((f: any) => f.status !== 'closed');
+  const filteredAssessments = useMemo(() => {
+    return (assessments ?? []).filter((a) => {
+      if (selectedDepartment !== 'all' && String(a.department_id ?? 'unassigned') !== selectedDepartment) return false;
+      if (selectedEmployee !== 'all' && String(a.employee_id ?? 'none') !== selectedEmployee) return false;
+      return true;
+    });
+  }, [assessments, selectedDepartment, selectedEmployee]);
 
-  const handleExport = async (format: 'pdf' | 'csv') => {
+  const filteredAssessmentIds = useMemo(() => new Set(filteredAssessments.map((a) => a.assessment_id)), [filteredAssessments]);
+
+  const filteredLines = useMemo(
+    () => (lines ?? []).filter((line) => filteredAssessmentIds.has(line.assessment_id)),
+    [lines, filteredAssessmentIds]
+  );
+
+  const departmentOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    (assessments ?? []).forEach((a) => {
+      const key = String(a.department_id ?? 'unassigned');
+      if (!map.has(key)) map.set(key, key === 'unassigned' ? 'Unassigned' : key);
+    });
+    return [...map.entries()].map(([value, label]) => ({ value, label }));
+  }, [assessments]);
+
+  const employeeOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    (assessments ?? []).forEach((a) => {
+      const key = String(a.employee_id ?? 'none');
+      if (!map.has(key)) map.set(key, a.employee_name_snapshot || 'Unknown');
+    });
+    return [...map.entries()].map(([value, label]) => ({ value, label }));
+  }, [assessments]);
+
+  const handleExport = async (format: 'pdf' | 'excel') => {
     if (!activeCompanyId) return;
     setExporting(format);
     try {
-      const blob = await exportKPIReports({
-        reportType,
-        organizationId: activeCompanyId,
-        assessments: list,
-        findings: findings ?? [],
-        periodFrom: periodFrom || undefined,
-        periodTo: periodTo || undefined
-      }, format);
-      const name = `kpi-${reportType}-${periodFrom || 'all'}-${periodTo || 'all'}.${format === 'pdf' ? 'html' : 'csv'}`;
-      downloadFile(blob, name);
-    } catch (e) {
-      console.error(e);
+      const blob = await exportKPIReports(
+        {
+          reportType,
+          organizationId: activeCompanyId,
+          assessments: filteredAssessments,
+          lines: filteredLines,
+          findings: [],
+          periodFrom: periodFrom || undefined,
+          periodTo: periodTo || undefined
+        },
+        format
+      );
+      const ext = format === 'pdf' ? 'html' : 'csv';
+      downloadFile(blob, `kpi-assessment-${reportType}-${periodFrom || 'all'}-${periodTo || 'all'}.${ext}`);
     } finally {
       setExporting(null);
     }
@@ -64,64 +99,53 @@ export function KPIReportsPage() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-charcoal">KPI Reports</h2>
-      <div className="flex flex-wrap gap-4">
-        <select
-          value={reportType}
-          onChange={(e) => setReportType(e.target.value as ReportType)}
-          className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
-        >
-          <option value="employee">Employee report</option>
-          <option value="project">Project report</option>
-          <option value="department_ranking">Department ranking</option>
+      <h2 className="text-lg font-semibold text-charcoal">KPI Reports & Analytics</h2>
+
+      <div className="flex flex-wrap gap-3">
+        <select value={reportType} onChange={(e) => setReportType(e.target.value as ReportType)} className="px-3 py-2 border border-surface-300 rounded-lg text-sm">
+          <option value="individual_history">Individual KPI history</option>
+          <option value="department_trends">Department KPI trends</option>
+          <option value="achieved_vs_not_achieved">Achieved vs Not Achieved</option>
+          <option value="manager_rating_distribution">Manager rating distribution</option>
+          <option value="period_comparison">Period comparison</option>
         </select>
-        <input
-          type="date"
-          placeholder="From"
-          value={periodFrom}
-          onChange={(e) => setPeriodFrom(e.target.value)}
-          className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
-        />
-        <input
-          type="date"
-          placeholder="To"
-          value={periodTo}
-          onChange={(e) => setPeriodTo(e.target.value)}
-          className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
-        />
-        <button
-          type="button"
-          onClick={() => handleExport('pdf')}
-          disabled={exporting !== null}
-          className="px-4 py-2 rounded-lg bg-navy text-white text-sm font-medium hover:bg-navy-800 disabled:opacity-50"
-        >
-          {exporting === 'pdf' ? 'Exporting…' : 'Export PDF'}
+
+        <input type="date" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+        <input type="date" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+
+        <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg text-sm">
+          <option value="all">All departments</option>
+          {departmentOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+
+        <select value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg text-sm">
+          <option value="all">All employees</option>
+          {employeeOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+
+        <button type="button" onClick={() => handleExport('pdf')} disabled={exporting !== null} className="px-4 py-2 rounded-lg bg-navy text-white text-sm font-medium hover:bg-navy-800 disabled:opacity-50">
+          {exporting === 'pdf' ? 'Exporting...' : 'Export PDF'}
         </button>
-        <button
-          type="button"
-          onClick={() => handleExport('csv')}
-          disabled={exporting !== null}
-          className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600 disabled:opacity-50"
-        >
-          {exporting === 'csv' ? 'Exporting…' : 'Export CSV'}
+        <button type="button" onClick={() => handleExport('excel')} disabled={exporting !== null} className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600 disabled:opacity-50">
+          {exporting === 'excel' ? 'Exporting...' : 'Export Excel'}
         </button>
       </div>
 
       {loading && (
         <div className="flex items-center gap-3 p-6">
           <LoadingSpinner size={20} />
-          <span className="text-charcoal-500">Loading…</span>
+          <span className="text-charcoal-500">Loading...</span>
         </div>
       )}
 
       {!loading && (
         <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
-          <p className="text-sm text-charcoal-500">
-            {list.length} assessments in range. {openFindings.length} open findings.
-          </p>
-          <p className="text-sm text-charcoal-500 mt-1">
-            Use filters and export to PDF or CSV.
-          </p>
+          <p className="text-sm text-charcoal-500">{filteredAssessments.length} KPI Assessments and {filteredLines.length} KPI Questionnaires in selected range.</p>
+          <p className="text-sm text-charcoal-500 mt-1">Use filters for period, department, and employee. Export supports PDF and Excel-compatible CSV.</p>
         </div>
       )}
     </div>
