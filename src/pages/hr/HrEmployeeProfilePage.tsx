@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { useParams } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
@@ -6,9 +6,9 @@ import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { canViewRestrictedFields, getEmployeeIntegratedProfile, logRestrictedFieldAccess } from '../../api/services/hrService';
+import type { UUID } from '../../api/models/core';
 
-const TABS = ['overview', 'documents', 'contracts', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'audit'] as const;
-
+const TABS = ['overview', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'tasks', 'audit'] as const;
 type Tab = (typeof TABS)[number];
 
 export function HrEmployeeProfilePage() {
@@ -24,7 +24,7 @@ export function HrEmployeeProfilePage() {
 
   const { data: payload } = useAsync(async () => {
     if (!activeCompanyId || !id) return null;
-    return getEmployeeIntegratedProfile(activeCompanyId, id);
+    return getEmployeeIntegratedProfile(activeCompanyId, id as UUID);
   }, [activeCompanyId, id]);
 
   const employee = payload?.employee as Record<string, unknown> | undefined;
@@ -42,7 +42,7 @@ export function HrEmployeeProfilePage() {
 
   const onRestrictedView = async (field: string) => {
     if (!activeCompanyId || !user?.id || !id) return;
-    await logRestrictedFieldAccess({ companyId: activeCompanyId, actorUserId: user.id, targetEntity: 'hr_employee', targetId: id, fieldName: field, action: 'view' });
+    await logRestrictedFieldAccess({ companyId: activeCompanyId, actorUserId: user.id as UUID, targetEntity: 'hr_employee', targetId: id as UUID, fieldName: field, action: 'view' });
   };
 
   return (
@@ -79,7 +79,7 @@ export function HrEmployeeProfilePage() {
                 <div key={item.key} className="flex items-center justify-between border-b border-surface-100 py-2 text-sm">
                   <span className="text-charcoal-500">{item.key}</span>
                   {canRestricted ? (
-                    <button className="text-teal" onClick={() => onRestrictedView(item.key)}>{String(item.value ?? '-')}</button>
+                    <button className="text-teal" onClick={() => void onRestrictedView(item.key)}>{String(item.value ?? '-')}</button>
                   ) : (
                     <span className="text-charcoal-300">Restricted</span>
                   )}
@@ -89,25 +89,48 @@ export function HrEmployeeProfilePage() {
           </div>
         )}
 
-        {tab !== 'overview' && (
-          <Card title={tab}>
-            <pre className="text-xs overflow-auto max-h-[480px]">{JSON.stringify(payload?.[mapTab(tab)] ?? [], null, 2)}</pre>
+        {tab === 'leave' && (
+          <Card title="Leave records">
+            <SimpleTable rows={(payload?.leaveRequests as Array<Record<string, unknown>> | undefined) ?? []} cols={['start_date', 'end_date', 'total_days', 'status', 'decline_reason']} />
+          </Card>
+        )}
+        {tab === 'hours' && (
+          <Card title="Hours worked">
+            <SimpleTable rows={(payload?.timesheets as Array<Record<string, unknown>> | undefined) ?? []} cols={['date', 'hours_worked', 'overtime_hours', 'status']} />
+            <div className="mt-3">
+              <h4 className="font-medium text-sm mb-1">Monthly totals</h4>
+              <SimpleTable rows={(payload?.monthlyHours as Array<Record<string, unknown>> | undefined) ?? []} cols={['year', 'month', 'total_hours', 'overtime_hours', 'total_with_overtime']} />
+            </div>
+          </Card>
+        )}
+        {tab === 'performance' && (
+          <Card title="Performance reviews">
+            <SimpleTable rows={(payload?.performance as Array<Record<string, unknown>> | undefined) ?? []} cols={['cycle', 'review_date', 'overall_rating', 'manager_rating', 'corrective_due_date', 'status']} />
+          </Card>
+        )}
+        {tab === 'disciplinary' && (
+          <Card title="Warnings & offences">
+            <SimpleTable rows={(payload?.disciplinary as Array<Record<string, unknown>> | undefined) ?? []} cols={['offence_type', 'description', 'offence_severity', 'repeat_offence_flag', 'status']} />
+          </Card>
+        )}
+        {tab === 'training' && (
+          <Card title="Training status">
+            <SimpleTable rows={(payload?.trainingRecords as Array<Record<string, unknown>> | undefined) ?? []} cols={['status', 'planned_date', 'completed_date', 'expiry_date']} />
+          </Card>
+        )}
+        {tab === 'tasks' && (
+          <Card title="Assigned tasks">
+            <SimpleTable rows={(payload?.assignedTasks as Array<Record<string, unknown>> | undefined) ?? []} cols={['title', 'status', 'priority', 'due_at']} />
+          </Card>
+        )}
+        {tab === 'audit' && (
+          <Card title="Audit trail">
+            <SimpleTable rows={(payload?.auditTrail as Array<Record<string, unknown>> | undefined) ?? []} cols={['action', 'entity_type', 'created_at']} />
           </Card>
         )}
       </div>
     </Layout>
   );
-}
-
-function mapTab(tab: Tab): string {
-  if (tab === 'documents') return 'documents';
-  if (tab === 'contracts') return 'contracts';
-  if (tab === 'leave') return 'leaveRequests';
-  if (tab === 'hours') return 'timesheets';
-  if (tab === 'performance') return 'performance';
-  if (tab === 'disciplinary') return 'disciplinary';
-  if (tab === 'training') return 'trainingRecords';
-  return 'auditTrail';
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
@@ -117,3 +140,24 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 function Line({ label, value }: { label: string; value: unknown }) {
   return <div className="flex justify-between border-b border-surface-100 py-2 text-sm"><span className="text-charcoal-500">{label}</span><span>{String(value ?? '-')}</span></div>;
 }
+
+function SimpleTable({ rows, cols }: { rows: Array<Record<string, unknown>>; cols: string[] }) {
+  return (
+    <div className="overflow-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-surface-50">
+          <tr>{cols.map((col) => <th key={col} className="text-left px-2 py-1">{col}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={String(row.id ?? JSON.stringify(row).slice(0, 24))} className="border-t border-surface-100">
+              {cols.map((col) => <td key={col} className="px-2 py-1">{String(row[col] ?? '-')}</td>)}
+            </tr>
+          ))}
+          {rows.length === 0 && <tr><td colSpan={cols.length} className="px-2 py-2 text-charcoal-500">No records</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+

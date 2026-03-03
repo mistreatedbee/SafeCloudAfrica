@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   UserIcon,
@@ -18,6 +18,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { countMyPendingTasks, listTasks } from '../../api/services/tasksService';
 import { countMyIncidents } from '../../api/services/incidentsService';
 import { countExpiringTrainingForUser } from '../../api/services/trainingService';
+import { getEmployeeIntegratedProfile, getHrEmployeeByUserId } from '../../api/services/hrService';
+import type { UUID } from '../../api/models/core';
 
 export function EmployeeDashboardPage() {
   const { activeCompanyId } = useTenant();
@@ -30,19 +32,37 @@ export function EmployeeDashboardPage() {
     async () => {
       if (!activeCompanyId || !user?.id) return null;
       const [myPendingTasks, myIncidents, expiringTraining] = await Promise.all([
-        countMyPendingTasks(activeCompanyId, user.id).catch(() => 0),
-        countMyIncidents(activeCompanyId, user.id).catch(() => 0),
-        countExpiringTrainingForUser(activeCompanyId, user.id, 30).catch(() => 0),
+        countMyPendingTasks(activeCompanyId, user.id as UUID).catch(() => 0),
+        countMyIncidents(activeCompanyId, user.id as UUID).catch(() => 0),
+        countExpiringTrainingForUser(activeCompanyId, user.id as UUID, 30).catch(() => 0),
       ]);
       const tasks = await listTasks({
         companyId: activeCompanyId,
-        assigneeUserId: user.id,
-        limit: 5,
+        assigneeUserId: user.id as UUID,
+        limit: 12,
       }).catch(() => []);
-      return { myPendingTasks, myIncidents, expiringTraining, tasks };
+      const employee = await getHrEmployeeByUserId(activeCompanyId, user.id as UUID).catch(() => null);
+      const hr = employee?.id ? await getEmployeeIntegratedProfile(activeCompanyId, employee.id).catch(() => null) : null;
+      return { myPendingTasks, myIncidents, expiringTraining, tasks, employee, hr };
     },
     [activeCompanyId, user?.id, refreshKey]
   );
+
+  const leaveWarnings = useMemo(() => {
+    const leaveRequests = (summary?.hr?.leaveRequests as Array<Record<string, unknown>> | undefined) ?? [];
+    return leaveRequests.filter((row) => String(row.status ?? '') === 'DECLINED').length;
+  }, [summary?.hr]);
+
+  const disciplinaryOpen = useMemo(() => {
+    const disciplinary = (summary?.hr?.disciplinary as Array<Record<string, unknown>> | undefined) ?? [];
+    return disciplinary.filter((row) => String(row.status ?? '') !== 'CLOSED').length;
+  }, [summary?.hr]);
+
+  const overduePerformanceActions = useMemo(() => {
+    const perf = (summary?.hr?.performance as Array<Record<string, unknown>> | undefined) ?? [];
+    const today = new Date().toISOString().slice(0, 10);
+    return perf.filter((row) => row.corrective_due_date && String(row.corrective_due_date) < today && String(row.status ?? '') !== 'CLOSED').length;
+  }, [summary?.hr]);
 
   return (
     <Layout title="My Dashboard">
@@ -50,7 +70,7 @@ export function EmployeeDashboardPage() {
         <div className="bg-gradient-to-r from-navy to-navy-700 rounded-2xl p-6 text-white">
           <h1 className="text-2xl font-bold mb-1">Hello, {firstName}</h1>
           <p className="text-navy-200">
-            Your overview at {organisationName}
+            Your unified employee dashboard at {organisationName}
           </p>
         </div>
 
@@ -67,96 +87,92 @@ export function EmployeeDashboardPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <StatCard
-            title="My pending tasks"
-            value={summary?.myPendingTasks ?? 0}
-            icon="ClipboardCheck"
-            iconColor="#0FB9B1"
-            variant="info"
-            subtitle="Assigned to you"
-          />
-          <StatCard
-            title="My incidents"
-            value={summary?.myIncidents ?? 0}
-            icon="AlertTriangle"
-            iconColor="#E74C3C"
-            variant="critical"
-            subtitle="Reported by you"
-          />
-          <StatCard
-            title="Training expiring (30 days)"
-            value={summary?.expiringTraining ?? 0}
-            icon="GraduationCap"
-            iconColor="#3498DB"
-            variant="warning"
-            subtitle="Renewals due"
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <StatCard title="My pending tasks" value={summary?.myPendingTasks ?? 0} icon="ClipboardCheck" iconColor="#0FB9B1" variant="info" subtitle="Assigned to you" />
+          <StatCard title="My incidents" value={summary?.myIncidents ?? 0} icon="AlertTriangle" iconColor="#E74C3C" variant="critical" subtitle="Reported by you" />
+          <StatCard title="Training expiring (30 days)" value={summary?.expiringTraining ?? 0} icon="GraduationCap" iconColor="#3498DB" variant="warning" subtitle="Renewals due" />
+          <StatCard title="Leave warnings" value={leaveWarnings} icon="FileText" iconColor="#F39C12" variant="warning" subtitle="Declined requests" />
+          <StatCard title="Disciplinary actions" value={disciplinaryOpen} icon="AlertTriangle" iconColor="#C0392B" variant="critical" subtitle="Open warnings/offences" />
+          <StatCard title="Overdue performance actions" value={overduePerformanceActions} icon="ClipboardCheck" iconColor="#8E44AD" variant="warning" subtitle="Corrective actions" />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white rounded-xl border border-surface-300 p-4">
+            <h3 className="font-semibold text-charcoal mb-2">Personal profile</h3>
+            {summary?.employee ? (
+              <div className="text-sm text-charcoal-600 space-y-1">
+                <p>Name: {summary.employee.first_name} {summary.employee.last_name}</p>
+                <p>Email: {summary.employee.email}</p>
+                <p>Employee no: {summary.employee.employee_no}</p>
+                <p>Status: {summary.employee.employment_status}</p>
+                <p>Job title: {summary.employee.job_title ?? '-'}</p>
+              </div>
+            ) : (
+              <p className="text-sm text-charcoal-500">No linked HR employee profile.</p>
+            )}
+          </div>
+          <div className="bg-white rounded-xl border border-surface-300 p-4">
+            <h3 className="font-semibold text-charcoal mb-2">Leave status & balances</h3>
+            <div className="space-y-1 text-sm text-charcoal-600">
+              {((summary?.hr?.balances as Array<Record<string, unknown>> | undefined) ?? []).slice(0, 6).map((row) => (
+                <p key={String(row.id)}>{String(row.year)}: Remaining {String(row.remaining_days ?? 0)} days</p>
+              ))}
+              {(((summary?.hr?.balances as Array<Record<string, unknown>> | undefined) ?? []).length === 0) && <p className="text-charcoal-500">No leave balance records.</p>}
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-surface-300 p-4">
+            <h3 className="font-semibold text-charcoal mb-2">Warnings & offences</h3>
+            <div className="space-y-1 text-sm text-charcoal-600">
+              {((summary?.hr?.disciplinary as Array<Record<string, unknown>> | undefined) ?? []).slice(0, 5).map((row) => (
+                <p key={String(row.id)}>{String(row.offence_type ?? row.offence_category ?? 'Offence')} - {String(row.status ?? 'OPEN')}</p>
+              ))}
+              {(((summary?.hr?.disciplinary as Array<Record<string, unknown>> | undefined) ?? []).length === 0) && <p className="text-charcoal-500">No disciplinary records.</p>}
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-surface-300 p-4">
+            <h3 className="font-semibold text-charcoal mb-2">Performance & corrective actions</h3>
+            <div className="space-y-1 text-sm text-charcoal-600">
+              {((summary?.hr?.performance as Array<Record<string, unknown>> | undefined) ?? []).slice(0, 5).map((row) => (
+                <p key={String(row.id)}>
+                  {String(row.cycle ?? 'Review')} - Manager rating {String(row.manager_rating ?? row.overall_rating ?? '-')}
+                  {row.corrective_due_date ? ` (Due ${String(row.corrective_due_date)})` : ''}
+                </p>
+              ))}
+              {(((summary?.hr?.performance as Array<Record<string, unknown>> | undefined) ?? []).length === 0) && <p className="text-charcoal-500">No performance reviews.</p>}
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <a
-            href="/profile"
-            className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all"
-          >
-            <div className="flex items-center gap-3">
-              <UserIcon className="w-8 h-8 text-teal" />
-              <span className="font-medium text-charcoal">My profile</span>
-            </div>
+          <a href="/profile" className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all">
+            <div className="flex items-center gap-3"><UserIcon className="w-8 h-8 text-teal" /><span className="font-medium text-charcoal">My profile</span></div>
             <ArrowRightIcon className="w-5 h-5 text-charcoal-400" />
           </a>
-          <a
-            href="/dashboard/management/tasks"
-            className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all"
-          >
-            <div className="flex items-center gap-3">
-              <ClipboardCheckIcon className="w-8 h-8 text-navy" />
-              <span className="font-medium text-charcoal">My tasks</span>
-            </div>
+          <a href="/dashboard/management/tasks" className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all">
+            <div className="flex items-center gap-3"><ClipboardCheckIcon className="w-8 h-8 text-navy" /><span className="font-medium text-charcoal">My tasks</span></div>
             <ArrowRightIcon className="w-5 h-5 text-charcoal-400" />
           </a>
-          <a
-            href="/training"
-            className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all"
-          >
-            <div className="flex items-center gap-3">
-              <GraduationCapIcon className="w-8 h-8 text-amber-600" />
-              <span className="font-medium text-charcoal">Training & certificates</span>
-            </div>
+          <a href="/training" className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all">
+            <div className="flex items-center gap-3"><GraduationCapIcon className="w-8 h-8 text-amber-600" /><span className="font-medium text-charcoal">Training & certificates</span></div>
             <ArrowRightIcon className="w-5 h-5 text-charcoal-400" />
           </a>
-          <a
-            href="/dashboard/incidents/management"
-            className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all"
-          >
-            <div className="flex items-center gap-3">
-              <AlertTriangleIcon className="w-8 h-8 text-critical" />
-              <span className="font-medium text-charcoal">Report incident</span>
-            </div>
+          <a href="/dashboard/incidents/management" className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all">
+            <div className="flex items-center gap-3"><AlertTriangleIcon className="w-8 h-8 text-critical" /><span className="font-medium text-charcoal">Report incident</span></div>
             <ArrowRightIcon className="w-5 h-5 text-charcoal-400" />
           </a>
-          <a
-            href="/ppe"
-            className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all"
-          >
-            <div className="flex items-center gap-3">
-              <HardHatIcon className="w-8 h-8 text-charcoal-600" />
-              <span className="font-medium text-charcoal">My PPE</span>
-            </div>
+          <a href="/ppe" className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all">
+            <div className="flex items-center gap-3"><HardHatIcon className="w-8 h-8 text-charcoal-600" /><span className="font-medium text-charcoal">My PPE</span></div>
             <ArrowRightIcon className="w-5 h-5 text-charcoal-400" />
           </a>
-          <a
-            href="/documents"
-            className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all"
-          >
-            <div className="flex items-center gap-3">
-              <FileTextIcon className="w-8 h-8 text-charcoal-500" />
-              <span className="font-medium text-charcoal">Policies & documents</span>
-            </div>
+          <a href="/dashboard/hr/leave" className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all">
+            <div className="flex items-center gap-3"><FileTextIcon className="w-8 h-8 text-charcoal-500" /><span className="font-medium text-charcoal">My leave</span></div>
             <ArrowRightIcon className="w-5 h-5 text-charcoal-400" />
           </a>
         </div>
+
+        {loading && <p className="text-sm text-charcoal-500">Loading dashboard...</p>}
       </motion.div>
     </Layout>
   );
 }
+

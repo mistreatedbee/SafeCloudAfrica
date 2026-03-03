@@ -76,6 +76,21 @@ export type HrTimesheet = {
   updated_at: string;
 };
 
+export type HrMonthlyHours = {
+  id: UUID;
+  company_id: UUID;
+  employee_id: UUID;
+  year: number;
+  month: number;
+  total_hours: number;
+  overtime_hours: number;
+  total_with_overtime: number;
+  last_calculated_at: string;
+  updated_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type HrSimpleRecord = Record<string, unknown> & { id: UUID; company_id: UUID; created_at: string; updated_at?: string };
 
 export type HrDashboardStats = {
@@ -143,6 +158,20 @@ export async function getHrEmployeeById(companyId: UUID, id: UUID): Promise<HrEm
   return (data as HrEmployee) ?? null;
 }
 
+export async function getHrEmployeeByUserId(companyId: UUID, userId: UUID): Promise<HrEmployee | null> {
+  const { data, error } = await insforge.database
+    .from('hr_employees')
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .in('employment_status', ['ONBOARDING', 'ACTIVE', 'ON_LEAVE', 'SUSPENDED'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(getErrorMessage(error));
+  return (data as HrEmployee) ?? null;
+}
+
 export async function upsertHrEmployee(input: Partial<HrEmployee> & {
   company_id: UUID;
   created_by_user_id: UUID;
@@ -204,6 +233,9 @@ export async function applyHrLeaveApproval(input: {
   declineReason?: string | null;
   employeeUserId?: UUID | null;
 }): Promise<HrLeaveRequest> {
+  if ((input.decision === 'SUPERVISOR_DECLINE' || input.decision === 'HR_DECLINE') && !input.declineReason?.trim()) {
+    throw new Error('Decline reason is required.');
+  }
   const { data, error } = await insforge.database.rpc('hr_apply_leave_approval', {
     p_leave_request_id: input.leaveRequestId,
     p_company_id: input.companyId,
@@ -239,7 +271,10 @@ export async function listHrTimesheets(companyId: UUID, employeeId?: UUID): Prom
 }
 
 export async function upsertHrTimesheet(input: Omit<HrTimesheet, 'id' | 'created_at' | 'updated_at' | 'approved_by_user_id' | 'approved_at' | 'decline_reason'>): Promise<HrTimesheet> {
-  return upsertTable<HrTimesheet>('hr_timesheets', { ...input, updated_at: new Date().toISOString() }, 'company_id,employee_id,date');
+  const row = await upsertTable<HrTimesheet>('hr_timesheets', { ...input, updated_at: new Date().toISOString() }, 'company_id,employee_id,date');
+  const d = new Date(input.date);
+  await recalculateHrMonthlyHours(input.company_id, input.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.created_by_user_id).catch(() => {});
+  return row;
 }
 
 export async function approveHrTimesheet(input: {
@@ -264,7 +299,10 @@ export async function approveHrTimesheet(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to approve timesheet');
-  return data as HrTimesheet;
+  const row = data as HrTimesheet;
+  const d = new Date(row.date);
+  await recalculateHrMonthlyHours(row.company_id, row.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.actorUserId).catch(() => {});
+  return row;
 }
 
 export async function listHrRecords(companyId: UUID, table:
@@ -277,7 +315,8 @@ export async function listHrRecords(companyId: UUID, table:
   | 'hr_policy_acknowledgements'
   | 'hr_vacancies'
   | 'hr_applicants'
-  | 'hr_interview_notes',
+  | 'hr_interview_notes'
+  | 'hr_monthly_hours',
   filters?: Record<string, string | number | boolean | null>
 ): Promise<HrSimpleRecord[]> {
   return listTable<HrSimpleRecord>(table, companyId, filters);
@@ -294,10 +333,64 @@ export async function createHrRecord(
     | 'hr_policy_acknowledgements'
     | 'hr_vacancies'
     | 'hr_applicants'
-    | 'hr_interview_notes',
+    | 'hr_interview_notes'
+    | 'hr_monthly_hours',
   payload: Record<string, unknown>
 ): Promise<HrSimpleRecord> {
-  return insertTable<HrSimpleRecord>(table, payload);
+  const row = await insertTable<HrSimpleRecord>(table, payload);
+  const companyId = payload.company_id as UUID | undefined;
+  const actorUserId = payload.created_by_user_id as UUID | undefined;
+  if (companyId && actorUserId) {
+    await createActivityLog({
+      companyId,
+      actorUserId,
+      action: `hr.${table}.create`,
+      entityType: table,
+      entityId: row.id
+    }).catch(() => {});
+  }
+  return row;
+}
+
+export async function updateHrRecord(
+  table:
+    | 'hr_employee_documents'
+    | 'hr_employment_contracts'
+    | 'hr_leave_types'
+    | 'hr_leave_balances'
+    | 'hr_performance_reviews'
+    | 'hr_disciplinary_cases'
+    | 'hr_policy_acknowledgements'
+    | 'hr_vacancies'
+    | 'hr_applicants'
+    | 'hr_interview_notes'
+    | 'hr_leave_requests'
+    | 'hr_timesheets'
+    | 'hr_monthly_hours',
+  input: {
+    companyId: UUID;
+    rowId: UUID;
+    actorUserId: UUID;
+    patch: Record<string, unknown>;
+  }
+): Promise<HrSimpleRecord> {
+  const { data, error } = await insforge.database
+    .from(table)
+    .update({ ...input.patch, updated_at: new Date().toISOString() })
+    .eq('company_id', input.companyId)
+    .eq('id', input.rowId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error(`Failed to update ${table} row.`);
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: `hr.${table}.update`,
+    entityType: table,
+    entityId: input.rowId
+  }).catch(() => {});
+  return data as HrSimpleRecord;
 }
 
 export async function upsertHrSettings(input: {
@@ -314,6 +407,55 @@ export async function getHrSettings(companyId: UUID): Promise<Record<string, unk
   const { data, error } = await insforge.database.from('hr_settings').select('*').eq('company_id', companyId).maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
   return (data as Record<string, unknown>) ?? null;
+}
+
+export async function ensureDefaultHrLeaveTypes(companyId: UUID, createdByUserId: UUID): Promise<void> {
+  const defaults = [
+    'Annual Leave',
+    'Sick Leave',
+    'Maternity Leave',
+    'Parental Leave',
+    'Adoption Leave',
+    'Commissioning Parental Leave (Surrogacy)',
+    'Family Responsibility Leave',
+    'Study Leave',
+    'Compassionate Leave (Extended)',
+    'Unpaid Leave',
+    'Special Leave',
+    'Occupational Injury Leave'
+  ];
+  const existing = await listHrRecords(companyId, 'hr_leave_types');
+  const seen = new Set(existing.map((x) => String(x.name ?? '').trim().toLowerCase()).filter(Boolean));
+  const missing = defaults.filter((name) => !seen.has(name.toLowerCase()));
+  for (const name of missing) {
+    await createHrRecord('hr_leave_types', {
+      company_id: companyId,
+      name,
+      paid: !['Unpaid Leave'].includes(name),
+      requires_proof: ['Sick Leave', 'Maternity Leave', 'Occupational Injury Leave'].includes(name),
+      default_days_per_year: name === 'Annual Leave' ? 15 : 0,
+      carry_over_allowed: name === 'Annual Leave',
+      created_by_user_id: createdByUserId
+    });
+  }
+}
+
+export async function getOrCreateHrLeaveTypeByName(companyId: UUID, createdByUserId: UUID, name: string): Promise<UUID> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('Leave type is required.');
+  const all = await listHrRecords(companyId, 'hr_leave_types');
+  const existing = all.find((x) => String(x.name ?? '').trim().toLowerCase() === trimmed.toLowerCase());
+  if (existing?.id) return existing.id as UUID;
+  const created = await createHrRecord('hr_leave_types', {
+    company_id: companyId,
+    name: trimmed,
+    paid: true,
+    requires_proof: false,
+    default_days_per_year: 0,
+    carry_over_allowed: false,
+    created_by_user_id: createdByUserId
+  });
+  return created.id as UUID;
 }
 
 export async function canViewRestrictedFields(companyId: UUID): Promise<boolean> {
@@ -425,7 +567,7 @@ export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: 
   const employee = await getHrEmployeeById(companyId, employeeId);
   if (!employee) return { employee: null };
 
-  const [documents, contracts, leaveRequests, balances, timesheets, performance, disciplinary, auditTrail, trainingRecords, incidents, healthExpiring] = await Promise.all([
+  const [documents, contracts, leaveRequests, balances, timesheets, performance, disciplinary, monthlyHours, auditTrail, trainingRecords, incidents, healthExpiring, assignedTasks] = await Promise.all([
     listHrRecords(companyId, 'hr_employee_documents', { employee_id: employeeId }),
     listHrRecords(companyId, 'hr_employment_contracts', { employee_id: employeeId }),
     listHrLeaveRequests(companyId, employeeId),
@@ -433,6 +575,7 @@ export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: 
     listHrTimesheets(companyId, employeeId),
     listHrRecords(companyId, 'hr_performance_reviews', { employee_id: employeeId }),
     listHrRecords(companyId, 'hr_disciplinary_cases', { employee_id: employeeId }),
+    listHrRecords(companyId, 'hr_monthly_hours', { employee_id: employeeId }),
     listActivityLogsByEntity({ companyId, entityType: 'hr_employee', entityId: employeeId, limit: 100 }),
     (async () => {
       if (!employee.user_id) return [];
@@ -451,6 +594,18 @@ export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: 
       const { data, error } = await insforge.database.from('health_medicals').select('id,expiry_date,fitness_status').eq('company_id', companyId).eq('employee_user_id', employee.user_id).not('expiry_date', 'is', null);
       if (error) throw new Error(getErrorMessage(error));
       return (data ?? []) as Array<Record<string, unknown>>;
+    })(),
+    (async () => {
+      if (!employee.user_id) return [];
+      const { data, error } = await insforge.database
+        .from('tasks')
+        .select('id,title,status,due_at,priority,source_entity_type,source_entity_id')
+        .eq('company_id', companyId)
+        .eq('assignee_user_id', employee.user_id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw new Error(getErrorMessage(error));
+      return (data ?? []) as Array<Record<string, unknown>>;
     })()
   ]);
 
@@ -463,9 +618,11 @@ export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: 
     timesheets,
     performance,
     disciplinary,
+    monthlyHours,
     trainingRecords,
     incidents,
     healthExpiring,
+    assignedTasks,
     auditTrail
   };
 }
@@ -530,4 +687,66 @@ export async function getHrDisciplinaryExportRows(companyId: UUID): Promise<Arra
     status: row.status,
     createdAt: row.created_at
   }));
+}
+
+export function recommendDisciplinaryAction(input: { repeatCount: number; caseType: string }): string {
+  const ct = input.caseType.trim().toLowerCase();
+  if (input.repeatCount >= 2) return 'Final written warning and formal hearing';
+  if (input.repeatCount >= 1) return 'Written warning and corrective coaching';
+  if (ct.includes('dismiss') || ct.includes('major')) return 'Formal hearing with possible suspension';
+  if (ct.includes('final')) return 'Final written warning';
+  if (ct.includes('written')) return 'Written warning';
+  return 'Verbal warning and coaching';
+}
+
+export async function listHrManagersAndAdmins(companyId: UUID): Promise<UUID[]> {
+  const { data, error } = await insforge.database
+    .from('company_memberships')
+    .select('user_id, role')
+    .eq('company_id', companyId)
+    .in('role', ['owner', 'admin', 'manager', 'supervisor']);
+  if (error) throw new Error(getErrorMessage(error));
+  return [...new Set((data ?? []).map((row: any) => row.user_id as UUID))];
+}
+
+export async function recalculateHrMonthlyHours(
+  companyId: UUID,
+  employeeId: UUID,
+  year: number,
+  month: number,
+  actorUserId?: UUID | null
+): Promise<HrMonthlyHours | null> {
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const nextMonthStart = new Date(Date.UTC(year, month, 1));
+  const monthStartIso = monthStart.toISOString().slice(0, 10);
+  const nextMonthStartIso = nextMonthStart.toISOString().slice(0, 10);
+  const { data, error } = await insforge.database
+    .from('hr_timesheets')
+    .select('hours_worked,overtime_hours')
+    .eq('company_id', companyId)
+    .eq('employee_id', employeeId)
+    .gte('date', monthStartIso)
+    .lt('date', nextMonthStartIso);
+  if (error) throw new Error(getErrorMessage(error));
+  const hours = (data ?? []).reduce((sum: number, row: any) => sum + Number(row.hours_worked ?? 0), 0);
+  const overtime = (data ?? []).reduce((sum: number, row: any) => sum + Number(row.overtime_hours ?? 0), 0);
+  const total = hours + overtime;
+  const { data: upserted, error: upsertError } = await insforge.database
+    .from('hr_monthly_hours')
+    .upsert({
+      company_id: companyId,
+      employee_id: employeeId,
+      year,
+      month,
+      total_hours: hours,
+      overtime_hours: overtime,
+      total_with_overtime: total,
+      last_calculated_at: new Date().toISOString(),
+      updated_by_user_id: actorUserId ?? null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'company_id,employee_id,year,month' })
+    .select('*')
+    .single();
+  if (upsertError) throw new Error(getErrorMessage(upsertError));
+  return (upserted as HrMonthlyHours) ?? null;
 }
