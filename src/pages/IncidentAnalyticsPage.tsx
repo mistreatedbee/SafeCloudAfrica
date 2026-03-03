@@ -12,10 +12,12 @@ import {
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { listIncidents, listIncidentsWithFilters } from '../api/services/incidentsService';
+import { listIncidentsWithFilters } from '../api/services/incidentsService';
 import type { Incident } from '../api/models/entities';
-import type { IncidentCategory, RiskLevel, RiskCategory } from '../api/models/core';
+import type { IncidentCategory, RiskLevel } from '../api/models/core';
 import { IncidentTrendCharts } from '../components/incidents/IncidentTrendCharts';
+import { listIncidentInvestigationsForIncidents } from '../api/services/incidentInvestigationsService';
+import type { UUID } from '../api/models/core';
 
 type TrendPeriod = '1month' | '2months' | '3months' | '6months' | '12months';
 
@@ -25,6 +27,7 @@ export function IncidentAnalyticsPage() {
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('12months');
   const [selectedCategory, setSelectedCategory] = useState<IncidentCategory | 'all'>('all');
   const [selectedRiskLevel, setSelectedRiskLevel] = useState<RiskLevel | 'all'>('all');
+  const [selectedRootCause, setSelectedRootCause] = useState<string>('all');
 
   const { data: incidents, loading, error: loadError } = useAsync<Incident[]>(
     async () => {
@@ -45,12 +48,45 @@ export function IncidentAnalyticsPage() {
       return await listIncidentsWithFilters({
         companyId: activeCompanyId,
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
-        dateFrom: cutoffDate.toISOString(),
+        from: cutoffDate.toISOString(),
         limit: 1000
       });
     },
     [activeCompanyId, trendPeriod, selectedCategory]
   );
+
+  const { data: investigations = [] } = useAsync(
+    async () => {
+      if (!activeCompanyId || !incidents?.length) return [];
+      return listIncidentInvestigationsForIncidents(
+        activeCompanyId,
+        incidents.map((i) => i.id as UUID)
+      );
+    },
+    [activeCompanyId, incidents]
+  );
+
+  const investigationsByIncidentId = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const inv of investigations ?? []) map.set(String((inv as any).incident_id), inv as any);
+    return map;
+  }, [investigations]);
+
+  const rootCauseOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const inv of investigations ?? []) {
+      const rows = [
+        ...((inv as any).root_causes_human ?? []),
+        ...((inv as any).root_causes_workplace ?? []),
+        ...((inv as any).system_failures ?? [])
+      ];
+      for (const entry of rows) {
+        const label = String((entry as any)?.item ?? entry ?? '').trim();
+        if (label) set.add(label);
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [investigations]);
 
   // Filter incidents by date range
   const filteredIncidents = useMemo(() => {
@@ -77,9 +113,23 @@ export function IncidentAnalyticsPage() {
         riskLevelRaw === 'low' ? 'low' :
         'medium';
       const matchesRisk = selectedRiskLevel === 'all' || riskLevel === selectedRiskLevel;
-      return inDateRange && matchesCategory && matchesRisk;
+      const inv = investigationsByIncidentId.get(String(incident.id));
+      const rootItems = inv
+        ? [
+            ...((inv as any).root_causes_human ?? []),
+            ...((inv as any).root_causes_workplace ?? []),
+            ...((inv as any).system_failures ?? [])
+          ].map((entry) => String((entry as any)?.item ?? entry ?? '').trim().toLowerCase()).filter(Boolean)
+        : [];
+      const matchesRootCause = selectedRootCause === 'all' || rootItems.includes(selectedRootCause.toLowerCase());
+      return inDateRange && matchesCategory && matchesRisk && matchesRootCause;
     });
-  }, [incidents, trendPeriod, selectedCategory, selectedRiskLevel]);
+  }, [incidents, trendPeriod, selectedCategory, selectedRiskLevel, selectedRootCause, investigationsByIncidentId]);
+
+  const trendIncidents = useMemo(
+    () => filteredIncidents.filter((incident) => String(incident.status) === 'closed' && investigationsByIncidentId.has(String(incident.id))),
+    [filteredIncidents, investigationsByIncidentId]
+  );
 
   // Trend analysis by month
   const monthlyTrends = useMemo(() => {
@@ -118,23 +168,23 @@ export function IncidentAnalyticsPage() {
         categories: Array.from(data.categories.entries()),
         riskLevels: Array.from(data.riskLevels.entries())
       }));
-  }, [filteredIncidents]);
+  }, [trendIncidents]);
 
   // Category breakdown
   const categoryBreakdown = useMemo(() => {
     const breakdown = new Map<string, number>();
-    filteredIncidents.forEach(incident => {
+    trendIncidents.forEach(incident => {
       breakdown.set(incident.category, (breakdown.get(incident.category) || 0) + 1);
     });
     return Array.from(breakdown.entries())
       .sort(([, a], [, b]) => b - a)
       .slice(0, 10);
-  }, [filteredIncidents]);
+  }, [trendIncidents]);
 
   // Risk level breakdown
   const riskLevelBreakdown = useMemo(() => {
     const breakdown = new Map<RiskLevel, number>();
-    filteredIncidents.forEach(incident => {
+    trendIncidents.forEach(incident => {
       const riskLevelRaw = String((incident as any)?.risk_rating ?? (incident as any)?.metadata?.riskLevel ?? '').toLowerCase();
       const riskLevel: RiskLevel =
         riskLevelRaw === 'critical' ? 'critical' :
@@ -144,19 +194,19 @@ export function IncidentAnalyticsPage() {
       breakdown.set(riskLevel, (breakdown.get(riskLevel) || 0) + 1);
     });
     return Array.from(breakdown.entries());
-  }, [filteredIncidents]);
+  }, [trendIncidents]);
 
   // Department/Site breakdown (extracted from location if available)
   const departmentBreakdown = useMemo(() => {
     const breakdown = new Map<string, number>();
-    filteredIncidents.forEach(incident => {
+    trendIncidents.forEach(incident => {
       const location = incident.location || 'Unknown';
       breakdown.set(location, (breakdown.get(location) || 0) + 1);
     });
     return Array.from(breakdown.entries())
       .sort(([, a], [, b]) => b - a)
       .slice(0, 10);
-  }, [filteredIncidents]);
+  }, [trendIncidents]);
 
   // Calculate trend direction
   const trendDirection = useMemo(() => {
@@ -185,7 +235,7 @@ export function IncidentAnalyticsPage() {
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
           <div>
             <h1 className="text-2xl font-bold text-charcoal">Incident Analytics & Trends</h1>
-            <p className="text-sm text-charcoal-500 mt-1">12-month rolling trend analysis</p>
+            <p className="text-sm text-charcoal-500 mt-1">Trend analysis uses completed investigations only (closed incidents with investigation records).</p>
           </div>
           <button
             onClick={() => navigate('/dashboard/incidents/management')}
@@ -243,6 +293,19 @@ export function IncidentAnalyticsPage() {
                 <option value="critical">Critical</option>
               </select>
             </div>
+            <div>
+              <label className="block text-xs text-charcoal-500 mb-1">Root Cause</label>
+              <select
+                value={selectedRootCause}
+                onChange={(e) => setSelectedRootCause(e.target.value)}
+                className="px-3 py-1.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+              >
+                <option value="all">All Root Causes</option>
+                {rootCauseOptions.map((cause) => (
+                  <option key={cause} value={cause}>{cause}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -250,7 +313,7 @@ export function IncidentAnalyticsPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Total Incidents</p>
-            <p className="text-2xl font-bold text-charcoal mt-1">{filteredIncidents.length}</p>
+            <p className="text-2xl font-bold text-charcoal mt-1">{trendIncidents.length}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Trend Direction</p>
@@ -265,7 +328,7 @@ export function IncidentAnalyticsPage() {
             <p className="text-sm text-charcoal-500">Avg per Month</p>
             <p className="text-2xl font-bold text-charcoal mt-1">
               {monthlyTrends.length > 0 
-                ? Math.round(filteredIncidents.length / monthlyTrends.length)
+                ? Math.round(trendIncidents.length / monthlyTrends.length)
                 : 0}
             </p>
           </div>
@@ -278,7 +341,7 @@ export function IncidentAnalyticsPage() {
         </div>
 
         {/* Trend Charts */}
-        <IncidentTrendCharts incidents={filteredIncidents} period={trendPeriod === '1month' ? '1month' : trendPeriod === '2months' ? '2months' : '12months'} />
+        <IncidentTrendCharts incidents={trendIncidents} period={trendPeriod === '1month' ? '1month' : trendPeriod === '2months' ? '2months' : '12months'} />
 
         {/* Monthly Trend Chart */}
         <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">

@@ -219,6 +219,7 @@ export type CreateIncidentInput = {
   location?: string;
   assigneeUserId?: UUID;
   createdByUserId: UUID;
+  autoGenerateNcr?: boolean;
 };
 
 export async function createIncident(input: CreateIncidentInput): Promise<Incident> {
@@ -286,31 +287,32 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
     entityId: (data as any).id as UUID
   });
 
-  // Authoritative NCR integration: incidents auto-generate NCRs.
-  const createdIncident = data as Incident;
-  await createQualityNcr({
-    companyId: input.companyId,
-    module: input.module,
-    title: `Incident NCR: ${input.title}`,
-    description: input.description ?? undefined,
-    location: input.location ?? undefined,
-    process_involved: input.natureOfIncident ?? undefined,
-    activity_involved: input.subcategory ?? undefined,
-    responsible_role: input.reportedTo ?? undefined,
-    risk_classification: String(input.riskClassification ?? '').toLowerCase() || undefined,
-    risk_rating:
-      String(input.riskClassification ?? '').toLowerCase() === 'critical'
-        ? 'critical'
-        : String(input.riskClassification ?? '').toLowerCase() === 'high'
-          ? 'high'
-          : String(input.riskClassification ?? '').toLowerCase() === 'medium'
-            ? 'medium'
-            : 'low',
-    severity: input.severity,
-    createdByUserId: input.createdByUserId,
-    source_entity_type: 'incident',
-    source_entity_id: createdIncident.id
-  });
+  if (input.autoGenerateNcr === true) {
+    const createdIncident = data as Incident;
+    await createQualityNcr({
+      companyId: input.companyId,
+      module: input.module,
+      title: `Incident NCR: ${input.title}`,
+      description: input.description ?? undefined,
+      location: input.location ?? undefined,
+      process_involved: input.natureOfIncident ?? undefined,
+      activity_involved: input.subcategory ?? undefined,
+      responsible_role: input.reportedTo ?? undefined,
+      risk_classification: String(input.riskClassification ?? '').toLowerCase() || undefined,
+      risk_rating:
+        String(input.riskClassification ?? '').toLowerCase() === 'critical'
+          ? 'critical'
+          : String(input.riskClassification ?? '').toLowerCase() === 'high'
+            ? 'high'
+            : String(input.riskClassification ?? '').toLowerCase() === 'medium'
+              ? 'medium'
+              : 'low',
+      severity: input.severity,
+      createdByUserId: input.createdByUserId,
+      source_entity_type: 'incident',
+      source_entity_id: createdIncident.id
+    });
+  }
 
   return data as Incident;
 }
@@ -402,6 +404,30 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
   if (patch.riskClassification !== undefined) updateData.risk_classification = patch.riskClassification;
   if (patch.riskCategorySimple !== undefined) updateData.risk_category = patch.riskCategorySimple;
 
+  if (patch.status === 'closed') {
+    const [{ count: openNcrCount, error: openNcrError }, { count: openActionCount, error: openActionError }] = await Promise.all([
+      insforge.database
+        .from('quality_ncrs')
+        .select('*', { count: 'exact', head: true })
+        .eq('source_entity_type', 'incident')
+        .eq('source_entity_id', incidentId)
+        .neq('status', 'closed'),
+      insforge.database
+        .from('incident_corrective_actions')
+        .select('*', { count: 'exact', head: true })
+        .eq('incident_id', incidentId)
+        .neq('status', 'Closed')
+    ]);
+    if (openNcrError) throw new Error(getErrorMessage(openNcrError));
+    if (openActionError) throw new Error(getErrorMessage(openActionError));
+    if ((openNcrCount ?? 0) > 0) {
+      throw new Error('Incident cannot be closed while linked NCRs are still open.');
+    }
+    if ((openActionCount ?? 0) > 0) {
+      throw new Error('Incident cannot be closed while corrective actions are still open.');
+    }
+  }
+
   const { data, error } = await insforge.database
     .from('incidents')
     .update(updateData)
@@ -414,9 +440,43 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
   return data as Incident;
 }
 
+export async function syncIncidentClosureFromLinks(incidentId: UUID): Promise<void> {
+  const [{ data: incidentRow, error: incidentError }, { count: openNcrCount, error: openNcrError }, { count: openActionCount, error: openActionError }] = await Promise.all([
+    insforge.database.from('incidents').select('id,status').eq('id', incidentId).maybeSingle(),
+    insforge.database
+      .from('quality_ncrs')
+      .select('*', { count: 'exact', head: true })
+      .eq('source_entity_type', 'incident')
+      .eq('source_entity_id', incidentId)
+      .neq('status', 'closed'),
+    insforge.database
+      .from('incident_corrective_actions')
+      .select('*', { count: 'exact', head: true })
+      .eq('incident_id', incidentId)
+      .neq('status', 'Closed')
+  ]);
+
+  if (incidentError) throw new Error(getErrorMessage(incidentError));
+  if (!incidentRow) return;
+  if (openNcrError) throw new Error(getErrorMessage(openNcrError));
+  if (openActionError) throw new Error(getErrorMessage(openActionError));
+
+  const hasOpenLinks = (openNcrCount ?? 0) > 0 || (openActionCount ?? 0) > 0;
+  const current = String((incidentRow as any).status ?? 'open');
+  const next = hasOpenLinks ? 'investigating' : 'closed';
+  if (current === next) return;
+
+  const { error: updateError } = await insforge.database
+    .from('incidents')
+    .update({ status: next, updated_at: new Date().toISOString() })
+    .eq('id', incidentId);
+  if (updateError) throw new Error(getErrorMessage(updateError));
+}
+
 export const incidentsService = {
   listIncidents,
   listIncidentsWithFilters,
   createIncident,
-  updateIncident
+  updateIncident,
+  syncIncidentClosureFromLinks
 };

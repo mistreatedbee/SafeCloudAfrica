@@ -45,13 +45,13 @@ export function IncidentCorrectiveActionsList({
           className="flex items-center gap-2 px-3 py-1.5 text-sm bg-teal text-white rounded-lg hover:bg-teal-600 disabled:opacity-60"
         >
           <PlusIcon className="w-4 h-4" />
-          Add Action
+          Create Corrective Action
         </button>
       </div>
 
       {actions.length === 0 ? (
         <div className="text-sm text-charcoal-500 text-center py-4 border border-dashed border-surface-300 rounded-lg">
-          No corrective actions added. Click "Add Action" to create one.
+          No corrective actions added. Click "Create Corrective Action" to add one.
         </div>
       ) : (
         <div className="space-y-2">

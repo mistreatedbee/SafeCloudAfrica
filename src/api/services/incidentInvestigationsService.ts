@@ -49,3 +49,16 @@ export async function upsertIncidentInvestigation(input: {
   return data as IncidentInvestigation;
 }
 
+export async function listIncidentInvestigationsForIncidents(
+  companyId: UUID,
+  incidentIds: UUID[]
+): Promise<IncidentInvestigation[]> {
+  if (incidentIds.length === 0) return [];
+  const { data, error } = await insforge.database
+    .from('incident_investigations')
+    .select('*')
+    .eq('company_id', companyId)
+    .in('incident_id', incidentIds);
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as IncidentInvestigation[];
+}

@@ -69,12 +69,13 @@ export function IncidentsPage() {
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
-  const { activeCompanyId } = useTenant();
+  const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
   const [editingIncident, setEditingIncident] = useState<Incident | null>(null);
   const [viewIncident, setViewIncident] = useState<Incident | null>(null);
+  const canEditInvestigation = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
 
   useEffect(() => {
     setCreateOpen(isNew);
@@ -89,10 +90,16 @@ export function IncidentsPage() {
   );
 
   const allIncidents = incidents ?? [];
+  const scopedIncidents = useMemo(() => {
+    if (activeRole === 'employee' && user?.id) {
+      return allIncidents.filter((incident) => String((incident as any).created_by_user_id) === String(user.id));
+    }
+    return allIncidents;
+  }, [activeRole, user?.id, allIncidents]);
   
   // Apply date filter
   const list = useMemo(() => {
-    if (dateFilter === 'all') return allIncidents;
+    if (dateFilter === 'all') return scopedIncidents;
     const now = new Date();
     const cutoffDate = new Date();
     if (dateFilter === '1month') {
@@ -100,11 +107,11 @@ export function IncidentsPage() {
     } else if (dateFilter === '2months') {
       cutoffDate.setMonth(now.getMonth() - 2);
     }
-    return allIncidents.filter(incident => {
+    return scopedIncidents.filter(incident => {
       const incidentDate = new Date(incident.occurred_at);
       return incidentDate >= cutoffDate;
     });
-  }, [allIncidents, dateFilter]);
+  }, [scopedIncidents, dateFilter]);
   const openCount = list.filter((i) => i.status === 'open').length;
   const investigatingCount = list.filter((i) => i.status === 'investigating').length;
   const nearMissCount = list.filter((i) => i.category === 'Near Miss').length;
@@ -138,7 +145,7 @@ export function IncidentsPage() {
             companyId={activeCompanyId}
             incident={viewIncident}
             actorUserId={user.id}
-            canEditInvestigation
+            canEditInvestigation={canEditInvestigation}
           />
         </Suspense>
       )}

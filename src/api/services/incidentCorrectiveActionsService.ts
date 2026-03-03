@@ -67,6 +67,11 @@ export async function createIncidentCorrectiveAction(
     metadata: { incidentId: input.incidentId }
   });
 
+  const { syncIncidentClosureFromLinks } = await import('./incidentsService');
+  await syncIncidentClosureFromLinks((data as any).incident_id as UUID).catch((syncError) => {
+    void syncError;
+  });
+
   return data as IncidentCorrectiveAction;
 }
 
@@ -115,6 +120,11 @@ export async function updateIncidentCorrectiveAction(
     metadata: { incidentId: (data as any).incident_id, changes: patch }
   });
 
+  const { syncIncidentClosureFromLinks } = await import('./incidentsService');
+  await syncIncidentClosureFromLinks((data as any).incident_id as UUID).catch((syncError) => {
+    void syncError;
+  });
+
   return data as IncidentCorrectiveAction;
 }
 
@@ -141,10 +151,18 @@ export async function getIncidentCorrectiveAction(actionId: UUID): Promise<Incid
 }
 
 export async function deleteIncidentCorrectiveAction(actionId: UUID): Promise<void> {
+  const existing = await getIncidentCorrectiveAction(actionId);
   const { error } = await insforge.database
     .from('incident_corrective_actions')
     .delete()
     .eq('id', actionId);
 
   if (error) throw new Error(getErrorMessage(error));
+
+  if (existing?.incident_id) {
+    const { syncIncidentClosureFromLinks } = await import('./incidentsService');
+    await syncIncidentClosureFromLinks(existing.incident_id).catch((syncError) => {
+      void syncError;
+    });
+  }
 }

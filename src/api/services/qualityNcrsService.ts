@@ -222,6 +222,13 @@ export async function createQualityNcr(input: {
     // Best-effort risk review trigger.
   }
 
+  if (sourceType === 'incident' && input.source_entity_id) {
+    const { syncIncidentClosureFromLinks } = await import('./incidentsService');
+    await syncIncidentClosureFromLinks(input.source_entity_id).catch((syncError) => {
+      void syncError;
+    });
+  }
+
   return ncr;
 }
 
@@ -596,14 +603,10 @@ async function syncLinkedEntitiesOnNcrClosed(
   }
 
   if (sourceType === 'incident') {
-    await insforge.database
-      .from('incidents')
-      .update({
-        status: 'closed',
-        updated_at: nowIso
-      })
-      .eq('company_id', companyId)
-      .eq('id', sourceId);
+    const { syncIncidentClosureFromLinks } = await import('./incidentsService');
+    await syncIncidentClosureFromLinks(sourceId).catch((syncError) => {
+      void syncError;
+    });
   }
 
   if (sourceType === 'complaint') {
