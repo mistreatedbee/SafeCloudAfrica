@@ -17,13 +17,14 @@ type FormState = {
 };
 
 function canEditAssessment(assessment: RiskAssessment, actorUserId: string | null | undefined, role: string | null): boolean {
-  if (role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor') return true;
+  if (role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor' || role === 'consultant') return true;
   if (role === 'employee' && actorUserId) return assessment.created_by_user_id === actorUserId;
   return false;
 }
 
 export function RiskAssessmentEditPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id, assessmentId } = useParams<{ id?: string; assessmentId?: string }>();
+  const resolvedId = id ?? assessmentId ?? '';
   const navigate = useNavigate();
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
@@ -44,13 +45,13 @@ export function RiskAssessmentEditPage() {
   });
 
   useEffect(() => {
-    if (!id || !activeCompanyId) return;
+    if (!resolvedId || !activeCompanyId) return;
     (async () => {
       try {
         setLoading(true);
         setError(null);
         setNotFound(false);
-        const assessment = await getRiskAssessment(id);
+        const assessment = await getRiskAssessment(resolvedId);
         if (assessment.company_id !== activeCompanyId || !canEditAssessment(assessment, user?.id, activeRole)) {
           setNotFound(true);
           return;
@@ -75,11 +76,11 @@ export function RiskAssessmentEditPage() {
         setLoading(false);
       }
     })();
-  }, [activeCompanyId, activeRole, id, user?.id]);
+  }, [activeCompanyId, activeRole, resolvedId, user?.id]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!id || !activeCompanyId || !user?.id) return;
+    if (!resolvedId || !activeCompanyId || !user?.id) return;
     if (!form.title.trim()) {
       setError('Title is required.');
       return;
@@ -89,7 +90,7 @@ export function RiskAssessmentEditPage() {
       setSaving(true);
       setError(null);
       await updateRiskAssessment({
-        assessmentId: id as UUID,
+        assessmentId: resolvedId as UUID,
         companyId: activeCompanyId,
         updatedByUserId: user.id as UUID,
         title: form.title.trim(),
@@ -101,7 +102,7 @@ export function RiskAssessmentEditPage() {
         status: form.status
       });
       setToastMessage('Risk assessment updated');
-      setTimeout(() => navigate(`/risk-assessments/${id}`), 700);
+      setTimeout(() => navigate(`/risk-assessments/${resolvedId}`), 700);
     } catch (err) {
       console.error('Failed to update risk assessment:', err);
       setError(err instanceof Error ? err.message : 'Failed to update risk assessment');
@@ -141,7 +142,7 @@ export function RiskAssessmentEditPage() {
         )}
 
         <div>
-          <Link to={`/risk-assessments/${id ?? ''}`} className="text-sm text-charcoal-500 hover:text-charcoal inline-block mb-1">Back to details</Link>
+          <Link to={`/risk-assessments/${resolvedId}`} className="text-sm text-charcoal-500 hover:text-charcoal inline-block mb-1">Back to details</Link>
           <h1 className="text-2xl font-bold text-charcoal">Edit Risk Assessment</h1>
         </div>
 
@@ -234,7 +235,7 @@ export function RiskAssessmentEditPage() {
             </button>
             <button
               type="button"
-              onClick={() => navigate(`/risk-assessments/${id ?? ''}`)}
+              onClick={() => navigate(`/risk-assessments/${resolvedId}`)}
               className="text-sm text-charcoal-600 hover:text-charcoal"
             >
               Cancel

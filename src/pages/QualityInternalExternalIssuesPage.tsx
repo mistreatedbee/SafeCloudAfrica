@@ -89,6 +89,9 @@ function formatDate(value: string | null | undefined): string {
 function roleCanWrite(role: CompanyRole | null): boolean {
   return role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor';
 }
+function roleCanRead(role: CompanyRole | null): boolean {
+  return role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor' || role === 'consultant' || role === 'auditor';
+}
 function roleCanApprove(role: CompanyRole | null): boolean {
   return role === 'owner' || role === 'admin';
 }
@@ -131,6 +134,7 @@ function toIssueForm(row?: QualityInternalExternalIssue): IssueForm {
 export default function QualityInternalExternalIssuesPage() {
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
+  const canRead = roleCanRead(activeRole ?? null);
   const canWrite = roleCanWrite(activeRole ?? null);
   const canApprove = roleCanApprove(activeRole ?? null);
   const canExport = roleCanExport(activeRole ?? null);
@@ -170,9 +174,9 @@ export default function QualityInternalExternalIssuesPage() {
   const userLabel = useMemo(() => new Map((profiles ?? []).map((p) => [p.user_id, p.full_name || p.email || p.user_id])), [profiles]);
 
   const { data: registers, loading: registersLoading, error: registersError, refresh: refreshRegisters } = useAsync(async () => {
-    if (!activeCompanyId) return [];
+    if (!activeCompanyId || !canRead) return [];
     return await listInternalExternalIssueRegisters({ companyId: activeCompanyId, actorRole: activeRole ?? null, dateFrom, dateTo });
-  }, [activeCompanyId, activeRole, dateFrom, dateTo, refreshKey]);
+  }, [activeCompanyId, activeRole, canRead, dateFrom, dateTo, refreshKey]);
 
   const selectedRegister = useMemo(() => (registers ?? []).find((r) => r.id === selectedRegisterId) ?? null, [registers, selectedRegisterId]);
 
@@ -201,7 +205,7 @@ export default function QualityInternalExternalIssuesPage() {
   }, [selectedRegister, user?.id]);
 
   const { data: rows, loading: rowsLoading, error: rowsError, refresh: refreshRows } = useAsync(async () => {
-    if (!activeCompanyId || !selectedRegisterId) return [];
+    if (!activeCompanyId || !selectedRegisterId || !canRead) return [];
     return await listInternalExternalIssues({
       companyId: activeCompanyId,
       actorRole: activeRole ?? null,
@@ -212,10 +216,10 @@ export default function QualityInternalExternalIssuesPage() {
       responsibleUserId: responsibleFilter || undefined,
       issueSearch: search || undefined
     });
-  }, [activeCompanyId, activeRole, selectedRegisterId, scopeFilter, riskOrOppFilter, natureFilter, responsibleFilter, search, refreshKey]);
+  }, [activeCompanyId, activeRole, canRead, selectedRegisterId, scopeFilter, riskOrOppFilter, natureFilter, responsibleFilter, search, refreshKey]);
 
   const { data: summary } = useAsync(async () => {
-    if (!activeCompanyId || !selectedRegisterId) return { totalIssues: 0, internalCount: 0, externalCount: 0, highSeriousCount: 0, overdueActions: 0 };
+    if (!activeCompanyId || !selectedRegisterId || !canRead) return { totalIssues: 0, internalCount: 0, externalCount: 0, highSeriousCount: 0, overdueActions: 0 };
     return await getInternalExternalIssuesSummary({
       companyId: activeCompanyId,
       actorRole: activeRole ?? null,
@@ -226,7 +230,7 @@ export default function QualityInternalExternalIssuesPage() {
       responsibleUserId: responsibleFilter || undefined,
       issueSearch: search || undefined
     });
-  }, [activeCompanyId, activeRole, selectedRegisterId, scopeFilter, riskOrOppFilter, natureFilter, responsibleFilter, search, refreshKey]);
+  }, [activeCompanyId, activeRole, canRead, selectedRegisterId, scopeFilter, riskOrOppFilter, natureFilter, responsibleFilter, search, refreshKey]);
 
   const currentRiskRating = useMemo(() => Number(issueForm.likelihood || 1) * Number(issueForm.severity || 1), [issueForm.likelihood, issueForm.severity]);
   const autoNature = useMemo(() => mapIssueNature(currentRiskRating), [currentRiskRating]);
@@ -465,6 +469,7 @@ export default function QualityInternalExternalIssuesPage() {
             </div>
           </div>
           {registerError && <p className="text-sm text-critical">{registerError}</p>}
+          {!canRead && !!activeRole && <p className="text-sm text-critical">You do not have permission to view internal/external issues for this workspace.</p>}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -511,7 +516,7 @@ export default function QualityInternalExternalIssuesPage() {
         </div>
       </div>
       {modalOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4">
           <div className="w-full max-w-5xl bg-white rounded-xl border border-surface-300 overflow-hidden">
             <div className="px-5 py-4 border-b border-surface-200">
               <h2 className="text-lg font-semibold">{formMode === 'create' ? 'Add Issue Row' : formMode === 'edit' ? `Edit Issue #${issueForm.refNo ?? ''}` : `View Issue #${issueForm.refNo ?? ''}`}</h2>

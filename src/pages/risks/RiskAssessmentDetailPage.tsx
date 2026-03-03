@@ -13,7 +13,7 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useUser } from '@insforge/react';
 
 function canViewAssessment(assessment: RiskAssessment, actorUserId: string | null | undefined, role: string | null): boolean {
-  if (role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor') return true;
+  if (role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor' || role === 'consultant' || role === 'auditor') return true;
   if (!actorUserId) return false;
   return assessment.created_by_user_id === actorUserId;
 }
@@ -25,7 +25,8 @@ function riskLevelClass(level: string | null | undefined): string {
 }
 
 export function RiskAssessmentDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id, assessmentId } = useParams<{ id?: string; assessmentId?: string }>();
+  const resolvedId = id ?? assessmentId ?? '';
   const navigate = useNavigate();
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
@@ -36,15 +37,15 @@ export function RiskAssessmentDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id || !activeCompanyId) return;
+    if (!resolvedId || !activeCompanyId) return;
     (async () => {
       try {
         setLoading(true);
         setError(null);
         setNotFound(false);
         const [assessmentRow, itemRows] = await Promise.all([
-          getRiskAssessment(id),
-          listRiskAssessmentItems(id)
+          getRiskAssessment(resolvedId),
+          listRiskAssessmentItems(resolvedId)
         ]);
         if (assessmentRow.company_id !== activeCompanyId) {
           setNotFound(true);
@@ -67,7 +68,7 @@ export function RiskAssessmentDetailPage() {
         setLoading(false);
       }
     })();
-  }, [activeCompanyId, activeRole, id, user?.id]);
+  }, [activeCompanyId, activeRole, resolvedId, user?.id]);
 
   if (loading) {
     return (
@@ -107,6 +108,7 @@ export function RiskAssessmentDetailPage() {
     activeRole === 'admin' ||
     activeRole === 'manager' ||
     activeRole === 'supervisor' ||
+    activeRole === 'consultant' ||
     (activeRole === 'employee' && assessment.created_by_user_id === user?.id);
 
   return (

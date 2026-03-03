@@ -842,6 +842,16 @@ export function App() {
             }
           />
           <Route
+            path="/incidents/analysis"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <IncidentAnalyticsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/ncrs"
             element={
               <RequireSignedIn>
