@@ -16,8 +16,38 @@ update public.hr_employee_documents
 set doc_name = coalesce(nullif(trim(doc_name), ''), title)
 where doc_name is null or trim(doc_name) = '';
 
+-- Remove legacy duplicates before creating the unique index.
+-- Keep the most recently updated/created row per logical document key.
+with ranked_docs as (
+  select
+    id,
+    row_number() over (
+      partition by
+        company_id,
+        employee_id,
+        lower(coalesce(doc_name, title)),
+        lower(coalesce(doc_type, '')),
+        coalesce(issue_date, date '1900-01-01')
+      order by
+        coalesce(updated_at, created_at) desc,
+        created_at desc,
+        id desc
+    ) as rn
+  from public.hr_employee_documents
+)
+delete from public.hr_employee_documents d
+using ranked_docs r
+where d.id = r.id
+  and r.rn > 1;
+
 create unique index if not exists idx_hr_employee_documents_no_dup
-on public.hr_employee_documents(company_id, employee_id, lower(coalesce(doc_name, title)), lower(doc_type), coalesce(issue_date, date '1900-01-01'));
+on public.hr_employee_documents(
+  company_id,
+  employee_id,
+  lower(coalesce(doc_name, title)),
+  lower(coalesce(doc_type, '')),
+  coalesce(issue_date, date '1900-01-01')
+);
 
 create table if not exists public.hr_ack_documents (
   id uuid primary key default gen_random_uuid(),
@@ -77,4 +107,3 @@ drop policy if exists hr_ack_receipts_all on public.hr_ack_receipts;
 create policy hr_ack_receipts_all on public.hr_ack_receipts for all
 using (public.is_platform_admin() or public.is_company_member(company_id))
 with check (public.is_platform_admin() or public.is_company_member(company_id));
-
