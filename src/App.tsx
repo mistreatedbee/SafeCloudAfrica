@@ -181,6 +181,7 @@ export function App() {
           <Route path="/seed-demo" element={<SeedDemoPage />} />
 
           {/* Invite acceptance */}
+          <Route path="/invite/accept" element={<InviteAcceptPage />} />
           <Route path="/invite/:inviteId" element={<InviteAcceptPage />} />
           <Route path="/accept-invite" element={<InviteAcceptPage />} />
 

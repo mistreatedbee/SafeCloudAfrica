@@ -6,7 +6,7 @@ import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
 import {
   cancelInvite,
-  getInviteAcceptanceLink,
+  getInviteLinkForInviteId,
   listCompanyInvites,
   listCompanyMemberships,
   resendInvite,
@@ -101,6 +101,7 @@ export function UsersPage() {
   const [inviteFeedback, setInviteFeedback] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [membershipActionLoadingId, setMembershipActionLoadingId] = React.useState<string | null>(null);
   const [inviteActionLoadingId, setInviteActionLoadingId] = React.useState<string | null>(null);
+  const [latestInviteLink, setLatestInviteLink] = React.useState<string | null>(null);
   const [editOpen, setEditOpen] = React.useState(false);
   const [editUserId, setEditUserId] = React.useState<string | null>(null);
 
@@ -190,16 +191,19 @@ export function UsersPage() {
   const onInviteResult = (result: InviteCreateResult, _email: string) => {
     if (result.ok) {
       if (result.status === 'FAILED') {
+        setLatestInviteLink(result.inviteLink ?? null);
         setInviteFeedback({
           type: 'error',
           text: result.message || 'Invite created, but email failed. Copy link and send manually.'
         });
       } else {
+        setLatestInviteLink(null);
         setInviteFeedback({ type: 'success', text: 'Invite email sent successfully.' });
       }
       void refreshUsersData();
       return;
     }
+    setLatestInviteLink(null);
     setInviteFeedback({
       type: 'error',
       text: result.message || 'Email failed to send, try again.'
@@ -236,9 +240,10 @@ export function UsersPage() {
     }
   }
 
-  async function onCopyInviteLink(token: string) {
+  async function onCopyInviteLink(inviteId: string) {
     try {
-      await navigator.clipboard.writeText(getInviteAcceptanceLink(token));
+      const link = await getInviteLinkForInviteId({ inviteId: inviteId as any });
+      await navigator.clipboard.writeText(link);
       setInviteFeedback({ type: 'success', text: 'Invite link copied to clipboard.' });
     } catch {
       setInviteFeedback({ type: 'error', text: 'Could not copy invite link. Please copy it manually.' });
@@ -345,6 +350,15 @@ export function UsersPage() {
               {inviteFeedback.type === 'success' ? 'Success' : 'Error'}
             </p>
             <p className="text-sm text-charcoal-600 mt-1">{inviteFeedback.text}</p>
+            {latestInviteLink && inviteFeedback.type !== 'success' && (
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard.writeText(latestInviteLink)}
+                className="mt-3 px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+              >
+                Copy Invite Link
+              </button>
+            )}
           </motion.div>
         )}
 
@@ -490,7 +504,7 @@ export function UsersPage() {
                           <div className="inline-flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => void onCopyInviteLink(invite.token)}
+                              onClick={() => void onCopyInviteLink(invite.id)}
                               className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
                             >
                               Copy link

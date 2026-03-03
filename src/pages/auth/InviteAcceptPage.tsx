@@ -27,6 +27,7 @@ const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 
 function inviteErrorForCode(code: InviteValidationResult['code']): string {
   if (code === 'INVITE_EXPIRED') return 'This invitation has expired. Ask your admin to resend it.';
   if (code === 'INVITE_ACCEPTED') return 'This invitation has already been accepted.';
+  if (code === 'INVITE_REVOKED') return 'This invitation has been revoked. Ask your admin for a new invite.';
   return 'Invalid invite link.';
 }
 
@@ -46,8 +47,8 @@ export function InviteAcceptPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const redirectToLogin = useMemo(() => `/login?redirect=${encodeURIComponent(`/accept-invite?token=${token}`)}`, [token]);
-  const redirectToRegister = useMemo(() => `/register?redirect=${encodeURIComponent(`/accept-invite?token=${token}`)}&inviteToken=${encodeURIComponent(token)}&email=${encodeURIComponent(invite?.email ?? '')}`, [token, invite?.email]);
+  const redirectToLogin = useMemo(() => `/login?redirect=${encodeURIComponent(`/invite/accept?token=${token}`)}`, [token]);
+  const redirectToRegister = useMemo(() => `/register?redirect=${encodeURIComponent(`/invite/accept?token=${token}`)}&inviteToken=${encodeURIComponent(token)}&email=${encodeURIComponent(invite?.email ?? '')}`, [token, invite?.email]);
 
   useEffect(() => {
     let cancelled = false;

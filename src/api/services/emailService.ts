@@ -221,7 +221,7 @@ export async function sendOrganizationInviteEmail(input: {
   appUrl?: string;
 }): Promise<void> {
   const appUrl = (input.appUrl ?? (import.meta as any)?.env?.VITE_APP_URL ?? window.location.origin).replace(/\/+$/, '');
-  const acceptUrl = `${appUrl}/accept-invite?token=${encodeURIComponent(input.inviteToken)}`;
+  const acceptUrl = `${appUrl}/invite/accept?token=${encodeURIComponent(input.inviteToken)}`;
   const expiryDate = new Date(input.expiresAtIso);
   const expiresText = Number.isNaN(expiryDate.getTime()) ? input.expiresAtIso : expiryDate.toLocaleDateString();
   const daysUntilExpiry = Math.max(1, Math.ceil((expiryDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));

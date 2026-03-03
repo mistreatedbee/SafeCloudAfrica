@@ -5,6 +5,22 @@
       "destination": "/api/email/send"
     },
     {
+      "source": "/api/invites/create",
+      "destination": "/api/invites/create"
+    },
+    {
+      "source": "/api/invites/validate",
+      "destination": "/api/invites/validate"
+    },
+    {
+      "source": "/api/invites/accept",
+      "destination": "/api/invites/accept"
+    },
+    {
+      "source": "/api/invites/resend",
+      "destination": "/api/invites/resend"
+    },
+    {
       "source": "/functions/(.*)",
       "destination": "https://pas375jb.us-west.insforge.app/api/functions/invoke/$1"
     },
