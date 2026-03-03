@@ -127,7 +127,7 @@ export function KPIAssessmentCreatePage() {
         periodStartDate: periodStartDate || new Date().toISOString().slice(0, 10),
         periodEndDate: periodEndDate || new Date().toISOString().slice(0, 10),
         createdByUserId: user.id as UUID,
-        lines: questionnairePayload
+        questionnaires: questionnairePayload
       });
       setSuccessMessage('KPI Assessment saved successfully. Redirecting...');
       setTimeout(() => navigate(`/modules/hr/kpis/assessments/${created.assessment_id}`), 300);
