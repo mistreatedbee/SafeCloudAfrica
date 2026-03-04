@@ -28,7 +28,6 @@ export type IncidentCorrectiveActionModalProps = {
   /** When creating from a cause (Unsafe Act, Unsafe Condition, Root Cause, System Failure), pass to pre-fill and link */
   initialSourceCauseType?: 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure';
   initialSourceCauseText?: string;
-  causeOptions?: Array<{ type: 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure'; text: string }>;
 };
 
 export function IncidentCorrectiveActionModal({
@@ -41,8 +40,7 @@ export function IncidentCorrectiveActionModal({
   createdByUserId,
   onSaved,
   initialSourceCauseType,
-  initialSourceCauseText,
-  causeOptions = []
+  initialSourceCauseText
 }: IncidentCorrectiveActionModalProps) {
   const [actionTitle, setActionTitle] = useState('');
   const [actionDescription, setActionDescription] = useState('');
@@ -53,13 +51,6 @@ export function IncidentCorrectiveActionModal({
   const [closureNotes, setClosureNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sourceCauseType, setSourceCauseType] = useState<'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure' | ''>('');
-  const [sourceCauseText, setSourceCauseText] = useState('');
-
-  const selectedCauseType = sourceCauseType || initialSourceCauseType || '';
-  const filteredCauseOptions = selectedCauseType
-    ? causeOptions.filter((entry) => entry.type === selectedCauseType)
-    : causeOptions;
 
   useEffect(() => {
     if (initial) {
@@ -69,13 +60,9 @@ export function IncidentCorrectiveActionModal({
       setDueDate(initial.due_date ? new Date(initial.due_date).toISOString().slice(0, 10) : '');
       setStatus(initial.status);
       setClosureNotes(initial.closure_notes || '');
-      setSourceCauseType((initial.source_cause_type ?? '') as 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure' | '');
-      setSourceCauseText(initial.source_cause_text ?? '');
     } else if (open && initialSourceCauseText) {
       setActionTitle(initialSourceCauseText.slice(0, 200));
       setActionDescription(initialSourceCauseType ? `Linked to: ${initialSourceCauseType.replace('_', ' ')} - ${initialSourceCauseText}` : initialSourceCauseText);
-      setSourceCauseType(initialSourceCauseType ?? '');
-      setSourceCauseText(initialSourceCauseText);
     } else {
       resetForm();
     }
@@ -89,8 +76,6 @@ export function IncidentCorrectiveActionModal({
     setStatus('Open');
     setEvidenceFiles([]);
     setClosureNotes('');
-    setSourceCauseType(initialSourceCauseType ?? '');
-    setSourceCauseText(initialSourceCauseText ?? '');
     setError(null);
   }
 
@@ -106,15 +91,7 @@ export function IncidentCorrectiveActionModal({
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!actionTitle.trim()) {
-      setError('Action Required is mandatory.');
-      return;
-    }
-    if (!ownerUserId) {
-      setError('Responsible Person is required.');
-      return;
-    }
-    if (!dueDate) {
-      setError('Due Date is required.');
+      setError('Action title is required');
       return;
     }
 
@@ -130,9 +107,7 @@ export function IncidentCorrectiveActionModal({
           ownerUserId: ownerUserId || undefined,
           dueDate: dueDate || undefined,
           status,
-          closureNotes: status === 'Closed' ? closureNotes.trim() || undefined : undefined,
-          sourceCauseType: sourceCauseType || undefined,
-          sourceCauseText: sourceCauseText.trim() || null
+          closureNotes: status === 'Closed' ? closureNotes.trim() || undefined : undefined
         };
 
         const updated = await updateIncidentCorrectiveAction(actionId, updateData);
@@ -170,8 +145,8 @@ export function IncidentCorrectiveActionModal({
           ownerUserId: ownerUserId || undefined,
           dueDate: dueDate || undefined,
           createdByUserId,
-          sourceCauseType: sourceCauseType || initialSourceCauseType || undefined,
-          sourceCauseText: sourceCauseText.trim() || initialSourceCauseText || undefined
+          sourceCauseType: initialSourceCauseType,
+          sourceCauseText: initialSourceCauseText || undefined
         };
 
         const created = await createIncidentCorrectiveAction(createData);
@@ -237,7 +212,7 @@ export function IncidentCorrectiveActionModal({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Action Required *</label>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Action Title *</label>
             <input
               type="text"
               value={actionTitle}
@@ -260,7 +235,7 @@ export function IncidentCorrectiveActionModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Responsible Person *</label>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Owner / Responsible Person</label>
             <UserMultiSelect
               companyId={companyId}
               selectedUserIds={ownerUserId ? [ownerUserId] : []}
@@ -272,7 +247,7 @@ export function IncidentCorrectiveActionModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Due Date *</label>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Due Date</label>
               <input
                 type="date"
                 value={dueDate}
@@ -293,39 +268,6 @@ export function IncidentCorrectiveActionModal({
                 <option value="Under Review">Under Review</option>
                 <option value="Closed">Closed</option>
               </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Link to Cause Type</label>
-              <select
-                value={sourceCauseType}
-                onChange={(e) => setSourceCauseType(e.target.value as typeof sourceCauseType)}
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              >
-                <option value="">Select cause type</option>
-                <option value="unsafe_act">Immediate Cause</option>
-                <option value="unsafe_condition">Immediate Cause (Condition)</option>
-                <option value="root_cause">Root Cause</option>
-                <option value="system_failure">System Failure</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Linked Cause</label>
-              <input
-                type="text"
-                value={sourceCauseText}
-                onChange={(e) => setSourceCauseText(e.target.value)}
-                list="incident-cause-options"
-                placeholder="Select or type cause link"
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
-              <datalist id="incident-cause-options">
-                {filteredCauseOptions.map((entry) => (
-                  <option key={`${entry.type}:${entry.text}`} value={entry.text} />
-                ))}
-              </datalist>
             </div>
           </div>
 
@@ -382,7 +324,7 @@ export function IncidentCorrectiveActionModal({
             </button>
             <button
               type="submit"
-              disabled={loading || !actionTitle.trim() || !ownerUserId || !dueDate}
+              disabled={loading || !actionTitle.trim()}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading && <LoadingSpinner size={16} />}

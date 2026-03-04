@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { XIcon, FileTextIcon, ImageIcon, Trash2Icon, ExternalLinkIcon, DownloadIcon, ChevronDownIcon } from 'lucide-react';
+import { XIcon, FileTextIcon, ImageIcon, Trash2Icon, ExternalLinkIcon, DownloadIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { UUID } from '../../api/models/core';
@@ -38,12 +38,6 @@ type CauseDetailEntry = {
   note: string;
 };
 
-type ManualImmediateCauseEntry = {
-  category: string;
-  subcategory: string;
-  explanation: string;
-};
-
 type UploadDraft = {
   id: string;
   file: File;
@@ -61,15 +55,29 @@ type InvestigationSectionKey =
   | 'correctiveActions'
   | 'lessonsLearnt';
 
+const INVESTIGATION_SECTION_DEFINITIONS: Array<{
+  key: InvestigationSectionKey;
+  label: string;
+  description: string;
+}> = [
+  { key: 'immediateCauses', label: 'Immediate Causes', description: 'Unsafe acts/conditions, task flow and risk context' },
+  { key: 'rootCauseHuman', label: 'Root Cause (Human Factors)', description: 'Human behavior and competency causes' },
+  { key: 'rootCauseWorkplace', label: 'Root Cause (Workplace Factors)', description: 'Workplace and operational environment causes' },
+  { key: 'systemFailure', label: 'System Failure', description: 'Management system and process breakdowns' },
+  { key: 'contributingFactors', label: 'Contributing Factors', description: 'Other factors that influenced the incident' },
+  { key: 'correctiveActions', label: 'Corrective Actions', description: 'Actions, ownership, conclusion and distribution' },
+  { key: 'lessonsLearnt', label: 'Lessons Learnt', description: 'Reusable learning points for prevention' }
+];
+
 function emptyInvestigationSectionSelection(): Record<InvestigationSectionKey, boolean> {
   return {
-    immediateCauses: true,
-    rootCauseHuman: true,
-    rootCauseWorkplace: true,
-    systemFailure: true,
-    contributingFactors: true,
-    correctiveActions: true,
-    lessonsLearnt: true
+    immediateCauses: false,
+    rootCauseHuman: false,
+    rootCauseWorkplace: false,
+    systemFailure: false,
+    contributingFactors: false,
+    correctiveActions: false,
+    lessonsLearnt: false
   };
 }
 
@@ -176,11 +184,6 @@ export function IncidentCreateModal(props: {
   const [unsafeActs, setUnsafeActs] = useState<Record<string, UnsafeCauseEntry>>({});
   const [unsafeConditions, setUnsafeConditions] = useState<Record<string, UnsafeCauseEntry>>({});
   const [immediateCauseCategories, setImmediateCauseCategories] = useState<Record<string, CauseDetailEntry>>({});
-  const [manualImmediateCauseEntries, setManualImmediateCauseEntries] = useState<ManualImmediateCauseEntry[]>([]);
-  const [manualImmediateCategoryInput, setManualImmediateCategoryInput] = useState('');
-  const [manualImmediateSubcategoryInput, setManualImmediateSubcategoryInput] = useState('');
-  const [manualImmediateExplanationInput, setManualImmediateExplanationInput] = useState('');
-  const [immediateCauseFreeText, setImmediateCauseFreeText] = useState('');
   const [rootCauseHuman, setRootCauseHuman] = useState<Record<string, CauseDetailEntry>>({});
   const [rootCauseWorkplace, setRootCauseWorkplace] = useState<Record<string, CauseDetailEntry>>({});
   const [systemFailures, setSystemFailures] = useState<Record<string, CauseDetailEntry>>({});
@@ -218,6 +221,11 @@ export function IncidentCreateModal(props: {
     },
     [incidentTypeSelections, incidentTypeOther]
   );
+  const showImmediateCauseSection = immediateCauseFlags.unsafeAct
+    || immediateCauseFlags.unsafeCondition
+    || immediateCauseFlags.equipmentIssue
+    || immediateCauseFlags.otherImmediateCause;
+
   const calculatedRisk = riskLikelihood * riskSeverity;
   const calculatedRiskCategory = useMemo(() => getIncidentRiskCategory(calculatedRisk), [calculatedRisk]);
 
@@ -311,11 +319,6 @@ export function IncidentCreateModal(props: {
     setUnsafeActs({});
     setUnsafeConditions({});
     setImmediateCauseCategories({});
-    setManualImmediateCauseEntries([]);
-    setManualImmediateCategoryInput('');
-    setManualImmediateSubcategoryInput('');
-    setManualImmediateExplanationInput('');
-    setImmediateCauseFreeText('');
     setRootCauseHuman({});
     setRootCauseWorkplace({});
     setSystemFailures({});
@@ -437,11 +440,6 @@ export function IncidentCreateModal(props: {
     setUnsafeActs(mappedUnsafeActs);
     setUnsafeConditions(mappedUnsafeConditions);
     setImmediateCauseCategories({});
-    setManualImmediateCauseEntries([]);
-    setManualImmediateCategoryInput('');
-    setManualImmediateSubcategoryInput('');
-    setManualImmediateExplanationInput('');
-    setImmediateCauseFreeText('');
     setRootCauseHuman({});
     setRootCauseWorkplace({});
     setSystemFailures({});
@@ -503,33 +501,41 @@ export function IncidentCreateModal(props: {
         }
         if (Array.isArray(inv.immediate_causes)) {
           const next: Record<string, CauseDetailEntry> = {};
-          const manual: ManualImmediateCauseEntry[] = [];
-          const freeText: string[] = [];
           for (const entry of inv.immediate_causes as any[]) {
-            if (typeof entry === 'string') {
-              const text = entry.trim();
-              if (text) freeText.push(text);
-              continue;
-            }
-            const group = String(entry?.group ?? entry?.category ?? '').trim();
-            const item = String(entry?.item ?? entry?.subcategory ?? '').trim();
-            const note = String(entry?.note ?? entry?.explanation ?? '').trim();
-            if (!note) continue;
-            if (!group || !item) {
-              freeText.push(note);
-              continue;
-            }
-            if (group === 'Manual' || group === 'Immediate Cause') {
-              manual.push({ category: group, subcategory: item, explanation: note });
-              continue;
-            }
-            next[makeCauseKey(group, item)] = { group, item, note };
+            const group = String(entry?.group ?? '').trim();
+            const item = String(entry?.item ?? '').trim();
+            if (!group || !item) continue;
+            next[makeCauseKey(group, item)] = { group, item, note: String(entry?.note ?? '') };
           }
           setImmediateCauseCategories(next);
-          setManualImmediateCauseEntries(manual);
-          setImmediateCauseFreeText(freeText.join('\n'));
         }
-        setInvestigationSections(emptyInvestigationSectionSelection());
+        const hasImmediateCauses = (Array.isArray(inv.immediate_causes) && inv.immediate_causes.length > 0)
+          || (Array.isArray((editingIncident as any)?.immediate_causes_unsafe_acts) && (editingIncident as any).immediate_causes_unsafe_acts.length > 0)
+          || (Array.isArray((editingIncident as any)?.immediate_causes_unsafe_conditions) && (editingIncident as any).immediate_causes_unsafe_conditions.length > 0)
+          || Boolean((inv.instruction_breakdown ?? '').trim())
+          || Boolean((inv.task_sequence ?? '').trim())
+          || Boolean((inv.event_timeline ?? '').trim())
+          || Boolean((inv.risk_profile ?? '').trim())
+          || Boolean((inv.potential_consequence ?? '').trim());
+        const hasRootHuman = Array.isArray(inv.root_causes_human) && inv.root_causes_human.length > 0;
+        const hasRootWorkplace = Array.isArray(inv.root_causes_workplace) && inv.root_causes_workplace.length > 0;
+        const hasSystemFailures = Array.isArray(inv.system_failures) && inv.system_failures.length > 0;
+        const hasContributingFactors = Boolean((inv.contributing_factors ?? '').trim());
+        const hasCorrectiveActions = Boolean((inv.notes ?? '').trim())
+          || Boolean((inv.conclusion ?? '').trim())
+          || Boolean((inv.prepared_by ?? '').trim())
+          || (Array.isArray(inv.investigation_team) && inv.investigation_team.length > 0)
+          || (Array.isArray(inv.distributions) && inv.distributions.length > 0);
+        const hasLessonsLearnt = Boolean((inv.lessons_learnt ?? '').trim());
+        setInvestigationSections({
+          immediateCauses: hasImmediateCauses,
+          rootCauseHuman: hasRootHuman,
+          rootCauseWorkplace: hasRootWorkplace,
+          systemFailure: hasSystemFailures,
+          contributingFactors: hasContributingFactors,
+          correctiveActions: hasCorrectiveActions,
+          lessonsLearnt: hasLessonsLearnt
+        });
         if (Array.isArray(inv.root_causes_human)) {
           const next: Record<string, CauseDetailEntry> = {};
           for (const entry of inv.root_causes_human as any[]) {
@@ -784,17 +790,7 @@ export function IncidentCreateModal(props: {
               risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
               risk_profile: riskProfile.trim() || null,
               potential_consequence: potentialConsequence.trim() || null,
-              immediate_causes: [
-                ...Object.values(immediateCauseCategories),
-                ...manualImmediateCauseEntries.map((entry) => ({
-                  group: entry.category || 'Immediate Cause',
-                  item: entry.subcategory || 'Manual',
-                  note: entry.explanation
-                })),
-                ...(immediateCauseFreeText.trim()
-                  ? [{ group: 'Immediate Cause', item: 'Manual', note: immediateCauseFreeText.trim() }]
-                  : [])
-              ],
+              immediate_causes: Object.values(immediateCauseCategories),
               root_causes_human: Object.values(rootCauseHuman),
               root_causes_workplace: Object.values(rootCauseWorkplace),
               system_failures: Object.values(systemFailures),
@@ -878,17 +874,7 @@ export function IncidentCreateModal(props: {
               risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
               risk_profile: riskProfile.trim() || null,
               potential_consequence: potentialConsequence.trim() || null,
-              immediate_causes: [
-                ...Object.values(immediateCauseCategories),
-                ...manualImmediateCauseEntries.map((entry) => ({
-                  group: entry.category || 'Immediate Cause',
-                  item: entry.subcategory || 'Manual',
-                  note: entry.explanation
-                })),
-                ...(immediateCauseFreeText.trim()
-                  ? [{ group: 'Immediate Cause', item: 'Manual', note: immediateCauseFreeText.trim() }]
-                  : [])
-              ],
+              immediate_causes: Object.values(immediateCauseCategories),
               root_causes_human: Object.values(rootCauseHuman),
               root_causes_workplace: Object.values(rootCauseWorkplace),
               system_failures: Object.values(systemFailures),
@@ -918,24 +904,8 @@ export function IncidentCreateModal(props: {
     }
   }
 
-  function setInvestigationSection(section: InvestigationSectionKey, selected?: boolean) {
-    setInvestigationSections((prev) => ({ ...prev, [section]: selected ?? !prev[section] }));
-  }
-
-  function addManualImmediateCause() {
-    const explanation = manualImmediateExplanationInput.trim();
-    if (!explanation) return;
-    setManualImmediateCauseEntries((prev) => [
-      ...prev,
-      {
-        category: manualImmediateCategoryInput.trim() || 'Immediate Cause',
-        subcategory: manualImmediateSubcategoryInput.trim() || 'Manual',
-        explanation
-      }
-    ]);
-    setManualImmediateCategoryInput('');
-    setManualImmediateSubcategoryInput('');
-    setManualImmediateExplanationInput('');
+  function setInvestigationSection(section: InvestigationSectionKey, selected: boolean) {
+    setInvestigationSections((prev) => ({ ...prev, [section]: selected }));
   }
 
   function renderUploadSection(titleText: string, section: 'evidence' | 'investigation', items: UploadDraft[]) {
@@ -1100,20 +1070,20 @@ export function IncidentCreateModal(props: {
   }
 
   function renderInvestigationCard(section: InvestigationSectionKey, titleText: string, children: React.ReactNode) {
-    const expanded = Boolean(investigationSections[section]);
+    if (!investigationSections[section]) return null;
     return (
-      <div className="rounded-xl border border-surface-200 p-4 transition-all duration-200">
-        <button
-          type="button"
-          onClick={() => setInvestigationSection(section, !expanded)}
-          className="w-full flex items-center justify-between gap-2 text-left"
-        >
+      <div className="rounded-xl border border-surface-200 p-4 space-y-4">
+        <div className="flex items-center justify-between gap-2">
           <h4 className="text-sm font-semibold text-charcoal">{titleText}</h4>
-          <ChevronDownIcon className={`w-4 h-4 text-charcoal-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
-        </button>
-        <div className={`grid transition-all duration-200 ${expanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
-          <div className="overflow-hidden">{children}</div>
+          <button
+            type="button"
+            onClick={() => setInvestigationSection(section, false)}
+            className="text-xs font-medium text-charcoal-500 hover:text-charcoal"
+          >
+            Collapse
+          </button>
         </div>
+        {children}
       </div>
     );
   }
@@ -1474,8 +1444,8 @@ export function IncidentCreateModal(props: {
                 <summary className="cursor-pointer text-sm font-semibold text-charcoal">Risk & Consequence</summary>
                 <div className="pt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Likelihood x Severity = Risk Score</label>
-                    <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm bg-surface-50">{riskLikelihood} x {riskSeverity} = {calculatedRisk}</div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Risk rating</label>
+                    <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm bg-surface-50">{calculatedRiskCategory} ({calculatedRisk})</div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-charcoal mb-1.5">Potential consequence</label>
@@ -1501,7 +1471,28 @@ export function IncidentCreateModal(props: {
                     <label className="flex items-center gap-2 text-sm text-charcoal"><input type="checkbox" checked={immediateCauseFlags.otherImmediateCause} onChange={(e) => { setImmediateCauseFlags((prev) => ({ ...prev, otherImmediateCause: e.target.checked })); if (e.target.checked) setInvestigationSection('immediateCauses', true); }} className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal" />Other Immediate Cause</label>
                   </div>
                 </div>
-                {renderInvestigationCard(
+                <div className="rounded-xl border border-surface-200 p-4">
+                  <p className="text-sm font-semibold text-charcoal">Investigation sections</p>
+                  <p className="text-xs text-charcoal-500 mt-0.5">Select only what applies. Unselected sections stay hidden and existing values are preserved.</p>
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                    {INVESTIGATION_SECTION_DEFINITIONS.map((section) => (
+                      <label key={section.key} className="flex items-start gap-2 rounded-lg border border-surface-200 p-3 text-sm text-charcoal">
+                        <input
+                          type="checkbox"
+                          checked={investigationSections[section.key]}
+                          onChange={(e) => setInvestigationSection(section.key, e.target.checked)}
+                          className="mt-0.5 w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
+                        />
+                        <span>
+                          <span className="block font-medium">{section.label}</span>
+                          <span className="block text-xs text-charcoal-500">{section.description}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {showImmediateCauseSection && renderInvestigationCard(
                   'immediateCauses',
                   'Immediate Causes',
                   <div className="space-y-4">
@@ -1539,55 +1530,6 @@ export function IncidentCreateModal(props: {
                     <div>
                       <label className="block text-sm font-medium text-charcoal mb-1.5">Consequence / Potential consequence</label>
                       <textarea value={potentialConsequence} onChange={(e) => setPotentialConsequence(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                    </div>
-                    <div className="rounded-lg border border-surface-200 p-3 bg-surface-50 space-y-3">
-                      <p className="text-sm font-semibold text-charcoal">Immediate cause explanation (free text)</p>
-                      <textarea
-                        value={immediateCauseFreeText}
-                        onChange={(e) => setImmediateCauseFreeText(e.target.value)}
-                        rows={2}
-                        placeholder="Describe immediate causes in plain language."
-                        className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal bg-white"
-                      />
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <input
-                          value={manualImmediateCategoryInput}
-                          onChange={(e) => setManualImmediateCategoryInput(e.target.value)}
-                          placeholder="Parent category"
-                          className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal bg-white"
-                        />
-                        <input
-                          value={manualImmediateSubcategoryInput}
-                          onChange={(e) => setManualImmediateSubcategoryInput(e.target.value)}
-                          placeholder="Subcategory"
-                          className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal bg-white"
-                        />
-                        <input
-                          value={manualImmediateExplanationInput}
-                          onChange={(e) => setManualImmediateExplanationInput(e.target.value)}
-                          placeholder="Explanation"
-                          className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal bg-white"
-                        />
-                      </div>
-                      <div>
-                        <button type="button" onClick={addManualImmediateCause} disabled={!manualImmediateExplanationInput.trim()} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal text-white hover:bg-teal-600 disabled:opacity-60">
-                          Add immediate cause link
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        {manualImmediateCauseEntries.length === 0 && <p className="text-xs text-charcoal-500">No manual immediate-cause entries added.</p>}
-                        {manualImmediateCauseEntries.map((entry, index) => (
-                          <div key={`${entry.category}-${entry.subcategory}-${index}`} className="flex items-start justify-between gap-2 rounded border border-surface-200 p-2 bg-white">
-                            <div className="text-xs text-charcoal-600">
-                              <p className="font-semibold text-charcoal">{entry.category} / {entry.subcategory}</p>
-                              <p>{entry.explanation}</p>
-                            </div>
-                            <button type="button" onClick={() => setManualImmediateCauseEntries((prev) => prev.filter((_, idx) => idx !== index))} className="text-xs text-critical hover:text-critical-600">
-                              Remove
-                            </button>
-                          </div>
-                        ))}
-                      </div>
                     </div>
                     {immediateCauseFlags.unsafeAct && renderCauseGroups('Unsafe Acts (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, 'acts', unsafeActs)}
                     {immediateCauseFlags.unsafeCondition && renderCauseGroups('Unsafe Conditions (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS, 'conditions', unsafeConditions)}
@@ -1686,6 +1628,11 @@ export function IncidentCreateModal(props: {
                   </div>
                 )}
 
+                {!Object.values(investigationSections).some(Boolean) && (
+                  <div className="rounded-xl border border-dashed border-surface-300 p-4 bg-surface-50">
+                    <p className="text-sm text-charcoal-600">Select at least one investigation section above to start capturing details.</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
