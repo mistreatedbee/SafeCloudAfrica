@@ -1,6 +1,7 @@
 import { insforge } from '../insforge/client';
 import type { IncidentCorrectiveAction, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
+import type { Severity } from '../models/core';
 
 export type CreateIncidentCorrectiveActionInput = {
   incidentId: UUID;
@@ -31,6 +32,73 @@ export type UpdateIncidentCorrectiveActionInput = {
   ncrId?: UUID | null;
 };
 
+function severityToPriority(severity: string | null | undefined): Severity {
+  const value = String(severity ?? '').toLowerCase();
+  if (value === 'critical') return 'critical';
+  if (value === 'high') return 'high';
+  if (value === 'low') return 'low';
+  return 'medium';
+}
+
+async function ensureTaskLinkedForCorrectiveAction(row: IncidentCorrectiveAction): Promise<void> {
+  if (row.task_id) return;
+
+  const { data: incidentRow, error: incidentError } = await insforge.database
+    .from('incidents')
+    .select('id, company_id, module, title, severity')
+    .eq('id', row.incident_id)
+    .maybeSingle();
+  if (incidentError) throw new Error(getErrorMessage(incidentError));
+  if (!incidentRow) return;
+
+  const { createTask } = await import('./tasksService');
+  const dueDate = row.due_date ?? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const priority = severityToPriority((incidentRow as any).severity);
+  const createdTask = await createTask({
+    companyId: (incidentRow as any).company_id as UUID,
+    module: ((incidentRow as any).module ?? 'safety') as any,
+    title: `CAPA: ${row.action_title}`,
+    description: row.action_description ?? `Incident corrective action for ${String((incidentRow as any).title ?? 'incident')}`,
+    category: 'capa',
+    riskLevel: priority === 'critical' ? 'critical' : priority === 'high' ? 'high' : priority === 'low' ? 'low' : 'medium',
+    priority,
+    dueAt: dueDate,
+    assigneeUserId: row.owner_user_id ?? undefined,
+    taskOwnerUserId: row.owner_user_id ?? undefined,
+    sourceEntityType: 'incident_corrective_action',
+    sourceEntityId: row.id,
+    createdByUserId: row.created_by_user_id
+  });
+
+  const { error: linkError } = await insforge.database
+    .from('incident_corrective_actions')
+    .update({ task_id: createdTask.id, updated_at: new Date().toISOString() })
+    .eq('id', row.id);
+  if (linkError) throw new Error(getErrorMessage(linkError));
+}
+
+async function syncLinkedTaskForCorrectiveAction(row: IncidentCorrectiveAction): Promise<void> {
+  if (!row.task_id) {
+    await ensureTaskLinkedForCorrectiveAction(row);
+    return;
+  }
+
+  const updatePayload: Record<string, unknown> = {
+    title: `CAPA: ${row.action_title}`,
+    description: row.action_description ?? null,
+    due_at: row.due_date ?? null,
+    assignee_user_id: row.owner_user_id ?? null,
+    task_owner_user_id: row.owner_user_id ?? null,
+    updated_at: new Date().toISOString()
+  };
+
+  const { error } = await insforge.database
+    .from('tasks')
+    .update(updatePayload)
+    .eq('id', row.task_id);
+  if (error) throw new Error(getErrorMessage(error));
+}
+
 export async function createIncidentCorrectiveAction(
   input: CreateIncidentCorrectiveActionInput
 ): Promise<IncidentCorrectiveAction> {
@@ -55,6 +123,7 @@ export async function createIncidentCorrectiveAction(
 
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create corrective action.');
+  await ensureTaskLinkedForCorrectiveAction(data as IncidentCorrectiveAction);
 
   // Log activity
   const { createActivityLog } = await import('./activityLogService');
@@ -108,6 +177,7 @@ export async function updateIncidentCorrectiveAction(
 
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update corrective action.');
+  await syncLinkedTaskForCorrectiveAction(data as IncidentCorrectiveAction);
 
   // Log activity
   const { createActivityLog } = await import('./activityLogService');

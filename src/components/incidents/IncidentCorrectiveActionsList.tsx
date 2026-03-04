@@ -81,6 +81,12 @@ export function IncidentCorrectiveActionsList({
                     {action.evidence_document_urls && action.evidence_document_urls.length > 0 && (
                       <span>{action.evidence_document_urls.length} evidence file(s)</span>
                     )}
+                    {action.source_cause_text && (
+                      <span>Linked cause: {action.source_cause_text}</span>
+                    )}
+                    {action.task_id && (
+                      <span>Task linked: {action.task_id.slice(0, 8)}</span>
+                    )}
                   </div>
                 </div>
                 <button
