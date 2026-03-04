@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { XIcon, FileTextIcon, ImageIcon, Trash2Icon, ExternalLinkIcon, DownloadIcon } from 'lucide-react';
+import { XIcon, FileTextIcon, ImageIcon, Trash2Icon, ExternalLinkIcon, DownloadIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { UUID } from '../../api/models/core';
@@ -19,10 +19,12 @@ import {
 import type { Incident } from '../../api/models/entities';
 import { createIncident, updateIncident } from '../../api/services/incidentsService';
 import { getIncidentInvestigation, upsertIncidentInvestigation } from '../../api/services/incidentInvestigationsService';
+import { createIncidentCorrectiveAction } from '../../api/services/incidentCorrectiveActionsService';
 import { createEvidence } from '../../api/services/evidenceService';
 import { uploadFile } from '../../api/services/storageService';
 import { AffectedPersonSelector } from './AffectedPersonSelector';
 import { IncidentTimelineBuilder, type TimelineEvent } from './IncidentTimelineBuilder';
+import { UserMultiSelect } from '../ui/UserMultiSelect';
 
 const EVIDENCE_BUCKET = 'sca-evidence';
 
@@ -36,6 +38,15 @@ type CauseDetailEntry = {
   group: string;
   item: string;
   note: string;
+};
+
+type InvestigationCauseLinkType = 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure';
+type CorrectiveActionDraft = {
+  id: string;
+  actionRequired: string;
+  responsibleUserId: UUID | null;
+  dueDate: string;
+  links: Array<{ type: InvestigationCauseLinkType; text: string }>;
 };
 
 type UploadDraft = {
@@ -184,6 +195,10 @@ export function IncidentCreateModal(props: {
   const [unsafeActs, setUnsafeActs] = useState<Record<string, UnsafeCauseEntry>>({});
   const [unsafeConditions, setUnsafeConditions] = useState<Record<string, UnsafeCauseEntry>>({});
   const [immediateCauseCategories, setImmediateCauseCategories] = useState<Record<string, CauseDetailEntry>>({});
+  const [immediateCauseNarrative, setImmediateCauseNarrative] = useState('');
+  const [immediateCauseParentCategory, setImmediateCauseParentCategory] = useState('');
+  const [immediateCauseSubcategory, setImmediateCauseSubcategory] = useState('');
+  const [immediateCauseSubcategoryManual, setImmediateCauseSubcategoryManual] = useState('');
   const [rootCauseHuman, setRootCauseHuman] = useState<Record<string, CauseDetailEntry>>({});
   const [rootCauseWorkplace, setRootCauseWorkplace] = useState<Record<string, CauseDetailEntry>>({});
   const [systemFailures, setSystemFailures] = useState<Record<string, CauseDetailEntry>>({});
@@ -199,6 +214,7 @@ export function IncidentCreateModal(props: {
   const [preparedBy, setPreparedBy] = useState('');
   const [distributionList, setDistributionList] = useState('');
   const [investigationSections, setInvestigationSections] = useState<Record<InvestigationSectionKey, boolean>>(emptyInvestigationSectionSelection);
+  const [correctiveActionDrafts, setCorrectiveActionDrafts] = useState<CorrectiveActionDraft[]>([]);
 
   const [evidenceUploads, setEvidenceUploads] = useState<UploadDraft[]>([]);
   const [investigationUploads, setInvestigationUploads] = useState<UploadDraft[]>([]);
@@ -221,13 +237,23 @@ export function IncidentCreateModal(props: {
     },
     [incidentTypeSelections, incidentTypeOther]
   );
-  const showImmediateCauseSection = immediateCauseFlags.unsafeAct
-    || immediateCauseFlags.unsafeCondition
-    || immediateCauseFlags.equipmentIssue
-    || immediateCauseFlags.otherImmediateCause;
-
   const calculatedRisk = riskLikelihood * riskSeverity;
   const calculatedRiskCategory = useMemo(() => getIncidentRiskCategory(calculatedRisk), [calculatedRisk]);
+  const immediateCauseSubcategories = useMemo(() => {
+    if (immediateCauseParentCategory === 'Unsafe Act') return Object.keys(IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS);
+    if (immediateCauseParentCategory === 'Unsafe Condition') return Object.keys(IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS);
+    if (immediateCauseParentCategory === 'System Failure') return [...SYSTEM_FAILURE_OPTIONS];
+    return [];
+  }, [immediateCauseParentCategory]);
+  const causeLinkOptions = useMemo(() => {
+    const items: Array<{ type: InvestigationCauseLinkType; text: string }> = [];
+    for (const entry of Object.values(immediateCauseCategories)) items.push({ type: 'unsafe_act', text: `${entry.group}: ${entry.item}` });
+    if (immediateCauseNarrative.trim()) items.push({ type: 'unsafe_act', text: immediateCauseNarrative.trim() });
+    for (const entry of Object.values(rootCauseHuman)) items.push({ type: 'root_cause', text: `${entry.group}: ${entry.item}` });
+    for (const entry of Object.values(rootCauseWorkplace)) items.push({ type: 'root_cause', text: `${entry.group}: ${entry.item}` });
+    for (const entry of Object.values(systemFailures)) items.push({ type: 'system_failure', text: `${entry.group}: ${entry.item}` });
+    return items;
+  }, [immediateCauseCategories, immediateCauseNarrative, rootCauseHuman, rootCauseWorkplace, systemFailures]);
 
   const canSubmit = useMemo(() => {
     return (
@@ -319,6 +345,10 @@ export function IncidentCreateModal(props: {
     setUnsafeActs({});
     setUnsafeConditions({});
     setImmediateCauseCategories({});
+    setImmediateCauseNarrative('');
+    setImmediateCauseParentCategory('');
+    setImmediateCauseSubcategory('');
+    setImmediateCauseSubcategoryManual('');
     setRootCauseHuman({});
     setRootCauseWorkplace({});
     setSystemFailures({});
@@ -334,6 +364,7 @@ export function IncidentCreateModal(props: {
     setPreparedBy('');
     setDistributionList('');
     setInvestigationSections(emptyInvestigationSectionSelection());
+    setCorrectiveActionDrafts([]);
     setEvidenceUploads([]);
     setInvestigationUploads([]);
     setError(null);
@@ -710,9 +741,51 @@ export function IncidentCreateModal(props: {
     }
   }
 
+  function buildImmediateCausesPayload() {
+    const payload: Array<{ group: string; item: string; note: string }> = [
+      ...Object.values(immediateCauseCategories).map((entry) => ({
+        group: entry.group,
+        item: entry.item,
+        note: entry.note ?? ''
+      }))
+    ];
+    if (immediateCauseNarrative.trim()) {
+      payload.push({
+        group: immediateCauseParentCategory || 'Immediate Cause',
+        item: immediateCauseSubcategoryManual.trim() || immediateCauseSubcategory || 'Manual entry',
+        note: immediateCauseNarrative.trim()
+      });
+    }
+    return payload;
+  }
+
+  async function createCorrectiveActionRecords(incidentId: UUID) {
+    for (const draft of correctiveActionDrafts) {
+      if (!draft.actionRequired.trim() || !draft.responsibleUserId || !draft.dueDate) continue;
+      await createIncidentCorrectiveAction({
+        incidentId,
+        companyId: props.companyId,
+        actionTitle: draft.actionRequired.trim(),
+        ownerUserId: draft.responsibleUserId,
+        dueDate: draft.dueDate,
+        createdByUserId: props.createdByUserId,
+        sourceCauseType: draft.links[0]?.type,
+        sourceCauseText: draft.links.map((link) => `${link.type}: ${link.text}`).join('\n') || undefined
+      });
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
+    const hasInvalidDraftAction = correctiveActionDrafts.some(
+      (draft) => Boolean(draft.actionRequired.trim() || draft.responsibleUserId || draft.dueDate)
+        && (!draft.actionRequired.trim() || !draft.responsibleUserId || !draft.dueDate)
+    );
+    if (hasInvalidDraftAction) {
+      setError('Each corrective action row must include Action Required, Responsible Person, and Due Date.');
+      return;
+    }
 
     setError(null);
     try {
@@ -775,6 +848,7 @@ export function IncidentCreateModal(props: {
         } as any);
         await uploadEvidenceForIncident(updated.id, evidenceUploads, 'incident');
         await uploadEvidenceForIncident(updated.id, investigationUploads, 'incident_investigation');
+        await createCorrectiveActionRecords(updated.id);
         if (investigationRequired) {
           await upsertIncidentInvestigation({
             companyId: props.companyId,
@@ -790,7 +864,7 @@ export function IncidentCreateModal(props: {
               risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
               risk_profile: riskProfile.trim() || null,
               potential_consequence: potentialConsequence.trim() || null,
-              immediate_causes: Object.values(immediateCauseCategories),
+              immediate_causes: buildImmediateCausesPayload(),
               root_causes_human: Object.values(rootCauseHuman),
               root_causes_workplace: Object.values(rootCauseWorkplace),
               system_failures: Object.values(systemFailures),
@@ -859,6 +933,7 @@ export function IncidentCreateModal(props: {
 
         await uploadEvidenceForIncident(incident.id, evidenceUploads, 'incident');
         await uploadEvidenceForIncident(incident.id, investigationUploads, 'incident_investigation');
+        await createCorrectiveActionRecords(incident.id);
         if (investigationRequired) {
           await upsertIncidentInvestigation({
             companyId: props.companyId,
@@ -874,7 +949,7 @@ export function IncidentCreateModal(props: {
               risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
               risk_profile: riskProfile.trim() || null,
               potential_consequence: potentialConsequence.trim() || null,
-              immediate_causes: Object.values(immediateCauseCategories),
+              immediate_causes: buildImmediateCausesPayload(),
               root_causes_human: Object.values(rootCauseHuman),
               root_causes_workplace: Object.values(rootCauseWorkplace),
               system_failures: Object.values(systemFailures),
@@ -1070,20 +1145,23 @@ export function IncidentCreateModal(props: {
   }
 
   function renderInvestigationCard(section: InvestigationSectionKey, titleText: string, children: React.ReactNode) {
-    if (!investigationSections[section]) return null;
+    const expanded = investigationSections[section];
     return (
       <div className="rounded-xl border border-surface-200 p-4 space-y-4">
         <div className="flex items-center justify-between gap-2">
-          <h4 className="text-sm font-semibold text-charcoal">{titleText}</h4>
+          <button type="button" onClick={() => setInvestigationSection(section, !expanded)} className="flex items-center gap-2 text-left">
+            {expanded ? <ChevronDownIcon className="w-4 h-4 text-charcoal-500" /> : <ChevronRightIcon className="w-4 h-4 text-charcoal-500" />}
+            <h4 className="text-sm font-semibold text-charcoal">{titleText}</h4>
+          </button>
           <button
             type="button"
-            onClick={() => setInvestigationSection(section, false)}
+            onClick={() => setInvestigationSection(section, !expanded)}
             className="text-xs font-medium text-charcoal-500 hover:text-charcoal"
           >
-            Collapse
+            {expanded ? 'Collapse' : 'Expand'}
           </button>
         </div>
-        {children}
+        {expanded && children}
       </div>
     );
   }
@@ -1473,26 +1551,26 @@ export function IncidentCreateModal(props: {
                 </div>
                 <div className="rounded-xl border border-surface-200 p-4">
                   <p className="text-sm font-semibold text-charcoal">Investigation sections</p>
-                  <p className="text-xs text-charcoal-500 mt-0.5">Select only what applies. Unselected sections stay hidden and existing values are preserved.</p>
+                  <p className="text-xs text-charcoal-500 mt-0.5">All sections are collapsed by default. Click a section card to expand or collapse.</p>
                   <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                     {INVESTIGATION_SECTION_DEFINITIONS.map((section) => (
-                      <label key={section.key} className="flex items-start gap-2 rounded-lg border border-surface-200 p-3 text-sm text-charcoal">
-                        <input
-                          type="checkbox"
-                          checked={investigationSections[section.key]}
-                          onChange={(e) => setInvestigationSection(section.key, e.target.checked)}
-                          className="mt-0.5 w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
-                        />
-                        <span>
+                      <button
+                        type="button"
+                        key={section.key}
+                        onClick={() => setInvestigationSection(section.key, !investigationSections[section.key])}
+                        className="flex items-start gap-2 rounded-lg border border-surface-200 p-3 text-sm text-charcoal text-left hover:border-teal"
+                      >
+                        {investigationSections[section.key] ? <ChevronDownIcon className="w-4 h-4 mt-0.5 text-charcoal-500" /> : <ChevronRightIcon className="w-4 h-4 mt-0.5 text-charcoal-500" />}
+                        <span className="min-w-0">
                           <span className="block font-medium">{section.label}</span>
                           <span className="block text-xs text-charcoal-500">{section.description}</span>
                         </span>
-                      </label>
+                      </button>
                     ))}
                   </div>
                 </div>
 
-                {showImmediateCauseSection && renderInvestigationCard(
+                {renderInvestigationCard(
                   'immediateCauses',
                   'Immediate Causes',
                   <div className="space-y-4">
@@ -1503,6 +1581,33 @@ export function IncidentCreateModal(props: {
                     <div>
                       <label className="block text-sm font-medium text-charcoal mb-1.5">Task sequence</label>
                       <textarea value={taskSequence} onChange={(e) => setTaskSequence(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Parent category</label>
+                        <select value={immediateCauseParentCategory} onChange={(e) => setImmediateCauseParentCategory(e.target.value)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal">
+                          <option value="">Select category</option>
+                          <option value="Unsafe Act">Unsafe Act</option>
+                          <option value="Unsafe Condition">Unsafe Condition</option>
+                          <option value="System Failure">System Failure</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Subcategory</label>
+                        <select value={immediateCauseSubcategory} onChange={(e) => setImmediateCauseSubcategory(e.target.value)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal">
+                          <option value="">Select subcategory</option>
+                          {immediateCauseSubcategories.map((entry) => (<option key={entry} value={entry}>{entry}</option>))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Manual subcategory</label>
+                        <input value={immediateCauseSubcategoryManual} onChange={(e) => setImmediateCauseSubcategoryManual(e.target.value)} placeholder="Type custom subcategory" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Immediate cause explanation (free text)</label>
+                      <textarea value={immediateCauseNarrative} onChange={(e) => setImmediateCauseNarrative(e.target.value)} rows={3} placeholder="Describe the immediate cause in your own words." className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
                     </div>
                     <IncidentTimelineBuilder events={incidentTimelineEvents} onChange={setIncidentTimelineEvents} />
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1595,9 +1700,68 @@ export function IncidentCreateModal(props: {
                   'correctiveActions',
                   'Corrective Actions',
                   <div className="space-y-3">
-                    <div className="rounded-lg border border-surface-200 bg-surface-50 p-3">
-                      <p className="text-sm text-charcoal-700">Use <span className="font-semibold">Create Corrective Action</span> in Incident Details after saving this incident. Actions are linked to Task Manager and tracked for closure.</p>
-                    </div>
+                    <p className="text-xs text-charcoal-500">Each row creates a separate corrective action record after saving this incident.</p>
+                    {correctiveActionDrafts.map((draft) => (
+                      <div key={draft.id} className="rounded-lg border border-surface-200 p-3 space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div className="md:col-span-2">
+                            <label className="block text-xs font-medium text-charcoal mb-1">Action Required *</label>
+                            <input value={draft.actionRequired} onChange={(e) => setCorrectiveActionDrafts((prev) => prev.map((row) => row.id === draft.id ? { ...row, actionRequired: e.target.value } : row))} className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-charcoal mb-1">Due Date *</label>
+                            <input type="date" value={draft.dueDate} onChange={(e) => setCorrectiveActionDrafts((prev) => prev.map((row) => row.id === draft.id ? { ...row, dueDate: e.target.value } : row))} className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-charcoal mb-1">Responsible Person *</label>
+                          <UserMultiSelect
+                            companyId={props.companyId}
+                            selectedUserIds={draft.responsibleUserId ? [draft.responsibleUserId] : []}
+                            onChange={(userIds) => setCorrectiveActionDrafts((prev) => prev.map((row) => row.id === draft.id ? { ...row, responsibleUserId: (userIds[0] ?? null) } : row))}
+                            placeholder="Select responsible person"
+                            allowExternalEmails={false}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-charcoal mb-1">Linked Causes</label>
+                          <div className="max-h-32 overflow-y-auto rounded-lg border border-surface-200 p-2 space-y-1">
+                            {causeLinkOptions.length === 0 && <p className="text-xs text-charcoal-500">No causes captured yet.</p>}
+                            {causeLinkOptions.map((option, idx) => {
+                              const key = `${option.type}:${option.text}:${idx}`;
+                              const checked = draft.links.some((link) => link.type === option.type && link.text === option.text);
+                              return (
+                                <label key={key} className="flex items-start gap-2 text-xs text-charcoal">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => setCorrectiveActionDrafts((prev) => prev.map((row) => {
+                                      if (row.id !== draft.id) return row;
+                                      const nextLinks = e.target.checked
+                                        ? [...row.links, option]
+                                        : row.links.filter((link) => !(link.type === option.type && link.text === option.text));
+                                      return { ...row, links: nextLinks };
+                                    }))}
+                                    className="mt-0.5 w-3.5 h-3.5 text-teal border-surface-300 rounded focus:ring-teal"
+                                  />
+                                  <span>{option.type.replace('_', ' ')}: {option.text}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="flex justify-end">
+                          <button type="button" onClick={() => setCorrectiveActionDrafts((prev) => prev.filter((row) => row.id !== draft.id))} className="text-xs text-critical hover:text-critical-600">Remove row</button>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setCorrectiveActionDrafts((prev) => [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, actionRequired: '', responsibleUserId: null, dueDate: '', links: [] }])}
+                      className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                    >
+                      Add Corrective Action
+                    </button>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-charcoal mb-1.5">Investigation team</label>
@@ -1628,11 +1792,6 @@ export function IncidentCreateModal(props: {
                   </div>
                 )}
 
-                {!Object.values(investigationSections).some(Boolean) && (
-                  <div className="rounded-xl border border-dashed border-surface-300 p-4 bg-surface-50">
-                    <p className="text-sm text-charcoal-600">Select at least one investigation section above to start capturing details.</p>
-                  </div>
-                )}
               </div>
             )}
           </div>

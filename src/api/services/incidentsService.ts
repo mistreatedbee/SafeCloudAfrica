@@ -224,8 +224,12 @@ export type CreateIncidentInput = {
 
 function getMissingColumnFromSchemaError(error: unknown): string | null {
   const message = getErrorMessage(error);
-  const match = message.match(/Could not find the '([^']+)' column/i);
-  return match?.[1] ?? null;
+  const singleQuoteMatch = message.match(/Could not find the '([^']+)' column/i);
+  if (singleQuoteMatch?.[1]) return singleQuoteMatch[1];
+  const doubleQuoteMatch = message.match(/Could not find the "([^"]+)" column/i);
+  if (doubleQuoteMatch?.[1]) return doubleQuoteMatch[1];
+  const plainMatch = message.match(/column\s+([a-zA-Z0-9_]+)\s+/i);
+  return plainMatch?.[1] ?? null;
 }
 
 async function insertIncidentWithSchemaFallback(payload: Record<string, unknown>): Promise<Incident> {

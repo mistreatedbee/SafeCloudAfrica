@@ -20,15 +20,23 @@ const statusColors = {
 };
 
 function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
+  if (!dateStr) return '-';
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString('en-ZA', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function formatCauseLink(action: IncidentCorrectiveAction): string {
+  const raw = String(action.source_cause_text ?? '').trim();
+  if (!raw) return '-';
+  return raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(' | ');
+}
+
 export function IncidentCorrectiveActionsList({
-  incidentId,
-  companyId,
   actions,
   onAdd,
   onEdit,
@@ -45,21 +53,18 @@ export function IncidentCorrectiveActionsList({
           className="flex items-center gap-2 px-3 py-1.5 text-sm bg-teal text-white rounded-lg hover:bg-teal-600 disabled:opacity-60"
         >
           <PlusIcon className="w-4 h-4" />
-          Create Corrective Action
+          Add Action
         </button>
       </div>
 
       {actions.length === 0 ? (
         <div className="text-sm text-charcoal-500 text-center py-4 border border-dashed border-surface-300 rounded-lg">
-          No corrective actions added. Click "Create Corrective Action" to add one.
+          No corrective actions yet.
         </div>
       ) : (
         <div className="space-y-2">
           {actions.map((action) => (
-            <div
-              key={action.id}
-              className="p-3 bg-surface-50 rounded-lg border border-surface-200 hover:border-teal transition-colors"
-            >
+            <div key={action.id} className="p-3 bg-surface-50 rounded-lg border border-surface-200 hover:border-teal transition-colors">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
@@ -68,19 +73,11 @@ export function IncidentCorrectiveActionsList({
                       {action.status}
                     </span>
                   </div>
-                  {action.action_description && (
-                    <p className="text-sm text-charcoal-600 mb-2">{action.action_description}</p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-charcoal-500">
-                    {action.owner_user_id && (
-                      <span>Owner: User {action.owner_user_id.slice(0, 8)}</span>
-                    )}
-                    {action.due_date && (
-                      <span>Due: {formatDate(action.due_date)}</span>
-                    )}
-                    {action.evidence_document_urls && action.evidence_document_urls.length > 0 && (
-                      <span>{action.evidence_document_urls.length} evidence file(s)</span>
-                    )}
+                  {action.action_description && <p className="text-sm text-charcoal-600 mb-2">{action.action_description}</p>}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs text-charcoal-500">
+                    <span><strong>Responsible:</strong> {action.owner_user_id ? `User ${action.owner_user_id.slice(0, 8)}` : '-'}</span>
+                    <span><strong>Due:</strong> {formatDate(action.due_date)}</span>
+                    <span className="md:col-span-2"><strong>Linked Causes:</strong> {formatCauseLink(action)}</span>
                   </div>
                 </div>
                 <button

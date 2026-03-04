@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { XIcon, SaveIcon, ExternalLinkIcon, FileTextIcon } from 'lucide-react';
+import { XIcon, SaveIcon, ExternalLinkIcon, FileTextIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import type { EvidenceAttachment, Incident, IncidentCorrectiveAction, IncidentInvestigation, UUID } from '../../api/models/entities';
 import { listEvidence, updateEvidence } from '../../api/services/evidenceService';
 import { getPublicUrl } from '../../api/services/storageService';
@@ -69,6 +69,7 @@ export function IncidentDetailModal(props: {
   const [editingCorrectiveActionId, setEditingCorrectiveActionId] = useState<UUID | null>(null);
   const [createFromCause, setCreateFromCause] = useState<{ type: 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure'; text: string } | null>(null);
   const [refreshCorrectiveActions, setRefreshCorrectiveActions] = useState(0);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
   const { data: correctiveActions = [] } = useAsync<IncidentCorrectiveAction[]>(
     async () => (incident && props.companyId ? listIncidentCorrectiveActions(incident.id) : []),
@@ -120,6 +121,7 @@ export function IncidentDetailModal(props: {
     setInvestigationTeam('');
     setDistributions('');
     setInvestigationSections(emptyInvestigationSectionSelection());
+    setSaveSuccess(null);
 
     (async () => {
       try {
@@ -150,25 +152,7 @@ export function IncidentDetailModal(props: {
           setPreparedBy(inv.prepared_by ?? '');
           setInvestigationTeam(Array.isArray(inv.investigation_team) ? inv.investigation_team.join(', ') : '');
           setDistributions(Array.isArray(inv.distributions) ? inv.distributions.join(', ') : '');
-          setInvestigationSections({
-            immediateCauses: Boolean((inv.instruction_breakdown ?? '').trim())
-              || Boolean((inv.task_sequence ?? '').trim())
-              || Boolean((inv.event_timeline ?? '').trim())
-              || Boolean((inv.risk ?? '').trim())
-              || Boolean((inv.risk_profile ?? '').trim())
-              || Boolean((inv.potential_consequence ?? '').trim())
-              || (Array.isArray(inv.immediate_causes) && inv.immediate_causes.length > 0),
-            rootCauseHuman: Array.isArray(inv.root_causes_human) && inv.root_causes_human.length > 0,
-            rootCauseWorkplace: Array.isArray(inv.root_causes_workplace) && inv.root_causes_workplace.length > 0,
-            systemFailure: Array.isArray(inv.system_failures) && inv.system_failures.length > 0,
-            contributingFactors: Boolean((inv.contributing_factors ?? '').trim()),
-            correctiveActions: Boolean((inv.notes ?? '').trim())
-              || Boolean((inv.conclusion ?? '').trim())
-              || Boolean((inv.prepared_by ?? '').trim())
-              || (Array.isArray(inv.investigation_team) && inv.investigation_team.length > 0)
-              || (Array.isArray(inv.distributions) && inv.distributions.length > 0),
-            lessonsLearnt: Boolean((inv.lessons_learnt ?? '').trim())
-          });
+          setInvestigationSections(emptyInvestigationSectionSelection());
         }
       } catch (e: any) {
         setError(formatAuthError(e));
@@ -186,6 +170,22 @@ export function IncidentDetailModal(props: {
     return [score ? `Score ${score}` : null, rating ? String(rating).toUpperCase() : null].filter(Boolean).join(' • ');
   }, [incident]);
 
+  const causeOptions = useMemo(() => {
+    const parseCsv = (raw: string, type: 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure') =>
+      raw
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .map((text) => ({ type, text, label: `${type.replace('_', ' ')}: ${text}` }));
+
+    return [
+      ...parseCsv(immediateCauses, 'unsafe_act'),
+      ...parseCsv(rootHuman, 'root_cause'),
+      ...parseCsv(rootWorkplace, 'root_cause'),
+      ...parseCsv(systemFailures, 'system_failure')
+    ];
+  }, [immediateCauses, rootHuman, rootWorkplace, systemFailures]);
+
   async function handleExportPdf() {
     if (!incident) return;
     const blob = await exportIncidentPDF(incident, {
@@ -201,6 +201,7 @@ export function IncidentDetailModal(props: {
   async function saveInvestigation() {
     if (!incident) return;
     setError(null);
+    setSaveSuccess(null);
     try {
       setLoading(true);
       const saved = await upsertIncidentInvestigation({
@@ -246,6 +247,7 @@ export function IncidentDetailModal(props: {
         } as any
       });
       setInvestigation(saved);
+      setSaveSuccess('Investigation saved successfully.');
     } catch (e: any) {
       setError(formatAuthError(e));
     } finally {
@@ -258,21 +260,28 @@ export function IncidentDetailModal(props: {
   }
 
   function renderInvestigationCard(section: InvestigationSectionKey, titleText: string, children: React.ReactNode) {
-    if (!investigationSections[section]) return null;
+    const expanded = investigationSections[section];
     return (
       <div className="rounded-xl border border-surface-200 p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <h4 className="text-sm font-semibold text-charcoal">{titleText}</h4>
           <button
             type="button"
-            onClick={() => setInvestigationSection(section, false)}
+            onClick={() => setInvestigationSection(section, !expanded)}
+            className="flex items-center gap-2 text-left"
+          >
+            {expanded ? <ChevronDownIcon className="w-4 h-4 text-charcoal-500" /> : <ChevronRightIcon className="w-4 h-4 text-charcoal-500" />}
+            <h4 className="text-sm font-semibold text-charcoal">{titleText}</h4>
+          </button>
+          <button
+            type="button"
+            onClick={() => setInvestigationSection(section, !expanded)}
             className="text-xs font-medium text-charcoal-500 hover:text-charcoal"
             disabled={!props.canEditInvestigation}
           >
-            Collapse
+            {expanded ? 'Collapse' : 'Expand'}
           </button>
         </div>
-        {children}
+        {expanded && <div className="animate-[fadeIn_.18s_ease-in]">{children}</div>}
       </div>
     );
   }
@@ -331,6 +340,12 @@ export function IncidentDetailModal(props: {
             <div className="bg-critical/5 border border-critical/20 rounded-xl p-3">
               <p className="text-sm font-semibold text-critical">Error</p>
               <p className="text-sm text-charcoal-600 mt-1">{error}</p>
+            </div>
+          )}
+
+          {saveSuccess && (
+            <div className="bg-success/5 border border-success/20 rounded-xl p-3">
+              <p className="text-sm text-success">{saveSuccess}</p>
             </div>
           )}
 
@@ -579,22 +594,21 @@ export function IncidentDetailModal(props: {
                 <div className="mt-4 space-y-4">
                   <div className="rounded-xl border border-surface-200 p-4">
                     <p className="text-sm font-semibold text-charcoal">Investigation sections</p>
-                    <p className="text-xs text-charcoal-500 mt-0.5">Select only what applies. Unselected sections stay hidden and entered values are preserved.</p>
+                    <p className="text-xs text-charcoal-500 mt-0.5">All sections are collapsed by default. Click a section to expand or collapse it.</p>
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                       {INVESTIGATION_SECTION_DEFINITIONS.map((section) => (
-                        <label key={section.key} className="flex items-start gap-2 rounded-lg border border-surface-200 p-3 text-sm text-charcoal">
-                          <input
-                            type="checkbox"
-                            checked={investigationSections[section.key]}
-                            onChange={(e) => setInvestigationSection(section.key, e.target.checked)}
-                            disabled={!props.canEditInvestigation}
-                            className="mt-0.5 w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal disabled:opacity-60"
-                          />
-                          <span>
+                        <button
+                          type="button"
+                          key={section.key}
+                          onClick={() => setInvestigationSection(section.key, !investigationSections[section.key])}
+                          className="flex items-start gap-2 rounded-lg border border-surface-200 p-3 text-sm text-charcoal text-left hover:border-teal"
+                        >
+                          {investigationSections[section.key] ? <ChevronDownIcon className="w-4 h-4 mt-0.5 text-charcoal-500" /> : <ChevronRightIcon className="w-4 h-4 mt-0.5 text-charcoal-500" />}
+                          <span className="min-w-0">
                             <span className="block font-medium">{section.label}</span>
                             <span className="block text-xs text-charcoal-500">{section.description}</span>
                           </span>
-                        </label>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -673,26 +687,44 @@ export function IncidentDetailModal(props: {
                   {renderInvestigationCard(
                     'correctiveActions',
                     'Corrective Actions',
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      <div className="lg:col-span-2">
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Notes</label>
-                        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!props.canEditInvestigation} rows={4} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Prepared by</label>
-                        <input value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} disabled={!props.canEditInvestigation} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Investigation team (comma-separated)</label>
-                        <input value={investigationTeam} onChange={(e) => setInvestigationTeam(e.target.value)} disabled={!props.canEditInvestigation} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
-                      </div>
-                      <div className="lg:col-span-2">
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Conclusion</label>
-                        <textarea value={conclusion} onChange={(e) => setConclusion(e.target.value)} disabled={!props.canEditInvestigation} rows={3} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
-                      </div>
-                      <div className="lg:col-span-2">
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Distributions / copy to (comma-separated)</label>
-                        <input value={distributions} onChange={(e) => setDistributions(e.target.value)} disabled={!props.canEditInvestigation} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                    <div className="space-y-4">
+                      <IncidentCorrectiveActionsList
+                        incidentId={incident.id}
+                        companyId={props.companyId}
+                        actions={correctiveActions}
+                        onAdd={() => {
+                          setCreateFromCause(null);
+                          setEditingCorrectiveActionId(null);
+                          setCorrectiveActionModalOpen(true);
+                        }}
+                        onEdit={(actionId) => {
+                          setEditingCorrectiveActionId(actionId);
+                          setCreateFromCause(null);
+                          setCorrectiveActionModalOpen(true);
+                        }}
+                        disabled={!props.canEditInvestigation}
+                      />
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="lg:col-span-2">
+                          <label className="block text-sm font-medium text-charcoal mb-1.5">Notes</label>
+                          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!props.canEditInvestigation} rows={4} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-charcoal mb-1.5">Prepared by</label>
+                          <input value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} disabled={!props.canEditInvestigation} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-charcoal mb-1.5">Investigation team (comma-separated)</label>
+                          <input value={investigationTeam} onChange={(e) => setInvestigationTeam(e.target.value)} disabled={!props.canEditInvestigation} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                        </div>
+                        <div className="lg:col-span-2">
+                          <label className="block text-sm font-medium text-charcoal mb-1.5">Conclusion</label>
+                          <textarea value={conclusion} onChange={(e) => setConclusion(e.target.value)} disabled={!props.canEditInvestigation} rows={3} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                        </div>
+                        <div className="lg:col-span-2">
+                          <label className="block text-sm font-medium text-charcoal mb-1.5">Distributions / copy to (comma-separated)</label>
+                          <input value={distributions} onChange={(e) => setDistributions(e.target.value)} disabled={!props.canEditInvestigation} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:opacity-60" />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -706,11 +738,6 @@ export function IncidentDetailModal(props: {
                     </div>
                   )}
 
-                  {!Object.values(investigationSections).some(Boolean) && (
-                    <div className="rounded-xl border border-dashed border-surface-300 p-4 bg-surface-50">
-                      <p className="text-sm text-charcoal-600">Select at least one investigation section to view or edit details.</p>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -734,6 +761,7 @@ export function IncidentDetailModal(props: {
           onSaved={() => setRefreshCorrectiveActions(c => c + 1)}
           initialSourceCauseType={createFromCause?.type}
           initialSourceCauseText={createFromCause?.text}
+          causeOptions={causeOptions}
         />
       )}
     </div>

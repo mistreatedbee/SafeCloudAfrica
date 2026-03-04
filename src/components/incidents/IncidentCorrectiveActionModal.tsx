@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon, FileIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
@@ -16,6 +16,14 @@ import { insforge } from '../../api/insforge/client';
 
 const EVIDENCE_BUCKET = 'evidence';
 
+type CauseLinkType = 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure';
+
+type CauseOption = {
+  type: CauseLinkType;
+  text: string;
+  label: string;
+};
+
 export type IncidentCorrectiveActionModalProps = {
   open: boolean;
   onClose: () => void;
@@ -25,10 +33,45 @@ export type IncidentCorrectiveActionModalProps = {
   initial?: IncidentCorrectiveAction | null;
   createdByUserId: UUID;
   onSaved?: () => void;
-  /** When creating from a cause (Unsafe Act, Unsafe Condition, Root Cause, System Failure), pass to pre-fill and link */
-  initialSourceCauseType?: 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure';
+  initialSourceCauseType?: CauseLinkType;
   initialSourceCauseText?: string;
+  causeOptions?: CauseOption[];
 };
+
+function parseCauseLinks(rawType?: CauseLinkType | null, rawText?: string | null): CauseOption[] {
+  const text = String(rawText ?? '').trim();
+  if (!text && !rawType) return [];
+  const parsed = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [typePart, ...rest] = line.split(':');
+      const normalizedType = String(typePart || '').trim() as CauseLinkType;
+      const value = rest.join(':').trim();
+      if (!value) return null;
+      if (!['unsafe_act', 'unsafe_condition', 'root_cause', 'system_failure'].includes(normalizedType)) {
+        return {
+          type: (rawType ?? 'root_cause') as CauseLinkType,
+          text: line,
+          label: line
+        };
+      }
+      return {
+        type: normalizedType,
+        text: value,
+        label: `${normalizedType.replace('_', ' ')}: ${value}`
+      };
+    })
+    .filter(Boolean) as CauseOption[];
+
+  if (parsed.length > 0) return parsed;
+  return [{
+    type: (rawType ?? 'root_cause') as CauseLinkType,
+    text: text || 'Unspecified link',
+    label: `${String(rawType ?? 'root_cause').replace('_', ' ')}: ${text || 'Unspecified link'}`
+  }];
+}
 
 export function IncidentCorrectiveActionModal({
   open,
@@ -40,58 +83,91 @@ export function IncidentCorrectiveActionModal({
   createdByUserId,
   onSaved,
   initialSourceCauseType,
-  initialSourceCauseText
+  initialSourceCauseText,
+  causeOptions = []
 }: IncidentCorrectiveActionModalProps) {
-  const [actionTitle, setActionTitle] = useState('');
+  const [actionRequired, setActionRequired] = useState('');
   const [actionDescription, setActionDescription] = useState('');
-  const [ownerUserId, setOwnerUserId] = useState<UUID | null>(null);
+  const [responsibleUserId, setResponsibleUserId] = useState<UUID | null>(null);
   const [dueDate, setDueDate] = useState('');
   const [status, setStatus] = useState<'Open' | 'In Progress' | 'Awaiting Evidence' | 'Under Review' | 'Closed'>('Open');
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [closureNotes, setClosureNotes] = useState('');
+  const [selectedLinks, setSelectedLinks] = useState<CauseOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const availableCauseOptions = useMemo(() => {
+    const mapped = causeOptions
+      .filter((option) => option.text.trim())
+      .map((option) => ({ ...option, label: option.label || `${option.type.replace('_', ' ')}: ${option.text}` }));
+    const unique = new Map<string, CauseOption>();
+    for (const option of mapped) unique.set(`${option.type}|${option.text}`, option);
+    return Array.from(unique.values());
+  }, [causeOptions]);
+
   useEffect(() => {
+    if (!open) return;
     if (initial) {
-      setActionTitle(initial.action_title);
+      setActionRequired(initial.action_title);
       setActionDescription(initial.action_description || '');
-      setOwnerUserId(initial.owner_user_id);
+      setResponsibleUserId(initial.owner_user_id);
       setDueDate(initial.due_date ? new Date(initial.due_date).toISOString().slice(0, 10) : '');
       setStatus(initial.status);
       setClosureNotes(initial.closure_notes || '');
-    } else if (open && initialSourceCauseText) {
-      setActionTitle(initialSourceCauseText.slice(0, 200));
-      setActionDescription(initialSourceCauseType ? `Linked to: ${initialSourceCauseType.replace('_', ' ')} - ${initialSourceCauseText}` : initialSourceCauseText);
-    } else {
-      resetForm();
+      setSelectedLinks(parseCauseLinks(initial.source_cause_type ?? null, initial.source_cause_text ?? null));
+      return;
     }
-  }, [initial, open, initialSourceCauseType, initialSourceCauseText]);
 
-  function resetForm() {
-    setActionTitle('');
-    setActionDescription('');
-    setOwnerUserId(null);
+    setActionRequired(initialSourceCauseText?.slice(0, 200) || '');
+    setActionDescription(initialSourceCauseText ? `Linked finding: ${initialSourceCauseText}` : '');
+    setResponsibleUserId(null);
     setDueDate('');
     setStatus('Open');
     setEvidenceFiles([]);
     setClosureNotes('');
     setError(null);
-  }
+    setSelectedLinks(initialSourceCauseText
+      ? [{
+          type: (initialSourceCauseType ?? 'root_cause') as CauseLinkType,
+          text: initialSourceCauseText,
+          label: `${String(initialSourceCauseType ?? 'root_cause').replace('_', ' ')}: ${initialSourceCauseText}`
+        }]
+      : []);
+  }, [initial, open, initialSourceCauseType, initialSourceCauseText]);
 
   function handleFileUpload(files: FileList | null) {
     if (!files) return;
-    setEvidenceFiles(prev => [...prev, ...Array.from(files)]);
+    setEvidenceFiles((prev) => [...prev, ...Array.from(files)]);
   }
 
   function removeFile(index: number) {
-    setEvidenceFiles(prev => prev.filter((_, i) => i !== index));
+    setEvidenceFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function toggleCauseLink(option: CauseOption, selected: boolean) {
+    setSelectedLinks((prev) => {
+      const key = `${option.type}|${option.text}`;
+      if (selected) {
+        if (prev.some((entry) => `${entry.type}|${entry.text}` === key)) return prev;
+        return [...prev, option];
+      }
+      return prev.filter((entry) => `${entry.type}|${entry.text}` !== key);
+    });
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!actionTitle.trim()) {
-      setError('Action title is required');
+    if (!actionRequired.trim()) {
+      setError('Action Required is mandatory.');
+      return;
+    }
+    if (!responsibleUserId) {
+      setError('Responsible Person is mandatory.');
+      return;
+    }
+    if (!dueDate) {
+      setError('Due Date is mandatory.');
       return;
     }
 
@@ -99,20 +175,24 @@ export function IncidentCorrectiveActionModal({
     try {
       setLoading(true);
 
+      const sourceCauseType = selectedLinks[0]?.type;
+      const sourceCauseText = selectedLinks.length
+        ? selectedLinks.map((link) => `${link.type}: ${link.text}`).join('\n')
+        : undefined;
+
       if (actionId && initial) {
-        // Update existing
         const updateData: UpdateIncidentCorrectiveActionInput = {
-          actionTitle: actionTitle.trim(),
+          actionTitle: actionRequired.trim(),
           actionDescription: actionDescription.trim() || undefined,
-          ownerUserId: ownerUserId || undefined,
-          dueDate: dueDate || undefined,
+          ownerUserId: responsibleUserId,
+          dueDate,
           status,
-          closureNotes: status === 'Closed' ? closureNotes.trim() || undefined : undefined
+          closureNotes: status === 'Closed' ? closureNotes.trim() || undefined : undefined,
+          sourceCauseType,
+          sourceCauseText: sourceCauseText ?? null
         };
 
         const updated = await updateIncidentCorrectiveAction(actionId, updateData);
-
-        // Upload new evidence files
         const evidenceUrls: string[] = [...(initial.evidence_document_urls || [])];
         for (const file of evidenceFiles) {
           const key = `${companyId}/incident_corrective_action/${updated.id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
@@ -136,22 +216,19 @@ export function IncidentCorrectiveActionModal({
           await updateIncidentCorrectiveAction(actionId, { evidenceDocumentUrls: evidenceUrls });
         }
       } else {
-        // Create new
         const createData: CreateIncidentCorrectiveActionInput = {
           incidentId,
           companyId,
-          actionTitle: actionTitle.trim(),
+          actionTitle: actionRequired.trim(),
           actionDescription: actionDescription.trim() || undefined,
-          ownerUserId: ownerUserId || undefined,
-          dueDate: dueDate || undefined,
+          ownerUserId: responsibleUserId,
+          dueDate,
           createdByUserId,
-          sourceCauseType: initialSourceCauseType,
-          sourceCauseText: initialSourceCauseText || undefined
+          sourceCauseType,
+          sourceCauseText
         };
 
         const created = await createIncidentCorrectiveAction(createData);
-
-        // Upload evidence files
         const evidenceUrls: string[] = [];
         for (const file of evidenceFiles) {
           const key = `${companyId}/incident_corrective_action/${created.id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
@@ -178,7 +255,6 @@ export function IncidentCorrectiveActionModal({
 
       onSaved?.();
       onClose();
-      resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {
@@ -193,11 +269,7 @@ export function IncidentCorrectiveActionModal({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-2xl mx-4 my-8 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[95vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-surface-200 px-5 py-4 flex items-center justify-between z-10">
-          <div>
-            <p className="text-sm font-semibold text-charcoal">
-              {actionId ? 'Edit Corrective Action' : 'Create Corrective Action'}
-            </p>
-          </div>
+          <p className="text-sm font-semibold text-charcoal">{actionId ? 'Edit Corrective Action' : 'Create Corrective Action'}</p>
           <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
             <XIcon className="w-4 h-4" />
           </button>
@@ -212,14 +284,13 @@ export function IncidentCorrectiveActionModal({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Action Title *</label>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Action Required *</label>
             <input
               type="text"
-              value={actionTitle}
-              onChange={(e) => setActionTitle(e.target.value)}
-              placeholder="Enter action title"
+              value={actionRequired}
+              onChange={(e) => setActionRequired(e.target.value)}
               required
-              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
             />
           </div>
 
@@ -229,30 +300,30 @@ export function IncidentCorrectiveActionModal({
               value={actionDescription}
               onChange={(e) => setActionDescription(e.target.value)}
               rows={3}
-              placeholder="Describe the corrective action..."
-              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Owner / Responsible Person</label>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Responsible Person *</label>
             <UserMultiSelect
               companyId={companyId}
-              selectedUserIds={ownerUserId ? [ownerUserId] : []}
-              onChange={(userIds) => setOwnerUserId(userIds[0] || null)}
-              placeholder="Select owner"
+              selectedUserIds={responsibleUserId ? [responsibleUserId] : []}
+              onChange={(userIds) => setResponsibleUserId(userIds[0] || null)}
+              placeholder="Select responsible person"
               allowExternalEmails={false}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Due Date</label>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Due Date *</label>
               <input
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                required
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
               />
             </div>
             <div>
@@ -260,7 +331,7 @@ export function IncidentCorrectiveActionModal({
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as typeof status)}
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
               >
                 <option value="Open">Open</option>
                 <option value="In Progress">In Progress</option>
@@ -271,6 +342,30 @@ export function IncidentCorrectiveActionModal({
             </div>
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Link to Investigation Causes</label>
+            {availableCauseOptions.length === 0 ? (
+              <p className="text-xs text-charcoal-500">No saved causes available yet. Save investigation causes first.</p>
+            ) : (
+              <div className="space-y-2 max-h-40 overflow-y-auto border border-surface-200 rounded-lg p-3">
+                {availableCauseOptions.map((option) => {
+                  const checked = selectedLinks.some((entry) => entry.type === option.type && entry.text === option.text);
+                  return (
+                    <label key={`${option.type}|${option.text}`} className="flex items-start gap-2 text-sm text-charcoal">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => toggleCauseLink(option, e.target.checked)}
+                        className="mt-0.5 w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {status === 'Closed' && (
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Closure Notes</label>
@@ -278,20 +373,14 @@ export function IncidentCorrectiveActionModal({
                 value={closureNotes}
                 onChange={(e) => setClosureNotes(e.target.value)}
                 rows={3}
-                placeholder="Enter closure notes..."
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
               />
             </div>
           )}
 
           <div>
             <label className="block text-sm font-medium text-charcoal mb-1.5">Evidence Files</label>
-            <input
-              type="file"
-              multiple
-              onChange={(e) => handleFileUpload(e.target.files)}
-              className="w-full text-sm"
-            />
+            <input type="file" multiple onChange={(e) => handleFileUpload(e.target.files)} className="w-full text-sm" />
             {evidenceFiles.length > 0 && (
               <div className="mt-2 space-y-1">
                 {evidenceFiles.map((file, index) => (
@@ -299,13 +388,8 @@ export function IncidentCorrectiveActionModal({
                     <div className="flex items-center gap-2">
                       <FileIcon className="w-4 h-4 text-charcoal-400" />
                       <span className="text-sm text-charcoal-600">{file.name}</span>
-                      <span className="text-xs text-charcoal-400">({(file.size / 1024).toFixed(2)} KB)</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(index)}
-                      className="text-xs text-critical hover:text-critical-600"
-                    >
+                    <button type="button" onClick={() => removeFile(index)} className="text-xs text-critical hover:text-critical-600">
                       Remove
                     </button>
                   </div>
@@ -315,17 +399,13 @@ export function IncidentCorrectiveActionModal({
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-surface-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
-            >
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50">
               Cancel
             </button>
             <button
               type="submit"
-              disabled={loading || !actionTitle.trim()}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={loading || !actionRequired.trim() || !dueDate || !responsibleUserId}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60"
             >
               {loading && <LoadingSpinner size={16} />}
               {actionId ? 'Update Action' : 'Create Action'}
