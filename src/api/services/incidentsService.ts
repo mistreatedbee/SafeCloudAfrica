@@ -222,59 +222,99 @@ export type CreateIncidentInput = {
   autoGenerateNcr?: boolean;
 };
 
+function getMissingColumnFromSchemaError(error: unknown): string | null {
+  const message = getErrorMessage(error);
+  const match = message.match(/Could not find the '([^']+)' column/i);
+  return match?.[1] ?? null;
+}
+
+async function insertIncidentWithSchemaFallback(payload: Record<string, unknown>): Promise<Incident> {
+  let workingPayload: Record<string, unknown> = { ...payload };
+  for (let attempts = 0; attempts < 5; attempts += 1) {
+    const { data, error } = await insforge.database
+      .from('incidents')
+      .insert(workingPayload)
+      .select('*')
+      .single();
+    if (!error && data) return data as Incident;
+    const missingColumn = getMissingColumnFromSchemaError(error);
+    if (!missingColumn || !Object.prototype.hasOwnProperty.call(workingPayload, missingColumn)) {
+      throw new Error(getErrorMessage(error));
+    }
+    const { [missingColumn]: _ignored, ...rest } = workingPayload;
+    workingPayload = rest;
+  }
+  throw new Error('Failed to create incident after schema compatibility retries.');
+}
+
+async function updateIncidentWithSchemaFallback(incidentId: UUID, payload: Record<string, unknown>): Promise<Incident> {
+  let workingPayload: Record<string, unknown> = { ...payload };
+  for (let attempts = 0; attempts < 5; attempts += 1) {
+    const { data, error } = await insforge.database
+      .from('incidents')
+      .update(workingPayload)
+      .eq('id', incidentId)
+      .select('*')
+      .single();
+    if (!error && data) return data as Incident;
+    const missingColumn = getMissingColumnFromSchemaError(error);
+    if (!missingColumn || !Object.prototype.hasOwnProperty.call(workingPayload, missingColumn)) {
+      throw new Error(getErrorMessage(error));
+    }
+    const { [missingColumn]: _ignored, ...rest } = workingPayload;
+    workingPayload = rest;
+  }
+  throw new Error('Failed to update incident after schema compatibility retries.');
+}
+
 export async function createIncident(input: CreateIncidentInput): Promise<Incident> {
   const losses = input.losses ?? {};
-  const { data, error } = await insforge.database
-    .from('incidents')
-    .insert({
-      company_id: input.companyId,
-      module: input.module,
-      category: input.category,
-      subcategory: input.subcategory,
-      title: input.title,
-      description: input.description ?? null,
-      incident_type: input.incidentType ?? null,
-      project_client: input.projectClient ?? null,
-      nature_of_incident: input.natureOfIncident ?? null,
-      cause_of_incident: input.causeOfIncident ?? null,
-      affected_person: input.affectedPerson ?? null,
-      reported_by: input.reportedBy ?? null,
-      reported_to: input.reportedTo ?? null,
-      copy_to_emails: input.copyToEmails ?? null,
-      investigation_required: input.investigationRequired ?? false,
-      immediate_causes_unsafe_acts: input.unsafeActs ?? null,
-      immediate_causes_unsafe_conditions: input.unsafeConditions ?? null,
-      loss_production_value: losses.productionLoss ?? null,
-      loss_financial_value: losses.financialLoss ?? null,
-      loss_reputational_value: losses.reputationalLoss ?? null,
-      loss_damage_asset_value: losses.damageAssetLoss ?? null,
-      loss_illness_injury_value: losses.illnessInjuryImpact ?? null,
-      loss_illness_value: losses.illnessLoss ?? null,
-      loss_injury_value: losses.injuryLoss ?? null,
-      loss_civil_liability_value: losses.civilLiabilityLoss ?? null,
-      loss_criminal_liability_value: losses.criminalLiabilityLoss ?? null,
-      loss_vicarious_liability_value: losses.vicariousLiabilityLoss ?? null,
-      loss_substandard_quality_value: losses.substandardQualityLoss ?? null,
-      loss_types: losses.types ?? null,
-      loss_other_text: losses.other ?? null,
-      loss_notes: losses.notes ?? null,
-      risk_severity_1_5: input.riskSeverity1To5 ?? null,
-      risk_likelihood_1_5: input.riskLikelihood1To5 ?? null,
-      risk_rating_product: input.riskRatingProduct ?? null,
-      risk_classification: input.riskClassification ?? null,
-      risk_category: input.riskCategorySimple ?? null,
-      severity: input.severity,
-      status: 'open' satisfies IncidentStatus,
-      occurred_at: input.occurredAt,
-      location: input.location ?? null,
-      assignee_user_id: input.assigneeUserId ?? null,
-      created_by_user_id: input.createdByUserId
-    })
-    .select('*')
-    .single();
+  const insertPayload: Record<string, unknown> = {
+    company_id: input.companyId,
+    module: input.module,
+    category: input.category,
+    subcategory: input.subcategory,
+    title: input.title,
+    description: input.description ?? null,
+    incident_type: input.incidentType ?? null,
+    project_client: input.projectClient ?? null,
+    nature_of_incident: input.natureOfIncident ?? null,
+    cause_of_incident: input.causeOfIncident ?? null,
+    affected_person: input.affectedPerson ?? null,
+    reported_by: input.reportedBy ?? null,
+    reported_to: input.reportedTo ?? null,
+    copy_to_emails: input.copyToEmails ?? null,
+    investigation_required: input.investigationRequired ?? false,
+    immediate_causes_unsafe_acts: input.unsafeActs ?? null,
+    immediate_causes_unsafe_conditions: input.unsafeConditions ?? null,
+    loss_production_value: losses.productionLoss ?? null,
+    loss_financial_value: losses.financialLoss ?? null,
+    loss_reputational_value: losses.reputationalLoss ?? null,
+    loss_damage_asset_value: losses.damageAssetLoss ?? null,
+    loss_illness_injury_value: losses.illnessInjuryImpact ?? null,
+    loss_illness_value: losses.illnessLoss ?? null,
+    loss_injury_value: losses.injuryLoss ?? null,
+    loss_civil_liability_value: losses.civilLiabilityLoss ?? null,
+    loss_criminal_liability_value: losses.criminalLiabilityLoss ?? null,
+    loss_vicarious_liability_value: losses.vicariousLiabilityLoss ?? null,
+    loss_substandard_quality_value: losses.substandardQualityLoss ?? null,
+    loss_types: losses.types ?? null,
+    loss_other_text: losses.other ?? null,
+    loss_notes: losses.notes ?? null,
+    risk_severity_1_5: input.riskSeverity1To5 ?? null,
+    risk_likelihood_1_5: input.riskLikelihood1To5 ?? null,
+    risk_rating_product: input.riskRatingProduct ?? null,
+    risk_classification: input.riskClassification ?? null,
+    risk_category: input.riskCategorySimple ?? null,
+    severity: input.severity,
+    status: 'open' satisfies IncidentStatus,
+    occurred_at: input.occurredAt,
+    location: input.location ?? null,
+    assignee_user_id: input.assigneeUserId ?? null,
+    created_by_user_id: input.createdByUserId
+  };
 
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to create incident.');
+  const data = await insertIncidentWithSchemaFallback(insertPayload);
 
   // Lazy import to avoid circular dependency
   const { createActivityLog } = await import('./activityLogService');
@@ -428,16 +468,8 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
     }
   }
 
-  const { data, error } = await insforge.database
-    .from('incidents')
-    .update(updateData)
-    .eq('id', incidentId)
-    .select('*')
-    .single();
-
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to update incident.');
-  return data as Incident;
+  const data = await updateIncidentWithSchemaFallback(incidentId, updateData);
+  return data;
 }
 
 export async function syncIncidentClosureFromLinks(incidentId: UUID): Promise<void> {
