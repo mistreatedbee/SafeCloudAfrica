@@ -58,31 +58,46 @@ type UploadDraft = {
 };
 
 type InvestigationSectionKey =
+  | 'immediateCauses'
   | 'unsafeActs'
   | 'unsafeConditions'
+  | 'systemFailures'
   | 'rootCauses'
-  | 'systemFailure'
-  | 'correctiveActions';
+  | 'humanFactorsCauses'
+  | 'workFactors'
+  | 'contributingFactors'
+  | 'correctiveActions'
+  | 'lessonsLearned';
 
 const INVESTIGATION_SECTION_DEFINITIONS: Array<{
   key: InvestigationSectionKey;
   label: string;
   description: string;
 }> = [
+  { key: 'immediateCauses', label: 'Immediate Causes', description: 'Immediate cause overview and grouped selections' },
   { key: 'unsafeActs', label: 'Unsafe Acts', description: 'Select all unsafe acts and add explanations' },
   { key: 'unsafeConditions', label: 'Unsafe Conditions', description: 'Select all unsafe conditions and add explanations' },
+  { key: 'systemFailures', label: 'System Failures', description: 'Management system and process breakdowns' },
   { key: 'rootCauses', label: 'Root Causes', description: 'Human and workplace root cause analysis' },
-  { key: 'systemFailure', label: 'System Failure', description: 'Management system and process breakdowns' },
-  { key: 'correctiveActions', label: 'Corrective Actions', description: 'Actions, ownership, conclusion and distribution' }
+  { key: 'humanFactorsCauses', label: 'Human Factors Causes', description: 'Human factors subcategories' },
+  { key: 'workFactors', label: 'Work Factors', description: 'Workplace factors subcategories' },
+  { key: 'contributingFactors', label: 'Contributing Factors', description: 'Additional factors linked to this incident' },
+  { key: 'correctiveActions', label: 'Corrective Actions', description: 'Actions, ownership, conclusion and distribution' },
+  { key: 'lessonsLearned', label: 'Lessons Learned', description: 'Lessons and prevention improvements' }
 ];
 
 function emptyInvestigationSectionSelection(): Record<InvestigationSectionKey, boolean> {
   return {
+    immediateCauses: false,
     unsafeActs: false,
     unsafeConditions: false,
+    systemFailures: false,
     rootCauses: false,
-    systemFailure: false,
-    correctiveActions: false
+    humanFactorsCauses: false,
+    workFactors: false,
+    contributingFactors: false,
+    correctiveActions: false,
+    lessonsLearned: false
   };
 }
 
@@ -161,6 +176,8 @@ export function IncidentCreateModal(props: {
   const [systemFailures, setSystemFailures] = useState<Record<string, CauseDetailEntry>>({});
   const [incidentTimelineEvents, setIncidentTimelineEvents] = useState<TimelineEvent[]>([]);
   const [potentialConsequence, setPotentialConsequence] = useState('');
+  const [contributingFactors, setContributingFactors] = useState('');
+  const [lessonsLearned, setLessonsLearned] = useState('');
   const [investigationTeam, setInvestigationTeam] = useState('');
   const [conclusion, setConclusion] = useState('');
   const [preparedBy, setPreparedBy] = useState('');
@@ -256,6 +273,8 @@ export function IncidentCreateModal(props: {
     setSystemFailures({});
     setIncidentTimelineEvents([]);
     setPotentialConsequence('');
+    setContributingFactors('');
+    setLessonsLearned('');
     setInvestigationTeam('');
     setConclusion('');
     setPreparedBy('');
@@ -346,12 +365,15 @@ export function IncidentCreateModal(props: {
     setSystemFailures({});
     setIncidentTimelineEvents([]);
     setPotentialConsequence('');
+    setContributingFactors('');
+    setLessonsLearned('');
     setInvestigationTeam('');
     setConclusion('');
     setPreparedBy('');
     setDistributionList('');
     setInvestigationSections({
       ...emptyInvestigationSectionSelection(),
+      immediateCauses: Object.keys(mappedUnsafeActs).length > 0 || Object.keys(mappedUnsafeConditions).length > 0,
       unsafeActs: Object.keys(mappedUnsafeActs).length > 0,
       unsafeConditions: Object.keys(mappedUnsafeConditions).length > 0
     });
@@ -369,6 +391,8 @@ export function IncidentCreateModal(props: {
         const inv = await getIncidentInvestigation(props.companyId, editingIncident.id);
         if (!inv) return;
         setPotentialConsequence(inv.potential_consequence ?? '');
+        setContributingFactors(inv.contributing_factors ?? '');
+        setLessonsLearned(inv.lessons_learnt ?? '');
         setConclusion(inv.conclusion ?? '');
         setPreparedBy(inv.prepared_by ?? '');
         setInvestigationTeam(Array.isArray(inv.investigation_team) ? inv.investigation_team.join(', ') : '');
@@ -390,17 +414,24 @@ export function IncidentCreateModal(props: {
         const hasRootCauses = (Array.isArray(inv.root_causes_human) && inv.root_causes_human.length > 0)
           || (Array.isArray(inv.root_causes_workplace) && inv.root_causes_workplace.length > 0);
         const hasSystemFailures = Array.isArray(inv.system_failures) && inv.system_failures.length > 0;
+        const hasContributingFactors = Boolean((inv.contributing_factors ?? '').trim());
+        const hasLessonsLearned = Boolean((inv.lessons_learnt ?? '').trim());
         const hasCorrectiveActions = Boolean((inv.notes ?? '').trim())
           || Boolean((inv.conclusion ?? '').trim())
           || Boolean((inv.prepared_by ?? '').trim())
           || (Array.isArray(inv.investigation_team) && inv.investigation_team.length > 0)
           || (Array.isArray(inv.distributions) && inv.distributions.length > 0);
         setInvestigationSections({
+          immediateCauses: hasUnsafeActs || hasUnsafeConditions,
           unsafeActs: hasUnsafeActs,
           unsafeConditions: hasUnsafeConditions,
+          systemFailures: hasSystemFailures,
           rootCauses: hasRootCauses,
-          systemFailure: hasSystemFailures,
-          correctiveActions: hasCorrectiveActions
+          humanFactorsCauses: Array.isArray(inv.root_causes_human) && inv.root_causes_human.length > 0,
+          workFactors: Array.isArray(inv.root_causes_workplace) && inv.root_causes_workplace.length > 0,
+          contributingFactors: hasContributingFactors,
+          correctiveActions: hasCorrectiveActions,
+          lessonsLearned: hasLessonsLearned
         });
         if (Array.isArray(inv.root_causes_human)) {
           const next: Record<string, CauseDetailEntry> = {};
@@ -694,6 +725,8 @@ export function IncidentCreateModal(props: {
               root_causes_human: Object.values(rootCauseHuman),
               root_causes_workplace: Object.values(rootCauseWorkplace),
               system_failures: Object.values(systemFailures),
+              contributing_factors: contributingFactors.trim() || null,
+              lessons_learnt: lessonsLearned.trim() || null,
               conclusion: conclusion.trim() || null,
               prepared_by: preparedBy.trim() || null,
               investigation_team: investigationTeam
@@ -774,6 +807,8 @@ export function IncidentCreateModal(props: {
               root_causes_human: Object.values(rootCauseHuman),
               root_causes_workplace: Object.values(rootCauseWorkplace),
               system_failures: Object.values(systemFailures),
+              contributing_factors: contributingFactors.trim() || null,
+              lessons_learnt: lessonsLearned.trim() || null,
               conclusion: conclusion.trim() || null,
               prepared_by: preparedBy.trim() || null,
               investigation_team: investigationTeam
@@ -1316,20 +1351,50 @@ export function IncidentCreateModal(props: {
                   </div>
                 </div>
 
+                {renderInvestigationCard(
+                  'immediateCauses',
+                  'Immediate Causes',
+                  <div className="space-y-4">
+                    {renderCauseGroups('Unsafe Acts (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, 'acts', unsafeActs)}
+                    {renderCauseGroups('Unsafe Conditions (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS, 'conditions', unsafeConditions)}
+                  </div>
+                )}
+
                 {renderInvestigationCard('unsafeActs', 'Unsafe Acts', renderCauseGroups('Unsafe Acts (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, 'acts', unsafeActs))}
 
                 {renderInvestigationCard('unsafeConditions', 'Unsafe Conditions', renderCauseGroups('Unsafe Conditions (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS, 'conditions', unsafeConditions))}
+
+                {renderInvestigationCard('systemFailures', 'System Failures', renderDetailedCauseGroups('System Failures', { 'System Failures': SYSTEM_FAILURE_OPTIONS }, systemFailures, setSystemFailures))}
 
                 {renderInvestigationCard(
                   'rootCauses',
                   'Root Causes',
                   <div className="space-y-4">
-                    {renderDetailedCauseGroups('Root Cause Analysis - Human Factors', ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES, rootCauseHuman, setRootCauseHuman)}
-                    {renderDetailedCauseGroups('Root Cause Analysis - Workplace Factors', ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES, rootCauseWorkplace, setRootCauseWorkplace)}
+                    {renderDetailedCauseGroups('Human Factors Causes', ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES, rootCauseHuman, setRootCauseHuman)}
+                    {renderDetailedCauseGroups('Work Factors', ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES, rootCauseWorkplace, setRootCauseWorkplace)}
                   </div>
                 )}
 
-                {renderInvestigationCard('systemFailure', 'System Failures', renderDetailedCauseGroups('System Failure Analysis', { 'System Failures': SYSTEM_FAILURE_OPTIONS }, systemFailures, setSystemFailures))}
+                {renderInvestigationCard(
+                  'humanFactorsCauses',
+                  'Human Factors Causes',
+                  renderDetailedCauseGroups('Human Factors Causes', ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES, rootCauseHuman, setRootCauseHuman)
+                )}
+
+                {renderInvestigationCard(
+                  'workFactors',
+                  'Work Factors',
+                  renderDetailedCauseGroups('Work Factors', ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES, rootCauseWorkplace, setRootCauseWorkplace)
+                )}
+
+                {renderInvestigationCard(
+                  'contributingFactors',
+                  'Contributing Factors',
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Contributing Factors</label>
+                    <textarea value={contributingFactors} onChange={(e) => setContributingFactors(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                  </div>
+                )}
 
                 {renderInvestigationCard(
                   'correctiveActions',
@@ -1415,6 +1480,15 @@ export function IncidentCreateModal(props: {
                       <label className="block text-sm font-medium text-charcoal mb-1.5">Distribution list (copy to)</label>
                       <input value={distributionList} onChange={(e) => setDistributionList(e.target.value)} placeholder="Comma-separated emails/names" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
                     </div>
+                  </div>
+                )}
+
+                {renderInvestigationCard(
+                  'lessonsLearned',
+                  'Lessons Learned',
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Lessons Learned</label>
+                    <textarea value={lessonsLearned} onChange={(e) => setLessonsLearned(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
                   </div>
                 )}
 
