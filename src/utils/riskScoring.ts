@@ -1,15 +1,15 @@
 /**
- * Risk Assessment scoring: S × L = RR, Risk Index (Low/Medium/High) from configurable thresholds.
+ * Risk Assessment scoring: S * L = RR, Risk Index (Low/Medium/High) from configurable thresholds.
  * Shared by API and UI for consistency.
  */
 
 export type RiskIndex = 'Low' | 'Medium' | 'High';
 
-export const DEFAULT_RISK_INDEX_LOW_MAX = 6;
-export const DEFAULT_RISK_INDEX_MEDIUM_MAX = 15;
+export const DEFAULT_RISK_INDEX_LOW_MAX = 5;
+export const DEFAULT_RISK_INDEX_MEDIUM_MAX = 12;
 
 /**
- * Raw Risk Rating: RR = Severity × Likelihood (each 1–5).
+ * Raw Risk Rating: RR = Severity * Likelihood (each 1-5).
  */
 export function computeRR(severity: number, likelihood: number): number {
   const s = Math.max(1, Math.min(5, Math.round(severity)));
@@ -18,7 +18,7 @@ export function computeRR(severity: number, likelihood: number): number {
 }
 
 /**
- * Risk Index from RR using thresholds: RR ≤ lowMax → Low, RR ≤ mediumMax → Medium, else High.
+ * Risk Index from RR using thresholds: RR <= lowMax => Low, RR <= mediumMax => Medium, else High.
  */
 export function getRiskIndex(
   rr: number,
@@ -60,18 +60,18 @@ export function computeResidualRisk(
 }
 
 /**
- * Map simple L/M/H (Pre-work dropdown) to approximate S and L for storage (e.g. Low=1,1 Medium=2,2 High=4,4).
+ * Map simple L/M/H (Pre-work dropdown) to approximate S and L for storage.
  */
 export function simpleRatingToSL(rating: RiskIndex): { severity: number; likelihood: number } {
   switch (rating) {
     case 'Low':
-      return { severity: 1, likelihood: 1 };
+      return { severity: 1, likelihood: 2 };
     case 'Medium':
-      return { severity: 2, likelihood: 2 };
+      return { severity: 3, likelihood: 3 };
     case 'High':
       return { severity: 4, likelihood: 4 };
     default:
-      return { severity: 2, likelihood: 2 };
+      return { severity: 3, likelihood: 3 };
   }
 }
 

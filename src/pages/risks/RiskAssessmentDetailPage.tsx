@@ -1,223 +1,355 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
+import type { UUID } from '../../api/models/core';
 import {
-  getAssessmentLabel,
+  addRiskAssessmentSignoff,
+  createRiskAssessmentQna,
+  createRiskAssessmentTemplate,
+  deleteRiskAssessment,
+  deleteRiskAssessmentQna,
   getRiskAssessment,
-  listRiskAssessmentItems,
+  listRiskAssessmentQna,
+  listRiskAssessmentRows,
+  listRiskAssessmentSignoffs,
+  supervisorSignoffRiskAssessment,
+  type MembershipScope,
   type RiskAssessment,
-  type RiskAssessmentItem
-} from '../../api/services/risksService';
-import { StatusBadge } from '../../components/ui/StatusBadge';
-import { useUser } from '@insforge/react';
+  type RiskAssessmentQna,
+  type RiskAssessmentRow,
+  type RiskAssessmentSignoff
+} from '../../api/services/riskAssessmentsService';
+import { getPublicUrl } from '../../api/services/storageService';
+import { columnsForType, typeLabel } from './riskTemplates';
 
-function canViewAssessment(assessment: RiskAssessment, actorUserId: string | null | undefined, role: string | null): boolean {
-  if (role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor' || role === 'consultant' || role === 'auditor') return true;
-  if (!actorUserId) return false;
-  return assessment.created_by_user_id === actorUserId;
-}
-
-function riskLevelClass(level: string | null | undefined): string {
-  if (level === 'critical' || level === 'high') return 'text-critical';
-  if (level === 'medium') return 'text-warning';
-  return 'text-success';
+function getScopeForActiveMembership(
+  memberships: Array<{ company_id: UUID; site_id?: UUID | null; department_id?: UUID | null; consultant_scope?: any }> | undefined,
+  companyId: UUID | null
+): MembershipScope | null {
+  if (!memberships || !companyId) return null;
+  const active = memberships.find((m) => m.company_id === companyId);
+  if (!active) return null;
+  return {
+    siteId: active.site_id ?? null,
+    departmentId: active.department_id ?? null,
+    consultantScope: active.consultant_scope ?? null
+  };
 }
 
 export function RiskAssessmentDetailPage() {
-  const { id, assessmentId } = useParams<{ id?: string; assessmentId?: string }>();
-  const resolvedId = id ?? assessmentId ?? '';
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
+  const { activeCompanyId, activeRole, memberships } = useTenant();
+  const scope = useMemo(() => getScopeForActiveMembership(memberships as any, activeCompanyId as UUID | null), [activeCompanyId, memberships]);
+
   const [assessment, setAssessment] = useState<RiskAssessment | null>(null);
-  const [items, setItems] = useState<RiskAssessmentItem[]>([]);
+  const [rows, setRows] = useState<RiskAssessmentRow[]>([]);
+  const [qna, setQna] = useState<RiskAssessmentQna[]>([]);
+  const [signoffs, setSignoffs] = useState<RiskAssessmentSignoff[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const [a, setA] = useState('');
+  const [employeeName, setEmployeeName] = useState('');
+  const [employeeSignature, setEmployeeSignature] = useState('');
+
+  const columns = useMemo(() => (assessment ? columnsForType(assessment.type) : []), [assessment]);
+
+  const canEdit = ['owner', 'admin', 'manager', 'supervisor', 'consultant'].includes(String(activeRole));
+  const canDelete = ['owner', 'admin'].includes(String(activeRole));
+  const canSupervisorSign = ['owner', 'admin', 'manager', 'supervisor'].includes(String(activeRole));
+
+  async function load() {
+    if (!activeCompanyId || !user?.id || !id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [one, rowData, qnaRows, signoffRows] = await Promise.all([
+        getRiskAssessment({
+          companyId: activeCompanyId as UUID,
+          assessmentId: id as UUID,
+          actorUserId: user.id as UUID,
+          actorRole: activeRole,
+          scope
+        }),
+        listRiskAssessmentRows({ companyId: activeCompanyId as UUID, assessmentId: id as UUID }),
+        listRiskAssessmentQna({ companyId: activeCompanyId as UUID, assessmentId: id as UUID }),
+        listRiskAssessmentSignoffs({ companyId: activeCompanyId as UUID, assessmentId: id as UUID })
+      ]);
+      setAssessment(one);
+      setRows(rowData);
+      setQna(qnaRows);
+      setSignoffs(signoffRows);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load assessment');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    if (!resolvedId || !activeCompanyId) return;
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        setNotFound(false);
-        const [assessmentRow, itemRows] = await Promise.all([
-          getRiskAssessment(resolvedId),
-          listRiskAssessmentItems(resolvedId)
-        ]);
-        if (assessmentRow.company_id !== activeCompanyId) {
-          setNotFound(true);
-          return;
-        }
-        if (!canViewAssessment(assessmentRow, user?.id, activeRole)) {
-          setNotFound(true);
-          return;
-        }
-        setAssessment(assessmentRow);
-        setItems(itemRows ?? []);
-      } catch (e) {
-        console.error('Failed to load risk assessment detail:', e);
-        if (e instanceof Error && /not found/i.test(e.message)) {
-          setNotFound(true);
-        } else {
-          setError(e instanceof Error ? e.message : 'Failed to load assessment');
-        }
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [activeCompanyId, activeRole, resolvedId, user?.id]);
+    void load();
+  }, [activeCompanyId, activeRole, id, user?.id]);
+
+  async function onDelete() {
+    if (!activeCompanyId || !user?.id || !id) return;
+    if (!window.confirm('Delete this risk assessment? This cannot be undone.')) return;
+    try {
+      await deleteRiskAssessment({
+        companyId: activeCompanyId as UUID,
+        assessmentId: id as UUID,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole,
+        scope
+      });
+      navigate('/risk-assessments');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete assessment');
+    }
+  }
+
+  async function onSaveTemplate() {
+    if (!activeCompanyId || !user?.id || !assessment) return;
+    const name = window.prompt('Template name', `${assessment.title} Template`);
+    if (!name?.trim()) return;
+    try {
+      await createRiskAssessmentTemplate({
+        companyId: activeCompanyId as UUID,
+        actorUserId: user.id as UUID,
+        name: name.trim(),
+        type: assessment.type,
+        headerJson: {
+          heading: assessment.heading,
+          area: assessment.area,
+          activity: assessment.activity,
+          reference: assessment.reference,
+          doc_url: assessment.doc_url
+        },
+        rowsJson: rows.map((r) => r.json_data)
+      });
+      alert('Template saved.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save template');
+    }
+  }
+
+  async function onAddQna() {
+    if (!activeCompanyId || !user?.id || !assessment || !q.trim()) return;
+    try {
+      await createRiskAssessmentQna({
+        companyId: activeCompanyId as UUID,
+        assessmentId: assessment.id,
+        actorUserId: user.id as UUID,
+        question: q.trim(),
+        answer: a.trim() || null
+      });
+      setQ('');
+      setA('');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to add Q&A');
+    }
+  }
+
+  async function onDeleteQna(qnaId: UUID) {
+    if (!activeCompanyId || !user?.id) return;
+    try {
+      await deleteRiskAssessmentQna({ companyId: activeCompanyId as UUID, qnaId, actorUserId: user.id as UUID });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete Q&A');
+    }
+  }
+
+  async function onEmployeeSignoff() {
+    if (!activeCompanyId || !user?.id || !assessment || !employeeName.trim()) return;
+    try {
+      await addRiskAssessmentSignoff({
+        companyId: activeCompanyId as UUID,
+        assessmentId: assessment.id,
+        actorUserId: user.id as UUID,
+        employeeName: employeeName.trim(),
+        signature: employeeSignature.trim() || null
+      });
+      setEmployeeName('');
+      setEmployeeSignature('');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to sign off');
+    }
+  }
+
+  async function onSupervisorSignoff(signoffId?: UUID) {
+    if (!activeCompanyId || !user?.id || !assessment) return;
+    try {
+      await supervisorSignoffRiskAssessment({
+        companyId: activeCompanyId as UUID,
+        assessmentId: assessment.id,
+        signoffId,
+        actorUserId: user.id as UUID
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed supervisor sign-off');
+    }
+  }
 
   if (loading) {
     return (
       <Layout title="Risk Assessment">
-        <div className="max-w-6xl mx-auto p-6">
-          <p className="text-charcoal-500">Loading assessment...</p>
+        <div className="space-y-2">
+          <div className="h-10 bg-surface-100 rounded animate-pulse" />
+          <div className="h-64 bg-surface-100 rounded animate-pulse" />
         </div>
       </Layout>
     );
   }
 
-  if (notFound || !assessment) {
+  if (!assessment) {
     return (
       <Layout title="Risk Assessment">
-        <div className="max-w-6xl mx-auto p-6">
-          <p className="text-charcoal-700 font-medium">Risk assessment not found.</p>
-          <Link to="/risk-assessments" className="text-blue-600 hover:underline mt-2 inline-block">Back to list</Link>
-        </div>
+        <div className="text-sm text-critical">{error ?? 'Risk assessment not found.'}</div>
       </Layout>
     );
   }
 
-  if (error) {
-    return (
-      <Layout title="Risk Assessment">
-        <div className="max-w-6xl mx-auto p-6">
-          <p className="text-critical font-medium">Unable to load risk assessment details.</p>
-          <p className="text-sm text-charcoal-500 mt-1">{error}</p>
-          <Link to="/risk-assessments" className="text-blue-600 hover:underline mt-2 inline-block">Back to list</Link>
-        </div>
-      </Layout>
-    );
-  }
-
-  const canEdit =
-    activeRole === 'owner' ||
-    activeRole === 'admin' ||
-    activeRole === 'manager' ||
-    activeRole === 'supervisor' ||
-    activeRole === 'consultant' ||
-    (activeRole === 'employee' && assessment.created_by_user_id === user?.id);
+  const baselineFileUrl = assessment.baseline_spreadsheet_bucket && assessment.baseline_spreadsheet_key
+    ? getPublicUrl(assessment.baseline_spreadsheet_bucket as any, assessment.baseline_spreadsheet_key)
+    : null;
 
   return (
-    <Layout title={assessment.title || assessment.assessment_number}>
-      <div className="max-w-6xl mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-4">
+    <Layout title={assessment.title}>
+      <div className="space-y-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <Link to="/risk-assessments" className="text-sm text-charcoal-500 hover:text-charcoal inline-block mb-1">Back to list</Link>
-            <h1 className="text-2xl font-bold text-charcoal">{assessment.title || assessment.assessment_number}</h1>
-            <p className="text-sm text-charcoal-500 mt-1">
-              {assessment.assessment_number} | {getAssessmentLabel(assessment)} | {assessment.status}
-            </p>
+            <Link to="/risk-assessments" className="text-sm text-charcoal-500 hover:underline">Back to list</Link>
+            <h1 className="text-2xl font-bold text-charcoal">{assessment.title}</h1>
+            <p className="text-sm text-charcoal-500">{typeLabel(assessment.type)} | {assessment.status}</p>
           </div>
           <div className="flex items-center gap-2">
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() => navigate(`/risk-assessments/${assessment.id}/edit`)}
-                className="px-4 py-2 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600"
-              >
-                Edit
-              </button>
+            {assessment.doc_url && <a href={assessment.doc_url} target="_blank" rel="noreferrer" className="px-3 py-2 rounded border border-charcoal-300 text-sm">Open Google Doc</a>}
+            {canEdit && assessment.status !== 'closed' && <button onClick={() => navigate(`/risk-assessments/${assessment.id}/edit`)} className="px-3 py-2 rounded bg-teal text-white text-sm">Edit</button>}
+            <button onClick={() => void onSaveTemplate()} className="px-3 py-2 rounded border border-teal text-teal text-sm">Save as Template</button>
+            {canDelete && <button onClick={() => void onDelete()} className="px-3 py-2 rounded border border-critical text-critical text-sm">Delete</button>}
+          </div>
+        </div>
+
+        {error && <div className="text-sm text-critical">{error}</div>}
+
+        <div className="bg-white border border-surface-300 rounded-xl p-4 shadow-card">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+            <p><span className="text-charcoal-500">Heading:</span> {assessment.heading || '-'}</p>
+            <p><span className="text-charcoal-500">Area:</span> {assessment.area || '-'}</p>
+            <p><span className="text-charcoal-500">Activity:</span> {assessment.activity || '-'}</p>
+            <p><span className="text-charcoal-500">Reference:</span> {assessment.reference || '-'}</p>
+            <p><span className="text-charcoal-500">Assessor:</span> {assessment.risk_assessor_name || '-'}</p>
+            <p><span className="text-charcoal-500">Date:</span> {assessment.assessment_date || '-'}</p>
+            <p><span className="text-charcoal-500">Next review:</span> {assessment.next_review_date || '-'}</p>
+            <p><span className="text-charcoal-500">Google Doc ID:</span> {assessment.doc_id || '-'}</p>
+            {baselineFileUrl && (
+              <p className="md:col-span-4">
+                <span className="text-charcoal-500">Baseline spreadsheet:</span>{' '}
+                <a href={baselineFileUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">Open uploaded file</a>
+              </p>
             )}
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <p className="text-xs text-charcoal-500">Created by</p>
-              <p className="text-sm text-charcoal">{assessment.created_by_user_id}</p>
-            </div>
-            <div>
-              <p className="text-xs text-charcoal-500">Created date</p>
-              <p className="text-sm text-charcoal">{new Date(assessment.created_at).toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-xs text-charcoal-500">Site</p>
-              <p className="text-sm text-charcoal">{assessment.location || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-charcoal-500">Department</p>
-              <p className="text-sm text-charcoal">{assessment.process_involved || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-charcoal-500">Status</p>
-              <StatusBadge status={assessment.status as never} size="sm" />
-            </div>
-            <div>
-              <p className="text-xs text-charcoal-500">Review due</p>
-              <p className="text-sm text-charcoal">{assessment.review_due_at ? new Date(assessment.review_due_at).toLocaleDateString() : 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-charcoal-500">Total risks</p>
-              <p className="text-sm text-charcoal">{assessment.total_risks ?? 0}</p>
-            </div>
-            <div>
-              <p className="text-xs text-charcoal-500">Updated</p>
-              <p className="text-sm text-charcoal">{new Date(assessment.updated_at).toLocaleString()}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-surface-200">
-            <h2 className="font-semibold text-charcoal">Risk Items</h2>
-          </div>
-          <div className="overflow-x-auto">
-            {items.length === 0 ? (
-              <p className="p-4 text-sm text-charcoal-500">No risk items captured yet.</p>
-            ) : (
+        <div className="bg-white border border-surface-300 rounded-xl shadow-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-surface-200 font-semibold text-charcoal">Assessment Table</div>
+          {rows.length === 0 ? (
+            <div className="p-4 text-sm text-charcoal-500">No rows captured.</div>
+          ) : (
+            <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-surface-200">
                 <thead className="bg-surface-50">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-charcoal-500 uppercase">Hazard / Risk</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-charcoal-500 uppercase">Likelihood</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-charcoal-500 uppercase">Severity</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-charcoal-500 uppercase">Risk Score</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-charcoal-500 uppercase">Risk Level</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-charcoal-500 uppercase">Controls</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-charcoal-500 uppercase">Actions / Owner / Dates</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">#</th>
+                    {columns.map((col) => <th key={col.key} className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">{col.label}</th>)}
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">S</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">L</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">RR</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Index</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Residual RR/Index</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-200">
-                  {items.map((item) => (
-                    <tr key={item.id}>
-                      <td className="px-4 py-2 text-sm text-charcoal">
-                        <p>{item.hazard_description || 'N/A'}</p>
-                        <p className="text-xs text-charcoal-500 mt-1">{item.hazard_source || 'No source captured'}</p>
-                      </td>
-                      <td className="px-4 py-2 text-sm text-charcoal">{item.likelihood ?? '-'}</td>
-                      <td className="px-4 py-2 text-sm text-charcoal">{item.consequence ?? '-'}</td>
-                      <td className="px-4 py-2 text-sm text-charcoal">{item.risk_rating ?? '-'}</td>
-                      <td className="px-4 py-2 text-sm capitalize">
-                        <span className={riskLevelClass(item.risk_level)}>{item.risk_level || 'low'}</span>
-                      </td>
-                      <td className="px-4 py-2 text-sm text-charcoal">{item.existing_controls || 'N/A'}</td>
-                      <td className="px-4 py-2 text-sm text-charcoal">
-                        <p>{item.improvement_actions || 'N/A'}</p>
-                        <p className="text-xs text-charcoal-500 mt-1">Owner: {item.responsible_user_id || 'N/A'}</p>
-                        <p className="text-xs text-charcoal-500">Target: {item.action_due_date || 'N/A'}</p>
-                        <p className="text-xs text-charcoal-500">Completion: {item.action_status || 'pending'}</p>
-                      </td>
+                  {rows.map((row, idx) => (
+                    <tr key={row.id}>
+                      <td className="px-3 py-2 text-sm">{idx + 1}</td>
+                      {columns.map((col) => <td key={col.key} className="px-3 py-2 text-sm text-charcoal">{String(row.json_data?.[col.key] ?? '-')}</td>)}
+                      <td className="px-3 py-2 text-sm">{row.severity ?? '-'}</td>
+                      <td className="px-3 py-2 text-sm">{row.likelihood ?? '-'}</td>
+                      <td className="px-3 py-2 text-sm">{row.raw_rr ?? '-'}</td>
+                      <td className="px-3 py-2 text-sm">{row.raw_index ?? '-'}</td>
+                      <td className="px-3 py-2 text-sm">{row.residual_rr ?? '-'} / {row.residual_index ?? '-'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white border border-surface-300 rounded-xl p-4 shadow-card space-y-3">
+            <h2 className="font-semibold text-charcoal">Q&A Notes</h2>
+            <div className="space-y-2">
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Question" className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+              <textarea value={a} onChange={(e) => setA(e.target.value)} placeholder="Answer" className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm" rows={3} />
+              <button onClick={() => void onAddQna()} className="px-3 py-2 rounded bg-teal text-white text-sm">Add Q&A</button>
+            </div>
+            <div className="space-y-2">
+              {qna.map((item) => (
+                <div key={item.id} className="border border-surface-200 rounded p-2">
+                  <p className="text-sm font-semibold text-charcoal">Q: {item.question}</p>
+                  <p className="text-sm text-charcoal-600">A: {item.answer || '-'}</p>
+                  <div className="mt-1 text-xs text-charcoal-500 flex items-center justify-between">
+                    <span>{new Date(item.created_at).toLocaleString()}</span>
+                    <button onClick={() => void onDeleteQna(item.id)} className="text-critical">Delete</button>
+                  </div>
+                </div>
+              ))}
+              {qna.length === 0 && <p className="text-sm text-charcoal-500">No Q&A notes yet.</p>}
+            </div>
           </div>
+
+          {assessment.type === 'prework' && (
+            <div className="bg-white border border-surface-300 rounded-xl p-4 shadow-card space-y-3">
+              <h2 className="font-semibold text-charcoal">Pre-Work Sign-offs</h2>
+              {assessment.status !== 'closed' && (
+                <div className="space-y-2">
+                  <input value={employeeName} onChange={(e) => setEmployeeName(e.target.value)} placeholder="Employee name" className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+                  <input value={employeeSignature} onChange={(e) => setEmployeeSignature(e.target.value)} placeholder="Signature (typed initials or token)" className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+                  <button onClick={() => void onEmployeeSignoff()} className="px-3 py-2 rounded bg-teal text-white text-sm">Employee Sign</button>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {signoffs.map((s) => (
+                  <div key={s.id} className="border border-surface-200 rounded p-2">
+                    <p className="text-sm text-charcoal"><strong>{s.employee_name}</strong> signed at {new Date(s.signed_at).toLocaleString()}</p>
+                    <p className="text-xs text-charcoal-500">Signature: {s.signature || '-'}</p>
+                    {s.supervisor_signed_at ? (
+                      <p className="text-xs text-success">Supervisor signed at {new Date(s.supervisor_signed_at).toLocaleString()}</p>
+                    ) : (
+                      canSupervisorSign && assessment.status !== 'closed' && (
+                        <button onClick={() => void onSupervisorSignoff(s.id)} className="mt-1 px-2 py-1 rounded border border-teal text-teal text-xs">Supervisor Sign-off</button>
+                      )
+                    )}
+                  </div>
+                ))}
+                {signoffs.length === 0 && <p className="text-sm text-charcoal-500">No employee signatures yet.</p>}
+              </div>
+
+              {canSupervisorSign && assessment.status !== 'closed' && (
+                <button onClick={() => void onSupervisorSignoff()} className="px-3 py-2 rounded border border-charcoal-300 text-sm">Close Assessment (Supervisor)</button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </Layout>
