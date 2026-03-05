@@ -174,7 +174,10 @@ export const IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS = {
     'Use of drugs or alcohol',
     'Routine activity without thought',
     'Other'
-  ],
+  ]
+} as const;
+
+export const IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS = {
   'Protective systems': [
     'Inadequate guards/protective devices',
     'Defective guards/protective devices',
@@ -227,8 +230,6 @@ export const IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS = {
     'Other'
   ]
 } as const;
-
-export const IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS = IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS;
 
 // Root Cause (Human factors) - categories and items
 export const ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES = {

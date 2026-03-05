@@ -36,19 +36,38 @@ function buildReportTable(input: KPIReportInput): { title: string; headers: stri
   const { reportType, assessments, lines } = input;
 
   if (reportType === 'individual_history') {
+    const assessmentById = new Map(assessments.map((a) => [a.assessment_id, a]));
+    const rows = lines.map((line) => {
+      const assessment = assessmentById.get(line.assessment_id);
+      const status = line.achievement_status === 'achieved'
+        ? 'Achieved'
+        : line.achievement_status === 'partially_achieved'
+          ? 'Partially Achieved'
+          : line.achievement_status === 'not_achieved'
+            ? 'Not Achieved'
+            : line.manager_rating == null
+              ? 'Pending'
+              : line.manager_rating >= 4
+                ? 'Achieved'
+                : line.manager_rating === 3
+                  ? 'Partially Achieved'
+                  : 'Not Achieved';
+      return [
+        line.kpi_questionnaire || line.kpi_title || '',
+        assessment?.employee_name_snapshot || assessment?.project_name || '',
+        assessment?.department_id ? String(assessment.department_id) : 'Unassigned',
+        line.manager_rating != null ? String(line.manager_rating) : '',
+        line.weighted_score != null ? String(line.weighted_score) : '',
+        status,
+        assessment ? `${assessment.period_start_date} to ${assessment.period_end_date}` : '',
+        assessment?.assessment_name || 'KPI Assessment'
+      ];
+    });
+
     return {
       title: 'Individual KPI History',
-      headers: ['KPI Assessment', 'Employee / Project', 'Manager', 'Period Start', 'Period End', 'Status', 'Overall Score', 'Achievement %'],
-      rows: assessments.map((a) => [
-        a.assessment_name || 'KPI Assessment',
-        a.employee_name_snapshot || a.project_name || '',
-        a.manager_name_snapshot || '',
-        a.period_start_date,
-        a.period_end_date,
-        a.status,
-        a.overall_score != null ? String(a.overall_score) : '',
-        a.achievement_percentage != null ? String(a.achievement_percentage) : ''
-      ])
+      headers: ['KPI Title', 'Employee Name', 'Department', 'Manager Rating', 'KPI Score', 'Status', 'Assessment Period', 'KPI Assessment'],
+      rows
     };
   }
 

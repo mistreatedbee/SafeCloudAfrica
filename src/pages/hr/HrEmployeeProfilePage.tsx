@@ -104,9 +104,14 @@ export function HrEmployeeProfilePage() {
           </Card>
         )}
         {tab === 'performance' && (
-          <Card title="Performance reviews">
-            <SimpleTable rows={(payload?.performance as Array<Record<string, unknown>> | undefined) ?? []} cols={['cycle', 'review_date', 'overall_rating', 'manager_rating', 'corrective_due_date', 'status']} />
-          </Card>
+          <div className="space-y-4">
+            <Card title="Performance reviews">
+              <SimpleTable rows={(payload?.performance as Array<Record<string, unknown>> | undefined) ?? []} cols={['cycle', 'review_date', 'overall_rating', 'manager_rating', 'corrective_due_date', 'status']} />
+            </Card>
+            <Card title="KPI history">
+              <KpiHistoryTable rows={(payload?.kpiHistory as Array<Record<string, unknown>> | undefined) ?? []} />
+            </Card>
+          </div>
         )}
         {tab === 'disciplinary' && (
           <Card title="Warnings & offences">
@@ -161,3 +166,20 @@ function SimpleTable({ rows, cols }: { rows: Array<Record<string, unknown>>; col
   );
 }
 
+function KpiHistoryTable({ rows }: { rows: Array<Record<string, unknown>> }) {
+  const achieved = rows.filter((row) => String(row.status ?? '') === 'Achieved').length;
+  const notAchieved = rows.filter((row) => String(row.status ?? '') === 'Not Achieved').length;
+  const trendMessage = rows.length === 0
+    ? 'No KPI assessments captured yet.'
+    : `Trend snapshot: ${achieved} achieved, ${notAchieved} not achieved across ${rows.length} KPI entries.`;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-charcoal-500">{trendMessage}</p>
+      <SimpleTable
+        rows={rows}
+        cols={['kpi_name', 'assessment_period', 'target', 'actual_performance', 'manager_rating', 'status']}
+      />
+    </div>
+  );
+}

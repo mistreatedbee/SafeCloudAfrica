@@ -636,7 +636,7 @@ export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: 
   const employee = await getHrEmployeeById(companyId, employeeId);
   if (!employee) return { employee: null };
 
-  const [documents, contracts, leaveRequests, balances, timesheets, performance, disciplinary, monthlyHours, auditTrail, trainingRecords, incidents, healthExpiring, assignedTasks] = await Promise.all([
+  const [documents, contracts, leaveRequests, balances, timesheets, performance, disciplinary, monthlyHours, auditTrail, trainingRecords, incidents, healthExpiring, assignedTasks, kpiHistory] = await Promise.all([
     listHrRecords(companyId, 'hr_employee_documents', { employee_id: employeeId }),
     listHrRecords(companyId, 'hr_employment_contracts', { employee_id: employeeId }),
     listHrLeaveRequests(companyId, employeeId),
@@ -675,6 +675,54 @@ export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: 
         .limit(50);
       if (error) throw new Error(getErrorMessage(error));
       return (data ?? []) as Array<Record<string, unknown>>;
+    })(),
+    (async () => {
+      if (!employee.user_id) return [];
+      const { data: assessments, error: assessErr } = await insforge.database
+        .from('kpi_assessments')
+        .select('assessment_id,assessment_name,period_start_date,period_end_date,status,employee_id,employee_name_snapshot,manager_id,manager_name_snapshot')
+        .eq('organization_id', companyId)
+        .eq('employee_id', employee.user_id)
+        .order('period_end_date', { ascending: false })
+        .limit(100);
+      if (assessErr) throw new Error(getErrorMessage(assessErr));
+      const assessmentList = (assessments ?? []) as Array<Record<string, unknown>>;
+      const assessmentIds = assessmentList.map((a) => String(a.assessment_id)).filter(Boolean);
+      if (assessmentIds.length === 0) return [];
+
+      const { data: lines, error: linesErr } = await insforge.database
+        .from('kpi_assessment_lines')
+        .select('line_id,assessment_id,kpi_questionnaire,kpi_title,importance_rating,employee_own_rating,manager_rating,achievement_status,weighted_score')
+        .in('assessment_id', assessmentIds);
+      if (linesErr) throw new Error(getErrorMessage(linesErr));
+
+      const assessmentsById = new Map(assessmentList.map((a) => [String(a.assessment_id), a]));
+      return ((lines ?? []) as Array<Record<string, unknown>>).map((line) => {
+        const assessment = assessmentsById.get(String(line.assessment_id));
+        return {
+          line_id: line.line_id,
+          assessment_id: line.assessment_id,
+          kpi_name: line.kpi_questionnaire ?? line.kpi_title,
+          assessment_period: `${assessment?.period_start_date ?? ''} to ${assessment?.period_end_date ?? ''}`,
+          target: line.importance_rating ?? null,
+          actual_performance: line.weighted_score ?? null,
+          manager_rating: line.manager_rating ?? null,
+          status:
+            line.achievement_status === 'achieved'
+              ? 'Achieved'
+              : line.achievement_status === 'partially_achieved'
+                ? 'Partially Achieved'
+                : line.achievement_status === 'not_achieved'
+                  ? 'Not Achieved'
+                  : line.manager_rating == null
+                    ? 'Pending'
+                    : Number(line.manager_rating) >= 4
+                      ? 'Achieved'
+                      : Number(line.manager_rating) === 3
+                        ? 'Partially Achieved'
+                        : 'Not Achieved'
+        };
+      });
     })()
   ]);
 
@@ -692,6 +740,7 @@ export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: 
     incidents,
     healthExpiring,
     assignedTasks,
+    kpiHistory,
     auditTrail
   };
 }

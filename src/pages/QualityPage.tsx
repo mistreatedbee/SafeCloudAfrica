@@ -344,7 +344,7 @@ export function QualityPage() {
                 if (item.label === 'Document Control') navigate('/documents');
                 if (item.label === 'Customer Complaints') navigate('/dashboard/quality/complaints');
                 if (item.label === 'Internal & External Issues') navigate('/dashboard/quality/issues');
-                if (item.label === 'CAPA Management') navigate('/tasks');
+                if (item.label === 'CAPA Management') navigate('/dashboard/management/tasks?view=capa');
               }}
               className="flex flex-col items-center gap-3 p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all active:scale-[0.98]">
 

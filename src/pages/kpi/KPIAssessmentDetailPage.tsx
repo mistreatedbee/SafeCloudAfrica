@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
 import {
+  computeAchievementPercentage,
+  computeOverallScore,
   getKPIAssessment,
   listKPIAssessmentLines,
   normalizeAssessmentStatus,
@@ -24,6 +26,13 @@ function getAchievementLabel(line: KPIAssessmentLine): 'Not Achieved' | 'Partial
   return 'Achieved';
 }
 
+type LinePatch = {
+  employee_own_rating?: number;
+  manager_rating?: number;
+  notes?: string;
+  kpi_questionnaire?: string;
+};
+
 export function KPIAssessmentDetailPage() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
   const navigate = useNavigate();
@@ -32,6 +41,18 @@ export function KPIAssessmentDetailPage() {
   const [refresher, setRefresher] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lineDraft, setLineDraft] = useState<KPIAssessmentLine[]>([]);
+  const [employeeCommentsDraft, setEmployeeCommentsDraft] = useState('');
+  const [managerRemarksDraft, setManagerRemarksDraft] = useState('');
+  const [savingLineIds, setSavingLineIds] = useState<Record<string, boolean>>({});
+  const [savingAssessmentComments, setSavingAssessmentComments] = useState(false);
+
+  const lineTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const pendingLinePatchesRef = useRef<Map<string, LinePatch>>(new Map());
+  const inFlightLineSavesRef = useRef<Set<string>>(new Set());
+  const commentsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingCommentsPatchRef = useRef<{ employee_comments?: string; manager_remarks?: string }>({});
+  const inFlightCommentsSaveRef = useRef(false);
 
   const { data: assessment, loading: loadingAssess } = useAsync<KPIAssessment | null>(
     async () => {
@@ -70,6 +91,23 @@ export function KPIAssessmentDetailPage() {
     [activeCompanyId, assessmentId, refresher]
   );
 
+  useEffect(() => {
+    setLineDraft(lines ?? []);
+  }, [lines]);
+
+  useEffect(() => {
+    setEmployeeCommentsDraft(assessment?.employee_comments ?? '');
+    setManagerRemarksDraft(assessment?.manager_remarks ?? '');
+  }, [assessment?.employee_comments, assessment?.manager_remarks]);
+
+  useEffect(() => {
+    const lineTimers = lineTimeoutsRef.current;
+    return () => {
+      for (const timer of lineTimers.values()) clearTimeout(timer);
+      if (commentsTimeoutRef.current) clearTimeout(commentsTimeoutRef.current);
+    };
+  }, []);
+
   const normalizedStatus = normalizeAssessmentStatus(assessment?.status ?? 'draft');
   const isEmployeeAssignee = assessment?.employee_id === user?.id;
   const isManagerAssignee = assessment?.manager_id === user?.id;
@@ -81,7 +119,85 @@ export function KPIAssessmentDetailPage() {
   const canEditManagerRatings = !!assessment && (isManagerAssignee || isManagerRole || isAdmin) && (normalizedStatus === 'under_review' || normalizedStatus === 'in_progress');
   const canCloseAssessment = !!assessment && (isManagerAssignee || isManagerRole || isAdmin);
 
-  const unratedCount = useMemo(() => (lines ?? []).filter((line) => line.manager_rating == null).length, [lines]);
+  const unratedCount = useMemo(() => lineDraft.filter((line) => line.manager_rating == null).length, [lineDraft]);
+  const localOverallScore = useMemo(
+    () => computeOverallScore(lineDraft.map((line) => ({ manager_rating: line.manager_rating, importance_rating: line.importance_rating }))),
+    [lineDraft]
+  );
+  const localAchievementPercentage = useMemo(
+    () => computeAchievementPercentage(lineDraft.map((line) => ({ manager_rating: line.manager_rating, importance_rating: line.importance_rating }))),
+    [lineDraft]
+  );
+
+  const flushLineSave = async (lineId: string) => {
+    if (!activeCompanyId || !assessmentId || !assessment) return;
+    if (inFlightLineSavesRef.current.has(lineId)) return;
+    const patch = pendingLinePatchesRef.current.get(lineId);
+    if (!patch) return;
+    pendingLinePatchesRef.current.delete(lineId);
+
+    inFlightLineSavesRef.current.add(lineId);
+    setSavingLineIds((prev) => ({ ...prev, [lineId]: true }));
+    setError(null);
+    try {
+      await updateKPIAssessmentLine(lineId as any, assessment.assessment_id, activeCompanyId, patch as any);
+      setMessage('KPI Questionnaire changes saved.');
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to save KPI Questionnaire.');
+    } finally {
+      inFlightLineSavesRef.current.delete(lineId);
+      setSavingLineIds((prev) => ({ ...prev, [lineId]: false }));
+      if (pendingLinePatchesRef.current.has(lineId)) {
+        await flushLineSave(lineId);
+      }
+    }
+  };
+
+  const queueLineSave = (lineId: string, patch: LinePatch) => {
+    const current = pendingLinePatchesRef.current.get(lineId) ?? {};
+    pendingLinePatchesRef.current.set(lineId, { ...current, ...patch });
+    const existingTimer = lineTimeoutsRef.current.get(lineId);
+    if (existingTimer) clearTimeout(existingTimer);
+    const timer = setTimeout(() => {
+      void flushLineSave(lineId);
+    }, 450);
+    lineTimeoutsRef.current.set(lineId, timer);
+  };
+
+  const flushCommentsSave = async () => {
+    if (!activeCompanyId || !assessmentId || !user?.id || inFlightCommentsSaveRef.current) return;
+    const patch = pendingCommentsPatchRef.current;
+    if (!patch.employee_comments && !patch.manager_remarks) return;
+    pendingCommentsPatchRef.current = {};
+    inFlightCommentsSaveRef.current = true;
+    setSavingAssessmentComments(true);
+    setError(null);
+    try {
+      await updateKPIAssessment(assessmentId as any, activeCompanyId, patch, user.id as any);
+      setMessage('Comments saved successfully.');
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to save comments.');
+    } finally {
+      inFlightCommentsSaveRef.current = false;
+      setSavingAssessmentComments(false);
+      if (pendingCommentsPatchRef.current.employee_comments || pendingCommentsPatchRef.current.manager_remarks) {
+        await flushCommentsSave();
+      }
+    }
+  };
+
+  const queueCommentsSave = (patch: { employee_comments?: string; manager_remarks?: string }) => {
+    pendingCommentsPatchRef.current = { ...pendingCommentsPatchRef.current, ...patch };
+    if (commentsTimeoutRef.current) clearTimeout(commentsTimeoutRef.current);
+    commentsTimeoutRef.current = setTimeout(() => {
+      void flushCommentsSave();
+    }, 700);
+  };
+
+  const updateLineDraft = (lineId: string, patch: LinePatch) => {
+    setLineDraft((prev) => prev.map((line) => (line.line_id === lineId ? { ...line, ...patch } : line)));
+    queueLineSave(lineId, patch);
+  };
 
   const handleStatusChange = async (status: KpiAssessmentStatus) => {
     if (!activeCompanyId || !assessmentId || !user?.id) return;
@@ -99,32 +215,6 @@ export function KPIAssessmentDetailPage() {
       setRefresher((r) => r + 1);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to update KPI Assessment status.');
-    }
-  };
-
-  const handleUpdateLine = async (
-    lineId: string,
-    patch: { employee_own_rating?: number; manager_rating?: number; notes?: string; kpi_questionnaire?: string }
-  ) => {
-    if (!activeCompanyId || !assessmentId || !assessment) return;
-    setError(null);
-    try {
-      await updateKPIAssessmentLine(lineId as any, assessment.assessment_id, activeCompanyId, patch as any);
-      setMessage('KPI Questionnaire saved.');
-      setRefresher((r) => r + 1);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to save KPI Questionnaire.');
-    }
-  };
-
-  const handleUpdateAssessmentComments = async (patch: { employee_comments?: string; manager_remarks?: string }) => {
-    if (!activeCompanyId || !assessmentId || !user?.id) return;
-    try {
-      await updateKPIAssessment(assessmentId as any, activeCompanyId, patch, user.id as any);
-      setMessage('Comments saved successfully.');
-      setRefresher((r) => r + 1);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to save comments.');
     }
   };
 
@@ -168,8 +258,8 @@ export function KPIAssessmentDetailPage() {
     );
   }
 
-  const lineList = lines ?? [];
   const findingList = findings ?? [];
+  const isSavingAnyLine = Object.values(savingLineIds).some(Boolean);
 
   return (
     <div className="space-y-6">
@@ -177,6 +267,12 @@ export function KPIAssessmentDetailPage() {
         <button type="button" onClick={() => navigate('/modules/hr/kpis/assessments')} className="text-sm text-charcoal-500 hover:text-charcoal">
           Back to KPI Assessment
         </button>
+        {(isSavingAnyLine || savingAssessmentComments) && (
+          <div className="inline-flex items-center gap-2 text-xs text-charcoal-500">
+            <LoadingSpinner size={14} />
+            Saving changes...
+          </div>
+        )}
       </div>
 
       {error && <div className="bg-critical/5 border border-critical/20 rounded-lg p-3 text-sm text-critical">{error}</div>}
@@ -202,11 +298,11 @@ export function KPIAssessmentDetailPage() {
           </div>
           <div>
             <p className="text-xs text-charcoal-500">Overall score</p>
-            <p className="font-medium text-charcoal">{assessment.overall_score != null ? assessment.overall_score.toFixed(2) : '-'}</p>
+            <p className="font-medium text-charcoal">{localOverallScore != null ? localOverallScore.toFixed(2) : '-'}</p>
           </div>
           <div>
             <p className="text-xs text-charcoal-500">Achievement percentage</p>
-            <p className="font-medium text-charcoal">{assessment.achievement_percentage != null ? `${assessment.achievement_percentage.toFixed(1)}%` : '-'}</p>
+            <p className="font-medium text-charcoal">{localAchievementPercentage != null ? `${localAchievementPercentage.toFixed(1)}%` : '-'}</p>
           </div>
           <div>
             <p className="text-xs text-charcoal-500">Unrated Questionnaires</p>
@@ -265,7 +361,7 @@ export function KPIAssessmentDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {lineList.map((line) => {
+                {lineDraft.map((line) => {
                   const label = getAchievementLabel(line);
                   return (
                     <tr key={line.line_id} className="border-b border-surface-100 last:border-0">
@@ -277,7 +373,7 @@ export function KPIAssessmentDetailPage() {
                             value={line.employee_own_rating ?? ''}
                             onChange={(e) => {
                               const v = e.target.value ? Number(e.target.value) : undefined;
-                              handleUpdateLine(line.line_id, { employee_own_rating: v });
+                              updateLineDraft(line.line_id, { employee_own_rating: v });
                             }}
                             className="text-sm border border-surface-300 rounded px-2 py-1"
                           >
@@ -296,7 +392,7 @@ export function KPIAssessmentDetailPage() {
                             value={line.manager_rating ?? ''}
                             onChange={(e) => {
                               const v = e.target.value ? Number(e.target.value) : undefined;
-                              handleUpdateLine(line.line_id, { manager_rating: v });
+                              updateLineDraft(line.line_id, { manager_rating: v });
                             }}
                             className="text-sm border border-surface-300 rounded px-2 py-1"
                           >
@@ -320,11 +416,8 @@ export function KPIAssessmentDetailPage() {
                         {(canEditEmployeeInputs || canEditManagerRatings) ? (
                           <input
                             type="text"
-                            defaultValue={line.notes ?? ''}
-                            onBlur={(e) => {
-                              const v = e.target.value.trim();
-                              if (v !== (line.notes ?? '')) handleUpdateLine(line.line_id, { notes: v || undefined });
-                            }}
+                            value={line.notes ?? ''}
+                            onChange={(e) => updateLineDraft(line.line_id, { notes: e.target.value })}
                             className="text-sm border border-surface-300 rounded px-2 py-1 w-40"
                             placeholder="Comments"
                           />
@@ -355,10 +448,11 @@ export function KPIAssessmentDetailPage() {
           <h3 className="font-semibold text-charcoal mb-2">Employee comments</h3>
           {canEditEmployeeInputs ? (
             <textarea
-              defaultValue={assessment.employee_comments ?? ''}
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                if (v !== (assessment.employee_comments ?? '')) handleUpdateAssessmentComments({ employee_comments: v || undefined });
+              value={employeeCommentsDraft}
+              onChange={(e) => {
+                const v = e.target.value;
+                setEmployeeCommentsDraft(v);
+                queueCommentsSave({ employee_comments: v.trim() || undefined });
               }}
               className="w-full text-sm border border-surface-300 rounded-lg px-3 py-2 min-h-[90px]"
               placeholder="Add employee comments"
@@ -372,10 +466,11 @@ export function KPIAssessmentDetailPage() {
           <h3 className="font-semibold text-charcoal mb-2">Manager comments</h3>
           {canEditManagerRatings ? (
             <textarea
-              defaultValue={assessment.manager_remarks ?? ''}
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                if (v !== (assessment.manager_remarks ?? '')) handleUpdateAssessmentComments({ manager_remarks: v || undefined });
+              value={managerRemarksDraft}
+              onChange={(e) => {
+                const v = e.target.value;
+                setManagerRemarksDraft(v);
+                queueCommentsSave({ manager_remarks: v.trim() || undefined });
               }}
               className="w-full text-sm border border-surface-300 rounded-lg px-3 py-2 min-h-[90px]"
               placeholder="Add manager comments"

@@ -23,7 +23,7 @@ import { createIncidentCorrectiveAction } from '../../api/services/incidentCorre
 import { createEvidence } from '../../api/services/evidenceService';
 import { uploadFile } from '../../api/services/storageService';
 import { AffectedPersonSelector } from './AffectedPersonSelector';
-import { IncidentTimelineBuilder, type TimelineEvent } from './IncidentTimelineBuilder';
+import type { TimelineEvent } from './IncidentTimelineBuilder';
 import { UserMultiSelect } from '../ui/UserMultiSelect';
 
 const EVIDENCE_BUCKET = 'sca-evidence';
@@ -58,37 +58,31 @@ type UploadDraft = {
 };
 
 type InvestigationSectionKey =
-  | 'immediateCauses'
-  | 'rootCauseHuman'
-  | 'rootCauseWorkplace'
+  | 'unsafeActs'
+  | 'unsafeConditions'
+  | 'rootCauses'
   | 'systemFailure'
-  | 'contributingFactors'
-  | 'correctiveActions'
-  | 'lessonsLearnt';
+  | 'correctiveActions';
 
 const INVESTIGATION_SECTION_DEFINITIONS: Array<{
   key: InvestigationSectionKey;
   label: string;
   description: string;
 }> = [
-  { key: 'immediateCauses', label: 'Immediate Causes', description: 'Unsafe acts/conditions, task flow and risk context' },
-  { key: 'rootCauseHuman', label: 'Root Cause (Human Factors)', description: 'Human behavior and competency causes' },
-  { key: 'rootCauseWorkplace', label: 'Root Cause (Workplace Factors)', description: 'Workplace and operational environment causes' },
+  { key: 'unsafeActs', label: 'Unsafe Acts', description: 'Select all unsafe acts and add explanations' },
+  { key: 'unsafeConditions', label: 'Unsafe Conditions', description: 'Select all unsafe conditions and add explanations' },
+  { key: 'rootCauses', label: 'Root Causes', description: 'Human and workplace root cause analysis' },
   { key: 'systemFailure', label: 'System Failure', description: 'Management system and process breakdowns' },
-  { key: 'contributingFactors', label: 'Contributing Factors', description: 'Other factors that influenced the incident' },
-  { key: 'correctiveActions', label: 'Corrective Actions', description: 'Actions, ownership, conclusion and distribution' },
-  { key: 'lessonsLearnt', label: 'Lessons Learnt', description: 'Reusable learning points for prevention' }
+  { key: 'correctiveActions', label: 'Corrective Actions', description: 'Actions, ownership, conclusion and distribution' }
 ];
 
 function emptyInvestigationSectionSelection(): Record<InvestigationSectionKey, boolean> {
   return {
-    immediateCauses: false,
-    rootCauseHuman: false,
-    rootCauseWorkplace: false,
+    unsafeActs: false,
+    unsafeConditions: false,
+    rootCauses: false,
     systemFailure: false,
-    contributingFactors: false,
-    correctiveActions: false,
-    lessonsLearnt: false
+    correctiveActions: false
   };
 }
 
@@ -155,60 +149,18 @@ export function IncidentCreateModal(props: {
 
   const [investigationRequired, setInvestigationRequired] = useState(false);
   const [generateNcr, setGenerateNcr] = useState(false);
-  const [immediateCauseFlags, setImmediateCauseFlags] = useState({
-    unsafeAct: false,
-    unsafeCondition: false,
-    equipmentIssue: false,
-    otherImmediateCause: false
-  });
-  const [equipmentIssueExplanation, setEquipmentIssueExplanation] = useState('');
-  const [otherImmediateCauseExplanation, setOtherImmediateCauseExplanation] = useState('');
   const [actualOutcome, setActualOutcome] = useState('');
 
-  const [lossProduction, setLossProduction] = useState('');
-  const [lossFinancial, setLossFinancial] = useState('');
-  const [lossReputational, setLossReputational] = useState('');
-  const [lossDamageAsset, setLossDamageAsset] = useState('');
-  const [lossIllnessInjury, setLossIllnessInjury] = useState('');
-  const [lossIllness, setLossIllness] = useState('');
-  const [lossInjury, setLossInjury] = useState('');
-  const [lossCivilLiability, setLossCivilLiability] = useState('');
-  const [lossCriminalLiability, setLossCriminalLiability] = useState('');
-  const [lossVicariousLiability, setLossVicariousLiability] = useState('');
-  const [lossSubstandardQuality, setLossSubstandardQuality] = useState('');
   const [lossOther, setLossOther] = useState('');
   const [lossNotes, setLossNotes] = useState('');
-  const [lossTypes, setLossTypes] = useState<Record<string, boolean>>({
-    'production loss': false,
-    'financial loss': false,
-    'reputational loss': false,
-    damage: false,
-    illness: false,
-    injury: false,
-    'asset loss': false,
-    'civil liability': false,
-    'criminal liability': false,
-    'vicarious liability': false,
-    'sub-standard quality product/service': false
-  });
 
   const [unsafeActs, setUnsafeActs] = useState<Record<string, UnsafeCauseEntry>>({});
   const [unsafeConditions, setUnsafeConditions] = useState<Record<string, UnsafeCauseEntry>>({});
-  const [immediateCauseCategories, setImmediateCauseCategories] = useState<Record<string, CauseDetailEntry>>({});
-  const [immediateCauseNarrative, setImmediateCauseNarrative] = useState('');
-  const [immediateCauseParentCategory, setImmediateCauseParentCategory] = useState('');
-  const [immediateCauseSubcategory, setImmediateCauseSubcategory] = useState('');
-  const [immediateCauseSubcategoryManual, setImmediateCauseSubcategoryManual] = useState('');
   const [rootCauseHuman, setRootCauseHuman] = useState<Record<string, CauseDetailEntry>>({});
   const [rootCauseWorkplace, setRootCauseWorkplace] = useState<Record<string, CauseDetailEntry>>({});
   const [systemFailures, setSystemFailures] = useState<Record<string, CauseDetailEntry>>({});
-  const [instructionBreakdown, setInstructionBreakdown] = useState('');
-  const [taskSequence, setTaskSequence] = useState('');
   const [incidentTimelineEvents, setIncidentTimelineEvents] = useState<TimelineEvent[]>([]);
-  const [riskProfile, setRiskProfile] = useState('');
   const [potentialConsequence, setPotentialConsequence] = useState('');
-  const [contributingFactors, setContributingFactors] = useState('');
-  const [lessonsLearnt, setLessonsLearnt] = useState('');
   const [investigationTeam, setInvestigationTeam] = useState('');
   const [conclusion, setConclusion] = useState('');
   const [preparedBy, setPreparedBy] = useState('');
@@ -239,21 +191,15 @@ export function IncidentCreateModal(props: {
   );
   const calculatedRisk = riskLikelihood * riskSeverity;
   const calculatedRiskCategory = useMemo(() => getIncidentRiskCategory(calculatedRisk), [calculatedRisk]);
-  const immediateCauseSubcategories = useMemo(() => {
-    if (immediateCauseParentCategory === 'Unsafe Act') return Object.keys(IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS);
-    if (immediateCauseParentCategory === 'Unsafe Condition') return Object.keys(IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS);
-    if (immediateCauseParentCategory === 'System Failure') return [...SYSTEM_FAILURE_OPTIONS];
-    return [];
-  }, [immediateCauseParentCategory]);
   const causeLinkOptions = useMemo(() => {
     const items: Array<{ type: InvestigationCauseLinkType; text: string }> = [];
-    for (const entry of Object.values(immediateCauseCategories)) items.push({ type: 'unsafe_act', text: `${entry.group}: ${entry.item}` });
-    if (immediateCauseNarrative.trim()) items.push({ type: 'unsafe_act', text: immediateCauseNarrative.trim() });
+    for (const entry of Object.values(unsafeActs)) items.push({ type: 'unsafe_act', text: `${entry.group}: ${entry.item}` });
+    for (const entry of Object.values(unsafeConditions)) items.push({ type: 'unsafe_condition', text: `${entry.group}: ${entry.item}` });
     for (const entry of Object.values(rootCauseHuman)) items.push({ type: 'root_cause', text: `${entry.group}: ${entry.item}` });
     for (const entry of Object.values(rootCauseWorkplace)) items.push({ type: 'root_cause', text: `${entry.group}: ${entry.item}` });
     for (const entry of Object.values(systemFailures)) items.push({ type: 'system_failure', text: `${entry.group}: ${entry.item}` });
     return items;
-  }, [immediateCauseCategories, immediateCauseNarrative, rootCauseHuman, rootCauseWorkplace, systemFailures]);
+  }, [unsafeActs, unsafeConditions, rootCauseHuman, rootCauseWorkplace, systemFailures]);
 
   const canSubmit = useMemo(() => {
     return (
@@ -267,13 +213,6 @@ export function IncidentCreateModal(props: {
       reportedTo.trim().length > 0
     );
   }, [title, briefDescription, finalIncidentType, finalSubcategory, natureOfIncident, causeOfIncident, reportedBy, reportedTo]);
-
-  function parseOptionalNumber(value: string): number | null {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
 
   function releasePreviews(items: UploadDraft[]) {
     for (const item of items) {
@@ -307,58 +246,16 @@ export function IncidentCreateModal(props: {
     setRiskSeverity(3);
     setInvestigationRequired(false);
     setGenerateNcr(false);
-    setImmediateCauseFlags({
-      unsafeAct: false,
-      unsafeCondition: false,
-      equipmentIssue: false,
-      otherImmediateCause: false
-    });
-    setEquipmentIssueExplanation('');
-    setOtherImmediateCauseExplanation('');
     setActualOutcome('');
-    setLossProduction('');
-    setLossFinancial('');
-    setLossReputational('');
-    setLossDamageAsset('');
-    setLossIllnessInjury('');
-    setLossIllness('');
-    setLossInjury('');
-    setLossCivilLiability('');
-    setLossCriminalLiability('');
-    setLossVicariousLiability('');
-    setLossSubstandardQuality('');
     setLossOther('');
     setLossNotes('');
-    setLossTypes({
-      'production loss': false,
-      'financial loss': false,
-      'reputational loss': false,
-      damage: false,
-      illness: false,
-      injury: false,
-      'asset loss': false,
-      'civil liability': false,
-      'criminal liability': false,
-      'vicarious liability': false,
-      'sub-standard quality product/service': false
-    });
     setUnsafeActs({});
     setUnsafeConditions({});
-    setImmediateCauseCategories({});
-    setImmediateCauseNarrative('');
-    setImmediateCauseParentCategory('');
-    setImmediateCauseSubcategory('');
-    setImmediateCauseSubcategoryManual('');
     setRootCauseHuman({});
     setRootCauseWorkplace({});
     setSystemFailures({});
-    setInstructionBreakdown('');
-    setTaskSequence('');
     setIncidentTimelineEvents([]);
-    setRiskProfile('');
     setPotentialConsequence('');
-    setContributingFactors('');
-    setLessonsLearnt('');
     setInvestigationTeam('');
     setConclusion('');
     setPreparedBy('');
@@ -424,34 +321,8 @@ export function IncidentCreateModal(props: {
     setRiskSeverity(Math.max(1, Math.min(5, Number((editingIncident as any).risk_severity_1_5 ?? 3))) as 1 | 2 | 3 | 4 | 5);
     setInvestigationRequired(Boolean((editingIncident as any).investigation_required));
     setGenerateNcr(false);
-    setLossProduction((editingIncident as any).loss_production_value != null ? String((editingIncident as any).loss_production_value) : '');
-    setLossFinancial((editingIncident as any).loss_financial_value != null ? String((editingIncident as any).loss_financial_value) : '');
-    setLossReputational((editingIncident as any).loss_reputational_value != null ? String((editingIncident as any).loss_reputational_value) : '');
-    setLossDamageAsset((editingIncident as any).loss_damage_asset_value != null ? String((editingIncident as any).loss_damage_asset_value) : '');
-    setLossIllnessInjury((editingIncident as any).loss_illness_injury_value != null ? String((editingIncident as any).loss_illness_injury_value) : '');
-    setLossIllness((editingIncident as any).loss_illness_value != null ? String((editingIncident as any).loss_illness_value) : '');
-    setLossInjury((editingIncident as any).loss_injury_value != null ? String((editingIncident as any).loss_injury_value) : '');
-    setLossCivilLiability((editingIncident as any).loss_civil_liability_value != null ? String((editingIncident as any).loss_civil_liability_value) : '');
-    setLossCriminalLiability((editingIncident as any).loss_criminal_liability_value != null ? String((editingIncident as any).loss_criminal_liability_value) : '');
-    setLossVicariousLiability((editingIncident as any).loss_vicarious_liability_value != null ? String((editingIncident as any).loss_vicarious_liability_value) : '');
-    setLossSubstandardQuality((editingIncident as any).loss_substandard_quality_value != null ? String((editingIncident as any).loss_substandard_quality_value) : '');
     setLossOther((editingIncident as any).loss_other_text ?? '');
     setLossNotes((editingIncident as any).loss_notes ?? '');
-    const selectedLossTypes = Array.isArray((editingIncident as any).loss_types) ? (editingIncident as any).loss_types : [];
-    setLossTypes({
-      'production loss': selectedLossTypes.includes('production loss'),
-      'financial loss': selectedLossTypes.includes('financial loss'),
-      'reputational loss': selectedLossTypes.includes('reputational loss'),
-      damage: selectedLossTypes.includes('damage'),
-      illness: selectedLossTypes.includes('illness'),
-      injury: selectedLossTypes.includes('injury'),
-      'asset loss': selectedLossTypes.includes('asset loss'),
-      'civil liability': selectedLossTypes.includes('civil liability'),
-      'criminal liability': selectedLossTypes.includes('criminal liability'),
-      'vicarious liability': selectedLossTypes.includes('vicarious liability'),
-      'sub-standard quality product/service': selectedLossTypes.includes('sub-standard quality product/service')
-    });
-
     const mapCauseEntries = (value: unknown) => {
       const next: Record<string, UnsafeCauseEntry> = {};
       if (!Array.isArray(value)) return next;
@@ -470,33 +341,20 @@ export function IncidentCreateModal(props: {
     const mappedUnsafeConditions = mapCauseEntries((editingIncident as any).immediate_causes_unsafe_conditions);
     setUnsafeActs(mappedUnsafeActs);
     setUnsafeConditions(mappedUnsafeConditions);
-    setImmediateCauseCategories({});
     setRootCauseHuman({});
     setRootCauseWorkplace({});
     setSystemFailures({});
-    setInstructionBreakdown('');
-    setTaskSequence('');
     setIncidentTimelineEvents([]);
-    setRiskProfile('');
     setPotentialConsequence('');
-    setContributingFactors('');
-    setLessonsLearnt('');
     setInvestigationTeam('');
     setConclusion('');
     setPreparedBy('');
     setDistributionList('');
     setInvestigationSections({
       ...emptyInvestigationSectionSelection(),
-      immediateCauses: Object.keys(mappedUnsafeActs).length > 0 || Object.keys(mappedUnsafeConditions).length > 0
+      unsafeActs: Object.keys(mappedUnsafeActs).length > 0,
+      unsafeConditions: Object.keys(mappedUnsafeConditions).length > 0
     });
-    setImmediateCauseFlags({
-      unsafeAct: Object.keys(mappedUnsafeActs).length > 0,
-      unsafeCondition: Object.keys(mappedUnsafeConditions).length > 0,
-      equipmentIssue: false,
-      otherImmediateCause: false
-    });
-    setEquipmentIssueExplanation('');
-    setOtherImmediateCauseExplanation('');
     setActualOutcome(String((editingIncident as any)?.metadata?.actualOutcome ?? ''));
     setEvidenceUploads([]);
     setInvestigationUploads([]);
@@ -510,12 +368,7 @@ export function IncidentCreateModal(props: {
       try {
         const inv = await getIncidentInvestigation(props.companyId, editingIncident.id);
         if (!inv) return;
-        setInstructionBreakdown(inv.instruction_breakdown ?? '');
-        setTaskSequence(inv.task_sequence ?? '');
-        setRiskProfile(inv.risk_profile ?? '');
         setPotentialConsequence(inv.potential_consequence ?? '');
-        setContributingFactors(inv.contributing_factors ?? '');
-        setLessonsLearnt(inv.lessons_learnt ?? '');
         setConclusion(inv.conclusion ?? '');
         setPreparedBy(inv.prepared_by ?? '');
         setInvestigationTeam(Array.isArray(inv.investigation_team) ? inv.investigation_team.join(', ') : '');
@@ -530,42 +383,24 @@ export function IncidentCreateModal(props: {
             .filter((e) => e.timestamp || e.notes);
           setIncidentTimelineEvents(events);
         }
-        if (Array.isArray(inv.immediate_causes)) {
-          const next: Record<string, CauseDetailEntry> = {};
-          for (const entry of inv.immediate_causes as any[]) {
-            const group = String(entry?.group ?? '').trim();
-            const item = String(entry?.item ?? '').trim();
-            if (!group || !item) continue;
-            next[makeCauseKey(group, item)] = { group, item, note: String(entry?.note ?? '') };
-          }
-          setImmediateCauseCategories(next);
-        }
-        const hasImmediateCauses = (Array.isArray(inv.immediate_causes) && inv.immediate_causes.length > 0)
-          || (Array.isArray((editingIncident as any)?.immediate_causes_unsafe_acts) && (editingIncident as any).immediate_causes_unsafe_acts.length > 0)
-          || (Array.isArray((editingIncident as any)?.immediate_causes_unsafe_conditions) && (editingIncident as any).immediate_causes_unsafe_conditions.length > 0)
-          || Boolean((inv.instruction_breakdown ?? '').trim())
-          || Boolean((inv.task_sequence ?? '').trim())
-          || Boolean((inv.event_timeline ?? '').trim())
-          || Boolean((inv.risk_profile ?? '').trim())
-          || Boolean((inv.potential_consequence ?? '').trim());
-        const hasRootHuman = Array.isArray(inv.root_causes_human) && inv.root_causes_human.length > 0;
-        const hasRootWorkplace = Array.isArray(inv.root_causes_workplace) && inv.root_causes_workplace.length > 0;
+        const hasUnsafeActs = (Array.isArray((editingIncident as any)?.immediate_causes_unsafe_acts) && (editingIncident as any).immediate_causes_unsafe_acts.length > 0)
+          || (Array.isArray(inv.immediate_causes) && inv.immediate_causes.some((entry: any) => String(entry?.group ?? '').trim() in IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS));
+        const hasUnsafeConditions = (Array.isArray((editingIncident as any)?.immediate_causes_unsafe_conditions) && (editingIncident as any).immediate_causes_unsafe_conditions.length > 0)
+          || (Array.isArray(inv.immediate_causes) && inv.immediate_causes.some((entry: any) => String(entry?.group ?? '').trim() in IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS));
+        const hasRootCauses = (Array.isArray(inv.root_causes_human) && inv.root_causes_human.length > 0)
+          || (Array.isArray(inv.root_causes_workplace) && inv.root_causes_workplace.length > 0);
         const hasSystemFailures = Array.isArray(inv.system_failures) && inv.system_failures.length > 0;
-        const hasContributingFactors = Boolean((inv.contributing_factors ?? '').trim());
         const hasCorrectiveActions = Boolean((inv.notes ?? '').trim())
           || Boolean((inv.conclusion ?? '').trim())
           || Boolean((inv.prepared_by ?? '').trim())
           || (Array.isArray(inv.investigation_team) && inv.investigation_team.length > 0)
           || (Array.isArray(inv.distributions) && inv.distributions.length > 0);
-        const hasLessonsLearnt = Boolean((inv.lessons_learnt ?? '').trim());
         setInvestigationSections({
-          immediateCauses: hasImmediateCauses,
-          rootCauseHuman: hasRootHuman,
-          rootCauseWorkplace: hasRootWorkplace,
+          unsafeActs: hasUnsafeActs,
+          unsafeConditions: hasUnsafeConditions,
+          rootCauses: hasRootCauses,
           systemFailure: hasSystemFailures,
-          contributingFactors: hasContributingFactors,
-          correctiveActions: hasCorrectiveActions,
-          lessonsLearnt: hasLessonsLearnt
+          correctiveActions: hasCorrectiveActions
         });
         if (Array.isArray(inv.root_causes_human)) {
           const next: Record<string, CauseDetailEntry> = {};
@@ -742,21 +577,18 @@ export function IncidentCreateModal(props: {
   }
 
   function buildImmediateCausesPayload() {
-    const payload: Array<{ group: string; item: string; note: string }> = [
-      ...Object.values(immediateCauseCategories).map((entry) => ({
+    return [
+      ...Object.values(unsafeActs).map((entry) => ({
+        group: entry.group,
+        item: entry.item,
+        note: entry.note ?? ''
+      })),
+      ...Object.values(unsafeConditions).map((entry) => ({
         group: entry.group,
         item: entry.item,
         note: entry.note ?? ''
       }))
     ];
-    if (immediateCauseNarrative.trim()) {
-      payload.push({
-        group: immediateCauseParentCategory || 'Immediate Cause',
-        item: immediateCauseSubcategoryManual.trim() || immediateCauseSubcategory || 'Manual entry',
-        note: immediateCauseNarrative.trim()
-      });
-    }
-    return payload;
   }
 
   async function createCorrectiveActionRecords(incidentId: UUID) {
@@ -798,9 +630,6 @@ export function IncidentCreateModal(props: {
         .filter(Boolean);
       const unsafeActsData = Object.values(unsafeActs);
       const unsafeConditionsData = Object.values(unsafeConditions);
-      const selectedLossTypes = Object.entries(lossTypes)
-        .filter(([, selected]) => selected)
-        .map(([type]) => type);
       const incidentTitle = title.trim();
       const affectedPersonValue = affectedPersonName.trim() || undefined;
       const incidentTypeValue = finalIncidentType;
@@ -823,18 +652,18 @@ export function IncidentCreateModal(props: {
           investigationRequired,
           unsafeActs: unsafeActsData,
           unsafeConditions: unsafeConditionsData,
-          lossProductionValue: parseOptionalNumber(lossProduction),
-          lossFinancialValue: parseOptionalNumber(lossFinancial),
-          lossReputationalValue: parseOptionalNumber(lossReputational),
-          lossDamageAssetValue: parseOptionalNumber(lossDamageAsset),
-          lossIllnessInjuryValue: parseOptionalNumber(lossIllnessInjury),
-          lossIllnessValue: parseOptionalNumber(lossIllness),
-          lossInjuryValue: parseOptionalNumber(lossInjury),
-          lossCivilLiabilityValue: parseOptionalNumber(lossCivilLiability),
-          lossCriminalLiabilityValue: parseOptionalNumber(lossCriminalLiability),
-          lossVicariousLiabilityValue: parseOptionalNumber(lossVicariousLiability),
-          lossSubstandardQualityValue: parseOptionalNumber(lossSubstandardQuality),
-          lossTypes: selectedLossTypes.length > 0 ? selectedLossTypes : null,
+          lossProductionValue: null,
+          lossFinancialValue: null,
+          lossReputationalValue: null,
+          lossDamageAssetValue: null,
+          lossIllnessInjuryValue: null,
+          lossIllnessValue: null,
+          lossInjuryValue: null,
+          lossCivilLiabilityValue: null,
+          lossCriminalLiabilityValue: null,
+          lossVicariousLiabilityValue: null,
+          lossSubstandardQualityValue: null,
+          lossTypes: null,
           lossOtherText: lossOther.trim() || null,
           lossNotes: lossNotes.trim() || null,
           riskSeverity1To5: riskSeverity,
@@ -856,20 +685,15 @@ export function IncidentCreateModal(props: {
             actorUserId: props.createdByUserId,
             patch: {
               notes: actualOutcome.trim() ? `Actual outcome: ${actualOutcome.trim()}` : null,
-              instruction_breakdown: instructionBreakdown.trim() || null,
-              task_sequence: taskSequence.trim() || null,
               event_timeline: incidentTimelineEvents
                 .map((event) => `${event.timestamp} - ${event.notes}`.trim())
                 .join('\n') || null,
               risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
-              risk_profile: riskProfile.trim() || null,
               potential_consequence: potentialConsequence.trim() || null,
               immediate_causes: buildImmediateCausesPayload(),
               root_causes_human: Object.values(rootCauseHuman),
               root_causes_workplace: Object.values(rootCauseWorkplace),
               system_failures: Object.values(systemFailures),
-              contributing_factors: [contributingFactors.trim(), equipmentIssueExplanation.trim(), otherImmediateCauseExplanation.trim()].filter(Boolean).join('\n') || null,
-              lessons_learnt: lessonsLearnt.trim() || null,
               conclusion: conclusion.trim() || null,
               prepared_by: preparedBy.trim() || null,
               investigation_team: investigationTeam
@@ -904,18 +728,18 @@ export function IncidentCreateModal(props: {
           unsafeActs: unsafeActsData,
           unsafeConditions: unsafeConditionsData,
           losses: {
-            productionLoss: parseOptionalNumber(lossProduction),
-            financialLoss: parseOptionalNumber(lossFinancial),
-            reputationalLoss: parseOptionalNumber(lossReputational),
-            damageAssetLoss: parseOptionalNumber(lossDamageAsset),
-            illnessInjuryImpact: parseOptionalNumber(lossIllnessInjury),
-            illnessLoss: parseOptionalNumber(lossIllness),
-            injuryLoss: parseOptionalNumber(lossInjury),
-            civilLiabilityLoss: parseOptionalNumber(lossCivilLiability),
-            criminalLiabilityLoss: parseOptionalNumber(lossCriminalLiability),
-            vicariousLiabilityLoss: parseOptionalNumber(lossVicariousLiability),
-            substandardQualityLoss: parseOptionalNumber(lossSubstandardQuality),
-            types: selectedLossTypes,
+            productionLoss: null,
+            financialLoss: null,
+            reputationalLoss: null,
+            damageAssetLoss: null,
+            illnessInjuryImpact: null,
+            illnessLoss: null,
+            injuryLoss: null,
+            civilLiabilityLoss: null,
+            criminalLiabilityLoss: null,
+            vicariousLiabilityLoss: null,
+            substandardQualityLoss: null,
+            types: [],
             other: lossOther.trim() || null,
             notes: lossNotes.trim() || null
           },
@@ -941,20 +765,15 @@ export function IncidentCreateModal(props: {
             actorUserId: props.createdByUserId,
             patch: {
               notes: actualOutcome.trim() ? `Actual outcome: ${actualOutcome.trim()}` : null,
-              instruction_breakdown: instructionBreakdown.trim() || null,
-              task_sequence: taskSequence.trim() || null,
               event_timeline: incidentTimelineEvents
                 .map((event) => `${event.timestamp} - ${event.notes}`.trim())
                 .join('\n') || null,
               risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
-              risk_profile: riskProfile.trim() || null,
               potential_consequence: potentialConsequence.trim() || null,
               immediate_causes: buildImmediateCausesPayload(),
               root_causes_human: Object.values(rootCauseHuman),
               root_causes_workplace: Object.values(rootCauseWorkplace),
               system_failures: Object.values(systemFailures),
-              contributing_factors: [contributingFactors.trim(), equipmentIssueExplanation.trim(), otherImmediateCauseExplanation.trim()].filter(Boolean).join('\n') || null,
-              lessons_learnt: lessonsLearnt.trim() || null,
               conclusion: conclusion.trim() || null,
               prepared_by: preparedBy.trim() || null,
               investigation_team: investigationTeam
@@ -1126,13 +945,6 @@ export function IncidentCreateModal(props: {
                       disabled={!isSelected}
                       placeholder="Explanation / notes"
                       className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal disabled:bg-surface-100 disabled:text-charcoal-400"
-                    />
-                    <input
-                      type="file"
-                      multiple
-                      disabled={!isSelected}
-                      onChange={(e) => addUploads(e.target.files, 'investigation', `${groupName}: ${item}`)}
-                      className="w-full text-xs disabled:opacity-60"
                     />
                   </div>
                 );
@@ -1410,73 +1222,17 @@ export function IncidentCreateModal(props: {
           <details className="border-t border-surface-200 pt-4">
             <summary className="cursor-pointer text-sm font-semibold text-charcoal py-2">Losses (optional)</summary>
             <div className="pt-3 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              {Object.keys(lossTypes).map((type) => (
-                <label key={type} className="flex items-center gap-2 text-sm text-charcoal">
-                  <input
-                    type="checkbox"
-                    checked={lossTypes[type]}
-                    onChange={(e) => setLossTypes((prev) => ({ ...prev, [type]: e.target.checked }))}
-                    className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
-                  />
-                  <span className="capitalize">{type}</span>
-                </label>
-              ))}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <p className="text-xs text-charcoal-500">Describe losses in free text (no fixed value list).</p>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Production loss</label>
-                <input value={lossProduction} onChange={(e) => setLossProduction(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Losses description</label>
+                <textarea
+                  value={lossNotes}
+                  onChange={(e) => setLossNotes(e.target.value)}
+                  rows={4}
+                  placeholder="Describe financial, operational, reputational, legal, injury, or any other losses in your own words."
+                  className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Financial loss</label>
-                <input value={lossFinancial} onChange={(e) => setLossFinancial(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Reputational loss</label>
-                <input value={lossReputational} onChange={(e) => setLossReputational(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Damage / asset loss</label>
-                <input value={lossDamageAsset} onChange={(e) => setLossDamageAsset(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Illness/injury impact</label>
-                <input value={lossIllnessInjury} onChange={(e) => setLossIllnessInjury(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Illness</label>
-                <input value={lossIllness} onChange={(e) => setLossIllness(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Injury</label>
-                <input value={lossInjury} onChange={(e) => setLossInjury(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Civil liability</label>
-                <input value={lossCivilLiability} onChange={(e) => setLossCivilLiability(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Criminal liability</label>
-                <input value={lossCriminalLiability} onChange={(e) => setLossCriminalLiability(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Vicarious liability</label>
-                <input value={lossVicariousLiability} onChange={(e) => setLossVicariousLiability(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Sub-standard quality product/service</label>
-                <input value={lossSubstandardQuality} onChange={(e) => setLossSubstandardQuality(e.target.value)} type="number" step="0.01" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Other loss</label>
-                <input value={lossOther} onChange={(e) => setLossOther(e.target.value)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Loss notes</label>
-                <textarea value={lossNotes} onChange={(e) => setLossNotes(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-              </div>
-            </div>
             </div>
           </details>
 
@@ -1540,16 +1296,6 @@ export function IncidentCreateModal(props: {
             {investigationRequired && (
               <div className="space-y-5">
                 <div className="rounded-xl border border-surface-200 p-4">
-                  <p className="text-sm font-semibold text-charcoal">Immediate cause triggers</p>
-                  <p className="text-xs text-charcoal-500 mt-0.5">Select only relevant triggers. Detailed fields will only appear for selected triggers.</p>
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <label className="flex items-center gap-2 text-sm text-charcoal"><input type="checkbox" checked={immediateCauseFlags.unsafeAct} onChange={(e) => { setImmediateCauseFlags((prev) => ({ ...prev, unsafeAct: e.target.checked })); if (e.target.checked) setInvestigationSection('immediateCauses', true); }} className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal" />Unsafe Act</label>
-                    <label className="flex items-center gap-2 text-sm text-charcoal"><input type="checkbox" checked={immediateCauseFlags.unsafeCondition} onChange={(e) => { setImmediateCauseFlags((prev) => ({ ...prev, unsafeCondition: e.target.checked })); if (e.target.checked) setInvestigationSection('immediateCauses', true); }} className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal" />Unsafe Condition</label>
-                    <label className="flex items-center gap-2 text-sm text-charcoal"><input type="checkbox" checked={immediateCauseFlags.equipmentIssue} onChange={(e) => { setImmediateCauseFlags((prev) => ({ ...prev, equipmentIssue: e.target.checked })); if (e.target.checked) setInvestigationSection('immediateCauses', true); }} className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal" />Equipment Issue</label>
-                    <label className="flex items-center gap-2 text-sm text-charcoal"><input type="checkbox" checked={immediateCauseFlags.otherImmediateCause} onChange={(e) => { setImmediateCauseFlags((prev) => ({ ...prev, otherImmediateCause: e.target.checked })); if (e.target.checked) setInvestigationSection('immediateCauses', true); }} className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal" />Other Immediate Cause</label>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-surface-200 p-4">
                   <p className="text-sm font-semibold text-charcoal">Investigation sections</p>
                   <p className="text-xs text-charcoal-500 mt-0.5">All sections are collapsed by default. Click a section card to expand or collapse.</p>
                   <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
@@ -1570,131 +1316,20 @@ export function IncidentCreateModal(props: {
                   </div>
                 </div>
 
+                {renderInvestigationCard('unsafeActs', 'Unsafe Acts', renderCauseGroups('Unsafe Acts (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, 'acts', unsafeActs))}
+
+                {renderInvestigationCard('unsafeConditions', 'Unsafe Conditions', renderCauseGroups('Unsafe Conditions (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS, 'conditions', unsafeConditions))}
+
                 {renderInvestigationCard(
-                  'immediateCauses',
-                  'Immediate Causes',
+                  'rootCauses',
+                  'Root Causes',
                   <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Instruction breakdown / flow</label>
-                      <textarea value={instructionBreakdown} onChange={(e) => setInstructionBreakdown(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Task sequence</label>
-                      <textarea value={taskSequence} onChange={(e) => setTaskSequence(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Parent category</label>
-                        <select value={immediateCauseParentCategory} onChange={(e) => setImmediateCauseParentCategory(e.target.value)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal">
-                          <option value="">Select category</option>
-                          <option value="Unsafe Act">Unsafe Act</option>
-                          <option value="Unsafe Condition">Unsafe Condition</option>
-                          <option value="System Failure">System Failure</option>
-                          <option value="Other">Other</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Subcategory</label>
-                        <select value={immediateCauseSubcategory} onChange={(e) => setImmediateCauseSubcategory(e.target.value)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal">
-                          <option value="">Select subcategory</option>
-                          {immediateCauseSubcategories.map((entry) => (<option key={entry} value={entry}>{entry}</option>))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Manual subcategory</label>
-                        <input value={immediateCauseSubcategoryManual} onChange={(e) => setImmediateCauseSubcategoryManual(e.target.value)} placeholder="Type custom subcategory" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Immediate cause explanation (free text)</label>
-                      <textarea value={immediateCauseNarrative} onChange={(e) => setImmediateCauseNarrative(e.target.value)} rows={3} placeholder="Describe the immediate cause in your own words." className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                    </div>
-                    <IncidentTimelineBuilder events={incidentTimelineEvents} onChange={setIncidentTimelineEvents} />
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Likelihood (1-5)</label>
-                        <input type="number" min={1} max={5} value={riskLikelihood} onChange={(e) => setRiskLikelihood(Math.max(1, Math.min(5, Number(e.target.value || 1))) as 1 | 2 | 3 | 4 | 5)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Severity (1-5)</label>
-                        <input type="number" min={1} max={5} value={riskSeverity} onChange={(e) => setRiskSeverity(Math.max(1, Math.min(5, Number(e.target.value || 1))) as 1 | 2 | 3 | 4 | 5)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated risk</label>
-                        <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm font-semibold bg-surface-50">{calculatedRisk}</div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated category</label>
-                        <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm font-semibold bg-surface-50">{calculatedRiskCategory}</div>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Risk profile (Hazards)</label>
-                      <textarea value={riskProfile} onChange={(e) => setRiskProfile(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-1.5">Consequence / Potential consequence</label>
-                      <textarea value={potentialConsequence} onChange={(e) => setPotentialConsequence(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                    </div>
-                    {immediateCauseFlags.unsafeAct && renderCauseGroups('Unsafe Acts (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, 'acts', unsafeActs)}
-                    {immediateCauseFlags.unsafeCondition && renderCauseGroups('Unsafe Conditions (tickbox + explanation)', IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS, 'conditions', unsafeConditions)}
-                    {immediateCauseFlags.equipmentIssue && (
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Equipment issue explanation</label>
-                        <textarea value={equipmentIssueExplanation} onChange={(e) => setEquipmentIssueExplanation(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                      </div>
-                    )}
-                    {immediateCauseFlags.otherImmediateCause && (
-                      <div>
-                        <label className="block text-sm font-medium text-charcoal mb-1.5">Other immediate cause explanation</label>
-                        <textarea value={otherImmediateCauseExplanation} onChange={(e) => setOtherImmediateCauseExplanation(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                      </div>
-                    )}
-                    {renderDetailedCauseGroups('Additional immediate cause details', IMMEDIATE_CAUSES_UNSAFE_ACTS_GROUPS, immediateCauseCategories, setImmediateCauseCategories)}
+                    {renderDetailedCauseGroups('Root Cause Analysis - Human Factors', ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES, rootCauseHuman, setRootCauseHuman)}
+                    {renderDetailedCauseGroups('Root Cause Analysis - Workplace Factors', ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES, rootCauseWorkplace, setRootCauseWorkplace)}
                   </div>
                 )}
 
-                {renderInvestigationCard(
-                  'rootCauseHuman',
-                  'Root Cause (Human Factors)',
-                  renderDetailedCauseGroups('Root Cause Analysis - Human Factors', ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES, rootCauseHuman, setRootCauseHuman)
-                )}
-
-                {renderInvestigationCard(
-                  'rootCauseWorkplace',
-                  'Root Cause (Workplace Factors)',
-                  renderDetailedCauseGroups('Root Cause Analysis - Workplace Factors', ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES, rootCauseWorkplace, setRootCauseWorkplace)
-                )}
-
-                {renderInvestigationCard(
-                  'systemFailure',
-                  'System Failure',
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {SYSTEM_FAILURE_OPTIONS.map((option) => {
-                      const key = makeCauseKey('System Failure', option);
-                      const selected = Boolean(systemFailures[key]);
-                      return (
-                        <div key={key} className="rounded border border-surface-100 p-2 space-y-2">
-                          <label className="flex items-center gap-2 text-sm text-charcoal">
-                            <input type="checkbox" checked={selected} onChange={(e) => toggleDetailedCause(setSystemFailures, 'System Failure', option, e.target.checked)} className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal" />
-                            <span>{option}</span>
-                          </label>
-                          <input value={systemFailures[key]?.note ?? ''} onChange={(e) => updateDetailedCauseNote(setSystemFailures, key, e.target.value)} disabled={!selected} placeholder="Explanation / notes" className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal disabled:bg-surface-100 disabled:text-charcoal-400" />
-                          <input type="file" multiple disabled={!selected} onChange={(e) => addUploads(e.target.files, 'investigation', `System Failure: ${option}`)} className="w-full text-xs disabled:opacity-60" />
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {renderInvestigationCard(
-                  'contributingFactors',
-                  'Contributing Factors',
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Contributing factors</label>
-                    <textarea value={contributingFactors} onChange={(e) => setContributingFactors(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                  </div>
-                )}
+                {renderInvestigationCard('systemFailure', 'System Failures', renderDetailedCauseGroups('System Failure Analysis', { 'System Failures': SYSTEM_FAILURE_OPTIONS }, systemFailures, setSystemFailures))}
 
                 {renderInvestigationCard(
                   'correctiveActions',
@@ -1780,15 +1415,6 @@ export function IncidentCreateModal(props: {
                       <label className="block text-sm font-medium text-charcoal mb-1.5">Distribution list (copy to)</label>
                       <input value={distributionList} onChange={(e) => setDistributionList(e.target.value)} placeholder="Comma-separated emails/names" className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
                     </div>
-                  </div>
-                )}
-
-                {renderInvestigationCard(
-                  'lessonsLearnt',
-                  'Lessons Learnt',
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Lessons learnt</label>
-                    <textarea value={lessonsLearnt} onChange={(e) => setLessonsLearnt(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
                   </div>
                 )}
 

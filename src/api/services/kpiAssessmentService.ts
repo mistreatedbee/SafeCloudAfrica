@@ -144,6 +144,7 @@ export async function createKPIAssessment(input: CreateKPIAssessmentInput): Prom
       kpi_item_id: l.kpiItemId ?? null,
       custom_kpi_title: l.customKpiTitle ?? null,
       kpi_title: l.kpiTitle,
+      kpi_questionnaire: l.kpiTitle,
       importance_rating: l.importanceRating
     }));
     const { error: errLines } = await insforge.database.from('kpi_assessment_lines').insert(lineRows);

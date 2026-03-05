@@ -292,7 +292,7 @@ export default function NCRsPage() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/improvement/new?sourceType=ncr&sourceId=${ncr.id}`);
+                            navigate(`/dashboard/management/capa/new?sourceType=ncr&sourceId=${ncr.id}&title=${encodeURIComponent(`NCR CAPA: ${ncr.title}`)}`);
                           }}
                           className="text-xs text-teal hover:text-teal-700"
                         >

@@ -1,11 +1,13 @@
 import React, { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listKPIAssessments, listKPIAssessmentLinesByAssessmentIds } from '../../api/services/kpiAssessmentService';
+import { listKPIAssessments, listKPIAssessmentLinesByAssessmentIds, normalizeAssessmentStatus } from '../../api/services/kpiAssessmentService';
 import type { KPIAssessment, KPIAssessmentLine } from '../../api/models/entities';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 
 export function KPIAnalyticsPage() {
+  const navigate = useNavigate();
   const { activeCompanyId } = useTenant();
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth() - 12, 1).toISOString().slice(0, 10);
@@ -28,8 +30,8 @@ export function KPIAnalyticsPage() {
     [assessmentIds.join('|')]
   );
 
-  const list = assessments ?? [];
-  const lineList = lines ?? [];
+  const list = useMemo(() => assessments ?? [], [assessments]);
+  const lineList = useMemo(() => lines ?? [], [lines]);
 
   const byMonth: Record<string, { sum: number; count: number }> = {};
   list.forEach((a) => {
@@ -56,6 +58,12 @@ export function KPIAnalyticsPage() {
   const departmentRanking = Object.entries(byDepartment)
     .map(([id, v]) => ({ id, avg: v.sum / v.count, count: v.count }))
     .sort((a, b) => b.avg - a.avg);
+
+  const unassignedAttentionAssessmentId = useMemo(() => {
+    const unassigned = list.filter((a) => !a.department_id);
+    const open = unassigned.find((a) => normalizeAssessmentStatus(a.status) !== 'closed');
+    return (open ?? unassigned[0])?.assessment_id ?? null;
+  }, [list]);
 
   const achievedCount = lineList.filter((l) => (l.manager_rating ?? 0) >= 4).length;
   const partialCount = lineList.filter((l) => l.manager_rating === 3).length;
@@ -105,7 +113,19 @@ export function KPIAnalyticsPage() {
               {departmentRanking.map((d, i) => (
                 <li key={d.id} className="flex items-center gap-2">
                   <span className="text-charcoal-500 w-6">{i + 1}.</span>
-                  <span className="flex-1 text-charcoal">{d.id === 'Unassigned' ? 'Unassigned' : d.id}</span>
+                  {d.id === 'Unassigned' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (unassignedAttentionAssessmentId) navigate(`/modules/hr/kpis/assessments/${unassignedAttentionAssessmentId}`);
+                      }}
+                      className="flex-1 text-left text-teal hover:underline"
+                    >
+                      Unassigned
+                    </button>
+                  ) : (
+                    <span className="flex-1 text-charcoal">{d.id}</span>
+                  )}
                   <span className="font-medium text-charcoal">{d.avg.toFixed(2)}</span>
                   <span className="text-charcoal-500 text-xs">({d.count})</span>
                 </li>

@@ -311,7 +311,7 @@ export function IncidentsPage() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/improvement/new?sourceType=incident&sourceId=${incident.id}`);
+                          navigate(`/dashboard/management/capa/new?sourceType=incident&sourceId=${incident.id}&title=${encodeURIComponent(`Incident CAPA: ${incident.title}`)}`);
                         }}
                         className="text-teal hover:text-teal-700 text-sm"
                       >

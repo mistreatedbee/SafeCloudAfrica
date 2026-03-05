@@ -52,6 +52,7 @@ import { ReviewMeetingDetailPage } from './pages/ReviewMeetingDetailPage';
 import { ReviewMeetingActionsBoardPage } from './pages/ReviewMeetingActionsBoardPage';
 import { ImprovementPage } from './pages/ImprovementPage';
 import { ImprovementDetailPage } from './pages/ImprovementDetailPage';
+import { CapaDetailPage } from './pages/CapaDetailPage';
 import { GeneralModulePage } from './pages/modules/GeneralModulePage';
 import { HealthDashboardPage } from './pages/health/HealthDashboardPage';
 import { HealthMedicalPage } from './pages/health/HealthMedicalPage';
@@ -1269,6 +1270,26 @@ export function App() {
             }
           />
           <Route
+            path="/capa/new"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <CapaDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/capa/:capaId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <CapaDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/reports"
             element={
               <RequireSignedIn>
@@ -1436,6 +1457,26 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <ImprovementDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/capa/new"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <CapaDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/capa/:capaId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <CapaDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

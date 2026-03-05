@@ -7,6 +7,7 @@ import { listUserProfiles } from '../../api/services/profilesService';
 import { listDepartments } from '../../api/services/departmentsService';
 import { listKpiItems } from '../../api/services/kpiItemService';
 import { createKPIAssessment } from '../../api/services/kpiAssessmentService';
+import { mapKpiTemplateItemToFormRow } from '../../api/services/kpiTemplateMapper';
 import type { Department, KPIItem, KpiAssessmentType, KpiImportance, KpiPeriodType } from '../../api/models/entities';
 import type { UUID } from '../../api/models/core';
 
@@ -63,8 +64,9 @@ export function KPIAssessmentCreatePage() {
       if (patch.kpiItemId !== undefined && patch.kpiItemId) {
         const item = (kpiItems ?? []).find((k) => k.kpi_item_id === patch.kpiItemId);
         if (item) {
-          next[i].kpiQuestionnaire = item.title;
-          next[i].importanceRating = item.default_importance;
+          const mapped = mapKpiTemplateItemToFormRow(item);
+          next[i].kpiQuestionnaire = mapped.kpiQuestionnaire;
+          next[i].importanceRating = mapped.importanceRating;
         }
       }
       return next;

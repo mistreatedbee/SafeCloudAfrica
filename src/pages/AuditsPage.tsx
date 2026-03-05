@@ -264,7 +264,7 @@ export function AuditsPage() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/improvement/new?sourceType=audit&sourceId=${audit.id}`);
+                          navigate(`/dashboard/management/capa/new?sourceType=audit&sourceId=${audit.id}&title=${encodeURIComponent(`Audit CAPA: ${audit.objectives}`)}`);
                         }}
                         className="text-xs text-teal hover:text-teal-700"
                       >

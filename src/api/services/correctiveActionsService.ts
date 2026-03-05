@@ -3,6 +3,7 @@ import type { UUID } from '../models/entities';
 import type { ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { listEvidence } from './evidenceService';
 
 export interface CorrectiveAction {
   id: UUID;
@@ -11,7 +12,7 @@ export interface CorrectiveAction {
   title: string;
   description: string | null;
   action_type: 'corrective' | 'preventive';
-  source_type: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation';
+  source_type: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation' | 'complaint' | 'pjo' | 'kpi' | 'audit_finding';
   source_id: UUID;
   status: 'open' | 'assigned' | 'in-progress' | 'completed' | 'verified' | 'closed';
   priority: 'low' | 'medium' | 'high' | 'urgent';
@@ -43,7 +44,7 @@ export type CreateCorrectiveActionInput = {
   title: string;
   description?: string;
   actionType: 'corrective' | 'preventive';
-  sourceType: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation';
+  sourceType: 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation' | 'complaint' | 'pjo' | 'kpi' | 'audit_finding';
   sourceId: UUID;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   dueDate: string;
@@ -132,11 +133,12 @@ export async function listCorrectiveActions(input: ListCorrectiveActionsInput): 
   return (data ?? []) as CorrectiveAction[];
 }
 
-export async function getCorrectiveAction(actionId: UUID): Promise<CorrectiveAction> {
+export async function getCorrectiveAction(actionId: UUID, companyId: UUID): Promise<CorrectiveAction> {
   const { data, error } = await insforge.database
     .from('corrective_actions')
     .select('*')
     .eq('id', actionId)
+    .eq('company_id', companyId)
     .single();
   
   if (error) throw new Error(getErrorMessage(error));
@@ -185,6 +187,7 @@ export async function updateCorrectiveAction(input: UpdateCorrectiveActionInput)
     .from('corrective_actions')
     .update(updateData)
     .eq('id', input.actionId)
+    .eq('company_id', input.companyId)
     .select('*')
     .single();
   
@@ -220,6 +223,7 @@ export async function completeCorrectiveAction(
       updated_at: new Date().toISOString()
     })
     .eq('id', actionId)
+    .eq('company_id', companyId)
     .select('*')
     .single();
   
@@ -253,6 +257,7 @@ export async function verifyCorrectiveAction(
       updated_at: new Date().toISOString()
     })
     .eq('id', actionId)
+    .eq('company_id', companyId)
     .select('*')
     .single();
   
@@ -268,6 +273,105 @@ export async function verifyCorrectiveAction(
   });
   
   return data as CorrectiveAction;
+}
+
+async function syncLinkedSourceOnClose(input: {
+  companyId: UUID;
+  actorUserId: UUID;
+  action: CorrectiveAction;
+}): Promise<void> {
+  const nowIso = new Date().toISOString();
+  const sourceId = input.action.source_id;
+  const sourceType = input.action.source_type;
+  if (!sourceId) return;
+
+  if (sourceType === 'ncr') {
+    await insforge.database
+      .from('quality_ncrs')
+      .update({
+        status: 'closed',
+        closed_at: nowIso,
+        closed_by_user_id: input.actorUserId,
+        updated_at: nowIso
+      })
+      .eq('company_id', input.companyId)
+      .eq('id', sourceId);
+    return;
+  }
+
+  if (sourceType === 'incident') {
+    await insforge.database
+      .from('incidents')
+      .update({
+        status: 'closed',
+        updated_at: nowIso
+      })
+      .eq('company_id', input.companyId)
+      .eq('id', sourceId);
+    return;
+  }
+
+  if (sourceType === 'complaint') {
+    await insforge.database
+      .from('customer_complaints')
+      .update({
+        status: 'closed',
+        updated_at: nowIso
+      })
+      .eq('company_id', input.companyId)
+      .eq('id', sourceId);
+  }
+}
+
+export async function closeCorrectiveAction(
+  actionId: UUID,
+  companyId: UUID,
+  closedByUserId: UUID
+): Promise<CorrectiveAction> {
+  const current = await getCorrectiveAction(actionId, companyId);
+  if (!current.verified_by_user_id) {
+    throw new Error('Manager sign-off is required before closing this CAPA.');
+  }
+
+  const evidence = await listEvidence(companyId, { entityType: 'corrective_action', entityId: actionId, limit: 1 });
+  const hasEvidence = Boolean((current.evidence_url ?? '').trim()) || evidence.length > 0;
+  if (!hasEvidence) {
+    throw new Error('Evidence is required before closing this CAPA.');
+  }
+
+  const closureDate = new Date().toISOString().split('T')[0];
+  const nowIso = new Date().toISOString();
+  const { data, error } = await insforge.database
+    .from('corrective_actions')
+    .update({
+      status: 'closed',
+      completed_date: closureDate,
+      closure_date: nowIso,
+      updated_at: nowIso
+    })
+    .eq('id', actionId)
+    .eq('company_id', companyId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to close corrective action');
+
+  const closed = data as CorrectiveAction;
+  await createActivityLog({
+    companyId,
+    actorUserId: closedByUserId,
+    action: 'corrective_actions.close',
+    entityType: 'corrective_action',
+    entityId: actionId
+  });
+
+  await syncLinkedSourceOnClose({
+    companyId,
+    actorUserId: closedByUserId,
+    action: closed
+  }).catch(() => undefined);
+
+  return closed;
 }
 
 export async function getOverdueActions(companyId: UUID): Promise<CorrectiveAction[]> {
@@ -334,7 +438,8 @@ export async function deleteCorrectiveAction(
   const { error } = await insforge.database
     .from('corrective_actions')
     .delete()
-    .eq('id', actionId);
+    .eq('id', actionId)
+    .eq('company_id', companyId);
   
   if (error) throw new Error(getErrorMessage(error));
   
