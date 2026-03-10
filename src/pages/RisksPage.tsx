@@ -161,6 +161,7 @@ export function RisksPage() {
                     <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Title</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Type</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Area / Activity</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Reference</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Date</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Status</th>
                   </tr>
@@ -171,6 +172,7 @@ export function RisksPage() {
                       <td className="px-4 py-2 text-sm font-medium text-charcoal">{row.title}</td>
                       <td className="px-4 py-2 text-sm text-charcoal">{TYPE_LABEL[row.type]}</td>
                       <td className="px-4 py-2 text-sm text-charcoal">{row.area || '-'} / {row.activity || '-'}</td>
+                      <td className="px-4 py-2 text-sm text-charcoal">{row.reference || '-'}</td>
                       <td className="px-4 py-2 text-sm text-charcoal">{row.assessment_date || '-'}</td>
                       <td className="px-4 py-2"><StatusPill status={row.status} /></td>
                     </tr>

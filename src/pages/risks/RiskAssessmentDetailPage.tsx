@@ -21,6 +21,8 @@ import {
   type RiskAssessmentRow,
   type RiskAssessmentSignoff
 } from '../../api/services/riskAssessmentsService';
+import { listQualityNcrs } from '../../api/services/qualityNcrsService';
+import type { QualityNcr, UUID } from '../../api/models/entities';
 import { getPublicUrl } from '../../api/services/storageService';
 import { columnsForType, typeLabel } from './riskTemplates';
 
@@ -49,6 +51,7 @@ export function RiskAssessmentDetailPage() {
   const [rows, setRows] = useState<RiskAssessmentRow[]>([]);
   const [qna, setQna] = useState<RiskAssessmentQna[]>([]);
   const [signoffs, setSignoffs] = useState<RiskAssessmentSignoff[]>([]);
+  const [linkedNcrs, setLinkedNcrs] = useState<QualityNcr[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
@@ -83,6 +86,15 @@ export function RiskAssessmentDetailPage() {
       setRows(rowData);
       setQna(qnaRows);
       setSignoffs(signoffRows);
+      const ncrs = await listQualityNcrs({
+        companyId: activeCompanyId as UUID,
+        sourceEntityType: 'risk',
+        sourceEntityId: id as UUID,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole ?? null,
+        limit: 200
+      });
+      setLinkedNcrs(ncrs);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load assessment');
     } finally {
@@ -228,6 +240,9 @@ export function RiskAssessmentDetailPage() {
             <Link to="/risk-assessments" className="text-sm text-charcoal-500 hover:underline">Back to list</Link>
             <h1 className="text-2xl font-bold text-charcoal">{assessment.title}</h1>
             <p className="text-sm text-charcoal-500">{typeLabel(assessment.type)} | {assessment.status}</p>
+            <p className="text-xs text-charcoal-500 mt-0.5">
+              Reference: <span className="font-mono text-charcoal">{assessment.reference || '-'}</span>
+            </p>
           </div>
           <div className="flex items-center gap-2">
             {assessment.doc_url && <a href={assessment.doc_url} target="_blank" rel="noreferrer" className="px-3 py-2 rounded border border-charcoal-300 text-sm">Open Google Doc</a>}
@@ -256,6 +271,45 @@ export function RiskAssessmentDetailPage() {
               </p>
             )}
           </div>
+        </div>
+
+        <div className="bg-white border border-surface-300 rounded-xl p-4 shadow-card space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-semibold text-charcoal">Linked NCRs</h2>
+            <p className="text-xs text-charcoal-500">
+              Risk reference: <span className="font-mono">{assessment.reference || 'n/a'}</span>
+            </p>
+          </div>
+          {linkedNcrs.length === 0 ? (
+            <p className="text-sm text-charcoal-500">No non-conformance reports are linked to this risk assessment yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-surface-200 text-sm">
+                <thead className="bg-surface-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">NC Number</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Title</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Severity</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Status</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-200">
+                  {linkedNcrs.map((ncr) => (
+                    <tr key={ncr.id}>
+                      <td className="px-3 py-2 font-mono text-charcoal">{ncr.nc_number}</td>
+                      <td className="px-3 py-2 text-charcoal">{ncr.title}</td>
+                      <td className="px-3 py-2 text-charcoal-600 capitalize">{ncr.severity}</td>
+                      <td className="px-3 py-2 text-charcoal-600 capitalize">{ncr.status}</td>
+                      <td className="px-3 py-2 text-charcoal-600">
+                        {ncr.occurrence_date ? new Date(ncr.occurrence_date).toLocaleDateString() : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div className="bg-white border border-surface-300 rounded-xl shadow-card overflow-hidden">

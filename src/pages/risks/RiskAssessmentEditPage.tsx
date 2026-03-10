@@ -185,6 +185,60 @@ export function RiskAssessmentEditPage() {
     setRows((prev) => prev.map((r) => (r.localId !== rowId ? r : recalcForType({ ...r, ...patch }, type))));
   }
 
+  function makeEmptyRow(): DraftRow {
+    const base: DraftRow = {
+      localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      json_data: {},
+      severity: null,
+      likelihood: null,
+      residual_severity: null,
+      residual_likelihood: null,
+      raw_rr: null,
+      raw_index: null,
+      residual_rr: null,
+      residual_index: null,
+      responsible_person: null,
+      target_date: null,
+      completion_date: null
+    };
+    if (type === 'prework') {
+      (base.json_data as any).quick_rating = 'Medium';
+    }
+    return recalcForType(base, type);
+  }
+
+  function insertRowAt(index: number, base?: DraftRow) {
+    if (readOnly) return;
+    setRows((prev) => {
+      const next = [...prev];
+      const source = base ?? makeEmptyRow();
+      const newRow: DraftRow = {
+        ...source,
+        localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      };
+      next.splice(index, 0, recalcForType(newRow, type));
+      return next;
+    });
+  }
+
+  function duplicateRowAt(index: number) {
+    if (readOnly) return;
+    setRows((prev) => {
+      const next = [...prev];
+      const current = next[index];
+      if (!current) return prev;
+      const clone: DraftRow = recalcForType(
+        {
+          ...current,
+          localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`
+        },
+        type
+      );
+      next.splice(index + 1, 0, clone);
+      return next;
+    });
+  }
+
   async function save(nextStatus?: RiskAssessmentStatus) {
     if (!activeCompanyId || !user?.id || !id) return;
     if (!header.title.trim()) {
@@ -304,7 +358,19 @@ export function RiskAssessmentEditPage() {
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Risk Assessor</span><input disabled={readOnly} value={header.riskAssessorName ?? ''} onChange={(e) => setHeader((s) => ({ ...s, riskAssessorName: e.target.value }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Date</span><input disabled={readOnly} type="date" value={header.assessmentDate ?? ''} onChange={(e) => setHeader((s) => ({ ...s, assessmentDate: e.target.value }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Next Review</span><input disabled={readOnly} type="date" value={header.nextReviewDate ?? ''} onChange={(e) => setHeader((s) => ({ ...s, nextReviewDate: e.target.value }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
-            <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Reference</span><input disabled={readOnly} value={header.reference ?? ''} onChange={(e) => setHeader((s) => ({ ...s, reference: e.target.value }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Reference</span>
+              <input
+                disabled={readOnly}
+                value={header.reference ?? ''}
+                onChange={(e) => setHeader((s) => ({ ...s, reference: e.target.value }))}
+                placeholder="e.g. RA-2026-001"
+                className="w-full px-3 py-2 border border-surface-300 rounded-lg"
+              />
+              <span className="mt-1 block text-[11px] text-charcoal-400">
+                Used as the cross-reference for NCRs, incidents, audits, CAPA and documents.
+              </span>
+            </label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Google Doc URL</span><input disabled={readOnly} value={docUrl} onChange={(e) => setDocUrl(e.target.value)} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Status</span><select disabled={readOnly} value={status} onChange={(e) => setStatus(e.target.value as RiskAssessmentStatus)} className="w-full px-3 py-2 border border-surface-300 rounded-lg"><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="closed">Closed</option></select></label>
           </div>
@@ -346,8 +412,10 @@ export function RiskAssessmentEditPage() {
                   <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">L</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">RR</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Index</th>
-                  {type !== 'critical' && type !== 'prework' && <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Residual</th>}
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Action</th>
+                  {type !== 'critical' && type !== 'prework' && (
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Residual</th>
+                  )}
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Row Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-200">
@@ -387,8 +455,47 @@ export function RiskAssessmentEditPage() {
                     <td className="px-3 py-2"><input disabled={readOnly} type="number" min={1} max={5} value={row.likelihood ?? ''} onChange={(e) => updateRow(row.localId, { likelihood: e.target.value ? Number(e.target.value) : null })} className="w-14 px-2 py-1 border border-surface-300 rounded text-sm" /></td>
                     <td className="px-3 py-2 text-sm">{row.raw_rr ?? '-'}</td>
                     <td className="px-3 py-2 text-sm">{row.raw_index ?? '-'}</td>
-                    {type !== 'critical' && type !== 'prework' && <td className="px-3 py-2 text-sm">{`${row.residual_severity ?? '-'} / ${row.residual_likelihood ?? '-'} / ${row.residual_rr ?? '-'} / ${row.residual_index ?? '-'}`}</td>}
-                    <td className="px-3 py-2">{!readOnly && <button type="button" onClick={() => setRows((prev) => prev.filter((r) => r.localId !== row.localId))} className="text-xs text-critical">Remove</button>}</td>
+                    {type !== 'critical' && type !== 'prework' && (
+                      <td className="px-3 py-2 text-sm">
+                        {`${row.residual_severity ?? '-'} / ${row.residual_likelihood ?? '-'} / ${row.residual_rr ?? '-'} / ${row.residual_index ?? '-'}`}
+                      </td>
+                    )}
+                    <td className="px-3 py-2">
+                      {!readOnly && (
+                        <div className="flex flex-col items-start gap-1 text-xs">
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              type="button"
+                              onClick={() => insertRowAt(idx)}
+                              className="px-1.5 py-0.5 rounded border border-surface-300 text-charcoal-700 hover:bg-surface-50"
+                            >
+                              Insert Above
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => insertRowAt(idx + 1)}
+                              className="px-1.5 py-0.5 rounded border border-surface-300 text-charcoal-700 hover:bg-surface-50"
+                            >
+                              Insert Below
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => duplicateRowAt(idx)}
+                              className="px-1.5 py-0.5 rounded border border-surface-300 text-charcoal-700 hover:bg-surface-50"
+                            >
+                              Duplicate
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRows((prev) => prev.filter((r) => r.localId !== row.localId))}
+                              className="px-1.5 py-0.5 rounded border border-critical/40 text-critical hover:bg-critical/5"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

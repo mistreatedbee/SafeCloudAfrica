@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { X, CheckCircle, AlertTriangle, FileText, EyeIcon, DownloadIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { NcrEvidenceReference, QualityNcr, UUID } from '../../api/models/entities';
+import { getRiskAssessment } from '../../api/services/riskAssessmentsService';
 import { formatAuthError } from '../../auth/authMessages';
 import { createEvidence } from '../../api/services/evidenceService';
 import {
@@ -53,6 +54,8 @@ export default function NCRDetailModal({
   const [linkedRequirementEdit, setLinkedRequirementEdit] = useState(ncr.linked_requirement ?? '');
   const [savingDetails, setSavingDetails] = useState(false);
   const [workflowSaving, setWorkflowSaving] = useState<'manager' | 'auditor' | null>(null);
+  const [linkedRiskReference, setLinkedRiskReference] = useState<string | null>(null);
+  const [linkedRiskId, setLinkedRiskId] = useState<UUID | null>(null);
 
   const evidenceBefore = useMemo(
     () => (loadedBefore ?? ((ncr.evidence_before ?? []) as NcrEvidenceReference[])),
@@ -84,6 +87,38 @@ export default function NCRDetailModal({
       cancelled = true;
     };
   }, [companyId, ncr.id, ncr.evidence_before, ncr.evidence_after]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLinkedRisk = async () => {
+      try {
+        if (!ncr.source_entity_type || !ncr.source_entity_id) return;
+        const sourceType = String(ncr.source_entity_type).toLowerCase();
+        if (sourceType !== 'risk' && sourceType !== 'risk_assessment') return;
+        const ra = await getRiskAssessment({
+          companyId,
+          assessmentId: ncr.source_entity_id as UUID,
+          actorUserId,
+          actorRole: null,
+          scope: null,
+          logView: false
+        });
+        if (!cancelled && ra) {
+          setLinkedRiskReference(ra.reference ?? null);
+          setLinkedRiskId(ra.id);
+        }
+      } catch {
+        if (!cancelled) {
+          setLinkedRiskReference(null);
+          setLinkedRiskId(null);
+        }
+      }
+    };
+    void loadLinkedRisk();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, actorUserId, ncr.source_entity_type, ncr.source_entity_id]);
 
   useEffect(() => {
     setLinkedRequirementTypeEdit((ncr.linked_requirement_type as any) ?? 'STANDARD');
@@ -231,7 +266,7 @@ export default function NCRDetailModal({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className={`p-4 rounded-lg ${getStatusColor(ncr.status)}`}>
               <div className="flex items-center gap-2 mb-1">
                 {ncr.status === 'closed' ? <CheckCircle className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
@@ -244,6 +279,20 @@ export default function NCRDetailModal({
               <p className="text-sm">Severity Level</p>
             </div>
           </div>
+
+          {linkedRiskReference && linkedRiskId && (
+            <div className="border-t pt-4">
+              <p className="text-sm text-gray-600 mb-1">Linked Risk Assessment</p>
+              <button
+                type="button"
+                onClick={() => window.open(`/risk-assessments/${linkedRiskId}`, '_blank')}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"
+              >
+                <span className="font-mono">{linkedRiskReference}</span>
+                <span className="text-charcoal-400">Open</span>
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
             <div>

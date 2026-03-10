@@ -143,6 +143,33 @@ export function RiskAssessmentCreatePage() {
     setRows((prev) => prev.map((r) => (r.localId !== rowId ? r : recalc({ ...r, ...patch }))));
   }
 
+  function insertRowAt(index: number, base?: DraftRow) {
+    setRows((prev) => {
+      const next = [...prev];
+      const source = base ?? emptyRow(type);
+      const newRow = recalc({
+        ...source,
+        localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      });
+      next.splice(index, 0, newRow);
+      return next;
+    });
+  }
+
+  function duplicateRowAt(index: number) {
+    setRows((prev) => {
+      const next = [...prev];
+      const current = next[index];
+      if (!current) return prev;
+      const clone: DraftRow = recalc({
+        ...current,
+        localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      });
+      next.splice(index + 1, 0, clone);
+      return next;
+    });
+  }
+
   async function save(status: RiskAssessmentStatus) {
     if (!activeCompanyId || !user?.id) return;
     if (!header.title?.trim()) {
@@ -248,7 +275,18 @@ export function RiskAssessmentCreatePage() {
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Risk Assessor</span><input value={header.riskAssessorName ?? ''} onChange={(e) => setHeader((s) => ({ ...s, riskAssessorName: e.target.value }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Date</span><input type="date" value={header.assessmentDate ?? ''} onChange={(e) => setHeader((s) => ({ ...s, assessmentDate: e.target.value }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Next Review</span><input type="date" value={header.nextReviewDate ?? ''} onChange={(e) => setHeader((s) => ({ ...s, nextReviewDate: e.target.value }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
-            <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Reference</span><input value={header.reference ?? ''} onChange={(e) => setHeader((s) => ({ ...s, reference: e.target.value }))} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Reference</span>
+              <input
+                value={header.reference ?? ''}
+                onChange={(e) => setHeader((s) => ({ ...s, reference: e.target.value }))}
+                placeholder="e.g. RA-2026-001"
+                className="w-full px-3 py-2 border border-surface-300 rounded-lg"
+              />
+              <span className="mt-1 block text-[11px] text-charcoal-400">
+                Used as the cross-reference for NCRs, incidents, audits, CAPA and documents.
+              </span>
+            </label>
             <label className="text-sm md:col-span-1"><span className="block text-xs text-charcoal-500 mb-1">Google Doc URL</span><input value={docUrl} onChange={(e) => setDocUrl(e.target.value)} placeholder="https://docs.google.com/..." className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
           </div>
 
@@ -276,7 +314,7 @@ export function RiskAssessmentCreatePage() {
                   <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">RR</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Index</th>
                   {type !== 'critical' && type !== 'prework' && <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Residual S/L/RR/Index</th>}
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Action</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Row Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-200">
@@ -325,7 +363,38 @@ export function RiskAssessmentCreatePage() {
                       </td>
                     )}
                     <td className="px-3 py-2">
-                      <button type="button" onClick={() => setRows((prev) => prev.filter((r) => r.localId !== row.localId))} className="text-xs text-critical">Remove</button>
+                      <div className="flex flex-col items-start gap-1 text-xs">
+                        <div className="flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            onClick={() => insertRowAt(idx)}
+                            className="px-1.5 py-0.5 rounded border border-surface-300 text-charcoal-700 hover:bg-surface-50"
+                          >
+                            Insert Above
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => insertRowAt(idx + 1)}
+                            className="px-1.5 py-0.5 rounded border border-surface-300 text-charcoal-700 hover:bg-surface-50"
+                          >
+                            Insert Below
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => duplicateRowAt(idx)}
+                            className="px-1.5 py-0.5 rounded border border-surface-300 text-charcoal-700 hover:bg-surface-50"
+                          >
+                            Duplicate
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRows((prev) => prev.filter((r) => r.localId !== row.localId))}
+                            className="px-1.5 py-0.5 rounded border border-critical/40 text-critical hover:bg-critical/5"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 ))}
