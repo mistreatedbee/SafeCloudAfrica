@@ -63,6 +63,8 @@ export function HrLeavePage() {
     return listHrRecords(activeCompanyId, 'hr_leave_balances', { employee_id: activeEmployeeId });
   }, [activeCompanyId, activeEmployeeId]);
 
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
+
   const leaveOptions = useMemo(
     () => (leaveTypes ?? []).map((row) => ({ id: String(row.id), value: String(row.name ?? ''), label: String(row.name ?? '') })),
     [leaveTypes]
@@ -76,14 +78,64 @@ export function HrLeavePage() {
     [employees]
   );
 
+  const leaveTypeIdByName = useMemo(
+    () =>
+      new Map(
+        (leaveTypes ?? [])
+          .map((row) => [String(row.name ?? '').trim().toLowerCase(), row.id as UUID] as const)
+          .filter(([name]) => !!name)
+      ),
+    [leaveTypes]
+  );
+
+  const balancesByLeaveTypeAndYear = useMemo(() => {
+    const map = new Map<string, Record<string, unknown>>();
+    for (const row of balances ?? []) {
+      const key = `${row.leave_type_id}:${row.year}`;
+      if (!map.has(key)) map.set(key, row);
+    }
+    return map;
+  }, [balances]);
+
+  const trimmedLeaveTypeName = leaveTypeValue.trim();
+  const selectedLeaveTypeId = useMemo(() => {
+    if (!trimmedLeaveTypeName) return null;
+    return leaveTypeIdByName.get(trimmedLeaveTypeName.toLowerCase()) ?? null;
+  }, [leaveTypeIdByName, trimmedLeaveTypeName]);
+
+  const selectedBalance = useMemo(() => {
+    if (!selectedLeaveTypeId) return null;
+    const key = `${selectedLeaveTypeId}:${currentYear}`;
+    return balancesByLeaveTypeAndYear.get(key) ?? null;
+  }, [balancesByLeaveTypeAndYear, currentYear, selectedLeaveTypeId]);
+
+  const totalDaysSelected = useMemo(() => {
+    const ms = Math.max(0, new Date(endDate).getTime() - new Date(startDate).getTime());
+    return Math.round(ms / (24 * 60 * 60 * 1000)) + 1;
+  }, [startDate, endDate]);
+
+  const selectedLeaveNameLower = trimmedLeaveTypeName.toLowerCase();
+  const isOverdrawAllowedType = ['unpaid leave', 'special leave', 'occupational injury leave'].includes(selectedLeaveNameLower);
+
   async function onCreate() {
     if (!activeCompanyId || !user?.id || !activeEmployeeId || !leaveTypeValue.trim()) return;
     setError(null);
     try {
       const leaveTypeId = await getOrCreateHrLeaveTypeByName(activeCompanyId, user.id as UUID, leaveTypeValue.trim());
       await refetchLeaveTypes();
-      const ms = Math.max(0, new Date(endDate).getTime() - new Date(startDate).getTime());
-      const totalDays = Math.round(ms / (24 * 60 * 60 * 1000)) + 1;
+      const totalDays = totalDaysSelected;
+
+      const remaining = Number((selectedBalance as any)?.remaining_days ?? 0);
+      const hasBalanceRecord = selectedBalance != null;
+      const canOverrideBalance = !isEmployee;
+
+      if (!isOverdrawAllowedType && hasBalanceRecord && !canOverrideBalance && totalDays > remaining) {
+        setError(
+          `You only have ${remaining} ${trimmedLeaveTypeName || 'leave'} day${remaining === 1 ? '' : 's'} available. Requested leave exceeds your current balance.`
+        );
+        return;
+      }
+
       await createHrLeaveRequest({
         company_id: activeCompanyId,
         employee_id: activeEmployeeId as UUID,
@@ -160,21 +212,54 @@ export function HrLeavePage() {
                 <input className="w-full border border-surface-300 rounded-lg px-3 py-2 bg-surface-50" readOnly value={selfEmployee ? `${selfEmployee.first_name} ${selfEmployee.last_name}` : 'No linked employee profile'} />
               </label>
             )}
-            <SelectOrType
-              label="Leave type (Select or Type)"
-              value={leaveTypeValue}
-              onChange={(value) => setLeaveTypeValue(value)}
-              options={leaveOptions}
-              companyId={activeCompanyId ?? undefined}
-              moduleKey="hr"
-              fieldKey="leave_type"
-              createdByUserId={user?.id as UUID | undefined}
-              allowCreate={!!activeCompanyId}
-              required
-            />
+            <div className="space-y-1">
+              <SelectOrType
+                label="Leave type (Select or Type)"
+                value={leaveTypeValue}
+                onChange={(value) => setLeaveTypeValue(value)}
+                options={leaveOptions}
+                companyId={activeCompanyId ?? undefined}
+                moduleKey="hr"
+                fieldKey="leave_type"
+                createdByUserId={user?.id as UUID | undefined}
+                allowCreate={!!activeCompanyId}
+                required
+              />
+              {trimmedLeaveTypeName && (
+                <div className="text-xs mt-1">
+                  {selectedBalance ? (
+                    <div
+                      className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full border ${
+                        Number((selectedBalance as any).remaining_days ?? 0) <= 2 ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-teal bg-teal-50 text-teal-800'
+                      }`}
+                    >
+                      <span className="font-medium">
+                        {trimmedLeaveTypeName} Available:{' '}
+                        {String((selectedBalance as any).remaining_days ?? 0)} day
+                        {Number((selectedBalance as any).remaining_days ?? 0) === 1 ? '' : 's'}
+                      </span>
+                      <span className="text-[10px] text-charcoal-500">
+                        Year {String((selectedBalance as any).year ?? currentYear)} · Allocated {String((selectedBalance as any).allocated_days ?? 0)} · Used{' '}
+                        {String((selectedBalance as any).used_days ?? 0)}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full border border-surface-300 bg-surface-50 text-charcoal-600">
+                      No leave balance record found for “{trimmedLeaveTypeName}” in {currentYear}. The request will still be submitted.
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Start date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">End date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
-            <label className="text-sm md:col-span-3"><span className="block text-xs text-charcoal-500 mb-1">Reason</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" placeholder="Reason for leave" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+            <label className="text-sm md:col-span-3">
+              <span className="block text-xs text-charcoal-500 mb-1">Reason</span>
+              <input className="w-full border border-surface-300 rounded-lg px-3 py-2" placeholder="Reason for leave" value={reason} onChange={(e) => setReason(e.target.value)} />
+            </label>
+            <div className="text-xs text-charcoal-500 md:col-span-3">
+              Total days requested: <span className="font-semibold">{totalDaysSelected}</span>
+            </div>
           </div>
           <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onCreate()} disabled={!activeEmployeeId}>Submit leave request</button>
         </div>

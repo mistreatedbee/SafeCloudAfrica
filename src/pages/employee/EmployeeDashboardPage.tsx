@@ -64,6 +64,20 @@ export function EmployeeDashboardPage() {
     return perf.filter((row) => row.corrective_due_date && String(row.corrective_due_date) < today && String(row.status ?? '') !== 'CLOSED').length;
   }, [summary?.hr]);
 
+  const leaveBalances = (summary?.hr?.balances as Array<Record<string, unknown>> | undefined) ?? [];
+  const leaveRequests = (summary?.hr?.leaveRequests as Array<Record<string, unknown>> | undefined) ?? [];
+
+  const leaveStatusCounts = useMemo(() => {
+    const base = { pending: 0, approved: 0, declined: 0 };
+    for (const row of leaveRequests) {
+      const status = String(row.status ?? '').toUpperCase();
+      if (status === 'SUBMITTED' || status === 'DRAFT') base.pending += 1;
+      else if (status === 'APPROVED') base.approved += 1;
+      else if (status === 'DECLINED') base.declined += 1;
+    }
+    return base;
+  }, [leaveRequests]);
+
   return (
     <Layout title="My Dashboard">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
@@ -111,13 +125,47 @@ export function EmployeeDashboardPage() {
               <p className="text-sm text-charcoal-500">No linked HR employee profile.</p>
             )}
           </div>
-          <div className="bg-white rounded-xl border border-surface-300 p-4">
+          <div className="bg-white rounded-xl border border-surface-300 p-4 space-y-3">
             <h3 className="font-semibold text-charcoal mb-2">Leave status & balances</h3>
-            <div className="space-y-1 text-sm text-charcoal-600">
-              {((summary?.hr?.balances as Array<Record<string, unknown>> | undefined) ?? []).slice(0, 6).map((row) => (
-                <p key={String(row.id)}>{String(row.year)}: Remaining {String(row.remaining_days ?? 0)} days</p>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full border border-surface-300 bg-surface-50 text-charcoal-700">
+                Pending: <span className="ml-1 font-semibold">{leaveStatusCounts.pending}</span>
+              </span>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full border border-emerald-400 bg-emerald-50 text-emerald-800">
+                Approved: <span className="ml-1 font-semibold">{leaveStatusCounts.approved}</span>
+              </span>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full border border-amber-400 bg-amber-50 text-amber-800">
+                Declined: <span className="ml-1 font-semibold">{leaveStatusCounts.declined}</span>
+              </span>
+            </div>
+            <div className="space-y-2 text-sm text-charcoal-600">
+              {leaveBalances.slice(0, 6).map((row) => (
+                <div
+                  key={String(row.id)}
+                  className="flex items-center justify-between border border-surface-100 rounded-lg px-2 py-1.5"
+                >
+                  <div className="flex flex-col">
+                    <span className="font-medium">
+                      {String(row.leave_type_name ?? row.leave_type_label ?? row.leave_type_id ?? 'Leave type')}
+                    </span>
+                    <span className="text-xs text-charcoal-500">
+                      Year {String(row.year ?? '')} · Allocated {String(row.allocated_days ?? 0)} · Used {String(row.used_days ?? 0)}
+                    </span>
+                  </div>
+                  <span
+                    className={`ml-3 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                      Number(row.remaining_days ?? 0) <= 2
+                        ? 'bg-amber-50 text-amber-800 border border-amber-400'
+                        : 'bg-teal-50 text-teal-800 border border-teal-400'
+                    }`}
+                  >
+                    {String(row.remaining_days ?? 0)} days left
+                  </span>
+                </div>
               ))}
-              {(((summary?.hr?.balances as Array<Record<string, unknown>> | undefined) ?? []).length === 0) && <p className="text-charcoal-500">No leave balance records.</p>}
+              {leaveBalances.length === 0 && (
+                <p className="text-sm text-charcoal-500">No leave balance records.</p>
+              )}
             </div>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4">

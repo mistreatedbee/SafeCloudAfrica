@@ -28,6 +28,8 @@ export function HrEmployeeProfilePage() {
   }, [activeCompanyId, id]);
 
   const employee = payload?.employee as Record<string, unknown> | undefined;
+  const leaveBalances = (payload?.balances as Array<Record<string, unknown>> | undefined) ?? [];
+  const leaveRequests = (payload?.leaveRequests as Array<Record<string, unknown>> | undefined) ?? [];
 
   const restricted = useMemo(() => {
     if (!employee) return [] as Array<{ key: string; value: unknown }>;
@@ -90,9 +92,55 @@ export function HrEmployeeProfilePage() {
         )}
 
         {tab === 'leave' && (
-          <Card title="Leave records">
-            <SimpleTable rows={(payload?.leaveRequests as Array<Record<string, unknown>> | undefined) ?? []} cols={['start_date', 'end_date', 'total_days', 'status', 'decline_reason']} />
-          </Card>
+          <div className="space-y-4">
+            <Card title="Leave balances">
+              <div className="space-y-2 text-sm text-charcoal-600">
+                {leaveBalances.map((row) => {
+                  const remaining = Number(row.remaining_days ?? 0);
+                  const label = String(
+                    row.leave_type_name ??
+                      row.leave_type_label ??
+                      row.leave_type ??
+                      row.leave_type_id ??
+                      'Leave type'
+                  );
+                  return (
+                    <div
+                      key={String(row.id ?? `${label}-${row.year}`)}
+                      className="flex items-center justify-between border border-surface-100 rounded-lg px-2 py-1.5"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium">
+                          {label}
+                        </span>
+                        <span className="text-xs text-charcoal-500">
+                          Year {String(row.year ?? '')} · Allocated {String(row.allocated_days ?? 0)} · Used {String(row.used_days ?? 0)}
+                        </span>
+                      </div>
+                      <span
+                        className={`ml-3 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          remaining <= 3
+                            ? 'bg-amber-50 text-amber-800 border border-amber-400'
+                            : 'bg-teal-50 text-teal-800 border border-teal-400'
+                        }`}
+                      >
+                        {remaining} day{remaining === 1 ? '' : 's'} left
+                      </span>
+                    </div>
+                  );
+                })}
+                {leaveBalances.length === 0 && (
+                  <p className="text-sm text-charcoal-500">No leave balance records for this employee.</p>
+                )}
+              </div>
+            </Card>
+            <Card title="Leave records">
+              <SimpleTable
+                rows={leaveRequests}
+                cols={['start_date', 'end_date', 'total_days', 'status', 'decline_reason']}
+              />
+            </Card>
+          </div>
         )}
         {tab === 'hours' && (
           <Card title="Hours worked">
