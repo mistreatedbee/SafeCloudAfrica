@@ -220,6 +220,7 @@ export type CreateIncidentInput = {
   assigneeUserId?: UUID;
   createdByUserId: UUID;
   autoGenerateNcr?: boolean;
+  metadata?: Record<string, unknown> | null;
 };
 
 function getMissingColumnFromSchemaError(error: unknown): string | null {
@@ -315,7 +316,8 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
     occurred_at: input.occurredAt,
     location: input.location ?? null,
     assignee_user_id: input.assigneeUserId ?? null,
-    created_by_user_id: input.createdByUserId
+    created_by_user_id: input.createdByUserId,
+    metadata: input.metadata ?? null
   };
 
   const data = await insertIncidentWithSchemaFallback(insertPayload);
@@ -401,6 +403,7 @@ export type UpdateIncidentPatch = Partial<{
   riskRatingProduct: number | null;
   riskClassification: IncidentRiskCategory | null;
   riskCategorySimple: 'Low' | 'Medium' | 'High' | null;
+  metadata: Record<string, unknown> | null;
 }>;
 
 export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatch): Promise<Incident> {
@@ -447,6 +450,7 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
   if (patch.riskRatingProduct !== undefined) updateData.risk_rating_product = patch.riskRatingProduct;
   if (patch.riskClassification !== undefined) updateData.risk_classification = patch.riskClassification;
   if (patch.riskCategorySimple !== undefined) updateData.risk_category = patch.riskCategorySimple;
+  if (patch.metadata !== undefined) updateData.metadata = patch.metadata;
 
   if (patch.status === 'closed') {
     const [{ count: openNcrCount, error: openNcrError }, { count: openActionCount, error: openActionError }] = await Promise.all([

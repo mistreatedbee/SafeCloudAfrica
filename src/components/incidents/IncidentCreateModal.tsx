@@ -49,6 +49,16 @@ type CorrectiveActionDraft = {
   links: Array<{ type: InvestigationCauseLinkType; text: string }>;
 };
 
+type AffectedPersonEntry = {
+  id: string;
+  personId: UUID | null;
+  personName: string;
+  role: string;
+  department: string;
+  injuryType: string;
+  contactDetails: string;
+};
+
 type UploadDraft = {
   id: string;
   file: File;
@@ -68,6 +78,20 @@ type InvestigationSectionKey =
   | 'contributingFactors'
   | 'correctiveActions'
   | 'lessonsLearned';
+
+const LOSS_TYPE_OPTIONS: string[] = [
+  'Production loss',
+  'Financial loss',
+  'Reputational loss',
+  'Damage',
+  'Illness',
+  'Injury',
+  'Asset loss',
+  'Civil liability',
+  'Criminal liability',
+  'Vicarious liability',
+  'Sub-standard quality product/service'
+];
 
 const INVESTIGATION_SECTION_DEFINITIONS: Array<{
   key: InvestigationSectionKey;
@@ -153,6 +177,17 @@ export function IncidentCreateModal(props: {
   const [causeOfIncident, setCauseOfIncident] = useState('');
   const [affectedPersonId, setAffectedPersonId] = useState<UUID | null>(null);
   const [affectedPersonName, setAffectedPersonName] = useState('');
+  const [affectedPersons, setAffectedPersons] = useState<AffectedPersonEntry[]>([
+    {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      personId: null,
+      personName: '',
+      role: '',
+      department: '',
+      injuryType: '',
+      contactDetails: ''
+    }
+  ]);
 
   const [reportedBy, setReportedBy] = useState('');
   const [reportedTo, setReportedTo] = useState('');
@@ -166,6 +201,7 @@ export function IncidentCreateModal(props: {
   const [generateNcr, setGenerateNcr] = useState(false);
   const [actualOutcome, setActualOutcome] = useState('');
 
+  const [lossTypes, setLossTypes] = useState<string[]>([]);
   const [lossOther, setLossOther] = useState('');
   const [lossNotes, setLossNotes] = useState('');
 
@@ -255,6 +291,17 @@ export function IncidentCreateModal(props: {
     setCauseOfIncident('');
     setAffectedPersonId(null);
     setAffectedPersonName('');
+    setAffectedPersons([
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        personId: null,
+        personName: '',
+        role: '',
+        department: '',
+        injuryType: '',
+        contactDetails: ''
+      }
+    ]);
     setReportedBy('');
     setReportedTo('');
     setCopyTo('');
@@ -264,6 +311,7 @@ export function IncidentCreateModal(props: {
     setInvestigationRequired(false);
     setGenerateNcr(false);
     setActualOutcome('');
+    setLossTypes([]);
     setLossOther('');
     setLossNotes('');
     setUnsafeActs({});
@@ -332,6 +380,33 @@ export function IncidentCreateModal(props: {
     setCauseOfIncident((editingIncident as any).cause_of_incident ?? (editingIncident as any).cause ?? '');
     setAffectedPersonId((editingIncident as any).affected_person_id ?? null);
     setAffectedPersonName((editingIncident as any).affected_person ?? '');
+    const metadata = (editingIncident as any)?.metadata ?? null;
+    const metadataPersons = Array.isArray(metadata?.affectedPersons) ? metadata.affectedPersons : null;
+    if (metadataPersons && metadataPersons.length > 0) {
+      setAffectedPersons(
+        metadataPersons.map((entry: any) => ({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          personId: (entry?.personId as UUID) ?? null,
+          personName: String(entry?.personName ?? ''),
+          role: String(entry?.role ?? ''),
+          department: String(entry?.department ?? ''),
+          injuryType: String(entry?.injuryType ?? ''),
+          contactDetails: String(entry?.contactDetails ?? '')
+        }))
+      );
+    } else {
+      setAffectedPersons([
+        {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          personId: (editingIncident as any).affected_person_id ?? null,
+          personName: (editingIncident as any).affected_person ?? '',
+          role: '',
+          department: '',
+          injuryType: '',
+          contactDetails: ''
+        }
+      ]);
+    }
     setReportedBy((editingIncident as any).reported_by ?? '');
     setReportedTo((editingIncident as any).reported_to ?? '');
     setCopyTo(Array.isArray((editingIncident as any).copy_to_emails) ? (editingIncident as any).copy_to_emails.join(', ') : '');
@@ -340,6 +415,8 @@ export function IncidentCreateModal(props: {
     setRiskSeverity(Math.max(1, Math.min(5, Number((editingIncident as any).risk_severity_1_5 ?? 3))) as 1 | 2 | 3 | 4 | 5);
     setInvestigationRequired(Boolean((editingIncident as any).investigation_required));
     setGenerateNcr(false);
+    const existingLossTypes = (editingIncident as any).loss_types ?? null;
+    setLossTypes(Array.isArray(existingLossTypes) ? existingLossTypes.filter((x: unknown) => typeof x === 'string') : []);
     setLossOther((editingIncident as any).loss_other_text ?? '');
     setLossNotes((editingIncident as any).loss_notes ?? '');
     const mapCauseEntries = (value: unknown) => {
@@ -663,6 +740,16 @@ export function IncidentCreateModal(props: {
       const unsafeConditionsData = Object.values(unsafeConditions);
       const incidentTitle = title.trim();
       const affectedPersonValue = affectedPersonName.trim() || undefined;
+      const affectedPersonsPayload = affectedPersons
+        .map((entry) => ({
+          personId: entry.personId,
+          personName: entry.personName.trim() || null,
+          role: entry.role.trim() || null,
+          department: entry.department.trim() || null,
+          injuryType: entry.injuryType.trim() || null,
+          contactDetails: entry.contactDetails.trim() || null
+        }))
+        .filter((entry) => entry.personId || entry.personName);
       const incidentTypeValue = finalIncidentType;
 
       if (isEditing && editingIncident) {
@@ -694,7 +781,7 @@ export function IncidentCreateModal(props: {
           lossCriminalLiabilityValue: null,
           lossVicariousLiabilityValue: null,
           lossSubstandardQualityValue: null,
-          lossTypes: null,
+          lossTypes: lossTypes.length > 0 ? lossTypes : null,
           lossOtherText: lossOther.trim() || null,
           lossNotes: lossNotes.trim() || null,
           riskSeverity1To5: riskSeverity,
@@ -704,7 +791,11 @@ export function IncidentCreateModal(props: {
           riskCategorySimple,
           severity: toLegacySeverity(riskSeverity),
           occurredAt,
-          location: location.trim() || null
+          location: location.trim() || null,
+          metadata: {
+            ...(editingIncident as any)?.metadata,
+            affectedPersons: affectedPersonsPayload
+          }
         } as any);
         await uploadEvidenceForIncident(updated.id, evidenceUploads, 'incident');
         await uploadEvidenceForIncident(updated.id, investigationUploads, 'incident_investigation');
@@ -772,7 +863,7 @@ export function IncidentCreateModal(props: {
             criminalLiabilityLoss: null,
             vicariousLiabilityLoss: null,
             substandardQualityLoss: null,
-            types: [],
+            types: lossTypes.length > 0 ? lossTypes : null,
             other: lossOther.trim() || null,
             notes: lossNotes.trim() || null
           },
@@ -785,7 +876,10 @@ export function IncidentCreateModal(props: {
           occurredAt,
           location: location.trim() || undefined,
           createdByUserId: props.createdByUserId,
-          autoGenerateNcr: generateNcr
+          autoGenerateNcr: generateNcr,
+          metadata: {
+            affectedPersons: affectedPersonsPayload
+          }
         });
 
         await uploadEvidenceForIncident(incident.id, evidenceUploads, 'incident');
@@ -1169,17 +1263,146 @@ export function IncidentCreateModal(props: {
                 className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Affected person</label>
-              <AffectedPersonSelector
-                companyId={props.companyId}
-                selectedPersonId={affectedPersonId}
-                selectedPersonName={affectedPersonName}
-                onChange={(personId, personName) => {
-                  setAffectedPersonId(personId);
-                  setAffectedPersonName(personName ?? '');
-                }}
-              />
+            <div className="md:col-span-2 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <label className="block text-sm font-medium text-charcoal">Affected persons</label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAffectedPersons((prev) => [
+                      ...prev,
+                      {
+                        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                        personId: null,
+                        personName: '',
+                        role: '',
+                        department: '',
+                        injuryType: '',
+                        contactDetails: ''
+                      }
+                    ])
+                  }
+                  className="text-xs font-medium text-teal hover:text-teal-700"
+                >
+                  + Add Person
+                </button>
+              </div>
+              <div className="space-y-3">
+                {affectedPersons.map((entry, index) => (
+                  <div key={entry.id} className="rounded-lg border border-surface-200 p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-charcoal">
+                        Person {index + 1}
+                        {index === 0 && ' (primary)'}
+                      </p>
+                      {affectedPersons.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAffectedPersons((prev) => prev.filter((p) => p.id !== entry.id))
+                          }
+                          className="text-xs text-critical hover:text-critical-600"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-medium text-charcoal mb-1">
+                          Name
+                        </label>
+                        <AffectedPersonSelector
+                          companyId={props.companyId}
+                          selectedPersonId={entry.personId}
+                          selectedPersonName={entry.personName}
+                          onChange={(personId, personName) => {
+                            if (index === 0) {
+                              setAffectedPersonId(personId);
+                              setAffectedPersonName(personName ?? '');
+                            }
+                            setAffectedPersons((prev) =>
+                              prev.map((p) =>
+                                p.id === entry.id
+                                  ? {
+                                      ...p,
+                                      personId,
+                                      personName: personName ?? ''
+                                    }
+                                  : p
+                              )
+                            );
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-charcoal mb-1">
+                          Role / Position
+                        </label>
+                        <input
+                          value={entry.role}
+                          onChange={(e) =>
+                            setAffectedPersons((prev) =>
+                              prev.map((p) =>
+                                p.id === entry.id ? { ...p, role: e.target.value } : p
+                              )
+                            )
+                          }
+                          className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-charcoal mb-1">
+                          Department
+                        </label>
+                        <input
+                          value={entry.department}
+                          onChange={(e) =>
+                            setAffectedPersons((prev) =>
+                              prev.map((p) =>
+                                p.id === entry.id ? { ...p, department: e.target.value } : p
+                              )
+                            )
+                          }
+                          className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-charcoal mb-1">
+                          Injury type (if applicable)
+                        </label>
+                        <input
+                          value={entry.injuryType}
+                          onChange={(e) =>
+                            setAffectedPersons((prev) =>
+                              prev.map((p) =>
+                                p.id === entry.id ? { ...p, injuryType: e.target.value } : p
+                              )
+                            )
+                          }
+                          className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-charcoal mb-1">
+                          Contact details (optional)
+                        </label>
+                        <input
+                          value={entry.contactDetails}
+                          onChange={(e) =>
+                            setAffectedPersons((prev) =>
+                              prev.map((p) =>
+                                p.id === entry.id ? { ...p, contactDetails: e.target.value } : p
+                              )
+                            )
+                          }
+                          className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Risk category (core)</label>
@@ -1257,9 +1480,81 @@ export function IncidentCreateModal(props: {
           <details className="border-t border-surface-200 pt-4">
             <summary className="cursor-pointer text-sm font-semibold text-charcoal py-2">Losses (optional)</summary>
             <div className="pt-3 space-y-4">
-              <p className="text-xs text-charcoal-500">Describe losses in free text (no fixed value list).</p>
+              <p className="text-xs text-charcoal-500">
+                Select all applicable loss types and optionally add free-text notes for additional context.
+              </p>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Loss types (multi-select)</label>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm hover:border-teal"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const container = (e.currentTarget.nextSibling as HTMLElement | null);
+                      if (!container) return;
+                      const isHidden = container.getAttribute('data-open') !== 'true';
+                      container.setAttribute('data-open', isHidden ? 'true' : 'false');
+                    }}
+                  >
+                    <span className="text-charcoal-700">Select loss types</span>
+                    <ChevronDownIcon className="w-4 h-4 text-charcoal-400" />
+                  </button>
+                  <div
+                    data-open="false"
+                    className="hidden data-[open=true]:block mt-2 rounded-lg border border-surface-200 bg-white max-h-56 overflow-y-auto p-3 space-y-2"
+                  >
+                    {LOSS_TYPE_OPTIONS.map((option) => {
+                      const checked = lossTypes.includes(option);
+                      return (
+                        <label key={option} className="flex items-start gap-2 text-sm text-charcoal">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const isChecked = e.target.checked;
+                              setLossTypes((prev) =>
+                                isChecked ? [...prev, option] : prev.filter((value) => value !== option)
+                              );
+                            }}
+                            className="mt-0.5 w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
+                          />
+                          <span>{option}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {lossTypes.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {lossTypes.map((type) => (
+                        <span
+                          key={type}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-teal/10 text-teal rounded text-xs"
+                        >
+                          {type}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLossTypes((prev) => prev.filter((value) => value !== type))
+                            }
+                            className="hover:text-teal-700"
+                          >
+                            <XIcon className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Losses description</label>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Other loss details</label>
+                <input
+                  value={lossOther}
+                  onChange={(e) => setLossOther(e.target.value)}
+                  placeholder="Other / specify loss details"
+                  className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal mb-2"
+                />
                 <textarea
                   value={lossNotes}
                   onChange={(e) => setLossNotes(e.target.value)}
