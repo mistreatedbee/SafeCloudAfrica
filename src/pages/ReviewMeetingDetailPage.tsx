@@ -366,6 +366,9 @@ export function ReviewMeetingDetailPage() {
         await refreshLinkedImprovements();
       }
     } catch (err: any) {
+      // Log detailed error for development while showing a user-friendly message.
+      // eslint-disable-next-line no-console
+      console.error('Failed to save review meeting', err);
       setError(err?.message ?? 'Failed to save review meeting.');
     } finally {
       setSaving(false);
@@ -517,13 +520,13 @@ export function ReviewMeetingDetailPage() {
   return (
     <Layout title={isCreate ? 'Create Management Review Meeting' : 'Review Meeting Details'}>
       <div className="space-y-5 pb-10">
-        <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+        <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card flex flex-col gap-4 md:gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-1">
             <Link to="/document-reviews" className="text-sm text-teal hover:underline">Back to review meetings</Link>
             <h2 className="text-lg font-semibold text-charcoal mt-1">{title || 'Management Review Meeting'}</h2>
             <p className="text-xs text-charcoal-500">Status: {statusLabel} | Signature: {signatureStatus} | {isLocked ? 'Read-only (signed)' : 'Editable'}</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 md:justify-end">
             {!isCreate && (
               <>
                 <button type="button" onClick={() => void handleGenerateReport()} className="px-3 py-2 rounded-lg border border-surface-300 bg-white text-sm font-medium hover:bg-surface-50">Generate Report</button>
@@ -566,7 +569,7 @@ export function ReviewMeetingDetailPage() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card grid gap-3 md:grid-cols-2">
+        <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card grid gap-4 md:grid-cols-2 md:items-start">
           <label className="text-sm"><span className="block mb-1 text-charcoal-500">Meeting title</span><input value={title} onChange={(e) => setTitle(e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
           <label className="text-sm">
             <span className="block mb-1 text-charcoal-500">Meeting status</span>
@@ -588,11 +591,23 @@ export function ReviewMeetingDetailPage() {
             </select>
           </label>
           <label className="text-sm"><span className="block mb-1 text-charcoal-500">Next management review meeting date</span><input type="date" value={nextMeetingDate} onChange={(e) => setNextMeetingDate(e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
-          <div className="md:col-span-2 grid gap-2 sm:grid-cols-3">
-            <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={ceoApprovalRequired} onChange={(e) => setCeoApprovalRequired(e.target.checked)} disabled={!canEdit} />CEO approval required</label>
-            <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={autoEmailOnCreate} onChange={(e) => setAutoEmailOnCreate(e.target.checked)} disabled={!canEdit} />Auto-email report on creation</label>
-            <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={autoEmailOnUpdate} onChange={(e) => setAutoEmailOnUpdate(e.target.checked)} disabled={!canEdit} />Auto-email report on updates</label>
-            <label className="inline-flex items-center gap-2 text-sm sm:col-span-3"><input type="checkbox" checked={autoCreateTasksFromItems} onChange={(e) => setAutoCreateTasksFromItems(e.target.checked)} disabled={!canEdit} />Auto-create tasks for action items that have responsible person and target date</label>
+          <div className="md:col-span-2 grid gap-3 sm:grid-cols-3 items-start">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={ceoApprovalRequired} onChange={(e) => setCeoApprovalRequired(e.target.checked)} disabled={!canEdit} />
+              <span className="text-charcoal-600">CEO approval required</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={autoEmailOnCreate} onChange={(e) => setAutoEmailOnCreate(e.target.checked)} disabled={!canEdit} />
+              <span className="text-charcoal-600">Auto-email report on creation</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={autoEmailOnUpdate} onChange={(e) => setAutoEmailOnUpdate(e.target.checked)} disabled={!canEdit} />
+              <span className="text-charcoal-600">Auto-email report on updates</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm sm:col-span-3">
+              <input type="checkbox" checked={autoCreateTasksFromItems} onChange={(e) => setAutoCreateTasksFromItems(e.target.checked)} disabled={!canEdit} />
+              <span className="text-charcoal-600">Auto-create tasks for action items that have responsible person and target date</span>
+            </label>
           </div>
         </div>
 
