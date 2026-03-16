@@ -45,6 +45,13 @@ export function TrainingCompleteModal(props: {
     setError(null);
     try {
       setLoading(true);
+      const allowedExtensions = ['pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg'];
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+      if (!allowedExtensions.includes(ext)) {
+        setError('Unsupported certificate file type. Please upload PDF, DOCX, or image formats.');
+        setLoading(false);
+        return;
+      }
       const key = `${props.companyId}/${props.record.user_id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
       const { data: uploadData, error: upErr } = await insforge.storage.from(TRAINING_CERT_BUCKET).upload(key, file);
       if (upErr) throw upErr;
@@ -124,7 +131,7 @@ export function TrainingCompleteModal(props: {
             <label className="block text-sm font-medium text-charcoal mb-1.5">Certificate file * (required to complete)</label>
             <input
               type="file"
-              accept=".pdf,image/*"
+              accept=".pdf,.doc,.docx,image/*"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               required
               className="w-full text-sm"

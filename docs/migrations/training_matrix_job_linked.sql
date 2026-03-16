@@ -130,7 +130,7 @@ begin
     update public.training_records set status = 'COMPLETED' where status is null;
     alter table public.training_records alter column status set not null;
     alter table public.training_records add constraint training_records_status_check
-      check (status in ('REQUIRED', 'SCHEDULED', 'COMPLETED', 'EXPIRED', 'OVERDUE'));
+      check (status in ('REQUIRED', 'SCHEDULED', 'COMPLETED', 'EXPIRED', 'OVERDUE', 'CANCELLED'));
     alter table public.training_records alter column status set default 'REQUIRED';
   end if;
 end $$;

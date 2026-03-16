@@ -259,6 +259,18 @@ export async function updateTrainingRecord(input: {
   return data as TrainingRecord;
 }
 
+export async function cancelTrainingRecord(input: {
+  companyId: UUID;
+  recordId: UUID;
+}): Promise<TrainingRecord> {
+  // Soft-delete style: mark as CANCELLED while retaining history
+  return updateTrainingRecord({
+    companyId: input.companyId,
+    recordId: input.recordId,
+    status: 'CANCELLED'
+  });
+}
+
 export async function countExpiringTraining(companyId: UUID, withinDays = 30): Promise<number> {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + withinDays);

@@ -5,6 +5,7 @@ import { formatAuthError } from '../../auth/authMessages';
 import type { TrainingCourse, UUID } from '../../api/models/entities';
 import { createTrainingCourse, createTrainingRecord } from '../../api/services/trainingService';
 import { insforge } from '../../api/insforge/client';
+import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 
 export const TRAINING_CERT_BUCKET = 'sca-training-certificates';
 
@@ -28,6 +29,7 @@ export function TrainingAddModal(props: {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [employeeNameSnapshot, setEmployeeNameSnapshot] = useState<string>('');
 
   const canSubmit = useMemo(() => {
     if (!userId) return false;
@@ -56,6 +58,13 @@ export function TrainingAddModal(props: {
       let certificateBucket: string | null = null;
       let certificateKey: string | null = null;
       if (file) {
+        // Basic client-side file type validation for certificates
+        const allowedExtensions = ['pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg'];
+        const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+        if (!allowedExtensions.includes(ext)) {
+          setError('Unsupported certificate file type. Please upload PDF, DOCX, or image formats.');
+          return;
+        }
         certificateBucket = TRAINING_CERT_BUCKET;
         const key = `${props.companyId}/${userId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
         const { data, error: upErr } = await insforge.storage.from(certificateBucket).upload(key, file);
@@ -117,22 +126,27 @@ export function TrainingAddModal(props: {
 
           {!props.defaultUserId && (
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">User ID (UUID)</label>
-              <input
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                placeholder="Paste the employee UUID (from memberships)"
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              <HrEmployeeSelect
+                companyId={props.companyId}
+                value={userId as UUID | ''}
+                onChange={(selectedUserId, meta) => {
+                  setUserId(selectedUserId || '');
+                  setEmployeeNameSnapshot(meta.nameSnapshot);
+                }}
+                label="Employee"
+                placeholder="Select employee"
               />
-              <p className="text-xs text-charcoal-500 mt-1">
-                Phase 2 note: this will be replaced by an employee picker once user profiles are implemented.
-              </p>
+              {employeeNameSnapshot && (
+                <p className="text-xs text-charcoal-500 mt-1">Recording training for: {employeeNameSnapshot}</p>
+              )}
             </div>
           )}
 
           {props.defaultUserId && (
             <div className="bg-surface-50 border border-surface-200 rounded-xl p-3">
-              <p className="text-sm text-charcoal-600">Recording training for: <span className="font-semibold">{props.defaultUserId}</span></p>
+              <p className="text-sm text-charcoal-600">
+                Recording training for your own profile.
+              </p>
             </div>
           )}
 
@@ -216,7 +230,12 @@ export function TrainingAddModal(props: {
 
           <div>
             <label className="block text-sm font-medium text-charcoal mb-1.5">Certificate file (optional)</label>
-            <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-full text-sm" />
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,image/*"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="w-full text-sm"
+            />
             {file && <p className="text-xs text-charcoal-500 mt-1">Selected: {file.name}</p>}
           </div>
 

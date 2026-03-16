@@ -1496,7 +1496,7 @@ export type TrainingCourse = {
   updated_at?: string | null;
 };
 
-export type TrainingRecordStatus = 'REQUIRED' | 'SCHEDULED' | 'COMPLETED' | 'EXPIRED' | 'OVERDUE';
+export type TrainingRecordStatus = 'REQUIRED' | 'SCHEDULED' | 'COMPLETED' | 'EXPIRED' | 'OVERDUE' | 'CANCELLED';
 
 export type TrainingRecord = {
   id: UUID;

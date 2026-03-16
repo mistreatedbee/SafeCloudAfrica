@@ -14,6 +14,7 @@ import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../api/hooks/useAsync';
 import {
+  cancelTrainingRecord,
   countExpiringTraining,
   listTrainingCourses,
   listTrainingRecords,
@@ -352,7 +353,7 @@ export function TrainingPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-charcoal-500 mb-1">Status</label>
+              <label className="block text-xs font-medium text-charcoal-500 mb-1">Status</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as TrainingRecordStatus | '')}
@@ -364,6 +365,7 @@ export function TrainingPage() {
                   <option value="COMPLETED">Completed</option>
                   <option value="OVERDUE">Overdue</option>
                   <option value="EXPIRED">Expired</option>
+                  <option value="CANCELLED">Cancelled</option>
                 </select>
               </div>
             </div>
@@ -392,10 +394,19 @@ export function TrainingPage() {
                     ? 'bg-critical/15 text-critical'
                     : r.status === 'SCHEDULED'
                       ? 'bg-warning/15 text-warning'
+                : r.status === 'CANCELLED'
+                  ? 'bg-surface-200 text-charcoal-400 line-through'
                       : 'bg-surface-200 text-charcoal-600';
               const canSchedule = canManage && (r.status === 'REQUIRED' || r.status === 'OVERDUE');
-              const canComplete = canManage && (r.status === 'REQUIRED' || r.status === 'SCHEDULED' || r.status === 'OVERDUE');
+              const canComplete =
+                canManage && (r.status === 'REQUIRED' || r.status === 'SCHEDULED' || r.status === 'OVERDUE');
+              const canCancel =
+                canManage && (r.status === 'REQUIRED' || r.status === 'SCHEDULED' || r.status === 'OVERDUE');
               const userName = profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email || String(r.user_id).slice(0, 8);
+              const uploaderProfile = profileByUserId.get(r.created_by_user_id);
+              const uploaderName =
+                uploaderProfile?.full_name || uploaderProfile?.email || String(r.created_by_user_id).slice(0, 8);
+              const uploadDateSource = r.updated_at || r.completed_at || r.created_at;
               return (
                 <div key={r.id} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
                   <div className="flex items-start justify-between gap-2">
@@ -411,6 +422,15 @@ export function TrainingPage() {
                         {r.expires_at ? ` • Expires: ${new Date(r.expires_at).toLocaleDateString('en-ZA')}` : ''}
                         {r.cost != null ? ` • Cost: ZAR ${Number(r.cost).toLocaleString()}` : ''}
                       </p>
+                      {r.certificate_bucket && r.certificate_key && (
+                        <p className="text-xs text-charcoal-500 mt-1">
+                          Certificate: {r.certificate_key.split('/').pop() ?? 'certificate'}
+                          {uploadDateSource
+                            ? ` • Uploaded: ${new Date(uploadDateSource).toLocaleDateString('en-ZA')}`
+                            : ''}
+                          {uploaderName ? ` • Uploaded by: ${uploaderName}` : ''}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -437,8 +457,16 @@ export function TrainingPage() {
                         <button
                           type="button"
                           onClick={async () => {
-                            const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
-                            openBlobInNewTab(blob);
+                            try {
+                              const blob = await downloadDocumentFile({
+                                bucket: r.certificate_bucket!,
+                                key: r.certificate_key!
+                              });
+                              openBlobInNewTab(blob);
+                            } catch (err) {
+                              // eslint-disable-next-line no-alert
+                              alert('Could not open certificate. Please try again or contact support.');
+                            }
                           }}
                           className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
                         >
@@ -447,14 +475,44 @@ export function TrainingPage() {
                         <button
                           type="button"
                           onClick={async () => {
-                            const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
-                            downloadBlob(blob, r.certificate_key!.split('/').pop() ?? 'certificate');
+                            try {
+                              const blob = await downloadDocumentFile({
+                                bucket: r.certificate_bucket!,
+                                key: r.certificate_key!
+                              });
+                              downloadBlob(blob, r.certificate_key!.split('/').pop() ?? 'certificate');
+                            } catch (err) {
+                              // eslint-disable-next-line no-alert
+                              alert('Could not download certificate. Please try again or contact support.');
+                            }
                           }}
                           className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
                         >
                           Download
                         </button>
                       </>
+                    )}
+                    {canCancel && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          // eslint-disable-next-line no-alert
+                          const confirmed = window.confirm(
+                            'Are you sure you want to cancel this training record? It will be marked as cancelled but kept for history.'
+                          );
+                          if (!confirmed) return;
+                          try {
+                            await cancelTrainingRecord({ companyId: activeCompanyId!, recordId: r.id });
+                            setRecordsRefresh((prev) => prev + 1);
+                          } catch (err) {
+                            // eslint-disable-next-line no-alert
+                            alert('Could not cancel training record. Please try again or contact support.');
+                          }
+                        }}
+                        className="px-3 py-2 rounded-lg border border-critical/40 text-critical text-sm font-medium hover:bg-critical/5"
+                      >
+                        Cancel record
+                      </button>
                     )}
                   </div>
                 </div>
