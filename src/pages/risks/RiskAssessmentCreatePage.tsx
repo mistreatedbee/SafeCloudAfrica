@@ -308,12 +308,20 @@ export function RiskAssessmentCreatePage() {
               <thead className="bg-surface-50">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">#</th>
-                  {columns.map((col) => <th key={col.key} className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">{col.label}</th>)}
+                  {columns.map((col) => (
+                    <th key={col.key} className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">
+                      {col.label}
+                    </th>
+                  ))}
                   <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">S</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">L</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">RR</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">S*L</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Index</th>
-                  {type !== 'critical' && type !== 'prework' && <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Residual S/L/RR/Index</th>}
+                  {type !== 'critical' && type !== 'prework' && (
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">
+                      Residual S/L/S*L/Index
+                    </th>
+                  )}
                   <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Row Actions</th>
                 </tr>
               </thead>
