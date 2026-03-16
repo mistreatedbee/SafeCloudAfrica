@@ -63,6 +63,13 @@ type FormState = {
 
 const VERIFICATION_METHODS = Object.keys(IMPROVEMENT_VERIFICATION_METHOD_LABELS) as ImprovementVerificationMethod[];
 
+function asUuidOrNull(value: string): UUID | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(trimmed) ? (trimmed as UUID) : null;
+}
+
 function canEdit(role: string | null): boolean {
   return role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor';
 }
@@ -186,34 +193,48 @@ export function ImprovementDetailPage() {
     setSaving(true);
     setError(null);
     try {
+      const hasSourceIdInput = !!form.sourceId.trim();
+      const sourceId = asUuidOrNull(form.sourceId);
+      if (hasSourceIdInput && !sourceId) {
+        setError('Linked Source ID is not valid. Please clear it or use a system-generated link from the source module.');
+        setSaving(false);
+        return;
+      }
+
+      const raisedByUserId = asUuidOrNull(form.raisedByUserId) ?? (user.id as UUID);
+      const responsibleUserId = asUuidOrNull(form.responsibleUserId);
+      const verifiedByUserId = asUuidOrNull(form.verifiedByUserId);
+      const managementReviewedByUserId = asUuidOrNull(form.managementReviewedByUserId);
+      const closedByUserId = asUuidOrNull(form.closedByUserId);
+
       const payload = {
         dateRaised: form.dateRaised ? new Date(form.dateRaised).toISOString() : undefined,
-        raisedByUserId: (form.raisedByUserId || user.id) as UUID,
+        raisedByUserId,
         departmentSite: form.departmentSite || null,
         improvementType: form.improvementType,
         improvementTypeOtherText: form.improvementTypeOtherText || null,
         description: form.description || null,
         riskLevel: form.riskLevel,
         actionRequired: form.actionRequired || null,
-        responsibleUserId: (form.responsibleUserId || null) as UUID | null,
+        responsibleUserId,
         resourcesNeeded: form.resourcesNeeded || null,
         targetDate: form.targetDate || null,
         status: form.status,
         verificationMethods: form.verificationMethods,
         verificationMethodOtherText: form.verificationMethodOtherText || null,
-        verifiedByUserId: (form.verifiedByUserId || null) as UUID | null,
+        verifiedByUserId,
         dateVerified: form.dateVerified || null,
         wasActionEffective: form.wasActionEffective === '' ? null : form.wasActionEffective === 'yes',
-        managementReviewedByUserId: (form.managementReviewedByUserId || null) as UUID | null,
+        managementReviewedByUserId,
         managementReviewDate: form.managementReviewDate || null,
         managementRecommendations: form.managementRecommendations || null,
         managementDecision: (form.managementDecision || null) as any,
-        closedByUserId: (form.closedByUserId || null) as UUID | null,
+        closedByUserId,
         closureDate: form.closureDate || null,
         closureStatus: (form.closureStatus || null) as any,
         lessonsLearned: form.lessonsLearned || null,
         sourceType: form.sourceType,
-        sourceId: (form.sourceId || null) as UUID | null,
+        sourceId,
         sourceOtherText: form.sourceOtherText || null
       };
       if (isCreate) {
@@ -289,6 +310,23 @@ export function ImprovementDetailPage() {
           <button type="button" onClick={() => void save()} disabled={saving || (!isCreate && !editable)} className="px-4 py-2 rounded-lg bg-success text-white text-sm font-semibold disabled:opacity-60">{saving ? 'Saving...' : isCreate ? 'Create' : 'Save'}</button>
         </div>
         {error && <div className="bg-critical/5 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
+
+        {!isCreate && record?.source_type && record.source_id && (
+          <section className="bg-white rounded-xl border border-surface-300 p-4 space-y-2">
+            <h3 className="font-semibold">Linked Source</h3>
+            <p className="text-sm text-charcoal-600">
+              <span className="font-medium">{IMPROVEMENT_SOURCE_LABELS[record.source_type]}:</span> {record.source_id}
+            </p>
+            {record.source_type === 'management_review' && (
+              <Link
+                to={`/document-reviews/${record.source_id}`}
+                className="inline-flex px-3 py-1.5 mt-1 rounded-lg border border-surface-300 text-xs hover:bg-surface-50"
+              >
+                View linked management review
+              </Link>
+            )}
+          </section>
+        )}
 
         <section className="bg-white rounded-xl border border-surface-300 p-4 space-y-3">
           <h3 className="font-semibold">SECTION 1: GENERAL INFORMATION</h3>

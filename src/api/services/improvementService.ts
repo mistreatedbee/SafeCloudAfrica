@@ -305,7 +305,7 @@ export async function createImprovement(input: {
   sourceId?: UUID | null;
   sourceOtherText?: string | null;
 }): Promise<ImprovementRecord> {
-  if (!canEditRole(input.actorRole) && input.actorRole !== 'employee') {
+  if (!canEditRole(input.actorRole)) {
     throw new Error('You do not have permission to create improvements.');
   }
 
@@ -384,7 +384,7 @@ export async function updateImprovement(input: {
   patch: Partial<ImprovementRecord>;
   transitionComment?: string;
 }): Promise<ImprovementRecord> {
-  if (!canEditRole(input.actorRole) && input.actorRole !== 'employee') {
+  if (!canEditRole(input.actorRole)) {
     throw new Error('You do not have permission to update improvements.');
   }
   const existing = await getImprovement(input.companyId, input.improvementId);

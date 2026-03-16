@@ -2,9 +2,15 @@ import React, { useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
-import type { ImprovementAction, ModuleKey } from '../../api/models/entities';
-import type { UUID } from '../../api/models/entities';
-import { createImprovement } from '../../api/services/improvementService';
+import type { ImprovementAction, ModuleKey, UUID } from '../../api/models/entities';
+import { createImprovementAction } from '../../api/services/improvementActionsService';
+
+function asUuidOrNull(value: string): UUID | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(trimmed) ? (trimmed as UUID) : null;
+}
 
 export function ImprovementCreateModal(props: {
   open: boolean;
@@ -29,13 +35,19 @@ export function ImprovementCreateModal(props: {
     if (!canSubmit) return;
     setError(null);
     try {
+      const ownerId = asUuidOrNull(ownerUserId);
+      if (ownerUserId.trim() && !ownerId) {
+        setError('Owner user ID must be a valid user UUID or left blank.');
+        return;
+      }
+
       setLoading(true);
-      await createImprovement({
+      await createImprovementAction({
         companyId: props.companyId,
         module,
         title: title.trim(),
         description: description.trim() || null,
-        ownerUserId: ownerUserId ? (ownerUserId as any) : null,
+        ownerUserId: ownerId,
         status,
         targetDate: targetDate ? new Date(targetDate).toISOString() : null,
         createdByUserId: props.createdByUserId
