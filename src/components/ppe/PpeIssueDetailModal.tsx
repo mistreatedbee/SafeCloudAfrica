@@ -38,6 +38,8 @@ export function PpeIssueDetailModal(props: {
     issue.total_cost_at_issue != null
       ? `Total: R ${Number(issue.total_cost_at_issue).toFixed(2)}`
       : '';
+  const nextIssueDate =
+    issue.next_issue_at ? issue.next_issue_at.slice(0, 10) : '—';
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
@@ -103,6 +105,9 @@ export function PpeIssueDetailModal(props: {
 
             <dt className="text-charcoal-500">Total cost at issue</dt>
             <dd className="font-medium text-charcoal">{totalLine || '—'}</dd>
+
+            <dt className="text-charcoal-500">Next issue date</dt>
+            <dd className="font-medium text-charcoal">{nextIssueDate}</dd>
 
             {issue.notes && (
               <>

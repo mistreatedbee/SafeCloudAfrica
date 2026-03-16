@@ -23,6 +23,7 @@ import { SelectOrType } from '../ui/SelectOrType';
 import { listQualityNcrs } from '../../api/services/qualityNcrsService';
 import { listCorrectiveActions } from '../../api/services/correctiveActionsService';
 import { listUserProfiles } from '../../api/services/profilesService';
+import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
 
 export function PpeIssueModal(props: {
   open: boolean;
@@ -47,6 +48,7 @@ export function PpeIssueModal(props: {
   const [issuedToUserId, setIssuedToUserId] = useState('');
   const [issuedToEmployeeNumber, setIssuedToEmployeeNumber] = useState('');
   const [jobRole, setJobRole] = useState('');
+  const [nextIssueDate, setNextIssueDate] = useState('');
   const [siteId, setSiteId] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [notes, setNotes] = useState('');
@@ -64,20 +66,37 @@ export function PpeIssueModal(props: {
     import('../../api/services/correctiveActionsService').CorrectiveAction[]
   >([]);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [employees, setEmployees] = useState<HrEmployee[]>([]);
   const [reasonOptions, setReasonOptions] = useState<OptionItem[]>([]);
 
   useEffect(() => {
     async function load() {
       if (!props.open) return;
       try {
-        const [ncrs, capas, profs] = await Promise.all([
+        const [ncrs, capas, profs, emps] = await Promise.all([
           listQualityNcrs({ companyId: props.companyId, limit: 100 }),
           listCorrectiveActions({ companyId: props.companyId, limit: 100 }),
-          listUserProfiles(props.companyId)
+          listUserProfiles(props.companyId),
+          listHrEmployees(props.companyId)
         ]);
         setNcrOptions(ncrs);
         setCapaOptions(capas);
         setProfiles(profs ?? []);
+        setEmployees(
+          (emps ?? [])
+            .filter(
+              (e) =>
+                e.employment_status === 'ONBOARDING' ||
+                e.employment_status === 'ACTIVE' ||
+                e.employment_status === 'ON_LEAVE' ||
+                e.employment_status === 'SUSPENDED'
+            )
+            .sort((a, b) => {
+              const aName = `${a.last_name ?? ''} ${a.first_name ?? ''}`.toLowerCase();
+              const bName = `${b.last_name ?? ''} ${b.first_name ?? ''}`.toLowerCase();
+              return aName.localeCompare(bName);
+            })
+        );
       } catch {
         // optional
       }
@@ -106,8 +125,13 @@ export function PpeIssueModal(props: {
   const unitCost = useMemo(() => {
     if (unitCostOverride !== '' && Number.isFinite(Number(unitCostOverride)))
       return Number(unitCostOverride);
+    if (selectedItem && 'sizes_with_prices' in selectedItem && Array.isArray((selectedItem as any).sizes_with_prices)) {
+      const sizesWithPrices = (selectedItem as any).sizes_with_prices as { size: string; price: number | null }[];
+      const match = sizesWithPrices.find((row) => row.size === size);
+      if (match && typeof match.price === 'number') return match.price;
+    }
     return selectedItem?.unit_cost ?? null;
-  }, [selectedItem, unitCostOverride]);
+  }, [selectedItem, unitCostOverride, size]);
   const totalCost = useMemo(() => {
     const q = Math.max(1, quantityIssued);
     return unitCost != null ? unitCost * q : null;
@@ -174,11 +198,15 @@ export function PpeIssueModal(props: {
         quantityIssued: Math.max(1, quantityIssued),
         reasonForIssue: reasonForIssue === 'Other' ? (reasonOther.trim() || null) : (reasonForIssue || null),
         issuedToUserId: issuedToUserId ? (issuedToUserId as UUID) : null,
+        issuedToEmployeeId:
+          issuedToUserId
+            ? ((employees ?? []).find((emp) => emp.user_id === (issuedToUserId as UUID))?.id ?? null)
+            : null,
         issuedToEmployeeNumber: issuedToEmployeeNumber.trim() || null,
         jobRole: jobRole.trim() || null,
         unitCostAtIssue: unitCost ?? null,
         notes: notes.trim() || null,
-        nextIssueAt: null,
+        nextIssueAt: nextIssueDate || null,
         returnDueAt: null,
         adminOverrideInsufficientStock: props.isAdmin && adminOverrideInsufficientStock
       };
@@ -215,6 +243,7 @@ export function PpeIssueModal(props: {
     setIssuedToUserId('');
     setIssuedToEmployeeNumber('');
     setJobRole('');
+    setNextIssueDate('');
     setSiteId('');
     setDepartmentId('');
     setNotes('');
@@ -276,6 +305,17 @@ export function PpeIssueModal(props: {
                   </option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">
+                Next issue date (optional)
+              </label>
+              <input
+                type="date"
+                value={nextIssueDate}
+                onChange={(e) => setNextIssueDate(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              />
             </div>
           </div>
 
@@ -354,16 +394,21 @@ export function PpeIssueModal(props: {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Issued to</label>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Issued to (HR employee)</label>
               <select
                 value={issuedToUserId}
-                onChange={(e) => setIssuedToUserId(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setIssuedToUserId(value);
+                  const emp = (employees ?? []).find((x) => x.user_id === value);
+                  if (emp?.employee_no) setIssuedToEmployeeNumber(emp.employee_no);
+                }}
                 className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
               >
                 <option value="">Select employee</option>
-                {profiles.map((p) => (
-                  <option key={p.user_id} value={p.user_id}>
-                    {p.full_name ?? p.email ?? p.user_id}
+                {(employees ?? []).map((emp) => (
+                  <option key={emp.id} value={emp.user_id ?? ''}>
+                    {`${emp.last_name ?? ''}, ${emp.first_name ?? ''}`.trim()} — {emp.employee_no}
                   </option>
                 ))}
               </select>

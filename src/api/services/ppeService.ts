@@ -6,6 +6,7 @@ import type {
   PpeIssueNcrLink,
   PpeReorderRequest,
   PpeReorderRequestStatus,
+  PpeSizeWithPrice,
   PpeStock,
   PpeStockMovement,
   PpeStockMovementType,
@@ -121,6 +122,7 @@ export async function createPpeItem(input: {
   name: string;
   category?: string | null;
   unitCost?: number | null;
+  sizesWithPrices?: PpeSizeWithPrice[] | null;
   description?: string | null;
   sizesAvailable?: string[] | null;
   supplierName?: string | null;
@@ -135,6 +137,7 @@ export async function createPpeItem(input: {
       unit_cost: typeof input.unitCost === 'number' ? input.unitCost : null,
       description: input.description ?? null,
       sizes_available: Array.isArray(input.sizesAvailable) ? input.sizesAvailable : null,
+      sizes_with_prices: Array.isArray(input.sizesWithPrices) ? input.sizesWithPrices : null,
       supplier_name: input.supplierName ?? null,
       stock_location: input.stockLocation ?? null
     })
@@ -154,12 +157,14 @@ export async function updatePpeItem(input: {
     unit_cost: number | null;
     description: string | null;
     sizes_available: string[] | null;
+    sizes_with_prices: PpeSizeWithPrice[] | null;
     supplier_name: string | null;
     stock_location: string | null;
   }>;
 }): Promise<PPEItem> {
   const payload: Record<string, unknown> = { ...input.patch };
   if ('sizes_available' in input.patch) payload.sizes_available = input.patch.sizes_available ?? null;
+  if ('sizes_with_prices' in input.patch) payload.sizes_with_prices = input.patch.sizes_with_prices ?? null;
   const { data, error } = await insforge.database
     .from('ppe_items')
     .update(payload)
@@ -176,6 +181,7 @@ export type CreatePpeIssueInput = {
   companyId: UUID;
   ppeItemId: UUID;
   issuedToUserId?: UUID | null;
+  issuedToEmployeeId?: UUID | null;
   issuedByUserId: UUID;
   issuedByRole?: string | null;
   nextIssueAt?: string | null;
@@ -247,6 +253,7 @@ export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIss
       company_id: input.companyId,
       ppe_item_id: input.ppeItemId,
       issued_to_user_id: input.issuedToUserId ?? null,
+      issued_to_employee_id: input.issuedToEmployeeId ?? null,
       issued_by_user_id: input.issuedByUserId,
       issued_at: issuedAt,
       next_issue_at: input.nextIssueAt ?? null,
@@ -359,6 +366,7 @@ export async function createPpeStock(input: {
   reorderLevel?: number;
   reorderQty?: number;
   createdByUserId: UUID;
+  capturedByEmployeeId?: UUID | null;
   capturedByUserId?: UUID | null;
   capturedByName?: string | null;
   dateOrdered?: string | null;
@@ -366,6 +374,7 @@ export async function createPpeStock(input: {
   openingStockQty?: number | null;
   qtyOrdered?: number | null;
   qtyReceived?: number | null;
+  expiryDate?: string | null;
 }): Promise<PpeStock> {
   const capturedByUserId = input.capturedByUserId ?? input.createdByUserId;
   let capturedByName = input.capturedByName ?? null;
@@ -396,12 +405,14 @@ export async function createPpeStock(input: {
       created_at: nowIso,
       updated_at: nowIso,
       captured_by_user_id: capturedByUserId,
+      captured_by_employee_id: input.capturedByEmployeeId ?? null,
       captured_by_name: capturedByName,
       date_ordered: input.dateOrdered ?? null,
       date_stock_received: input.dateStockReceived ?? null,
       opening_stock_qty: input.openingStockQty ?? null,
       qty_ordered: input.qtyOrdered ?? null,
-      qty_received: input.qtyReceived ?? null
+      qty_received: input.qtyReceived ?? null,
+      expiry_date: input.expiryDate ?? null
     })
     .select('*')
     .single();

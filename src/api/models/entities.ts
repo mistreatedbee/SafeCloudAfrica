@@ -1150,6 +1150,11 @@ export const PPE_CATEGORY_OPTIONS: { value: PpeCategory; label: string }[] = [
   { value: 'Other', label: 'Other' }
 ];
 
+export type PpeSizeWithPrice = {
+  size: string;
+  price: number | null;
+};
+
 export type PPEItem = {
   id: UUID;
   company_id: UUID;
@@ -1158,6 +1163,7 @@ export type PPEItem = {
   unit_cost: number | null;
   description?: string | null;
   sizes_available?: string[] | null;
+  sizes_with_prices?: PpeSizeWithPrice[] | null;
   supplier_name?: string | null;
   stock_location?: string | null;
   created_at: string;
@@ -1168,6 +1174,7 @@ export type PPEIssue = {
   company_id: UUID;
   ppe_item_id: UUID;
   issued_to_user_id: UUID | null;
+  issued_to_employee_id?: UUID | null;
   issued_by_user_id: UUID;
   issued_at: string;
   next_issue_at: string | null;
@@ -1322,12 +1329,14 @@ export type PpeStock = {
   created_at: string;
   updated_at: string;
   captured_by_user_id?: UUID | null;
+  captured_by_employee_id?: UUID | null;
   captured_by_name?: string | null;
   date_ordered?: string | null;
   date_stock_received?: string | null;
   opening_stock_qty?: number | null;
   qty_ordered?: number | null;
   qty_received?: number | null;
+  expiry_date?: string | null;
 };
 
 export type PpeStockMovementType = 'in' | 'out' | 'adjust' | 'return' | 'ordered';

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
-import type { UUID } from '../../api/models/entities';
+import type { PpeSizeWithPrice, UUID } from '../../api/models/entities';
 import { PPE_CATEGORY_OPTIONS } from '../../api/models/entities';
 import { createPpeItem } from '../../api/services/ppeService';
 
@@ -22,11 +22,33 @@ export function PpeItemCreateModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [sizeRows, setSizeRows] = useState<Array<{ id: string; size: string; price: string }>>([
+    { id: 's', size: 'Small', price: '' },
+    { id: 'm', size: 'Medium', price: '' },
+    { id: 'l', size: 'Large', price: '' }
+  ]);
+
   const sizesAvailable = useMemo(() => {
-    const t = sizesText.trim();
-    if (!t) return null;
-    return t.split(/[\s,]+/).filter(Boolean);
-  }, [sizesText]);
+    const manual = sizesText.trim();
+    if (manual) {
+      const tokens = manual.split(/[\s,]+/).filter(Boolean);
+      if (tokens.length > 0) return tokens;
+    }
+    const fromRows = sizeRows
+      .map((row) => row.size.trim())
+      .filter((v, idx, arr) => v && arr.indexOf(v) === idx);
+    return fromRows.length > 0 ? fromRows : null;
+  }, [sizesText, sizeRows]);
+
+  const sizesWithPrices: PpeSizeWithPrice[] | null = useMemo(() => {
+    const rows = sizeRows
+      .map((row) => ({
+        size: row.size.trim(),
+        price: row.price.trim() === '' ? null : Number(row.price)
+      }))
+      .filter((row) => row.size !== '');
+    return rows.length > 0 ? rows : null;
+  }, [sizeRows]);
 
   const canSubmit = useMemo(() => name.trim().length > 2, [name]);
 
@@ -40,7 +62,8 @@ export function PpeItemCreateModal(props: {
         companyId: props.companyId,
         name: name.trim(),
         category: category.trim() || undefined,
-        unitCost: unitCost ? Number(unitCost) : null,
+        unitCost: unitCost ? Number(unitCost) : (sizesWithPrices && sizesWithPrices[0] ? sizesWithPrices[0].price ?? null : null),
+        sizesWithPrices,
         description: description.trim() || null,
         sizesAvailable: sizesAvailable && sizesAvailable.length > 0 ? sizesAvailable : null,
         supplierName: supplierName.trim() || null,
@@ -55,6 +78,11 @@ export function PpeItemCreateModal(props: {
       setSupplierName('');
       setStockLocation('');
       setUnitCost('');
+      setSizeRows([
+        { id: 's', size: 'Small', price: '' },
+        { id: 'm', size: 'Medium', price: '' },
+        { id: 'l', size: 'Large', price: '' }
+      ]);
     } catch (err: unknown) {
       setError(formatAuthError(err as Error));
     } finally {
@@ -122,12 +150,75 @@ export function PpeItemCreateModal(props: {
             </datalist>
           </div>
 
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-charcoal mb-1.5">
+              Sizes & prices (optional)
+            </label>
+            <div className="space-y-2">
+              {sizeRows.map((row, index) => (
+                <div key={row.id} className="grid grid-cols-5 gap-2">
+                  <input
+                    value={row.size}
+                    onChange={(e) => {
+                      const next = [...sizeRows];
+                      next[index] = { ...next[index], size: e.target.value };
+                      setSizeRows(next);
+                    }}
+                    placeholder="Size (e.g. Small)"
+                    className="col-span-3 w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={row.price}
+                    onChange={(e) => {
+                      const next = [...sizeRows];
+                      next[index] = { ...next[index], price: e.target.value };
+                      setSizeRows(next);
+                    }}
+                    placeholder="Price"
+                    className="col-span-2 w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setSizeRows((rows) => [
+                    ...rows,
+                    { id: `row-${rows.length + 1}`, size: '', price: '' }
+                  ])
+                }
+                className="px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"
+              >
+                Add size
+              </button>
+              {sizeRows.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSizeRows((rows) => rows.slice(0, -1))}
+                  className="px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"
+                >
+                  Remove last
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-charcoal-500">
+              You can still type a quick list of sizes in the field below if you prefer.
+            </p>
+          </div>
+
           <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Sizes available (optional)</label>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">
+              Sizes available (optional quick list)
+            </label>
             <input
               value={sizesText}
               onChange={(e) => setSizesText(e.target.value)}
-              placeholder="e.g. S, M, L, XL or one per line"
+              placeholder="e.g. S, M, L, XL"
               className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
             />
           </div>

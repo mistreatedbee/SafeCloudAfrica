@@ -2,10 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
-import type { Department, PPEItem, Site, UUID } from '../../api/models/entities';
+import type { Department, HrEmployee, PPEItem, Site, UUID } from '../../api/models/entities';
 import { createPpeStock } from '../../api/services/ppeService';
 import { getMyProfile } from '../../api/services/profilesService';
 import { useAsync } from '../../api/hooks/useAsync';
+import { listHrEmployees } from '../../api/services/hrService';
 
 export function PpeStockCreateModal(props: {
   open: boolean;
@@ -25,6 +26,8 @@ export function PpeStockCreateModal(props: {
   const [onHandQty, setOnHandQty] = useState('');
   const [reorderLevel, setReorderLevel] = useState('');
   const [reorderQty, setReorderQty] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [capturedEmployeeId, setCapturedEmployeeId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,6 +39,21 @@ export function PpeStockCreateModal(props: {
     [props.open, props.companyId, props.createdByUserId]
   );
   const capturedByName = myProfile?.full_name ?? `User ${props.createdByUserId.slice(0, 8)}`;
+
+  const { data: employees } = useAsync(
+    async () => {
+      if (!props.open || !props.companyId) return [] as HrEmployee[];
+      const rows = await listHrEmployees(props.companyId);
+      return rows
+        .filter((e) => e.employment_status !== 'ARCHIVED' && e.employment_status !== 'TERMINATED')
+        .sort((a, b) => {
+          const aName = `${a.last_name ?? ''} ${a.first_name ?? ''}`.toLowerCase();
+          const bName = `${b.last_name ?? ''} ${b.first_name ?? ''}`.toLowerCase();
+          return aName.localeCompare(bName);
+        });
+    },
+    [props.open, props.companyId]
+  );
 
   const canSubmit = useMemo(
     () => !!ppeItemId && !!dateOrdered && !!dateStockReceived,
@@ -57,8 +75,10 @@ export function PpeStockCreateModal(props: {
         reorderLevel: reorderLevel ? Number(reorderLevel) : 0,
         reorderQty: reorderQty ? Number(reorderQty) : 0,
         createdByUserId: props.createdByUserId,
+        capturedByEmployeeId: capturedEmployeeId ? (capturedEmployeeId as UUID) : null,
         dateOrdered: dateOrdered || null,
-        dateStockReceived: dateStockReceived || null
+        dateStockReceived: dateStockReceived || null,
+        expiryDate: expiryDate || null
       });
       props.onCreated?.();
       props.onClose();
@@ -70,6 +90,8 @@ export function PpeStockCreateModal(props: {
       setOnHandQty('');
       setReorderLevel('');
       setReorderQty('');
+      setExpiryDate('');
+      setCapturedEmployeeId('');
     } catch (err: unknown) {
       setError(formatAuthError(err as Error));
     } finally {
@@ -98,13 +120,34 @@ export function PpeStockCreateModal(props: {
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Person capturing stock (auto-filled)</label>
-            <input
-              readOnly
-              value={capturedByName}
-              className="w-full px-4 py-2.5 bg-surface-50 border border-surface-200 rounded-lg text-sm text-charcoal-600"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">
+                Person capturing stock (HR employee)
+              </label>
+              <select
+                value={capturedEmployeeId}
+                onChange={(e) => setCapturedEmployeeId(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              >
+                <option value="">Select employee (optional)</option>
+                {(employees ?? []).map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {`${emp.last_name ?? ''}, ${emp.first_name ?? ''}`.trim()} — {emp.employee_no}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">
+                Person capturing stock (display)
+              </label>
+              <input
+                readOnly
+                value={capturedByName}
+                className="w-full px-4 py-2.5 bg-surface-50 border border-surface-200 rounded-lg text-sm text-charcoal-600"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -123,6 +166,15 @@ export function PpeStockCreateModal(props: {
                 type="date"
                 value={dateStockReceived}
                 onChange={(e) => setDateStockReceived(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Expiry date (optional)</label>
+              <input
+                type="date"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
                 className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
               />
             </div>
