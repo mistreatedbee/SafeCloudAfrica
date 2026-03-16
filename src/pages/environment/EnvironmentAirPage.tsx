@@ -11,6 +11,14 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 const currentYear = new Date().getFullYear();
 
+const MONITORING_TOOL_OPTIONS: string[] = [
+  'Air Sampling Pumps',
+  'Gas Detectors',
+  'Particulate Matter Monitors',
+  'Multi-Gas Monitors',
+  'Calibration Equipment'
+];
+
 export function EnvironmentAirPage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
@@ -22,7 +30,34 @@ export function EnvironmentAirPage() {
   const [search, setSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [editing, setEditing] = useState<any | null>(null);
-  const [form, setForm] = useState<any>({ referenceNumber: '', emissionSourceCategories: ['Dust'], legalRequirementIds: [] as string[], legalReferencesSnapshot: [] as string[], monitoringFrequency: 'Monthly', monitoringDate: new Date().toISOString().slice(0, 10), monitoringTime: '', monitoringLocation: '', methodUsed: 'Visual', equipmentId: '', calibrationStatus: '', weatherConditions: '', conductedByName: '', conductedByCompany: '', results: [{ parameter: 'PM10', resultValue: '', limitValue: '', status: 'Pass' }], nonConformanceNotes: '', trendAnalysisNotes: '', reviewedByUserId: '', approvedByUserId: '', approvedAt: '' });
+  const [form, setForm] = useState<any>({
+    referenceNumber: '',
+    emissionSourceCategories: ['Dust'],
+    legalRequirementIds: [] as string[],
+    legalReferencesSnapshot: [] as string[],
+    monitoringFrequency: 'Monthly',
+    monitoringDate: new Date().toISOString().slice(0, 10),
+    monitoringTime: '',
+    monitoringLocation: '',
+    methodUsed: 'Visual',
+    equipmentId: '',
+    calibrationStatus: '',
+    weatherConditions: '',
+    conductedByName: '',
+    conductedByCompany: '',
+    monitoringTools: [] as string[],
+    laboratoryResultsFileIds: [] as string[],
+    labName: '',
+    labAccreditationNumber: '',
+    labAccreditationAuthority: '',
+    labAccreditationCertificateFileIds: [] as string[],
+    results: [{ parameter: 'PM10', resultValue: '', limitValue: '', status: 'Pass' }],
+    nonConformanceNotes: '',
+    trendAnalysisNotes: '',
+    reviewedByUserId: '',
+    approvedByUserId: '',
+    approvedAt: ''
+  });
 
   const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
   const { data: legalOptions } = useAsync(async () => (activeCompanyId ? await listLegalRequirementOptions(activeCompanyId) : []), [activeCompanyId]);
@@ -36,16 +71,86 @@ export function EnvironmentAirPage() {
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
-    await upsertEnvAirQuality({ companyId: activeCompanyId, actorUserId: user.id, actorRole: activeRole, id: editing?.id, ...form, legalRequirementIds: form.legalRequirementIds, reviewedByUserId: form.reviewedByUserId || null, approvedByUserId: form.approvedByUserId || null, approvedAt: form.approvedAt || null });
+    await upsertEnvAirQuality({
+      companyId: activeCompanyId,
+      actorUserId: user.id,
+      actorRole: activeRole,
+      id: editing?.id,
+      ...form,
+      legalRequirementIds: form.legalRequirementIds,
+      monitoringTools: form.monitoringTools,
+      laboratoryResultsFileIds: form.laboratoryResultsFileIds,
+      labName: form.labName,
+      labAccreditationNumber: form.labAccreditationNumber,
+      labAccreditationAuthority: form.labAccreditationAuthority,
+      labAccreditationCertificateFileIds: form.labAccreditationCertificateFileIds,
+      reviewedByUserId: form.reviewedByUserId || null,
+      approvedByUserId: form.approvedByUserId || null,
+      approvedAt: form.approvedAt || null
+    });
     setEditing(null);
-    setForm({ referenceNumber: '', emissionSourceCategories: ['Dust'], legalRequirementIds: [], legalReferencesSnapshot: [], monitoringFrequency: 'Monthly', monitoringDate: new Date().toISOString().slice(0, 10), monitoringTime: '', monitoringLocation: '', methodUsed: 'Visual', equipmentId: '', calibrationStatus: '', weatherConditions: '', conductedByName: '', conductedByCompany: '', results: [{ parameter: 'PM10', resultValue: '', limitValue: '', status: 'Pass' }], nonConformanceNotes: '', trendAnalysisNotes: '', reviewedByUserId: '', approvedByUserId: '', approvedAt: '' });
+    setForm({
+      referenceNumber: '',
+      emissionSourceCategories: ['Dust'],
+      legalRequirementIds: [],
+      legalReferencesSnapshot: [],
+      monitoringFrequency: 'Monthly',
+      monitoringDate: new Date().toISOString().slice(0, 10),
+      monitoringTime: '',
+      monitoringLocation: '',
+      methodUsed: 'Visual',
+      equipmentId: '',
+      calibrationStatus: '',
+      weatherConditions: '',
+      conductedByName: '',
+      conductedByCompany: '',
+      monitoringTools: [],
+      laboratoryResultsFileIds: [],
+      labName: '',
+      labAccreditationNumber: '',
+      labAccreditationAuthority: '',
+      labAccreditationCertificateFileIds: [],
+      results: [{ parameter: 'PM10', resultValue: '', limitValue: '', status: 'Pass' }],
+      nonConformanceNotes: '',
+      trendAnalysisNotes: '',
+      reviewedByUserId: '',
+      approvedByUserId: '',
+      approvedAt: ''
+    });
     setRefreshKey((k) => k + 1);
     await refresh();
   }
 
   function startEdit(row: any) {
     setEditing(row);
-    setForm({ referenceNumber: row.reference_number, emissionSourceCategories: row.emission_source_categories ?? [], legalRequirementIds: row.legal_requirement_ids ?? [], legalReferencesSnapshot: row.legal_references_snapshot ?? [], monitoringFrequency: row.monitoring_frequency, monitoringDate: row.monitoring_date, monitoringTime: row.monitoring_time ?? '', monitoringLocation: row.monitoring_location, methodUsed: row.method_used, equipmentId: row.equipment_id ?? '', calibrationStatus: row.calibration_status ?? '', weatherConditions: row.weather_conditions ?? '', conductedByName: row.conducted_by_name ?? '', conductedByCompany: row.conducted_by_company ?? '', results: row.results ?? [], nonConformanceNotes: row.non_conformance_notes ?? '', trendAnalysisNotes: row.trend_analysis_notes ?? '', reviewedByUserId: row.reviewed_by_user_id ?? '', approvedByUserId: row.approved_by_user_id ?? '', approvedAt: row.approved_at?.slice(0, 16) ?? '' });
+    setForm({
+      referenceNumber: row.reference_number,
+      emissionSourceCategories: row.emission_source_categories ?? [],
+      legalRequirementIds: row.legal_requirement_ids ?? [],
+      legalReferencesSnapshot: row.legal_references_snapshot ?? [],
+      monitoringFrequency: row.monitoring_frequency,
+      monitoringDate: row.monitoring_date,
+      monitoringTime: row.monitoring_time ?? '',
+      monitoringLocation: row.monitoring_location,
+      methodUsed: row.method_used,
+      equipmentId: row.equipment_id ?? '',
+      calibrationStatus: row.calibration_status ?? '',
+      weatherConditions: row.weather_conditions ?? '',
+      conductedByName: row.conducted_by_name ?? '',
+      conductedByCompany: row.conducted_by_company ?? '',
+      monitoringTools: row.monitoring_tools ?? [],
+      laboratoryResultsFileIds: row.attachment_file_ids ?? [],
+      labName: row.lab_name ?? '',
+      labAccreditationNumber: row.lab_accreditation_number ?? '',
+      labAccreditationAuthority: row.lab_accreditation_authority ?? '',
+      labAccreditationCertificateFileIds: row.lab_accreditation_certificate_file_ids ?? [],
+      results: row.results ?? [],
+      nonConformanceNotes: row.non_conformance_notes ?? '',
+      trendAnalysisNotes: row.trend_analysis_notes ?? '',
+      reviewedByUserId: row.reviewed_by_user_id ?? '',
+      approvedByUserId: row.approved_by_user_id ?? '',
+      approvedAt: row.approved_at?.slice(0, 16) ?? ''
+    });
   }
 
   const trendData = useMemo(() => {
@@ -76,9 +181,27 @@ export function EnvironmentAirPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <input value={form.referenceNumber} onChange={(e) => setForm({ ...form, referenceNumber: e.target.value })} placeholder="Reference number" className="px-3 py-2 border rounded-lg text-sm" required />
             <input value={form.emissionSourceCategories.join(', ')} onChange={(e) => setForm({ ...form, emissionSourceCategories: e.target.value.split(',').map((x: string) => x.trim()).filter(Boolean) })} placeholder="Emission source categories (comma separated)" className="px-3 py-2 border rounded-lg text-sm" />
-            <select multiple value={form.legalRequirementIds} onChange={(e) => setForm({ ...form, legalRequirementIds: Array.from(e.target.selectedOptions).map((o) => o.value), legalReferencesSnapshot: Array.from(e.target.selectedOptions).map((o) => o.text) })} className="px-3 py-2 border rounded-lg text-sm min-h-[96px]">
-              {(legalOptions ?? []).map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-            </select>
+            <div className="flex flex-col space-y-1">
+              <span className="text-xs font-medium text-charcoal-600">Linked Standard / Legal Requirement</span>
+              <select
+                multiple
+                value={form.legalRequirementIds}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    legalRequirementIds: Array.from(e.target.selectedOptions).map((o) => o.value),
+                    legalReferencesSnapshot: Array.from(e.target.selectedOptions).map((o) => o.text)
+                  })
+                }
+                className="px-3 py-2 border rounded-lg text-sm min-h-[96px]"
+              >
+                {(legalOptions ?? []).map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <input value={form.monitoringFrequency} onChange={(e) => setForm({ ...form, monitoringFrequency: e.target.value })} placeholder="Monitoring frequency" className="px-3 py-2 border rounded-lg text-sm" required />
             <input type="date" value={form.monitoringDate} onChange={(e) => setForm({ ...form, monitoringDate: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" required />
             <input type="time" value={form.monitoringTime} onChange={(e) => setForm({ ...form, monitoringTime: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
@@ -89,6 +212,107 @@ export function EnvironmentAirPage() {
             <input value={form.weatherConditions} onChange={(e) => setForm({ ...form, weatherConditions: e.target.value })} placeholder="Weather conditions" className="px-3 py-2 border rounded-lg text-sm" />
             <input value={form.conductedByName} onChange={(e) => setForm({ ...form, conductedByName: e.target.value })} placeholder="Conducted by" className="px-3 py-2 border rounded-lg text-sm" />
             <input value={form.conductedByCompany} onChange={(e) => setForm({ ...form, conductedByCompany: e.target.value })} placeholder="Conducted by company" className="px-3 py-2 border rounded-lg text-sm" />
+            <div className="flex flex-col space-y-1">
+              <span className="text-xs font-medium text-charcoal-600">Monitoring Tools</span>
+              <div className="grid grid-cols-1 gap-1 text-sm">
+                {MONITORING_TOOL_OPTIONS.map((tool) => (
+                  <label key={tool} className="inline-flex items-center gap-2 text-xs md:text-sm">
+                    <input
+                      type="checkbox"
+                      className="rounded border-surface-300"
+                      checked={form.monitoringTools.includes(tool)}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...form.monitoringTools, tool]
+                          : form.monitoringTools.filter((t: string) => t !== tool);
+                        setForm({ ...form, monitoringTools: next });
+                      }}
+                    />
+                    <span>{tool}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Laboratory Results Upload</p>
+            <p className="text-xs text-charcoal-500">
+              Attach laboratory reports (PDF, DOCX, XLSX, images) related to this air quality monitoring.
+            </p>
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+              className="text-sm"
+              onChange={() => {
+                // Files are uploaded via the document storage system on the server side;
+                // this form only tracks stored file IDs loaded from the record.
+              }}
+            />
+            {Array.isArray(form.laboratoryResultsFileIds) && form.laboratoryResultsFileIds.length > 0 && (
+              <div className="mt-2 border rounded-lg overflow-hidden">
+                <div className="px-3 py-2 bg-surface-50 text-xs font-semibold text-charcoal">Laboratory result files</div>
+                <div className="divide-y divide-surface-100">
+                  {form.laboratoryResultsFileIds.map((id: string) => (
+                    <div key={id} className="px-3 py-2 flex items-center justify-between text-xs">
+                      <span className="truncate mr-2">{id}</span>
+                      <span className="text-charcoal-400">Stored in document storage</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Laboratory Accreditation</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input
+                value={form.labName}
+                onChange={(e) => setForm({ ...form, labName: e.target.value })}
+                placeholder="Lab name"
+                className="px-3 py-2 border rounded-lg text-sm"
+              />
+              <input
+                value={form.labAccreditationNumber}
+                onChange={(e) => setForm({ ...form, labAccreditationNumber: e.target.value })}
+                placeholder="Accreditation number"
+                className="px-3 py-2 border rounded-lg text-sm"
+              />
+              <input
+                value={form.labAccreditationAuthority}
+                onChange={(e) => setForm({ ...form, labAccreditationAuthority: e.target.value })}
+                placeholder="Accreditation authority (optional)"
+                className="px-3 py-2 border rounded-lg text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <span className="text-xs font-medium text-charcoal-600">Upload Accreditation Certificate</span>
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+                className="text-sm"
+                onChange={() => {
+                  // Files are uploaded via the document storage system on the server side;
+                  // this form only tracks stored file IDs loaded from the record.
+                }}
+              />
+              {Array.isArray(form.labAccreditationCertificateFileIds) && form.labAccreditationCertificateFileIds.length > 0 && (
+                <div className="mt-2 border rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 bg-surface-50 text-xs font-semibold text-charcoal">Accreditation certificates</div>
+                  <div className="divide-y divide-surface-100">
+                    {form.labAccreditationCertificateFileIds.map((id: string) => (
+                      <div key={id} className="px-3 py-2 flex items-center justify-between text-xs">
+                        <span className="truncate mr-2">{id}</span>
+                        <span className="text-charcoal-400">Stored in document storage</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">

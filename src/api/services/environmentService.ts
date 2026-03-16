@@ -304,9 +304,20 @@ export async function upsertEnvAirQuality(input: any): Promise<any> {
     monitoring_date: input.monitoringDate, monitoring_time: input.monitoringTime || null, monitoring_location: String(input.monitoringLocation ?? '').trim(),
     method_used: String(input.methodUsed ?? '').trim(), equipment_id: input.equipmentId?.trim() || null, calibration_status: input.calibrationStatus?.trim() || null,
     weather_conditions: input.weatherConditions?.trim() || null, conducted_by_name: input.conductedByName?.trim() || null, conducted_by_company: input.conductedByCompany?.trim() || null,
-    results, auto_flag_exceedances: true, overall_status: overall, non_conformance_notes: input.nonConformanceNotes?.trim() || null,
-    trend_analysis_notes: input.trendAnalysisNotes?.trim() || null, attachment_file_ids: input.attachmentFileIds ?? [], reviewed_by_user_id: input.reviewedByUserId ?? null,
-    approved_by_user_id: input.approvedByUserId ?? null, approved_at: input.approvedAt || null
+    monitoring_tools: (input.monitoringTools ?? []).map((x: any) => String(x).trim()).filter(Boolean),
+    results,
+    auto_flag_exceedances: true,
+    overall_status: overall,
+    non_conformance_notes: input.nonConformanceNotes?.trim() || null,
+    trend_analysis_notes: input.trendAnalysisNotes?.trim() || null,
+    attachment_file_ids: input.laboratoryResultsFileIds ?? input.attachmentFileIds ?? [],
+    lab_name: input.labName?.trim() || null,
+    lab_accreditation_number: input.labAccreditationNumber?.trim() || null,
+    lab_accreditation_authority: input.labAccreditationAuthority?.trim() || null,
+    lab_accreditation_certificate_file_ids: input.labAccreditationCertificateFileIds ?? [],
+    reviewed_by_user_id: input.reviewedByUserId ?? null,
+    approved_by_user_id: input.approvedByUserId ?? null,
+    approved_at: input.approvedAt || null
   };
 
   const query = input.id ? insforge.database.from('env_air_quality').update(payload).eq('company_id', input.companyId).eq('id', input.id) : insforge.database.from('env_air_quality').insert({ ...payload, created_by_user_id: input.actorUserId });
