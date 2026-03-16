@@ -110,6 +110,7 @@ export async function listHealthMedicals(input: ListHealthMedicalsInput): Promis
 
 export async function createHealthMedical(input: {
   companyId: UUID;
+  employeeId?: UUID | null;
   employeeUserId?: UUID | null;
   employeeName?: string | null;
   employeeNumber?: string | null;
@@ -119,17 +120,20 @@ export async function createHealthMedical(input: {
   conductedBy?: string | null;
   fitnessStatus: HealthMedical['fitness_status'];
   fitnessCertificateFileIds?: UUID[];
+  medicalCost?: number | null;
   chronicIllnessDisclosed?: boolean;
   chronicIllnessNotes?: string | null;
   restrictedDutyRequired?: boolean;
   restrictedDutyDetails?: string | null;
   notes?: string | null;
+  uploadedDocuments?: unknown[] | null;
   createdByUserId: UUID;
 }): Promise<HealthMedical> {
   const { data, error } = await insforge.database
     .from('health_medicals')
     .insert({
       company_id: input.companyId,
+      employee_id: input.employeeId ?? null,
       employee_user_id: input.employeeUserId ?? null,
       employee_name: input.employeeName ?? null,
       employee_number: input.employeeNumber ?? null,
@@ -139,25 +143,28 @@ export async function createHealthMedical(input: {
       conducted_by: input.conductedBy ?? null,
       fitness_status: input.fitnessStatus,
       fitness_certificate_file_ids: input.fitnessCertificateFileIds ?? [],
+      medical_cost: input.medicalCost ?? null,
       chronic_illness_disclosed: input.chronicIllnessDisclosed ?? false,
       chronic_illness_notes: input.chronicIllnessNotes ?? null,
       restricted_duty_required: input.restrictedDutyRequired ?? false,
       restricted_duty_details: input.restrictedDutyDetails ?? null,
       notes: input.notes ?? null,
+      uploaded_documents: input.uploadedDocuments ?? [],
       created_by_user_id: input.createdByUserId
     })
     .select('*')
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create health medical record.');
+  const row = data as HealthMedical;
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,
     action: 'health.medicals.create',
     entityType: 'health_medical',
-    entityId: (data as HealthMedical).id
+    entityId: row.id
   });
-  return data as HealthMedical;
+  return row;
 }
 
 export async function listHealthRestrictedDuty(input: {
@@ -524,13 +531,20 @@ export async function deleteHealthVaccination(companyId: UUID, vaccinationId: UU
 export async function getHealthDashboardStats(companyId: UUID) {
   const nowDate = todayIsoDate();
   const plus30 = addDaysIsoDate(30);
-  const { data: medicalRows } = await insforge.database.from('health_medicals').select('fitness_status, expiry_date').eq('company_id', companyId).limit(5000);
-  const medicals = (medicalRows ?? []) as Array<Pick<HealthMedical, 'fitness_status' | 'expiry_date'>>;
+  const { data: medicalRows } = await insforge.database.from('health_medicals').select('fitness_status, expiry_date, medical_cost, employee_id').eq('company_id', companyId).limit(5000);
+  const medicals = (medicalRows ?? []) as Array<Pick<HealthMedical, 'fitness_status' | 'expiry_date' | 'medical_cost' | 'employee_id'>>;
   const fitCount = medicals.filter((m) => m.fitness_status === 'FIT').length;
   const restrictedCount = medicals.filter((m) => m.fitness_status === 'RESTRICTED').length;
   const unfitCount = medicals.filter((m) => m.fitness_status === 'UNFIT').length;
   const expiredCount = medicals.filter((m) => !!m.expiry_date && String(m.expiry_date) < nowDate).length;
   const medicalsExpiringSoon = medicals.filter((m) => !!m.expiry_date && String(m.expiry_date) >= nowDate && String(m.expiry_date) <= plus30).length;
+  const totalCost = medicals.reduce((sum, m) => sum + Number(m.medical_cost ?? 0), 0);
+  const employeesWithCost = new Set<string>();
+  for (const m of medicals) {
+    if (m.employee_id && m.medical_cost != null) employeesWithCost.add(String(m.employee_id));
+  }
+  const averageCostPerEmployee = employeesWithCost.size > 0 ? totalCost / employeesWithCost.size : 0;
+
   const { count: openHygieneNonCompliances } = await insforge.database
     .from('health_hygiene_records')
     .select('*', { count: 'exact', head: true })
@@ -554,6 +568,8 @@ export async function getHealthDashboardStats(companyId: UUID) {
     unfitCount,
     expiredCount,
     medicalsExpiringSoon,
+    totalMedicalCost: totalCost,
+    averageMedicalCostPerEmployee: averageCostPerEmployee,
     openHygieneNonCompliances: openHygieneNonCompliances ?? 0,
     openHealthActionPlans: openHealthActionPlans ?? 0,
     vaccinationsDueSoon: vaccinationsDueSoon ?? 0

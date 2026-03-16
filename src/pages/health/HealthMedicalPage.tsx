@@ -4,11 +4,12 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
 import { createHealthMedical, listHealthMedicals, listHealthRestrictedDuty } from '../../api/services/healthService';
-import { listUserProfiles } from '../../api/services/profilesService';
+import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
+import { MedicalDocumentsPanel } from '../../components/health/MedicalDocumentsPanel';
 import type { CompanyRole } from '../../api/models/core';
-import type { HealthMedical, UserProfile } from '../../api/models/entities';
+import type { HealthMedical } from '../../api/models/entities';
 
-const tabs = ['Medical Records', 'Fitness Certificates', 'Restricted Duty Tracker'] as const;
+const tabs = ['Medical Records', 'Restricted Tracker'] as const;
 type TabKey = (typeof tabs)[number];
 
 export function HealthMedicalPage() {
@@ -17,22 +18,19 @@ export function HealthMedicalPage() {
   const [tab, setTab] = useState<TabKey>('Medical Records');
   const [refreshKey, setRefreshKey] = useState(0);
   const [form, setForm] = useState({
-    employeeUserId: '',
+    employeeId: '' as string,
+    employeeUserId: '' as string,
     employeeName: '',
     employeeNumber: '',
     medicalType: 'PERIODIC' as HealthMedical['medical_type'],
     medicalDate: '',
     expiryDate: '',
+    medicalCost: '',
     conductedBy: '',
     fitnessStatus: 'FIT' as HealthMedical['fitness_status'],
     restrictedDutyRequired: false,
     restrictedDutyDetails: ''
   });
-
-  const { data: profiles } = useAsync<UserProfile[]>(async () => {
-    if (!activeCompanyId) return [];
-    return await listUserProfiles(activeCompanyId);
-  }, [activeCompanyId]);
 
   const { data: medicals } = useAsync<HealthMedical[]>(async () => {
     if (!activeCompanyId) return [];
@@ -51,6 +49,7 @@ export function HealthMedicalPage() {
     if (!activeCompanyId || !user?.id) return;
     await createHealthMedical({
       companyId: activeCompanyId,
+      employeeId: (form.employeeId || undefined) as any,
       employeeUserId: form.employeeUserId || undefined,
       employeeName: form.employeeName || undefined,
       employeeNumber: form.employeeNumber || undefined,
@@ -59,6 +58,7 @@ export function HealthMedicalPage() {
       expiryDate: form.expiryDate || null,
       conductedBy: form.conductedBy || null,
       fitnessStatus: form.fitnessStatus,
+      medicalCost: form.medicalCost ? Number(form.medicalCost) : null,
       restrictedDutyRequired: form.restrictedDutyRequired,
       restrictedDutyDetails: form.restrictedDutyDetails || null,
       createdByUserId: user.id
@@ -73,14 +73,36 @@ export function HealthMedicalPage() {
         <div className="bg-white border border-surface-300 rounded-xl p-4">
           <h3 className="font-semibold text-charcoal mb-3">Create medical record</h3>
           <form className="grid grid-cols-1 md:grid-cols-3 gap-3" onSubmit={submitMedical}>
-            <select value={form.employeeUserId} onChange={(e) => setForm((s) => ({ ...s, employeeUserId: e.target.value }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm">
-              <option value="">Select employee profile (optional)</option>
-              {(profiles ?? []).map((p) => (
-                <option key={p.user_id} value={p.user_id}>{p.full_name ?? p.email ?? p.user_id}</option>
-              ))}
-            </select>
-            <input value={form.employeeName} onChange={(e) => setForm((s) => ({ ...s, employeeName: e.target.value }))} placeholder="Employee name (if no profile)" className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
-            <input value={form.employeeNumber} onChange={(e) => setForm((s) => ({ ...s, employeeNumber: e.target.value }))} placeholder="Employee number" className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+            <HrEmployeeSelect
+              companyId={activeCompanyId ?? null}
+              value={form.employeeUserId as any}
+              label="Employee Name"
+              placeholder="Select employee"
+              onChange={(userId, meta) =>
+                setForm((s) => ({
+                  ...s,
+                  employeeUserId: userId || '',
+                  employeeId: (meta.employeeId ?? '') as string,
+                  employeeName: meta.nameSnapshot,
+                  employeeNumber: meta.employeeNumber ?? ''
+                }))
+              }
+            />
+            <input
+              value={form.employeeNumber}
+              readOnly
+              placeholder="Employee ID"
+              className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
+            />
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.medicalCost}
+              onChange={(e) => setForm((s) => ({ ...s, medicalCost: e.target.value }))}
+              placeholder="Medical cost (ZAR)"
+              className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
+            />
             <select value={form.medicalType} onChange={(e) => setForm((s) => ({ ...s, medicalType: e.target.value as HealthMedical['medical_type'] }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm">
               <option value="PRE_EMPLOYMENT">Pre-employment</option>
               <option value="PERIODIC">Periodic</option>
@@ -112,27 +134,80 @@ export function HealthMedicalPage() {
         </div>
 
         {tab === 'Medical Records' && (
-          <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Employee</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Medical date</th><th className="px-3 py-2 text-left">Expiry</th><th className="px-3 py-2 text-left">Status</th></tr></thead>
-              <tbody className="divide-y divide-surface-100">
-                {(medicals ?? []).map((m) => <tr key={m.id}><td className="px-3 py-2">{m.employee_name ?? String(m.employee_user_id ?? '').slice(0, 8)}</td><td className="px-3 py-2">{m.medical_type}</td><td className="px-3 py-2">{m.medical_date}</td><td className="px-3 py-2">{m.expiry_date ?? '-'}</td><td className="px-3 py-2">{m.fitness_status}</td></tr>)}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {tab === 'Fitness Certificates' && (
-          <div className="bg-white border border-surface-300 rounded-xl p-4">
-            <p className="text-sm text-charcoal-500 mb-3">Records expiring in next 30 days.</p>
-            <div className="space-y-2">
-              {expiringSoon.map((m) => <div key={m.id} className="p-3 rounded-lg border border-warning/30 bg-warning/5 text-sm">{m.employee_name ?? m.employee_user_id}: {m.expiry_date}</div>)}
-              {expiringSoon.length === 0 && <p className="text-sm text-charcoal-500">No expiring certificates.</p>}
+          <div className="space-y-4">
+            <div className="bg-white border border-surface-300 rounded-xl p-4">
+              <p className="text-sm font-semibold text-charcoal mb-2">Certificates expiring in next 30 days</p>
+              <div className="space-y-2">
+                {expiringSoon.map((m) => (
+                  <div key={m.id} className="p-3 rounded-lg border border-warning/30 bg-warning/5 text-sm">
+                    {m.employee_name ?? m.employee_user_id}: {m.expiry_date}
+                  </div>
+                ))}
+                {expiringSoon.length === 0 && <p className="text-sm text-charcoal-500">No expiring certificates.</p>}
+              </div>
+            </div>
+            <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-surface-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Employee</th>
+                    <th className="px-3 py-2 text-left">Type</th>
+                    <th className="px-3 py-2 text-left">Medical date</th>
+                    <th className="px-3 py-2 text-left">Expiry</th>
+                    <th className="px-3 py-2 text-left">Expiry status</th>
+                    <th className="px-3 py-2 text-left">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-100">
+                  {(medicals ?? []).map((m) => {
+                    const today = new Date().toISOString().slice(0, 10);
+                    let expiryLabel = 'Valid';
+                    if (!m.expiry_date) {
+                      expiryLabel = 'Valid';
+                    } else if (String(m.expiry_date) < today) {
+                      expiryLabel = 'Expired';
+                    } else if (String(m.expiry_date) <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)) {
+                      expiryLabel = 'Expiring Soon';
+                    }
+                    return (
+                      <tr key={m.id} className="align-top">
+                        <td className="px-3 py-2">
+                          <div className="flex flex-col">
+                            <span>{m.employee_name ?? String(m.employee_user_id ?? '').slice(0, 8)}</span>
+                            {user?.id && (
+                              <div className="mt-1">
+                                <MedicalDocumentsPanel medical={m} companyId={activeCompanyId!} actorUserId={user.id} />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">{m.medical_type}</td>
+                        <td className="px-3 py-2">{m.medical_date}</td>
+                        <td className="px-3 py-2">{m.expiry_date ?? '-'}</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                              expiryLabel === 'Expired'
+                                ? 'bg-critical/10 text-critical'
+                                : expiryLabel === 'Expiring Soon'
+                                  ? 'bg-warning/10 text-warning-700'
+                                  : 'bg-emerald-50 text-emerald-700'
+                            }`}
+                          >
+                            {expiryLabel}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">{m.fitness_status}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
 
-        {tab === 'Restricted Duty Tracker' && (
+        {tab === 'Restricted Tracker' && (
           <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
             <table className="w-full text-sm">
               <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Employee</th><th className="px-3 py-2 text-left">Reason</th><th className="px-3 py-2 text-left">Start</th><th className="px-3 py-2 text-left">End</th><th className="px-3 py-2 text-left">Status</th></tr></thead>

@@ -7,13 +7,14 @@ import type { UUID } from '../../api/models/entities';
 export type HrEmployeeSelectProps = {
   companyId: UUID | null;
   value: UUID | '';
-  onChange: (userId: UUID | '', meta: { nameSnapshot: string }) => void;
+  onChange: (userId: UUID | '', meta: { nameSnapshot: string; employeeId?: UUID | null; employeeNumber?: string | null }) => void;
   placeholder?: string;
   label?: string;
   disabled?: boolean;
+  onEmployeeChange?: (employee: HrEmployee | null) => void;
 };
 
-export function HrEmployeeSelect({ companyId, value, onChange, placeholder = 'Select', label, disabled }: HrEmployeeSelectProps) {
+export function HrEmployeeSelect({ companyId, value, onChange, placeholder = 'Select', label, disabled, onEmployeeChange }: HrEmployeeSelectProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data: employees, loading } = useAsync<HrEmployee[]>(
@@ -54,7 +55,8 @@ export function HrEmployeeSelect({ companyId, value, onChange, placeholder = 'Se
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const userId = (e.target.value || '') as UUID | '';
     if (!userId) {
-      onChange('', { nameSnapshot: '' });
+      onChange('', { nameSnapshot: '', employeeId: null, employeeNumber: null });
+      onEmployeeChange?.(null);
       return;
     }
     const match = (employees ?? []).find((emp) => emp.user_id === userId);
@@ -62,7 +64,8 @@ export function HrEmployeeSelect({ companyId, value, onChange, placeholder = 'Se
       match && (match.first_name || match.last_name)
         ? `${match.first_name ?? ''} ${match.last_name ?? ''}`.trim()
         : match?.email ?? '';
-    onChange(userId, { nameSnapshot: snapshot });
+    onChange(userId, { nameSnapshot: snapshot, employeeId: match?.id ?? null, employeeNumber: match?.employee_no ?? null });
+    if (match) onEmployeeChange?.(match);
   };
 
   return (
@@ -90,7 +93,8 @@ export function HrEmployeeSelect({ companyId, value, onChange, placeholder = 'Se
         <option value="">{placeholder}</option>
         {filteredEmployees.map((e) => {
           const name = `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || e.email || e.employee_no;
-          const display = e.employee_no ? `${name} (${e.employee_no})` : name;
+          const empId = e.employee_no || '';
+          const display = empId ? `${empId} – ${name}` : name;
           return (
             <option key={e.id} value={e.user_id ?? ''}>
               {display}

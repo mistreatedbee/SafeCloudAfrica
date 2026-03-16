@@ -36,13 +36,22 @@ export function HealthDashboardPage() {
 
         {data && (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
               <StatCard title="Fit" value={data.fitCount} icon="Shield" iconColor="#2ECC71" />
               <StatCard title="Restricted" value={data.restrictedCount} icon="AlertTriangle" iconColor="#F39C12" />
               <StatCard title="Unfit" value={data.unfitCount} icon="XCircle" iconColor="#E74C3C" />
               <StatCard title="Expired" value={data.expiredCount} icon="Clock" iconColor="#E67E22" />
               <StatCard title="Medicals due (30d)" value={data.medicalsExpiringSoon} icon="Calendar" iconColor="#1ABC9C" />
+              <StatCard title="Total medical cost" value={data.totalMedicalCost?.toFixed?.(2) ?? 0} icon="Activity" iconColor="#8E44AD" />
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-white border border-surface-300 rounded-xl p-4">
+                <p className="text-sm text-charcoal-500">Average medical cost per employee</p>
+                <p className="text-2xl font-bold text-teal mt-1">
+                  {data.averageMedicalCostPerEmployee ? data.averageMedicalCostPerEmployee.toFixed(2) : '0.00'}
+                </p>
+              </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-white border border-surface-300 rounded-xl p-4">

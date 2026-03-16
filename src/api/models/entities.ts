@@ -1593,6 +1593,7 @@ export type HealthFitnessStatus = 'FIT' | 'RESTRICTED' | 'UNFIT';
 export type HealthMedical = {
   id: UUID;
   company_id: UUID;
+  employee_id: UUID | null;
   employee_user_id: UUID | null;
   employee_name: string | null;
   employee_number: string | null;
@@ -1602,11 +1603,13 @@ export type HealthMedical = {
   conducted_by: string | null;
   fitness_status: HealthFitnessStatus;
   fitness_certificate_file_ids: UUID[] | null;
+  medical_cost: number | null;
   chronic_illness_disclosed: boolean;
   chronic_illness_notes: string | null;
   restricted_duty_required: boolean;
   restricted_duty_details: string | null;
   notes: string | null;
+  uploaded_documents: EvidenceAttachment[] | null;
   created_by_user_id: UUID;
   closed_by_user_id: UUID | null;
   closed_at: string | null;
