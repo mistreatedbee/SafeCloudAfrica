@@ -8,6 +8,7 @@ import { upsertHrEmployee } from '../../api/services/hrService';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listDepartments } from '../../api/services/departmentsService';
 import { listSites } from '../../api/services/sitesService';
+import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 
 type Props = {
   open: boolean;
@@ -33,7 +34,7 @@ export function HrEmployeeEditModal(props: Props) {
   const [startDate, setStartDate] = useState(employee.start_date ?? '');
   const [departmentId, setDepartmentId] = useState<string>(String(employee.department_id ?? ''));
   const [siteId, setSiteId] = useState<string>(String(employee.site_id ?? ''));
-  const [supervisorUserId, setSupervisorUserId] = useState<string>(employee.supervisor_user_id ? String(employee.supervisor_user_id) : '');
+  const [supervisorUserId, setSupervisorUserId] = useState<UUID | ''>((employee.supervisor_user_id as UUID) ?? '');
 
   const [idNumber, setIdNumber] = useState(employee.id_number ?? '');
   const [dateOfBirth, setDateOfBirth] = useState(employee.date_of_birth ?? '');
@@ -78,7 +79,7 @@ export function HrEmployeeEditModal(props: Props) {
         start_date: startDate.trim(),
         department_id: departmentId ? (departmentId as any) : null,
         site_id: siteId ? (siteId as any) : null,
-        supervisor_user_id: supervisorUserId ? (supervisorUserId as any) : null,
+        supervisor_user_id: supervisorUserId || null,
         id_number: props.canViewRestrictedFields ? (idNumber.trim() || null) : employee.id_number,
         date_of_birth: props.canViewRestrictedFields ? (dateOfBirth.trim() || null) : employee.date_of_birth,
         address: props.canViewRestrictedFields ? (address.trim() || null) : employee.address,
@@ -255,12 +256,14 @@ export function HrEmployeeEditModal(props: Props) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Manager / Supervisor (user ID)</label>
-              <input
+              <HrEmployeeSelect
+                companyId={props.companyId}
                 value={supervisorUserId}
-                onChange={(e) => setSupervisorUserId(e.target.value)}
-                placeholder="Optional – internal user ID"
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                onChange={(userId) => {
+                  setSupervisorUserId(userId);
+                }}
+                label="Manager / Supervisor"
+                placeholder="Select manager or supervisor (optional)"
               />
             </div>
           </div>

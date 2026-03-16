@@ -23,7 +23,7 @@ export function HrEmployeeProfilePage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const allowedRoles: CompanyRole[] = ['owner', 'admin', 'manager'];
+  const allowedRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
   const canEditEmployee = !!(isPlatformAdmin || (activeRole && allowedRoles.includes(activeRole)));
 
   const { data: canRestricted } = useAsync(async () => {
