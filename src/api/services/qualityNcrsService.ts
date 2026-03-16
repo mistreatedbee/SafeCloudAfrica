@@ -161,7 +161,10 @@ export async function createQualityNcr(input: {
     requirement_reference_type: input.requirement_reference_type ?? null,
     requirement_reference_text: input.requirement_reference_text ?? null,
     root_cause: input.root_cause ?? null,
-    root_cause_categories: input.root_cause_categories ?? null,
+    root_cause_categories:
+      typeof input.root_cause_categories !== 'undefined' && input.root_cause_categories !== null
+        ? input.root_cause_categories
+        : [],
     corrective_action: input.corrective_action ?? null,
     corrective_action_due_date: input.corrective_action_due_date ?? null,
     corrective_action_owner_user_id: input.corrective_action_owner_user_id ?? null,
@@ -473,7 +476,7 @@ function normalizeNcrSourceType(source: string | null | undefined): string | nul
   if (s === 'inspection_item' || s === 'inspection') return 'inspection';
   if (s === 'customer_complaint' || s === 'complaint') return 'complaint';
   if (s === 'risk_assessment' || s === 'risk') return 'risk';
-  if (s === 'audit_finding' || s === 'program_audit_finding' || s === 'audit') return s;
+  if (s === 'audit_finding' || s === 'program_audit_finding' || s === 'audit') return 'audit';
   if (s === 'incident' || s === 'pjo') return s;
   return s;
 }

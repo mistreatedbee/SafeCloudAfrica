@@ -195,6 +195,8 @@ export function NcrCreateModal(props: {
       props.onClose();
       resetForm();
     } catch (err: any) {
+      // Surface detailed error in console for debugging while keeping user-facing message clean.
+      console.error('Failed to create NCR', err);
       setError(formatAuthError(err));
     } finally {
       setLoading(false);
