@@ -5,8 +5,9 @@ import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
 import { createHealthHygieneRecord, listHealthHygieneRecords, updateHealthHygieneRecord } from '../../api/services/healthService';
 import { listRiskAssessments } from '../../api/services/risksService';
+import { listEvidenceForEntityType } from '../../api/services/evidenceService';
 import type { RiskAssessment } from '../../api/services/risksService';
-import type { HealthHygieneRecord, UUID } from '../../api/models/entities';
+import type { EvidenceAttachment, HealthHygieneRecord, UUID } from '../../api/models/entities';
 import { EvidenceModal } from '../../components/evidence/EvidenceModal';
 
 type HygieneComplianceChoice = 'YES' | 'NO';
@@ -92,6 +93,11 @@ export function HealthHygienePage() {
     if (!activeCompanyId) return [];
     return await listRiskAssessments({ companyId: activeCompanyId, limit: 200 });
   }, [activeCompanyId]);
+
+  const { data: hygieneEvidence } = useAsync<EvidenceAttachment[]>(async () => {
+    if (!activeCompanyId) return [];
+    return await listEvidenceForEntityType(activeCompanyId, 'health_hygiene_record', 2000);
+  }, [activeCompanyId, refreshKey]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -336,6 +342,7 @@ export function HealthHygienePage() {
             </thead>
             <tbody className="divide-y divide-surface-100">
               {(records ?? []).map((r) => {
+                const docCount = (hygieneEvidence ?? []).filter((e) => e.entity_id === r.id).length;
                 const details = getDetailsFromRecord(r);
                 const isEditing = editingId === r.id;
                 const complianceChoice = isEditing ? editCompliance : mapComplianceToChoice(r.compliance_status);
@@ -449,13 +456,20 @@ export function HealthHygienePage() {
                       )}
                     </td>
                     <td className="px-3 py-2 align-top">
-                      <button
-                        type="button"
-                        className="px-2 py-1.5 rounded-lg bg-surface-200 text-xs text-charcoal hover:bg-surface-300"
-                        onClick={() => setEvidenceForId(r.id)}
-                      >
-                        Manage documents
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="px-2 py-1.5 rounded-lg bg-surface-200 text-xs text-charcoal hover:bg-surface-300"
+                          onClick={() => setEvidenceForId(r.id)}
+                        >
+                          Documents
+                        </button>
+                        {docCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-teal/10 text-teal text-xs font-semibold">
+                            {docCount}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2 align-top space-x-2">
                       {isEditing ? (

@@ -52,8 +52,6 @@ export function HealthDashboardPage() {
                   {data.averageMedicalCostPerEmployee ? data.averageMedicalCostPerEmployee.toFixed(2) : '0.00'}
                 </p>
               </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-white border border-surface-300 rounded-xl p-4">
                 <p className="text-sm text-charcoal-500">Open hygiene non-compliances</p>
                 <p className="text-2xl font-bold text-critical mt-1">{data.openHygieneNonCompliances}</p>

@@ -445,7 +445,7 @@ export function DashboardPage() {
             </div>
             <div className="px-5 py-3 bg-surface-50 border-t border-surface-200">
               <button
-                onClick={() => navigate('/dashboard/management/tasks')}
+                onClick={() => navigate('/dashboard/management/tasks?view=tasks')}
                 className="text-sm font-medium text-teal hover:text-teal-700 transition-colors">
 
                 View all tasks →
@@ -472,7 +472,7 @@ export function DashboardPage() {
             <div className="px-5 py-3 bg-surface-50 border-t border-surface-200">
               <button
                 type="button"
-                onClick={() => navigate('/dashboard/management/tasks')}
+              onClick={() => navigate('/dashboard/management/tasks?view=tasks')}
                 className="text-sm font-medium text-warning hover:text-warning-700 transition-colors"
               >
                 Resolve overdue →

@@ -196,7 +196,7 @@ export function EmployeeDashboardPage() {
             <div className="flex items-center gap-3"><UserIcon className="w-8 h-8 text-teal" /><span className="font-medium text-charcoal">My profile</span></div>
             <ArrowRightIcon className="w-5 h-5 text-charcoal-400" />
           </a>
-          <a href="/dashboard/management/tasks" className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all">
+          <a href="/dashboard/management/tasks?view=tasks" className="flex items-center justify-between p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all">
             <div className="flex items-center gap-3"><ClipboardCheckIcon className="w-8 h-8 text-navy" /><span className="font-medium text-charcoal">My tasks</span></div>
             <ArrowRightIcon className="w-5 h-5 text-charcoal-400" />
           </a>

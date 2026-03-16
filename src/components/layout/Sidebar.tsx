@@ -183,6 +183,7 @@ const managementGroups: NavGroup[] = [
     name: 'Management',
     icon: BriefcaseIcon,
     items: [
+      { name: 'Task Manager', path: '/dashboard/management/tasks?view=tasks', icon: ClipboardCheckIcon },
       { name: 'Tasks / CAPA', path: '/dashboard/management/tasks', icon: ClipboardCheckIcon },
       { name: 'NCR / Non-Conformance Report', path: '/dashboard/management/ncrs', icon: AlertTriangleIcon, roles: ncrRoles },
       { name: 'KPI', path: '/modules/hr/kpis', icon: TrendingUpIcon, roles: managementRoles, module: 'hr' },
