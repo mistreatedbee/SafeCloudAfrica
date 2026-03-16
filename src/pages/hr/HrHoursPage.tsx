@@ -4,6 +4,7 @@ import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
+import { listDepartments } from '../../api/services/departmentsService';
 import {
   approveHrTimesheet,
   getHrEmployeeByUserId,
@@ -26,7 +27,9 @@ export function HrHoursPage() {
   const [hoursWorked, setHoursWorked] = useState('8');
   const [overtimeHours, setOvertimeHours] = useState('0');
   const [projectOrClient, setProjectOrClient] = useState('');
+  const [comments, setComments] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const { data: selfEmployee } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return null;
@@ -38,6 +41,11 @@ export function HrHoursPage() {
   const { data: employees } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listHrEmployees(activeCompanyId);
+  }, [activeCompanyId]);
+
+  const { data: departments } = useAsync(async () => {
+    if (!activeCompanyId) return [];
+    return listDepartments(activeCompanyId);
   }, [activeCompanyId]);
 
   const { data: rows, refetch } = useAsync(async () => {
@@ -55,6 +63,16 @@ export function HrHoursPage() {
     [employees]
   );
 
+  const employeeNumber = useMemo(
+    () => new Map((employees ?? []).map((employee) => [employee.id as UUID, employee.employee_no])),
+    [employees]
+  );
+
+  const departmentLabel = useMemo(
+    () => new Map((departments ?? []).map((dept) => [dept.id as UUID, dept.name])),
+    [departments]
+  );
+
   const dailyTotal = Number(hoursWorked || 0) + Number(overtimeHours || 0);
 
   const byMonth = useMemo(() => {
@@ -67,25 +85,41 @@ export function HrHoursPage() {
   }, [rows]);
 
   async function onSave() {
-    if (!activeCompanyId || !user?.id || !activeEmployeeId) return;
     setError(null);
+    setSuccess(null);
+
+    if (!activeCompanyId || !user?.id || !activeEmployeeId) {
+      setError('Unable to save hours worked record. Please make sure an employee is selected and try again.');
+      return;
+    }
+
+    const parsedHours = Number(hoursWorked || 0);
+    const parsedOvertime = Number(overtimeHours || 0);
+
+    if (!Number.isFinite(parsedHours) || parsedHours < 0 || !Number.isFinite(parsedOvertime) || parsedOvertime < 0) {
+      setError('Hours worked and overtime hours must be zero or a positive number.');
+      return;
+    }
+
     try {
       const row = await upsertHrTimesheet({
         company_id: activeCompanyId,
         employee_id: activeEmployeeId as UUID,
         date,
-        hours_worked: Number(hoursWorked || 0),
-        overtime_hours: Number(overtimeHours || 0),
+        hours_worked: parsedHours,
+        overtime_hours: parsedOvertime,
         project_or_client: projectOrClient || null,
-        notes: null,
+        notes: comments || null,
         status: 'SUBMITTED',
         created_by_user_id: user.id as UUID
       });
       const d = new Date(row.date);
       await recalculateHrMonthlyHours(activeCompanyId, row.employee_id as UUID, d.getUTCFullYear(), d.getUTCMonth() + 1, user.id as UUID);
       await Promise.all([refetch(), refetchMonthly()]);
+      setSuccess('Hours worked record saved successfully.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save timesheet.');
+      const message = err instanceof Error ? err.message : 'Unable to save hours worked record. Please try again.';
+      setError(message);
     }
   }
 
@@ -111,6 +145,7 @@ export function HrHoursPage() {
       <div className="space-y-4">
         <HrSectionNav />
         {error && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
+        {success && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700">{success}</div>}
         <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
           <h3 className="font-semibold">Timesheet entry</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -129,10 +164,46 @@ export function HrHoursPage() {
                 <input className="w-full border border-surface-300 rounded-lg px-3 py-2 bg-surface-50" readOnly value={selfEmployee ? `${selfEmployee.first_name} ${selfEmployee.last_name}` : 'No linked employee profile'} />
               </label>
             )}
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Employee ID</span>
+              <input
+                className="w-full border border-surface-300 rounded-lg px-3 py-2 bg-surface-50"
+                readOnly
+                value={
+                  activeEmployeeId
+                    ? employeeNumber.get(activeEmployeeId as UUID) ?? ''
+                    : ''
+                }
+              />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Department</span>
+              <input
+                className="w-full border border-surface-300 rounded-lg px-3 py-2 bg-surface-50"
+                readOnly
+                value={
+                  activeEmployeeId
+                    ? (() => {
+                        const emp = (employees ?? []).find((e) => String(e.id) === String(activeEmployeeId));
+                        if (!emp?.department_id) return '';
+                        return departmentLabel.get(emp.department_id as UUID) ?? '';
+                      })()
+                    : ''
+                }
+              />
+            </label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={date} onChange={(e) => setDate(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Hours worked</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={hoursWorked} onChange={(e) => setHoursWorked(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Overtime hours</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={overtimeHours} onChange={(e) => setOvertimeHours(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Project / Client</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={projectOrClient} onChange={(e) => setProjectOrClient(e.target.value)} /></label>
+            <label className="text-sm md:col-span-2 lg:col-span-2">
+              <span className="block text-xs text-charcoal-500 mb-1">Comments</span>
+              <textarea
+                className="w-full border border-surface-300 rounded-lg px-3 py-2 min-h-[38px]"
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+              />
+            </label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Daily total</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2 bg-surface-50 font-semibold" readOnly value={dailyTotal.toFixed(2)} /></label>
           </div>
           <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onSave()} disabled={!activeEmployeeId}>
