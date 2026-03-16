@@ -8,8 +8,19 @@ import { listUserProfiles } from '../../api/services/profilesService';
 import { listEnvWaterMonitoring, upsertEnvWaterMonitoring, listLegalRequirementOptions } from '../../api/services/environmentService';
 import { toCsv, downloadTextFile } from '../../utils/csv';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { EvidenceModal } from '../../components/evidence/EvidenceModal';
 
 const currentYear = new Date().getFullYear();
+
+const WATER_EQUIPMENT_OPTIONS: string[] = [
+  'Water sampling bottles',
+  'pH meters',
+  'Turbidity meters',
+  'Dissolved oxygen meters',
+  'Conductivity meters',
+  'Multi-parameter water quality meters',
+  'Laboratory testing kits'
+];
 
 export function EnvironmentWaterPage() {
   const { activeCompanyId, activeRole } = useTenant();
@@ -22,7 +33,54 @@ export function EnvironmentWaterPage() {
   const [search, setSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [editing, setEditing] = useState<any | null>(null);
-  const [form, setForm] = useState<any>({ referenceNumber: '', siteFacilityName: '', gpsLocationOrSamplingPointId: '', waterType: 'Surface', samplingDate: new Date().toISOString().slice(0, 10), samplingTime: '', purpose: '', scope: '', legalRequirementId: '', legalReferenceSnapshot: '', sampleType: 'grab', samplingMethodUsed: '', weatherConditions: '', samplerName: '', samplerCompany: '', laboratoryUsed: '', visualCondition: '', odour: '', oilSheen: '', sedimentPresence: '', blockedDrainsOrOverflows: '', parameters: [{ parameterName: 'pH', unitOfMeasure: '', testMethodOrStandard: '', resultValue: '', complianceLimit: '', complianceStatus: 'Pass' }], breachedLegislationOrPermitReference: '', assessedEnvironmentalRisk: 'Medium', potentialCause: '', controlsEffectivenessReview: '', conclusionComplianceStatement: '', reviewedByUserId: '', approvedByUserId: '', approvedAt: '' });
+  const [showEvidenceForId, setShowEvidenceForId] = useState<string | null>(null);
+  const [form, setForm] = useState<any>({
+    referenceNumber: '',
+    siteFacilityName: '',
+    gpsLocationOrSamplingPointId: '',
+    waterType: 'Surface',
+    samplingDate: new Date().toISOString().slice(0, 10),
+    samplingTime: '',
+    purpose: '',
+    scope: '',
+    monitoringProcess: '',
+    legalRequirementId: '',
+    legalReferenceSnapshot: '',
+    sampleType: 'grab',
+    samplingMethodUsed: '',
+    weatherConditions: '',
+    samplerName: '',
+    samplerCompany: '',
+    laboratoryUsed: '',
+    visualCondition: '',
+    odour: '',
+    oilSheen: '',
+    sedimentPresence: '',
+    blockedDrainsOrOverflows: '',
+    equipmentUsed: [] as string[],
+    parameters: [
+      {
+        parameterName: 'pH',
+        unitOfMeasure: '',
+        testMethodOrStandard: '',
+        resultValue: '',
+        complianceLimit: '',
+        complianceStatus: 'Pass'
+      }
+    ],
+    breachedLegislationOrPermitReference: '',
+    assessedEnvironmentalRisk: 'Medium',
+    potentialCause: '',
+    controlsEffectivenessReview: '',
+    conclusionComplianceStatement: '',
+    laboratoryReportsFileIds: [] as string[],
+    calibrationCertificatesFileIds: [] as string[],
+    permitsLicencesFileIds: [] as string[],
+    samplingLocationsFileIds: [] as string[],
+    reviewedByUserId: '',
+    approvedByUserId: '',
+    approvedAt: ''
+  });
 
   const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
   const { data: legalOptions } = useAsync(async () => (activeCompanyId ? await listLegalRequirementOptions(activeCompanyId) : []), [activeCompanyId]);
@@ -36,16 +94,109 @@ export function EnvironmentWaterPage() {
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
-    await upsertEnvWaterMonitoring({ companyId: activeCompanyId, actorUserId: user.id, actorRole: activeRole, id: editing?.id, ...form, legalRequirementId: form.legalRequirementId || null, reviewedByUserId: form.reviewedByUserId || null, approvedByUserId: form.approvedByUserId || null, approvedAt: form.approvedAt || null });
+    await upsertEnvWaterMonitoring({
+      companyId: activeCompanyId,
+      actorUserId: user.id,
+      actorRole: activeRole,
+      id: editing?.id,
+      ...form,
+      legalRequirementId: form.legalRequirementId || null,
+      reviewedByUserId: form.reviewedByUserId || null,
+      approvedByUserId: form.approvedByUserId || null,
+      approvedAt: form.approvedAt || null
+    });
     setEditing(null);
-    setForm({ referenceNumber: '', siteFacilityName: '', gpsLocationOrSamplingPointId: '', waterType: 'Surface', samplingDate: new Date().toISOString().slice(0, 10), samplingTime: '', purpose: '', scope: '', legalRequirementId: '', legalReferenceSnapshot: '', sampleType: 'grab', samplingMethodUsed: '', weatherConditions: '', samplerName: '', samplerCompany: '', laboratoryUsed: '', visualCondition: '', odour: '', oilSheen: '', sedimentPresence: '', blockedDrainsOrOverflows: '', parameters: [{ parameterName: 'pH', unitOfMeasure: '', testMethodOrStandard: '', resultValue: '', complianceLimit: '', complianceStatus: 'Pass' }], breachedLegislationOrPermitReference: '', assessedEnvironmentalRisk: 'Medium', potentialCause: '', controlsEffectivenessReview: '', conclusionComplianceStatement: '', reviewedByUserId: '', approvedByUserId: '', approvedAt: '' });
+    setForm({
+      referenceNumber: '',
+      siteFacilityName: '',
+      gpsLocationOrSamplingPointId: '',
+      waterType: 'Surface',
+      samplingDate: new Date().toISOString().slice(0, 10),
+      samplingTime: '',
+      purpose: '',
+      scope: '',
+      monitoringProcess: '',
+      legalRequirementId: '',
+      legalReferenceSnapshot: '',
+      sampleType: 'grab',
+      samplingMethodUsed: '',
+      weatherConditions: '',
+      samplerName: '',
+      samplerCompany: '',
+      laboratoryUsed: '',
+      visualCondition: '',
+      odour: '',
+      oilSheen: '',
+      sedimentPresence: '',
+      blockedDrainsOrOverflows: '',
+      equipmentUsed: [],
+      parameters: [
+        {
+          parameterName: 'pH',
+          unitOfMeasure: '',
+          testMethodOrStandard: '',
+          resultValue: '',
+          complianceLimit: '',
+          complianceStatus: 'Pass'
+        }
+      ],
+      breachedLegislationOrPermitReference: '',
+      assessedEnvironmentalRisk: 'Medium',
+      potentialCause: '',
+      controlsEffectivenessReview: '',
+      conclusionComplianceStatement: '',
+      laboratoryReportsFileIds: [],
+      calibrationCertificatesFileIds: [],
+      permitsLicencesFileIds: [],
+      samplingLocationsFileIds: [],
+      reviewedByUserId: '',
+      approvedByUserId: '',
+      approvedAt: ''
+    });
     setRefreshKey((k) => k + 1);
     await refresh();
   }
 
   function startEdit(row: any) {
     setEditing(row);
-    setForm({ referenceNumber: row.reference_number, siteFacilityName: row.site_facility_name, gpsLocationOrSamplingPointId: row.gps_location_or_sampling_point_id, waterType: row.water_type, samplingDate: row.sampling_date, samplingTime: row.sampling_time ?? '', purpose: row.purpose ?? '', scope: row.scope ?? '', legalRequirementId: row.legal_requirement_id ?? '', legalReferenceSnapshot: row.legal_reference_snapshot ?? '', sampleType: row.sample_type ?? 'grab', samplingMethodUsed: row.sampling_method_used ?? '', weatherConditions: row.weather_conditions ?? '', samplerName: row.sampler_name ?? '', samplerCompany: row.sampler_company ?? '', laboratoryUsed: row.laboratory_used ?? '', visualCondition: row.visual_condition ?? '', odour: row.odour ?? '', oilSheen: row.oil_sheen ?? '', sedimentPresence: row.sediment_presence ?? '', blockedDrainsOrOverflows: row.blocked_drains_or_overflows ?? '', parameters: row.parameters ?? [], breachedLegislationOrPermitReference: row.breached_legislation_or_permit_reference ?? '', assessedEnvironmentalRisk: row.assessed_environmental_risk ?? 'Medium', potentialCause: row.potential_cause ?? '', controlsEffectivenessReview: row.controls_effectiveness_review ?? '', conclusionComplianceStatement: row.conclusion_compliance_statement ?? '', reviewedByUserId: row.reviewed_by_user_id ?? '', approvedByUserId: row.approved_by_user_id ?? '', approvedAt: row.approved_at?.slice(0, 16) ?? '' });
+    setForm({
+      referenceNumber: row.reference_number,
+      siteFacilityName: row.site_facility_name,
+      gpsLocationOrSamplingPointId: row.gps_location_or_sampling_point_id,
+      waterType: row.water_type,
+      samplingDate: row.sampling_date,
+      samplingTime: row.sampling_time ?? '',
+      purpose: row.purpose ?? '',
+      scope: row.scope ?? '',
+      monitoringProcess: row.monitoring_process ?? '',
+      legalRequirementId: row.legal_requirement_id ?? '',
+      legalReferenceSnapshot: row.legal_reference_snapshot ?? '',
+      sampleType: row.sample_type ?? 'grab',
+      samplingMethodUsed: row.sampling_method_used ?? '',
+      weatherConditions: row.weather_conditions ?? '',
+      samplerName: row.sampler_name ?? '',
+      samplerCompany: row.sampler_company ?? '',
+      laboratoryUsed: row.laboratory_used ?? '',
+      visualCondition: row.visual_condition ?? '',
+      odour: row.odour ?? '',
+      oilSheen: row.oil_sheen ?? '',
+      sedimentPresence: row.sediment_presence ?? '',
+      blockedDrainsOrOverflows: row.blocked_drains_or_overflows ?? '',
+      equipmentUsed: row.equipment_used ?? [],
+      parameters: row.parameters ?? [],
+      breachedLegislationOrPermitReference: row.breached_legislation_or_permit_reference ?? '',
+      assessedEnvironmentalRisk: row.assessed_environmental_risk ?? 'Medium',
+      potentialCause: row.potential_cause ?? '',
+      controlsEffectivenessReview: row.controls_effectiveness_review ?? '',
+      conclusionComplianceStatement: row.conclusion_compliance_statement ?? '',
+      laboratoryReportsFileIds: row.laboratory_reports_file_ids ?? [],
+      calibrationCertificatesFileIds: row.calibration_certificates_file_ids ?? [],
+      permitsLicencesFileIds: row.permits_licences_file_ids ?? [],
+      samplingLocationsFileIds: row.sampling_locations_file_ids ?? [],
+      reviewedByUserId: row.reviewed_by_user_id ?? '',
+      approvedByUserId: row.approved_by_user_id ?? '',
+      approvedAt: row.approved_at?.slice(0, 16) ?? ''
+    });
   }
 
   const trendData = useMemo(() => {
@@ -88,6 +239,43 @@ export function EnvironmentWaterPage() {
             <input value={form.weatherConditions} onChange={(e) => setForm({ ...form, weatherConditions: e.target.value })} placeholder="Weather conditions" className="px-3 py-2 border rounded-lg text-sm" />
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="flex flex-col space-y-1">
+              <span className="text-xs font-medium text-charcoal-600">Water Monitoring Process</span>
+              <input
+                value={form.monitoringProcess}
+                onChange={(e) => setForm({ ...form, monitoringProcess: e.target.value })}
+                placeholder="e.g. Drinking water testing, Wastewater monitoring"
+                className="px-3 py-2 border rounded-lg text-sm"
+              />
+              <span className="text-xs text-charcoal-500">
+                Describe the process or activity where water monitoring is conducted.
+              </span>
+            </div>
+
+            <div className="flex flex-col space-y-1">
+              <span className="text-xs font-medium text-charcoal-600">Equipment Used for Water Testing</span>
+              <div className="grid grid-cols-1 gap-1 text-sm">
+                {WATER_EQUIPMENT_OPTIONS.map((item) => (
+                  <label key={item} className="inline-flex items-center gap-2 text-xs md:text-sm">
+                    <input
+                      type="checkbox"
+                      className="rounded border-surface-300"
+                      checked={form.equipmentUsed.includes(item)}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...form.equipmentUsed, item]
+                          : form.equipmentUsed.filter((t: string) => t !== item);
+                        setForm({ ...form, equipmentUsed: next });
+                      }}
+                    />
+                    <span>{item}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <p className="text-sm font-medium">Parameters</p>
             {form.parameters.map((p: any, idx: number) => (
@@ -115,6 +303,36 @@ export function EnvironmentWaterPage() {
             <select value={form.approvedByUserId} onChange={(e) => setForm({ ...form, approvedByUserId: e.target.value })} className="px-3 py-2 border rounded-lg text-sm"><option value="">Approved by</option>{(profiles ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id}</option>)}</select>
             <input type="datetime-local" value={form.approvedAt} onChange={(e) => setForm({ ...form, approvedAt: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
           </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Laboratory Results Upload</p>
+            <p className="text-xs text-charcoal-500">
+              Attach laboratory water analysis reports, chemical analysis reports, and water quality certificates (PDF, DOCX, XLSX, images).
+            </p>
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+              className="text-sm"
+              onChange={() => {
+                // Files are uploaded via the document storage system on the server side;
+                // this form only tracks stored file IDs loaded from the record.
+              }}
+            />
+            {Array.isArray(form.laboratoryReportsFileIds) && form.laboratoryReportsFileIds.length > 0 && (
+              <div className="mt-2 border rounded-lg overflow-hidden">
+                <div className="px-3 py-2 bg-surface-50 text-xs font-semibold text-charcoal">Laboratory result files</div>
+                <div className="divide-y divide-surface-100">
+                  {form.laboratoryReportsFileIds.map((id: string) => (
+                    <div key={id} className="px-3 py-2 flex items-center justify-between text-xs">
+                      <span className="truncate mr-2">{id}</span>
+                      <span className="text-charcoal-400">Stored in document storage</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <div className="flex gap-2"><button type="submit" className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold">{editing ? 'Update' : 'Create'}</button>{editing && <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 rounded-lg border text-sm">Cancel</button>}</div>
         </form>
 
@@ -125,7 +343,64 @@ export function EnvironmentWaterPage() {
 
         {error && <div className="text-sm text-critical">{String(error.message)}</div>}
         {loading ? <p className="text-sm text-charcoal-500">Loading...</p> : (
-          <div className="bg-white border rounded-xl overflow-auto"><table className="w-full min-w-[1150px] text-sm"><thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Reference</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Site</th><th className="px-3 py-2 text-left">Point</th><th className="px-3 py-2 text-left">Overall</th><th className="px-3 py-2 text-left">Reviewer</th><th className="px-3 py-2 text-left">NCR</th><th className="px-3 py-2 text-left">Actions</th></tr></thead><tbody className="divide-y divide-surface-100">{(rows ?? []).map((r: any) => <tr key={r.id}><td className="px-3 py-2">{r.reference_number}</td><td className="px-3 py-2">{r.sampling_date}</td><td className="px-3 py-2">{r.site_facility_name}</td><td className="px-3 py-2">{r.gps_location_or_sampling_point_id}</td><td className="px-3 py-2">{r.overall_compliance_status}</td><td className="px-3 py-2">{r.reviewed_by_user_id ? (userLabel.get(r.reviewed_by_user_id) ?? r.reviewed_by_user_id) : '-'}</td><td className="px-3 py-2">{r.system_generated_capa_id ? <Link to={`/dashboard/management/ncrs`} className="text-teal hover:underline">View NCR</Link> : '-'}</td><td className="px-3 py-2"><button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button></td></tr>)}{(rows ?? []).length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-charcoal-500">No water monitoring records.</td></tr>}</tbody></table></div>
+          <div className="bg-white border rounded-xl overflow-auto">
+            <table className="w-full min-w-[1250px] text-sm">
+              <thead className="bg-surface-50">
+                <tr>
+                  <th className="px-3 py-2 text-left">Reference</th>
+                  <th className="px-3 py-2 text-left">Date</th>
+                  <th className="px-3 py-2 text-left">Site</th>
+                  <th className="px-3 py-2 text-left">Point</th>
+                  <th className="px-3 py-2 text-left">Overall</th>
+                  <th className="px-3 py-2 text-left">Reviewer</th>
+                  <th className="px-3 py-2 text-left">NCR</th>
+                  <th className="px-3 py-2 text-left">Documents</th>
+                  <th className="px-3 py-2 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-100">
+                {(rows ?? []).map((r: any) => (
+                  <tr key={r.id}>
+                    <td className="px-3 py-2">{r.reference_number}</td>
+                    <td className="px-3 py-2">{r.sampling_date}</td>
+                    <td className="px-3 py-2">{r.site_facility_name}</td>
+                    <td className="px-3 py-2">{r.gps_location_or_sampling_point_id}</td>
+                    <td className="px-3 py-2">{r.overall_compliance_status}</td>
+                    <td className="px-3 py-2">{r.reviewed_by_user_id ? (userLabel.get(r.reviewed_by_user_id) ?? r.reviewed_by_user_id) : '-'}</td>
+                    <td className="px-3 py-2">{r.system_generated_capa_id ? <Link to={`/dashboard/management/ncrs`} className="text-teal hover:underline">View NCR</Link> : '-'}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowEvidenceForId(r.id)}
+                        className="px-2 py-1 border rounded text-xs"
+                      >
+                        Lab documents
+                      </button>
+                    </td>
+                    <td className="px-3 py-2">
+                      <button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button>
+                    </td>
+                  </tr>
+                ))}
+                {(rows ?? []).length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-3 py-6 text-center text-charcoal-500">No water monitoring records.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeCompanyId && user?.id && showEvidenceForId && (
+          <EvidenceModal
+            isOpen={!!showEvidenceForId}
+            onClose={() => setShowEvidenceForId(null)}
+            companyId={activeCompanyId}
+            actorUserId={user.id}
+            entityType="env_water_monitoring"
+            entityId={showEvidenceForId}
+          />
         )}
       </div>
     </Layout>
