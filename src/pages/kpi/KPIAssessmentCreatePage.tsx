@@ -10,6 +10,7 @@ import { createKPIAssessment } from '../../api/services/kpiAssessmentService';
 import { mapKpiTemplateItemToFormRow } from '../../api/services/kpiTemplateMapper';
 import type { Department, KPIItem, KpiAssessmentType, KpiImportance, KpiPeriodType } from '../../api/models/entities';
 import type { UUID } from '../../api/models/core';
+import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 
 type QuestionnaireInput = {
   kpiItemId: UUID | null;
@@ -53,6 +54,14 @@ export function KPIAssessmentCreatePage() {
   );
 
   const managerOptions = useMemo(() => profiles ?? [], [profiles]);
+
+  const projectWeightingScore = useMemo(() => {
+    return questionnaires.reduce((sum, q) => {
+      if (q.importanceRating === 'high') return sum + 2;
+      if (q.importanceRating === 'medium') return sum + 1.5;
+      return sum + 1;
+    }, 0);
+  }, [questionnaires]);
 
   const addQuestionnaire = () => setQuestionnaires((prev) => [...prev, { ...EMPTY_QUESTIONNAIRE }]);
   const removeQuestionnaire = (i: number) => setQuestionnaires((prev) => prev.filter((_, idx) => idx !== i));
@@ -234,46 +243,32 @@ export function KPIAssessmentCreatePage() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1">Manager</label>
-              <select
-                value={managerId}
-                onChange={(e) => {
-                  const id = e.target.value as UUID | '';
-                  setManagerId(id);
-                  const p = managerOptions.find((x) => x.user_id === id);
-                  setManagerNameSnapshot(p?.full_name ?? '');
-                }}
-                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
-              >
-                <option value={user?.id ?? ''}>Me</option>
-                {managerOptions.map((p) => (
-                  <option key={p.user_id} value={p.user_id}>{p.full_name ?? p.email ?? p.user_id}</option>
-                ))}
-              </select>
-            </div>
+            <HrEmployeeSelect
+              companyId={activeCompanyId ?? null}
+              value={managerId || (user?.id as UUID) || ''}
+              onChange={(id, meta) => {
+                setManagerId(id);
+                setManagerNameSnapshot(meta.nameSnapshot);
+              }}
+              label="Manager"
+              placeholder="Select manager"
+              disabled={!canCreate}
+            />
           </div>
 
           {assessmentType === 'employee' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-charcoal mb-1">Employee</label>
-                <select
-                  value={employeeId}
-                  onChange={(e) => {
-                    const id = e.target.value as UUID | '';
-                    setEmployeeId(id);
-                    const p = profiles?.find((x) => x.user_id === id);
-                    setEmployeeNameSnapshot(p?.full_name ?? '');
-                  }}
-                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
-                >
-                  <option value="">Select</option>
-                  {(profiles ?? []).map((p) => (
-                    <option key={p.user_id} value={p.user_id}>{p.full_name ?? p.email ?? p.user_id}</option>
-                  ))}
-                </select>
-              </div>
+              <HrEmployeeSelect
+                companyId={activeCompanyId ?? null}
+                value={employeeId}
+                onChange={(id, meta) => {
+                  setEmployeeId(id);
+                  setEmployeeNameSnapshot(meta.nameSnapshot);
+                }}
+                label="Employee"
+                placeholder="Select employee"
+                disabled={!canCreate}
+              />
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1">Employee name (snapshot)</label>
                 <input
@@ -288,15 +283,29 @@ export function KPIAssessmentCreatePage() {
           )}
 
           {assessmentType === 'project' && (
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1">Project</label>
-              <input
-                type="text"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
-                placeholder="Project name"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1">Project</label>
+                <input
+                  type="text"
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                  placeholder="Project name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1">Project weighting score</label>
+                <input
+                  type="text"
+                  value={projectWeightingScore.toFixed(2)}
+                  readOnly
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm bg-surface-50 text-charcoal-600"
+                />
+                <p className="mt-1 text-xs text-charcoal-500">
+                  Calculated from KPI importance ratings and used in KPI weighting logic.
+                </p>
+              </div>
             </div>
           )}
         </div>
