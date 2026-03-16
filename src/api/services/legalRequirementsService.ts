@@ -4,6 +4,8 @@ import type {
   LegalComplianceStatus,
   LegalRequirement,
   LegalRequirementEvidenceLink,
+  LegalRequirementLink,
+  LegalRequirementLinkedModuleType,
   LegalRequirementReference,
   LegalUpdate,
   LegalUpdateCompletionStatus,
@@ -70,6 +72,11 @@ export type LegalUpdateListResult = {
   pageSize: number;
 };
 
+export type LegalRequirementLinkSpec = {
+  linkedModuleType: LegalRequirementLinkedModuleType;
+  linkedRecordId: UUID;
+};
+
 function canWrite(role: CompanyRole | null): boolean {
   return !!role && CAN_WRITE_ROLES.includes(role);
 }
@@ -91,6 +98,89 @@ function asEvidenceLinks(links?: LegalRequirementEvidenceLink[] | null): LegalRe
       documentTitleSnapshot: (l.documentTitleSnapshot ?? '').trim()
     }))
     .filter((l) => !!l.documentId && l.documentTitleSnapshot.length > 0);
+}
+
+export async function listLegalRequirementLinks(companyId: UUID, legalRequirementId: UUID): Promise<LegalRequirementLink[]> {
+  const { data, error } = await insforge.database
+    .from('legal_requirement_links')
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('legal_requirement_id', legalRequirementId)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as LegalRequirementLink[];
+}
+
+export async function upsertLegalRequirementLinks(input: {
+  companyId: UUID;
+  legalRequirementId: UUID;
+  actorUserId: UUID;
+  linkSpecs: LegalRequirementLinkSpec[];
+}): Promise<LegalRequirementLink[]> {
+  const specs = input.linkSpecs.filter((spec) => !!spec.linkedRecordId);
+  if (specs.length === 0) {
+    // Just clear any existing links
+    const { error } = await insforge.database
+      .from('legal_requirement_links')
+      .delete()
+      .eq('company_id', input.companyId)
+      .eq('legal_requirement_id', input.legalRequirementId);
+    if (error) throw new Error(getErrorMessage(error));
+    return [];
+  }
+
+  if (specs.length > 2) {
+    throw new Error('You can only link up to two records per legal requirement.');
+  }
+
+  const { error: deleteError } = await insforge.database
+    .from('legal_requirement_links')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('legal_requirement_id', input.legalRequirementId);
+  if (deleteError) throw new Error(getErrorMessage(deleteError));
+
+  const payload = specs.map((spec) => ({
+    company_id: input.companyId,
+    legal_requirement_id: input.legalRequirementId,
+    linked_module_type: spec.linkedModuleType,
+    linked_record_id: spec.linkedRecordId,
+    created_by_user_id: input.actorUserId
+  }));
+
+  const { data, error: insertError } = await insforge.database
+    .from('legal_requirement_links')
+    .insert(payload)
+    .select('*');
+  if (insertError) throw new Error(getErrorMessage(insertError));
+  return (data ?? []) as LegalRequirementLink[];
+}
+
+export async function listLegalRequirementsForLinkedRecord(input: {
+  companyId: UUID;
+  moduleType: LegalRequirementLinkedModuleType;
+  recordId: UUID;
+}): Promise<Array<Pick<LegalRequirement, 'id' | 'requirement_standard' | 'compliance_status'>>> {
+  const { data: linkRows, error: linksError } = await insforge.database
+    .from('legal_requirement_links')
+    .select('legal_requirement_id')
+    .eq('company_id', input.companyId)
+    .eq('linked_module_type', input.moduleType)
+    .eq('linked_record_id', input.recordId);
+  if (linksError) throw new Error(getErrorMessage(linksError));
+
+  const ids = [...new Set((linkRows ?? []).map((row: any) => row.legal_requirement_id as UUID))];
+  if (ids.length === 0) return [];
+
+  const { data: requirements, error: reqError } = await insforge.database
+    .from('legal_requirements')
+    .select('id, requirement_standard, compliance_status')
+    .eq('company_id', input.companyId)
+    .in('id', ids)
+    .is('deleted_at', null);
+  if (reqError) throw new Error(getErrorMessage(reqError));
+
+  return (requirements ?? []) as Array<Pick<LegalRequirement, 'id' | 'requirement_standard' | 'compliance_status'>>;
 }
 
 export async function listLegalRequirements(filters: LegalRequirementFilters): Promise<LegalRequirementListResult> {
@@ -144,6 +234,8 @@ export async function getLegalRequirementById(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Legal requirement not found.');
 
+  const links = await listLegalRequirementLinks(input.companyId, input.requirementId);
+
   const { data: updates, error: updatesErr } = await insforge.database
     .from('legal_updates')
     .select('*')
@@ -160,7 +252,7 @@ export async function getLegalRequirementById(input: {
   });
 
   return {
-    requirement: data as LegalRequirement,
+    requirement: { ...(data as LegalRequirement), links },
     updates: (updates ?? []) as LegalUpdate[],
     auditTrail
   };
@@ -178,6 +270,7 @@ export async function createLegalRequirement(input: {
   responsibleExternalName?: string | null;
   references?: LegalRequirementReference[] | null;
   evidenceLinks?: LegalRequirementEvidenceLink[] | null;
+  links?: LegalRequirementLinkSpec[] | null;
 }): Promise<LegalRequirement> {
   if (!canWrite(input.actorRole)) throw new Error('You do not have permission to create legal requirements.');
   const requirementStandard = input.requirementStandard.trim();
@@ -213,16 +306,32 @@ export async function createLegalRequirement(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create legal requirement.');
 
+  const requirementId = (data as any).id as UUID;
+
+  if (input.links && input.links.length > 0) {
+    await upsertLegalRequirementLinks({
+      companyId: input.companyId,
+      legalRequirementId: requirementId,
+      actorUserId: input.actorUserId,
+      linkSpecs: input.links
+    });
+  }
+
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.actorUserId,
     action: 'legal_requirements.create',
     entityType: 'legal_requirement',
-    entityId: (data as any).id as UUID,
+    entityId: requirementId,
     metadata: { complianceStatus: input.complianceStatus }
   });
 
-  return data as LegalRequirement;
+  const requirementWithLinks: LegalRequirement = {
+    ...(data as LegalRequirement),
+    links: input.links ?? null
+  };
+
+  return requirementWithLinks;
 }
 
 export async function updateLegalRequirement(input: {
@@ -239,6 +348,7 @@ export async function updateLegalRequirement(input: {
     responsibleExternalName?: string | null;
     references?: LegalRequirementReference[] | null;
     evidenceLinks?: LegalRequirementEvidenceLink[] | null;
+    links?: LegalRequirementLinkSpec[] | null;
   };
 }): Promise<LegalRequirement> {
   if (!canWrite(input.actorRole)) throw new Error('You do not have permission to update legal requirements.');
@@ -290,6 +400,15 @@ export async function updateLegalRequirement(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update legal requirement.');
 
+  if (typeof input.patch.links !== 'undefined') {
+    await upsertLegalRequirementLinks({
+      companyId: input.companyId,
+      legalRequirementId: input.requirementId,
+      actorUserId: input.actorUserId,
+      linkSpecs: input.patch.links ?? []
+    });
+  }
+
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.actorUserId,
@@ -299,7 +418,14 @@ export async function updateLegalRequirement(input: {
     metadata: { fields: Object.keys(updateData) }
   });
 
-  return data as LegalRequirement;
+  const links = typeof input.patch.links !== 'undefined' ? input.patch.links ?? [] : await listLegalRequirementLinks(input.companyId, input.requirementId);
+
+  const requirementWithLinks: LegalRequirement = {
+    ...(data as LegalRequirement),
+    links
+  };
+
+  return requirementWithLinks;
 }
 
 export async function softDeleteLegalRequirement(input: {

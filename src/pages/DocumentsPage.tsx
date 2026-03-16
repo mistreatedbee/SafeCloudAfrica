@@ -20,6 +20,8 @@ import type { Document } from '../api/models/entities';
 import { useUser } from '@insforge/react';
 import { DocumentUploadModal } from '../components/documents/DocumentUploadModal';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../api/services/documentsStorageService';
+import { listLegalRequirementsForLinkedRecord } from '../api/services/legalRequirementsService';
+import type { LegalRequirement } from '../api/models/entities';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -64,6 +66,9 @@ export function DocumentsPage() {
   const canUpload = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
   const [uploadOpen, setUploadOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [linkedRequirements, setLinkedRequirements] = useState<
+    Array<Pick<LegalRequirement, 'id' | 'requirement_standard' | 'compliance_status'>>
+  >([]);
 
   const { data, loading, error } = useAsync<Document[]>(
     async () => {
@@ -244,7 +249,7 @@ export function DocumentsPage() {
                       </td>
                     </tr>
                   )}
-                  {filteredDocs.map((doc) =>
+                  {filteredDocs.map((doc) => (
                   <tr
                     key={doc.id}
                     className="hover:bg-surface-50 transition-colors">
@@ -315,18 +320,52 @@ export function DocumentsPage() {
                           >
                             <DownloadIcon className="w-4 h-4" />
                           </button>
-                          <button className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors">
+                          <button
+                            type="button"
+                            className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors"
+                            onClick={async () => {
+                              if (!activeCompanyId) return;
+                              try {
+                                const rows = await listLegalRequirementsForLinkedRecord({
+                                  companyId: activeCompanyId,
+                                  moduleType: 'document',
+                                  recordId: doc.id
+                                });
+                                setLinkedRequirements(rows);
+                              } catch {
+                                setLinkedRequirements([]);
+                              }
+                            }}
+                          >
                             <MoreVerticalIcon className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
                     </tr>
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>
           </div>
         </motion.div>
+
+        {linkedRequirements.length > 0 && (
+          <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 shadow-card p-4 space-y-2">
+            <h3 className="font-semibold text-charcoal text-sm">Related Legal Requirements</h3>
+            <ul className="space-y-1">
+              {linkedRequirements.map((lr) => (
+                <li key={lr.id} className="text-xs text-charcoal-700">
+                  <a href={`/dashboard/legal/register/${lr.id}`} className="text-teal hover:underline">
+                    {lr.requirement_standard}
+                  </a>
+                  <span className="ml-2 inline-flex px-1.5 py-0.5 rounded bg-surface-100 text-[10px] text-charcoal-600">
+                    {lr.compliance_status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </motion.div>
+        )}
       </motion.div>
     </Layout>);
 

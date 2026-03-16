@@ -22,7 +22,8 @@ import {
   type RiskAssessmentSignoff
 } from '../../api/services/riskAssessmentsService';
 import { listQualityNcrs } from '../../api/services/qualityNcrsService';
-import type { QualityNcr, UUID } from '../../api/models/entities';
+import { listLegalRequirementsForLinkedRecord } from '../../api/services/legalRequirementsService';
+import type { LegalRequirement, QualityNcr, UUID } from '../../api/models/entities';
 import { getPublicUrl } from '../../api/services/storageService';
 import { columnsForType, typeLabel } from './riskTemplates';
 
@@ -52,6 +53,9 @@ export function RiskAssessmentDetailPage() {
   const [qna, setQna] = useState<RiskAssessmentQna[]>([]);
   const [signoffs, setSignoffs] = useState<RiskAssessmentSignoff[]>([]);
   const [linkedNcrs, setLinkedNcrs] = useState<QualityNcr[]>([]);
+  const [linkedLegalRequirements, setLinkedLegalRequirements] = useState<
+    Array<Pick<LegalRequirement, 'id' | 'requirement_standard' | 'compliance_status'>>
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
@@ -86,15 +90,23 @@ export function RiskAssessmentDetailPage() {
       setRows(rowData);
       setQna(qnaRows);
       setSignoffs(signoffRows);
-      const ncrs = await listQualityNcrs({
-        companyId: activeCompanyId as UUID,
-        sourceEntityType: 'risk',
-        sourceEntityId: id as UUID,
-        actorUserId: user.id as UUID,
-        actorRole: activeRole ?? null,
-        limit: 200
-      });
+      const [ncrs, legalReqs] = await Promise.all([
+        listQualityNcrs({
+          companyId: activeCompanyId as UUID,
+          sourceEntityType: 'risk',
+          sourceEntityId: id as UUID,
+          actorUserId: user.id as UUID,
+          actorRole: activeRole ?? null,
+          limit: 200
+        }),
+        listLegalRequirementsForLinkedRecord({
+          companyId: activeCompanyId as UUID,
+          moduleType: 'risk_assessment',
+          recordId: id as UUID
+        })
+      ]);
       setLinkedNcrs(ncrs);
+      setLinkedLegalRequirements(legalReqs);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load assessment');
     } finally {
@@ -270,6 +282,48 @@ export function RiskAssessmentDetailPage() {
                 <a href={baselineFileUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">Open uploaded file</a>
               </p>
             )}
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-charcoal">Related Legal Requirements</p>
+              {linkedLegalRequirements.length === 0 && (
+                <p className="text-xs text-charcoal-500">No legal requirements linked.</p>
+              )}
+              {linkedLegalRequirements.length > 0 && (
+                <ul className="space-y-1">
+                  {linkedLegalRequirements.map((lr) => (
+                    <li key={lr.id}>
+                      <Link
+                        to={`/dashboard/legal/register/${lr.id}`}
+                        className="text-xs text-teal hover:underline"
+                      >
+                        {lr.requirement_standard}
+                      </Link>
+                      <span className="ml-2 inline-flex px-1.5 py-0.5 rounded bg-surface-100 text-[10px] text-charcoal-600">
+                        {lr.compliance_status}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-charcoal">Linked NCRs</p>
+              {linkedNcrs.length === 0 && (
+                <p className="text-xs text-charcoal-500">No NCRs linked.</p>
+              )}
+              {linkedNcrs.length > 0 && (
+                <ul className="space-y-1">
+                  {linkedNcrs.map((ncr) => (
+                    <li key={ncr.id} className="text-xs text-charcoal-700">
+                      <span className="font-mono">{ncr.nc_number ?? ncr.id.slice(0, 8)}</span> – {ncr.title}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
 

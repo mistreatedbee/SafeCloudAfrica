@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { formatAuthError } from '../../auth/authMessages';
 import type { CompanyRole } from '../../api/models/core';
@@ -14,6 +14,9 @@ import {
   LEGAL_COMPLIANCE_OPTIONS,
   updateLegalRequirement
 } from '../../api/services/legalRequirementsService';
+import { listDocuments } from '../../api/services/documentsService';
+import { listRiskAssessments, type RiskAssessment } from '../../api/services/riskAssessmentsService';
+import { listQualityNcrs } from '../../api/services/qualityNcrsService';
 import { SelectOrType } from '../ui/SelectOrType';
 import { DocumentPicker } from '../documents/DocumentPicker';
 
@@ -48,7 +51,93 @@ export function LegalRequirementCreateModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [linkedDocumentId, setLinkedDocumentId] = useState<string>(
+    editing?.links?.find((l) => l.linked_module_type === 'document')?.linked_record_id ?? ''
+  );
+  const [linkedRiskAssessmentId, setLinkedRiskAssessmentId] = useState<string>(
+    editing?.links?.find((l) => l.linked_module_type === 'risk_assessment')?.linked_record_id ?? ''
+  );
+  const [linkedNcrId, setLinkedNcrId] = useState<string>(
+    editing?.links?.find((l) => l.linked_module_type === 'ncr')?.linked_record_id ?? ''
+  );
+
+  const [documents, setDocuments] = useState<Array<{ id: UUID; title: string }>>([]);
+  const [riskAssessments, setRiskAssessments] = useState<RiskAssessment[]>([]);
+  const [ncrs, setNcrs] = useState<Array<{ id: UUID; nc_number: string | null; title: string }>>([]);
+
+  const [documentSearch, setDocumentSearch] = useState('');
+  const [riskSearch, setRiskSearch] = useState('');
+  const [ncrSearch, setNcrSearch] = useState('');
+
   const canSubmit = useMemo(() => requirementStandard.trim().length > 2, [requirementStandard]);
+
+  useEffect(() => {
+    if (!props.open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [docRows, raRows, ncrRows] = await Promise.all([
+          listDocuments(props.companyId),
+          listRiskAssessments({
+            companyId: props.companyId,
+            actorUserId: props.actorUserId,
+            actorRole: props.actorRole,
+            limit: 200
+          }),
+          listQualityNcrs({
+            companyId: props.companyId,
+            limit: 200
+          })
+        ]);
+        if (cancelled) return;
+        setDocuments(docRows.map((d) => ({ id: d.id, title: d.title })));
+        setRiskAssessments(raRows);
+        setNcrs(ncrRows.map((n) => ({ id: n.id, nc_number: n.nc_number ?? null, title: n.title })));
+      } catch {
+        // Non-fatal: linking dropdowns will just be empty if loading fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [props.open, props.companyId, props.actorUserId, props.actorRole]);
+
+  const filteredDocuments = useMemo(
+    () =>
+      documents.filter((d) =>
+        documentSearch.trim()
+          ? d.title.toLowerCase().includes(documentSearch.trim().toLowerCase())
+          : true
+      ),
+    [documents, documentSearch]
+  );
+
+  const filteredRiskAssessments = useMemo(
+    () =>
+      riskAssessments.filter((r) => {
+        if (!riskSearch.trim()) return true;
+        const term = riskSearch.trim().toLowerCase();
+        return (
+          (r.title ?? '').toLowerCase().includes(term) ||
+          (r.heading ?? '').toLowerCase().includes(term) ||
+          (r.reference ?? '').toLowerCase().includes(term)
+        );
+      }),
+    [riskAssessments, riskSearch]
+  );
+
+  const filteredNcrs = useMemo(
+    () =>
+      ncrs.filter((n) => {
+        if (!ncrSearch.trim()) return true;
+        const term = ncrSearch.trim().toLowerCase();
+        return (
+          (n.nc_number ?? '').toLowerCase().includes(term) ||
+          (n.title ?? '').toLowerCase().includes(term)
+        );
+      }),
+    [ncrs, ncrSearch]
+  );
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -56,6 +145,24 @@ export function LegalRequirementCreateModal(props: {
     setLoading(true);
     setError(null);
     try {
+      const linkIds = [linkedDocumentId, linkedRiskAssessmentId, linkedNcrId].filter((v) => v);
+      if (linkIds.length > 2) {
+        throw new Error('You can only link up to two records per legal requirement.');
+      }
+
+      const links =
+        linkIds.length === 0
+          ? []
+          : [
+              linkedDocumentId
+                ? { linkedModuleType: 'document', linkedRecordId: linkedDocumentId as UUID }
+                : null,
+              linkedRiskAssessmentId
+                ? { linkedModuleType: 'risk_assessment', linkedRecordId: linkedRiskAssessmentId as UUID }
+                : null,
+              linkedNcrId ? { linkedModuleType: 'ncr', linkedRecordId: linkedNcrId as UUID } : null
+            ].filter((x): x is { linkedModuleType: 'document' | 'risk_assessment' | 'ncr'; linkedRecordId: UUID } => Boolean(x));
+
       const payload = {
         companyId: props.companyId,
         actorUserId: props.actorUserId,
@@ -67,7 +174,8 @@ export function LegalRequirementCreateModal(props: {
         responsibleUserId: (responsibleUserId || null) as UUID | null,
         responsibleExternalName,
         references,
-        evidenceLinks
+        evidenceLinks,
+        links
       };
 
       const saved = editing
@@ -84,7 +192,8 @@ export function LegalRequirementCreateModal(props: {
               responsibleUserId: (responsibleUserId || null) as UUID | null,
               responsibleExternalName,
               references,
-              evidenceLinks
+              evidenceLinks,
+              links
             }
           })
         : await createLegalRequirement(payload);
@@ -190,6 +299,78 @@ export function LegalRequirementCreateModal(props: {
           </div>
 
           <DocumentPicker companyId={props.companyId} value={evidenceLinks} onChange={setEvidenceLinks} label="Compliance Evidence" />
+
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-charcoal">Link Records (max 2)</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Link to Document</label>
+                <input
+                  value={documentSearch}
+                  onChange={(e) => setDocumentSearch(e.target.value)}
+                  placeholder="Search documents..."
+                  className="w-full mb-1 px-3 py-1.5 border border-surface-300 rounded-lg text-xs"
+                />
+                <select
+                  value={linkedDocumentId}
+                  onChange={(e) => setLinkedDocumentId(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-white border border-surface-300 rounded-lg text-sm"
+                >
+                  <option value="">No linked document</option>
+                  {filteredDocuments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Link to Risk Assessment</label>
+                <input
+                  value={riskSearch}
+                  onChange={(e) => setRiskSearch(e.target.value)}
+                  placeholder="Search risk assessments..."
+                  className="w-full mb-1 px-3 py-1.5 border border-surface-300 rounded-lg text-xs"
+                />
+                <select
+                  value={linkedRiskAssessmentId}
+                  onChange={(e) => setLinkedRiskAssessmentId(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-white border border-surface-300 rounded-lg text-sm"
+                >
+                  <option value="">No linked risk assessment</option>
+                  {filteredRiskAssessments.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.reference ? `${r.reference} – ${r.title}` : r.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Link to NCR</label>
+                <input
+                  value={ncrSearch}
+                  onChange={(e) => setNcrSearch(e.target.value)}
+                  placeholder="Search NCRs..."
+                  className="w-full mb-1 px-3 py-1.5 border border-surface-300 rounded-lg text-xs"
+                />
+                <select
+                  value={linkedNcrId}
+                  onChange={(e) => setLinkedNcrId(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-white border border-surface-300 rounded-lg text-sm"
+                >
+                  <option value="">No linked NCR</option>
+                  {filteredNcrs.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.nc_number ? `${n.nc_number} – ${n.title}` : n.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
 
           <div className="space-y-2">
             <label className="block text-sm font-medium text-charcoal">Responsible person</label>

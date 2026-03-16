@@ -10,6 +10,7 @@ export type SelectedUser = {
   userId: UUID;
   name: string;
   email?: string;
+  employeeNumber?: string | null;
 };
 
 export type UserMultiSelectProps = {
@@ -64,7 +65,8 @@ export function UserMultiSelect({
       users.push({
         userId: m.user_id,
         name: profile?.full_name || `User ${m.user_id.slice(0, 8)}`,
-        email: profile?.email
+        email: profile?.email,
+        employeeNumber: profile?.employee_number ?? null
       });
     });
     return users.sort((a, b) => a.name.localeCompare(b.name));
@@ -74,7 +76,10 @@ export function UserMultiSelect({
     if (!searchQuery.trim()) return availableUsers;
     const query = searchQuery.toLowerCase();
     return availableUsers.filter(
-      u => u.name.toLowerCase().includes(query) || u.email?.toLowerCase().includes(query)
+      (u) =>
+        u.name.toLowerCase().includes(query) ||
+        u.email?.toLowerCase().includes(query) ||
+        String(u.employeeNumber ?? '').toLowerCase().includes(query)
     );
   }, [availableUsers, searchQuery]);
 
@@ -198,8 +203,13 @@ export function UserMultiSelect({
                       selectedUserIds.includes(user.userId) ? 'bg-teal/5' : ''
                     }`}
                   >
-                    <div className="font-medium">{user.name}</div>
-                    {user.email && <div className="text-xs text-charcoal-500">{user.email}</div>}
+                    <div className="font-medium">
+                      {user.name}
+                      {user.employeeNumber ? <span className="ml-2 text-xs text-charcoal-400">({user.employeeNumber})</span> : null}
+                    </div>
+                    <div className="text-xs text-charcoal-500">
+                      {user.email ? user.email : user.employeeNumber ? '—' : ''}
+                    </div>
                   </div>
                 ))
               )}

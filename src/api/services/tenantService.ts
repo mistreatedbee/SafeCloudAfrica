@@ -114,11 +114,13 @@ export async function updateCompanyProfile(input: {
   companyId: UUID;
   name?: string;
   metadata?: Record<string, unknown> | null;
+  code?: string | null;
 }): Promise<Company> {
   await ensureInsforgeSession();
   const patch: Record<string, unknown> = {};
   if (typeof input.name === 'string') patch.name = input.name;
   if (typeof input.metadata !== 'undefined') patch.metadata = input.metadata;
+  if (typeof input.code !== 'undefined') patch.code = input.code ?? null;
 
   const { data, error } = await insforge.database
     .from('companies')

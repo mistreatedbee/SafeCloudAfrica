@@ -132,6 +132,71 @@ export function LegalRequirementDetailPage() {
                   </Link>
                 ))}
               </div>
+
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-medium text-charcoal">Linked Records</p>
+                {(!data.requirement.links || data.requirement.links.length === 0) && (
+                  <p className="text-sm text-charcoal-500">No linked records.</p>
+                )}
+
+                {data.requirement.links && data.requirement.links.length > 0 && (
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-xs font-semibold text-charcoal-500">Linked Documents</p>
+                      {data.requirement.links.filter((l) => l.linked_module_type === 'document').length === 0 && (
+                        <p className="text-xs text-charcoal-400">None</p>
+                      )}
+                      {data.requirement.links
+                        .filter((l) => l.linked_module_type === 'document')
+                        .map((l) => (
+                          <Link
+                            key={l.id}
+                            to={`/documents?view=${l.linked_record_id}`}
+                            className="block text-xs text-teal hover:underline"
+                          >
+                            Document {l.linked_record_id.slice(0, 8)}
+                          </Link>
+                        ))}
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold text-charcoal-500">Linked Risk Assessments</p>
+                      {data.requirement.links.filter((l) => l.linked_module_type === 'risk_assessment').length === 0 && (
+                        <p className="text-xs text-charcoal-400">None</p>
+                      )}
+                      {data.requirement.links
+                        .filter((l) => l.linked_module_type === 'risk_assessment')
+                        .map((l) => (
+                          <Link
+                            key={l.id}
+                            to={`/risk-assessments/${l.linked_record_id}`}
+                            className="block text-xs text-teal hover:underline"
+                          >
+                            Risk assessment {l.linked_record_id.slice(0, 8)}
+                          </Link>
+                        ))}
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold text-charcoal-500">Linked NCRs</p>
+                      {data.requirement.links.filter((l) => l.linked_module_type === 'ncr').length === 0 && (
+                        <p className="text-xs text-charcoal-400">None</p>
+                      )}
+                      {data.requirement.links
+                        .filter((l) => l.linked_module_type === 'ncr')
+                        .map((l) => (
+                          <Link
+                            key={l.id}
+                            to={`/dashboard/quality/ncrs?view=${l.linked_record_id}`}
+                            className="block text-xs text-teal hover:underline"
+                          >
+                            NCR {l.linked_record_id.slice(0, 8)}
+                          </Link>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="bg-white rounded-xl border border-surface-300 p-4">

@@ -46,7 +46,7 @@ const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 
 
 export function UsersPage() {
   const { user } = useUser();
-  const { activeCompanyId, activeRole, activeCompany } = useTenant();
+  const { activeCompanyId, activeRole, activeCompany, isPlatformAdmin } = useTenant();
   const { fullName, organisationName } = useIdentity();
 
   const {
@@ -78,6 +78,7 @@ export function UsersPage() {
   const roles = ['admin', 'manager', 'supervisor', 'consultant', 'employee', 'auditor'] as const;
   const canInvite = activeRole === 'owner' || activeRole === 'admin';
   const canEditProfiles = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager';
+  const canEditEmployeeId = isPlatformAdmin || activeRole === 'owner' || activeRole === 'admin';
   const canManageMemberships = activeRole === 'owner' || activeRole === 'admin';
   const allowedInviteRoles: CompanyRole[] =
     activeRole === 'owner'
@@ -104,6 +105,7 @@ export function UsersPage() {
   const [latestInviteLink, setLatestInviteLink] = React.useState<string | null>(null);
   const [editOpen, setEditOpen] = React.useState(false);
   const [editUserId, setEditUserId] = React.useState<string | null>(null);
+  const [search, setSearch] = React.useState('');
 
   const { data: profiles } = useAsync<UserProfile[]>(
     async () => {
@@ -118,7 +120,8 @@ export function UsersPage() {
 
   const combinedUsers = [
     ...(members ?? []).map((m) => ({
-      id: `USR-${shortId(m.user_id)}`,
+      employeeNumber: profileByUserId.get(m.user_id as any)?.employee_number ?? null,
+      id: profileByUserId.get(m.user_id as any)?.employee_number ?? `USR-${shortId(m.user_id)}`,
       membershipId: String(m.id),
       name: profileByUserId.get(m.user_id as any)?.full_name ?? `User ${shortId(m.user_id)}`,
       role: formatRole(m.role),
@@ -130,6 +133,7 @@ export function UsersPage() {
     ...(invites ?? [])
       .filter((i) => normalizeInviteStatus(i.status) !== 'CANCELLED')
       .map((i) => ({
+        employeeNumber: null,
         id: `INV-${shortId(i.id)}`,
         membershipId: null,
         name: 'Invited user',
@@ -140,6 +144,19 @@ export function UsersPage() {
         userId: null
       }))
   ];
+
+  const filteredUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return combinedUsers;
+    return combinedUsers.filter((u) => {
+      return (
+        String(u.name ?? '').toLowerCase().includes(q) ||
+        String(u.email ?? '').toLowerCase().includes(q) ||
+        String(u.id ?? '').toLowerCase().includes(q) ||
+        String((u as any).employeeNumber ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [combinedUsers, search]);
 
   const inviteRows = (invites ?? []).map((invite) => ({
     ...invite,
@@ -254,6 +271,7 @@ export function UsersPage() {
     if (!activeCompanyId || combinedUsers.length === 0) return;
 
     const rows = combinedUsers.map((u) => ({
+      employee_id: (u as any).employeeNumber ?? '',
       id: u.id,
       name: u.name,
       role: u.role,
@@ -297,6 +315,7 @@ export function UsersPage() {
             companyId={activeCompanyId}
             userId={editUserId as any}
             initial={selectedProfile}
+            canEditEmployeeId={canEditEmployeeId}
             onSaved={() => {
               setEditOpen(false);
               void refreshUsersData();
@@ -386,6 +405,14 @@ export function UsersPage() {
 
           <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5 lg:col-span-2">
             <h3 className="font-semibold text-charcoal mb-3">Users</h3>
+            <div className="mb-3">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, email, or Employee ID..."
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              />
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-surface-50">
@@ -406,14 +433,14 @@ export function UsersPage() {
                       </td>
                     </tr>
                   )}
-                  {!membersLoading && !invitesLoading && combinedUsers.length === 0 && (
+                  {!membersLoading && !invitesLoading && filteredUsers.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-4 py-3 text-sm text-charcoal-500">
                         No users found.
                       </td>
                     </tr>
                   )}
-                  {combinedUsers.map((u) => (
+                  {filteredUsers.map((u) => (
                     <tr key={u.id} className="hover:bg-surface-50 transition-colors">
                       <td className="px-4 py-3 text-sm font-medium text-teal">{u.id}</td>
                       <td className="px-4 py-3 text-sm text-charcoal">{u.name}</td>

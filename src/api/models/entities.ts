@@ -18,6 +18,7 @@ export type CompanyStatus = 'active' | 'suspended';
 export type Company = {
   id: UUID;
   name: string;
+  code?: string | null;
   license_type: LicenseType;
   employee_limit: number;
   industry?: string | null;
@@ -1416,6 +1417,18 @@ export type EnvironmentMonitoring = {
 export type LegalComplianceStatus = 'NON_COMPLIANT' | 'PARTIALLY_COMPLIANT' | 'COMPLIANT';
 export type LegalUpdateCompletionStatus = 'OPEN' | 'CLOSED';
 
+export type LegalRequirementLinkedModuleType = 'document' | 'risk_assessment' | 'ncr';
+
+export type LegalRequirementLink = {
+  id: UUID;
+  company_id: UUID;
+  legal_requirement_id: UUID;
+  linked_module_type: LegalRequirementLinkedModuleType;
+  linked_record_id: UUID;
+  created_by_user_id: UUID;
+  created_at: string;
+};
+
 export type LegalRequirementReference = {
   referenceText: string;
 };
@@ -1442,6 +1455,7 @@ export type LegalRequirement = {
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
+  links?: LegalRequirementLink[] | null;
 };
 
 export type LegalUpdate = {

@@ -3,7 +3,7 @@ import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { Department, Site, UserProfile, UUID } from '../../api/models/entities';
-import { upsertUserProfileAsManager } from '../../api/services/profilesService';
+import { adminUpdateEmployeeNumber, upsertUserProfileAsManager } from '../../api/services/profilesService';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listSites } from '../../api/services/sitesService';
 import { listDepartments } from '../../api/services/departmentsService';
@@ -14,6 +14,7 @@ export function UserProfileEditModal(props: {
   companyId: UUID;
   userId: UUID;
   initial?: UserProfile | null;
+  canEditEmployeeId?: boolean;
   onSaved?: () => void;
 }) {
   const [fullName, setFullName] = useState(props.initial?.full_name ?? '');
@@ -23,6 +24,9 @@ export function UserProfileEditModal(props: {
   const [site, setSite] = useState(props.initial?.site ?? '');
   const [siteId, setSiteId] = useState<string>(String(props.initial?.site_id ?? ''));
   const [departmentId, setDepartmentId] = useState<string>(String(props.initial?.department_id ?? ''));
+  const [employeeNumber, setEmployeeNumber] = useState(props.initial?.employee_number ?? '');
+  const [editEmployeeNumber, setEditEmployeeNumber] = useState(false);
+  const [employeeNumberDraft, setEmployeeNumberDraft] = useState(props.initial?.employee_number ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,6 +34,7 @@ export function UserProfileEditModal(props: {
   const { data: departments } = useAsync<Department[]>(async () => listDepartments(props.companyId), [props.companyId]);
 
   const canSubmit = useMemo(() => fullName.trim().length > 1 || email.trim().length > 3, [email, fullName]);
+  const canSubmitEmployeeNumber = !!(props.canEditEmployeeId && editEmployeeNumber && employeeNumberDraft.trim());
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,6 +42,18 @@ export function UserProfileEditModal(props: {
     setError(null);
     try {
       setLoading(true);
+
+      if (canSubmitEmployeeNumber && employeeNumberDraft.trim() !== employeeNumber.trim()) {
+        const updated = await adminUpdateEmployeeNumber({
+          companyId: props.companyId,
+          userId: props.userId,
+          employeeNumber: employeeNumberDraft.trim()
+        });
+        setEmployeeNumber(updated);
+        setEmployeeNumberDraft(updated);
+        setEditEmployeeNumber(false);
+      }
+
       await upsertUserProfileAsManager({
         companyId: props.companyId,
         userId: props.userId,
@@ -80,6 +97,41 @@ export function UserProfileEditModal(props: {
               <p className="text-sm text-charcoal-600 mt-1">{error}</p>
             </div>
           )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Employee ID</label>
+              <div className="flex items-center gap-2">
+                <input
+                  value={editEmployeeNumber ? employeeNumberDraft : employeeNumber}
+                  onChange={(e) => setEmployeeNumberDraft(e.target.value)}
+                  readOnly={!editEmployeeNumber}
+                  placeholder="Auto-generated"
+                  className={`w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent ${
+                    !editEmployeeNumber ? 'text-charcoal-600 bg-surface-50' : ''
+                  }`}
+                />
+                {!!props.canEditEmployeeId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !editEmployeeNumber;
+                      setEditEmployeeNumber(next);
+                      setEmployeeNumberDraft(employeeNumber);
+                    }}
+                    className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                  >
+                    {editEmployeeNumber ? 'Cancel' : 'Edit'}
+                  </button>
+                )}
+              </div>
+              {editEmployeeNumber && (
+                <p className="text-xs text-charcoal-400 mt-1">
+                  Format: <span className="font-semibold">ORG-ROLE-0001</span> (e.g. <span className="font-semibold">SCA-EMP-0007</span>)
+                </p>
+              )}
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

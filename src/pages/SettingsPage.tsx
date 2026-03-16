@@ -91,6 +91,7 @@ export function SettingsPage() {
 
   // Company profile
   const [companyName, setCompanyName] = useState(activeCompany?.name ?? '');
+  const [orgCode, setOrgCode] = useState(activeCompany?.code ?? '');
   const [registrationNumber, setRegistrationNumber] = useState(meta.registration_number ?? '');
   const [industry, setIndustry] = useState(meta.industry ?? 'Manufacturing');
   const [employeeCount, setEmployeeCount] = useState(String(meta.employee_count ?? ''));
@@ -137,7 +138,7 @@ export function SettingsPage() {
     }
   }, [logoBucket, logoKey]);
 
-  async function save(patch: { name?: string; metadata?: Record<string, unknown> | null }, okMessage: string) {
+  async function save(patch: { name?: string; metadata?: Record<string, unknown> | null; code?: string | null }, okMessage: string) {
     if (!activeCompanyId) return;
     setSaving(true);
     setSaveError(null);
@@ -241,17 +242,33 @@ export function SettingsPage() {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-charcoal mb-1.5">
                         Company Name
                       </label>
                       <input
-                      type="text"
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
-
+                        type="text"
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">
+                        Organization Code
+                      </label>
+                      <input
+                        type="text"
+                        value={orgCode}
+                        onChange={(e) => setOrgCode(e.target.value.toUpperCase())}
+                        maxLength={5}
+                        placeholder="e.g. SCA"
+                        className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                      />
+                      <p className="mt-1 text-xs text-charcoal-400">
+                        2–5 uppercase letters/numbers used in Employee IDs (e.g. <span className="font-semibold">SCA-EMP-0001</span>).
+                      </p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-charcoal mb-1.5">

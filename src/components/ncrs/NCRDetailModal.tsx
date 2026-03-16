@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, CheckCircle, AlertTriangle, FileText, EyeIcon, DownloadIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
-import type { NcrEvidenceReference, QualityNcr, UUID } from '../../api/models/entities';
+import type { LegalRequirement, NcrEvidenceReference, QualityNcr, UUID } from '../../api/models/entities';
 import { getRiskAssessment } from '../../api/services/riskAssessmentsService';
+import { listLegalRequirementsForLinkedRecord } from '../../api/services/legalRequirementsService';
 import { formatAuthError } from '../../auth/authMessages';
 import { createEvidence } from '../../api/services/evidenceService';
 import {
@@ -56,6 +57,9 @@ export default function NCRDetailModal({
   const [workflowSaving, setWorkflowSaving] = useState<'manager' | 'auditor' | null>(null);
   const [linkedRiskReference, setLinkedRiskReference] = useState<string | null>(null);
   const [linkedRiskId, setLinkedRiskId] = useState<UUID | null>(null);
+  const [linkedLegalRequirements, setLinkedLegalRequirements] = useState<
+    Array<Pick<LegalRequirement, 'id' | 'requirement_standard' | 'compliance_status'>>
+  >([]);
 
   const evidenceBefore = useMemo(
     () => (loadedBefore ?? ((ncr.evidence_before ?? []) as NcrEvidenceReference[])),
@@ -119,6 +123,30 @@ export default function NCRDetailModal({
       cancelled = true;
     };
   }, [companyId, actorUserId, ncr.source_entity_type, ncr.source_entity_id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLinkedLegal = async () => {
+      try {
+        const rows = await listLegalRequirementsForLinkedRecord({
+          companyId,
+          moduleType: 'ncr',
+          recordId: ncr.id
+        });
+        if (!cancelled) {
+          setLinkedLegalRequirements(rows);
+        }
+      } catch {
+        if (!cancelled) {
+          setLinkedLegalRequirements([]);
+        }
+      }
+    };
+    void loadLinkedLegal();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, ncr.id]);
 
   useEffect(() => {
     setLinkedRequirementTypeEdit((ncr.linked_requirement_type as any) ?? 'STANDARD');
@@ -279,6 +307,28 @@ export default function NCRDetailModal({
               <p className="text-sm">Severity Level</p>
             </div>
           </div>
+
+          {linkedLegalRequirements.length > 0 && (
+            <div className="border-t pt-4">
+              <p className="text-sm text-gray-600 mb-1">Related Legal Requirements</p>
+              <ul className="space-y-1">
+                {linkedLegalRequirements.map((lr) => (
+                  <li key={lr.id} className="text-xs text-charcoal-700">
+                    <button
+                      type="button"
+                      onClick={() => window.open(`/dashboard/legal/register/${lr.id}`, '_blank')}
+                      className="text-teal hover:underline"
+                    >
+                      {lr.requirement_standard}
+                    </button>
+                    <span className="ml-2 inline-flex px-1.5 py-0.5 rounded bg-surface-100 text-[10px] text-charcoal-600">
+                      {lr.compliance_status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {linkedRiskReference && linkedRiskId && (
             <div className="border-t pt-4">

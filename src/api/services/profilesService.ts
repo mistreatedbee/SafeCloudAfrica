@@ -3,6 +3,22 @@ import { getErrorMessage } from '../insforge/errors';
 import type { UserProfile, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
 
+export async function adminUpdateEmployeeNumber(input: {
+  companyId: UUID;
+  userId: UUID;
+  employeeNumber: string;
+}): Promise<string> {
+  const trimmed = input.employeeNumber.trim();
+  if (!trimmed) throw new Error('Employee ID is required.');
+  const { data, error } = await insforge.database.rpc('admin_update_employee_number', {
+    p_company_id: input.companyId,
+    p_user_id: input.userId,
+    p_new: trimmed
+  });
+  if (error) throw new Error(getErrorMessage(error));
+  return String(data ?? '').trim();
+}
+
 export async function listUserProfiles(companyId: UUID): Promise<UserProfile[]> {
   const { data, error } = await insforge.database
     .from('user_profiles')
