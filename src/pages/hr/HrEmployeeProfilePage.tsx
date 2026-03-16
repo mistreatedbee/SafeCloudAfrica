@@ -7,6 +7,9 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { canViewRestrictedFields, getEmployeeIntegratedProfile, logRestrictedFieldAccess } from '../../api/services/hrService';
 import type { UUID } from '../../api/models/core';
+import type { CompanyRole } from '../../api/models/core';
+import type { HrEmployee } from '../../api/services/hrService';
+import { HrEmployeeEditModal } from '../../components/hr/HrEmployeeEditModal';
 
 const TABS = ['overview', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'tasks', 'audit'] as const;
 type Tab = (typeof TABS)[number];
@@ -14,8 +17,14 @@ type Tab = (typeof TABS)[number];
 export function HrEmployeeProfilePage() {
   const { id } = useParams();
   const { user } = useUser();
-  const { activeCompanyId } = useTenant();
+  const { activeCompanyId, activeRole, isPlatformAdmin } = useTenant();
   const [tab, setTab] = useState<Tab>('overview');
+  const [showEdit, setShowEdit] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const allowedRoles: CompanyRole[] = ['owner', 'admin', 'manager'];
+  const canEditEmployee = !!(isPlatformAdmin || (activeRole && allowedRoles.includes(activeRole)));
 
   const { data: canRestricted } = useAsync(async () => {
     if (!activeCompanyId) return false;
@@ -25,9 +34,9 @@ export function HrEmployeeProfilePage() {
   const { data: payload } = useAsync(async () => {
     if (!activeCompanyId || !id) return null;
     return getEmployeeIntegratedProfile(activeCompanyId, id as UUID);
-  }, [activeCompanyId, id]);
+  }, [activeCompanyId, id, refreshKey]);
 
-  const employee = payload?.employee as Record<string, unknown> | undefined;
+  const employee = payload?.employee as HrEmployee | undefined;
   const leaveBalances = (payload?.balances as Array<Record<string, unknown>> | undefined) ?? [];
   const leaveRequests = (payload?.leaveRequests as Array<Record<string, unknown>> | undefined) ?? [];
 
@@ -51,12 +60,28 @@ export function HrEmployeeProfilePage() {
     <Layout title="Employee Profile">
       <div className="space-y-4">
         <HrSectionNav />
+        {successMessage && (
+          <div className="bg-teal-50 border border-teal-200 text-sm text-teal-900 rounded-xl px-3 py-2">
+            {successMessage}
+          </div>
+        )}
         <div className="bg-white border border-surface-300 rounded-xl p-4">
           {!employee ? <p className="text-sm text-charcoal-500">Employee not found.</p> : (
-            <>
-              <h2 className="text-xl font-semibold text-charcoal">{String(employee.first_name)} {String(employee.last_name)}</h2>
-              <p className="text-sm text-charcoal-500">Employee No: {String(employee.employee_no)} | Status: {String(employee.employment_status)}</p>
-            </>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-charcoal">{String(employee.first_name)} {String(employee.last_name)}</h2>
+                <p className="text-sm text-charcoal-500">Employee No: {String(employee.employee_no)} | Status: {String(employee.employment_status)}</p>
+              </div>
+              {canEditEmployee && activeCompanyId && user?.id && (
+                <button
+                  type="button"
+                  onClick={() => setShowEdit(true)}
+                  className="inline-flex items-center px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600"
+                >
+                  Edit Employee
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -180,6 +205,25 @@ export function HrEmployeeProfilePage() {
           <Card title="Audit trail">
             <SimpleTable rows={(payload?.auditTrail as Array<Record<string, unknown>> | undefined) ?? []} cols={['action', 'entity_type', 'created_at']} />
           </Card>
+        )}
+
+        {employee && activeCompanyId && user?.id && (
+          <HrEmployeeEditModal
+            open={showEdit}
+            onClose={() => setShowEdit(false)}
+            companyId={activeCompanyId}
+            actorUserId={user.id as UUID}
+            employee={employee}
+            canViewRestrictedFields={!!canRestricted}
+            onSaved={() => {
+              setShowEdit(false);
+              setRefreshKey((x) => x + 1);
+              setSuccessMessage('Employee information updated successfully.');
+              window.setTimeout(() => {
+                setSuccessMessage(null);
+              }, 4000);
+            }}
+          />
         )}
       </div>
     </Layout>
