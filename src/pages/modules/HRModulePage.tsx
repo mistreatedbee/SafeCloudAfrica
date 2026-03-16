@@ -11,6 +11,7 @@ import { listContractors } from '../../api/services/contractorsService';
 import { listVisitors } from '../../api/services/visitorsService';
 import { countExpiringTraining } from '../../api/services/trainingService';
 import { listHrKpis } from '../../api/services/hrKpisService';
+import { listEmployeeWellnessAssessments, type HrEmployeeWellnessAssessment, listHrRecords } from '../../api/services/hrService';
 import type { CompanyMembership, Contractor, HrKpi, UserProfile, Visitor } from '../../api/models/entities';
 
 const containerVariants = {
@@ -66,6 +67,20 @@ export function HRModulePage() {
     },
     [activeCompanyId]
   );
+  const { data: wellnessAssessments } = useAsync<HrEmployeeWellnessAssessment[]>(
+    async () => {
+      if (!activeCompanyId) return [];
+      return listEmployeeWellnessAssessments({ companyId: activeCompanyId });
+    },
+    [activeCompanyId]
+  );
+  const { data: wellnessActions } = useAsync(
+    async () => {
+      if (!activeCompanyId) return [];
+      return listHrRecords(activeCompanyId, 'hr_employee_wellness_actions');
+    },
+    [activeCompanyId]
+  );
 
   const counts = useMemo(() => {
     const members = memberships ?? [];
@@ -73,6 +88,28 @@ export function HRModulePage() {
     for (const m of members) byRole.set(m.role, (byRole.get(m.role) ?? 0) + 1);
     const departments = new Set((profiles ?? []).map((p) => p.department).filter(Boolean) as string[]);
     const sites = new Set((profiles ?? []).map((p) => p.site).filter(Boolean) as string[]);
+    const wellness = wellnessAssessments ?? [];
+    const wellnessByEmployee = new Map<string, HrEmployeeWellnessAssessment>();
+    for (const a of wellness) {
+      const key = String(a.employee_id);
+      const existing = wellnessByEmployee.get(key);
+      if (!existing) {
+        wellnessByEmployee.set(key, a);
+      } else if (String(a.assessment_date ?? '') > String(existing.assessment_date ?? '')) {
+        wellnessByEmployee.set(key, a);
+      }
+    }
+    const employeesNeedingSupport = Array.from(wellnessByEmployee.values()).filter((a) => {
+      const needs = (a.workplace_wellness_needs ?? {}) as Record<string, { answer?: 'yes' | 'no' | null }>;
+      const stress = (a.health_lifestyle_assessment ?? {}) as Record<string, { status?: string }>;
+      const stressLevel = stress.stress_level?.status ?? '';
+      const supportYes = Object.values(needs).some((row) => row?.answer === 'yes');
+      const stressHigh = typeof stressLevel === 'string' && stressLevel.toLowerCase() === 'high';
+      return supportYes || stressHigh;
+    }).length;
+    const pendingActions = (wellnessActions ?? []).filter(
+      (row: any) => String(row.status ?? 'OPEN').toUpperCase() !== 'COMPLETED'
+    ).length;
     return {
       members: members.length,
       roles: Array.from(byRole.entries()).sort((a, b) => b[1] - a[1]),
@@ -81,9 +118,12 @@ export function HRModulePage() {
       contractors: (contractors ?? []).length,
       visitors: (visitors ?? []).length,
       kpis: (hrKpis ?? []).length,
-      kpisAchieved: (hrKpis ?? []).filter((k) => k.achieved).length
+      kpisAchieved: (hrKpis ?? []).filter((k) => k.achieved).length,
+      wellnessTotal: wellness.length,
+      wellnessEmployeesNeedingSupport: employeesNeedingSupport,
+      wellnessPendingActions: pendingActions
     };
-  }, [contractors, memberships, profiles, visitors, hrKpis]);
+  }, [contractors, memberships, profiles, visitors, hrKpis, wellnessAssessments, wellnessActions]);
 
   return (
     <Layout title="HR Management">
@@ -128,6 +168,16 @@ export function HRModulePage() {
                 {counts.kpis > 0 ? `${Math.round((counts.kpisAchieved / counts.kpis) * 100)}% achieved` : '—'}
               </span>
             </p>
+          </div>
+          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card col-span-2 lg:col-span-1">
+            <p className="text-sm text-charcoal-500">Employee wellness assessments</p>
+            <p className="text-2xl font-bold text-charcoal mt-1">
+              {counts.wellnessTotal}
+              <span className="ml-2 text-sm font-normal text-teal">
+                {counts.wellnessEmployeesNeedingSupport} needing support
+              </span>
+            </p>
+            <p className="mt-1 text-xs text-charcoal-500">Action plans pending: {counts.wellnessPendingActions}</p>
           </div>
         </motion.div>
 

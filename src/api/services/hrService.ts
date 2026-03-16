@@ -1,4 +1,4 @@
-﻿
+
 import { insforge } from '../insforge/client';
 import type { UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
@@ -92,6 +92,37 @@ export type HrMonthlyHours = {
 };
 
 export type HrSimpleRecord = Record<string, unknown> & { id: UUID; company_id: UUID; created_at: string; updated_at?: string };
+
+export type HrEmployeeWellnessAssessment = HrSimpleRecord & {
+  employee_id: UUID;
+  department_id: UUID | null;
+  assessment_date: string;
+  company_name: string | null;
+  employee_number: string | null;
+  job_title: string | null;
+  line_manager_name: string | null;
+  wellness_assessment_answers: Record<string, unknown>;
+  health_lifestyle_assessment: Record<string, unknown>;
+  workplace_wellness_needs: Record<string, unknown>;
+  programme_participation: Record<string, unknown>;
+  employee_signature: string | null;
+  wellness_officer_signature: string | null;
+  approval_date: string | null;
+  created_by_user_id: UUID;
+  updated_by_user_id: UUID | null;
+};
+
+export type HrEmployeeWellnessAction = HrSimpleRecord & {
+  assessment_id: UUID;
+  identified_issue: string;
+  action_required: string;
+  responsible_employee_id: UUID | null;
+  target_date: string | null;
+  status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED';
+  completed_date: string | null;
+  created_by_user_id: UUID;
+  updated_by_user_id: UUID | null;
+};
 
 export type HrDashboardStats = {
   totalEmployees: number;
@@ -363,7 +394,9 @@ export async function listHrRecords(companyId: UUID, table:
   | 'hr_interview_notes'
   | 'hr_monthly_hours'
   | 'hr_ack_documents'
-  | 'hr_ack_receipts',
+  | 'hr_ack_receipts'
+  | 'hr_employee_wellness_assessments'
+  | 'hr_employee_wellness_actions',
   filters?: Record<string, string | number | boolean | null>
 ): Promise<HrSimpleRecord[]> {
   return listTable<HrSimpleRecord>(table, companyId, filters);
@@ -383,7 +416,9 @@ export async function createHrRecord(
     | 'hr_interview_notes'
     | 'hr_monthly_hours'
     | 'hr_ack_documents'
-    | 'hr_ack_receipts',
+    | 'hr_ack_receipts'
+    | 'hr_employee_wellness_assessments'
+    | 'hr_employee_wellness_actions',
   payload: Record<string, unknown>
 ): Promise<HrSimpleRecord> {
   const row = await insertTable<HrSimpleRecord>(table, payload);
@@ -417,7 +452,9 @@ export async function updateHrRecord(
     | 'hr_timesheets'
     | 'hr_monthly_hours'
     | 'hr_ack_documents'
-    | 'hr_ack_receipts',
+    | 'hr_ack_receipts'
+    | 'hr_employee_wellness_assessments'
+    | 'hr_employee_wellness_actions',
   input: {
     companyId: UUID;
     rowId: UUID;
@@ -442,6 +479,212 @@ export async function updateHrRecord(
     entityId: input.rowId
   }).catch(() => {});
   return data as HrSimpleRecord;
+}
+
+export async function listEmployeeWellnessAssessments(input: {
+  companyId: UUID;
+  employeeId?: UUID;
+}): Promise<HrEmployeeWellnessAssessment[]> {
+  const filters: Record<string, string | number | boolean | null> = {};
+  if (input.employeeId) filters.employee_id = input.employeeId;
+  const rows = await listHrRecords(input.companyId, 'hr_employee_wellness_assessments', filters);
+  return rows as HrEmployeeWellnessAssessment[];
+}
+
+export async function getEmployeeWellnessAssessment(input: {
+  companyId: UUID;
+  assessmentId: UUID;
+}): Promise<{ assessment: HrEmployeeWellnessAssessment | null; actions: HrEmployeeWellnessAction[] }> {
+  const { data, error } = await insforge.database
+    .from('hr_employee_wellness_assessments')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('id', input.assessmentId)
+    .maybeSingle();
+  if (error) throw new Error(getErrorMessage(error));
+  const assessment = (data as HrEmployeeWellnessAssessment) ?? null;
+  if (!assessment) return { assessment: null, actions: [] };
+  const actions = (await listHrRecords(input.companyId, 'hr_employee_wellness_actions', { assessment_id: input.assessmentId })) as HrEmployeeWellnessAction[];
+  return { assessment, actions };
+}
+
+export async function createEmployeeWellnessAssessment(input: {
+  companyId: UUID;
+  employeeId: UUID;
+  departmentId: UUID | null;
+  assessmentDate: string;
+  header: {
+    companyName: string | null;
+    employeeNumber: string | null;
+    jobTitle: string | null;
+    lineManagerName: string | null;
+  };
+  wellnessAssessmentAnswers: Record<string, unknown>;
+  healthLifestyleAssessment: Record<string, unknown>;
+  workplaceWellnessNeeds: Record<string, unknown>;
+  programmeParticipation: Record<string, unknown>;
+  approvals: {
+    employeeSignature: string | null;
+    wellnessOfficerSignature: string | null;
+    approvalDate: string | null;
+  };
+  actions: Array<{
+    identifiedIssue: string;
+    actionRequired: string;
+    responsibleEmployeeId: UUID | null;
+    targetDate: string | null;
+  }>;
+  actorUserId: UUID;
+}): Promise<{ assessment: HrEmployeeWellnessAssessment; actions: HrEmployeeWellnessAction[] }> {
+  const payload = {
+    company_id: input.companyId,
+    employee_id: input.employeeId,
+    department_id: input.departmentId,
+    assessment_date: input.assessmentDate,
+    company_name: input.header.companyName,
+    employee_number: input.header.employeeNumber,
+    job_title: input.header.jobTitle,
+    line_manager_name: input.header.lineManagerName,
+    wellness_assessment_answers: input.wellnessAssessmentAnswers,
+    health_lifestyle_assessment: input.healthLifestyleAssessment,
+    workplace_wellness_needs: input.workplaceWellnessNeeds,
+    programme_participation: input.programmeParticipation,
+    employee_signature: input.approvals.employeeSignature,
+    wellness_officer_signature: input.approvals.wellnessOfficerSignature,
+    approval_date: input.approvals.approvalDate,
+    created_by_user_id: input.actorUserId
+  };
+  const assessmentRow = (await createHrRecord('hr_employee_wellness_assessments', payload)) as HrEmployeeWellnessAssessment;
+
+  const actions: HrEmployeeWellnessAction[] = [];
+  for (const row of input.actions) {
+    if (!row.identifiedIssue.trim() && !row.actionRequired.trim()) continue;
+    const actionPayload = {
+      company_id: input.companyId,
+      assessment_id: assessmentRow.id,
+      identified_issue: row.identifiedIssue,
+      action_required: row.actionRequired,
+      responsible_employee_id: row.responsibleEmployeeId,
+      target_date: row.targetDate,
+      status: 'OPEN',
+      created_by_user_id: input.actorUserId
+    };
+    const created = (await createHrRecord('hr_employee_wellness_actions', actionPayload)) as HrEmployeeWellnessAction;
+    actions.push(created);
+  }
+
+  return { assessment: assessmentRow, actions };
+}
+
+export async function updateEmployeeWellnessAssessment(input: {
+  companyId: UUID;
+  assessmentId: UUID;
+  departmentId: UUID | null;
+  assessmentDate: string;
+  header: {
+    companyName: string | null;
+    employeeNumber: string | null;
+    jobTitle: string | null;
+    lineManagerName: string | null;
+  };
+  wellnessAssessmentAnswers: Record<string, unknown>;
+  healthLifestyleAssessment: Record<string, unknown>;
+  workplaceWellnessNeeds: Record<string, unknown>;
+  programmeParticipation: Record<string, unknown>;
+  approvals: {
+    employeeSignature: string | null;
+    wellnessOfficerSignature: string | null;
+    approvalDate: string | null;
+  };
+  actions: Array<{
+    id?: UUID;
+    identifiedIssue: string;
+    actionRequired: string;
+    responsibleEmployeeId: UUID | null;
+    targetDate: string | null;
+    status?: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED';
+    completedDate?: string | null;
+  }>;
+  actorUserId: UUID;
+}): Promise<{ assessment: HrEmployeeWellnessAssessment; actions: HrEmployeeWellnessAction[] }> {
+  const patch = {
+    department_id: input.departmentId,
+    assessment_date: input.assessmentDate,
+    company_name: input.header.companyName,
+    employee_number: input.header.employeeNumber,
+    job_title: input.header.jobTitle,
+    line_manager_name: input.header.lineManagerName,
+    wellness_assessment_answers: input.wellnessAssessmentAnswers,
+    health_lifestyle_assessment: input.healthLifestyleAssessment,
+    workplace_wellness_needs: input.workplaceWellnessNeeds,
+    programme_participation: input.programmeParticipation,
+    employee_signature: input.approvals.employeeSignature,
+    wellness_officer_signature: input.approvals.wellnessOfficerSignature,
+    approval_date: input.approvals.approvalDate,
+    updated_by_user_id: input.actorUserId
+  };
+  const updated = (await updateHrRecord('hr_employee_wellness_assessments', {
+    companyId: input.companyId,
+    rowId: input.assessmentId,
+    actorUserId: input.actorUserId,
+    patch
+  })) as HrEmployeeWellnessAssessment;
+
+  const existing = (await listHrRecords(input.companyId, 'hr_employee_wellness_actions', {
+    assessment_id: input.assessmentId
+  })) as HrEmployeeWellnessAction[];
+  const existingById = new Map(existing.map((row) => [row.id, row]));
+
+  const nextActions: HrEmployeeWellnessAction[] = [];
+
+  for (const row of input.actions) {
+    const trimmedIssue = row.identifiedIssue.trim();
+    const trimmedAction = row.actionRequired.trim();
+    if (!trimmedIssue && !trimmedAction && !row.id) continue;
+
+    if (row.id && existingById.has(row.id)) {
+      const patchRow: Record<string, unknown> = {
+        identified_issue: trimmedIssue,
+        action_required: trimmedAction,
+        responsible_employee_id: row.responsibleEmployeeId,
+        target_date: row.targetDate,
+        status: row.status ?? 'OPEN',
+        completed_date: row.completedDate ?? null,
+        updated_by_user_id: input.actorUserId
+      };
+      const updatedAction = (await updateHrRecord('hr_employee_wellness_actions', {
+        companyId: input.companyId,
+        rowId: row.id,
+        actorUserId: input.actorUserId,
+        patch: patchRow
+      })) as HrEmployeeWellnessAction;
+      nextActions.push(updatedAction);
+      existingById.delete(row.id);
+    } else if (trimmedIssue || trimmedAction) {
+      const created = (await createHrRecord('hr_employee_wellness_actions', {
+        company_id: input.companyId,
+        assessment_id: input.assessmentId,
+        identified_issue: trimmedIssue,
+        action_required: trimmedAction,
+        responsible_employee_id: row.responsibleEmployeeId,
+        target_date: row.targetDate,
+        status: row.status ?? 'OPEN',
+        completed_date: row.completedDate ?? null,
+        created_by_user_id: input.actorUserId
+      })) as HrEmployeeWellnessAction;
+      nextActions.push(created);
+    }
+  }
+
+  for (const [remainingId] of existingById) {
+    await insforge.database
+      .from('hr_employee_wellness_actions')
+      .delete()
+      .eq('company_id', input.companyId)
+      .eq('id', remainingId);
+  }
+
+  return { assessment: updated, actions: nextActions };
 }
 
 export async function upsertHrSettings(input: {
