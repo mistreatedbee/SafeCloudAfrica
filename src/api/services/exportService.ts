@@ -112,8 +112,8 @@ export function exportIncidentsCSV(incidents: Incident[]): Blob {
   const rows = incidents.map((incident) => [
     incident.id.slice(0, 8),
     incident.title,
-    incident.category,
-    incident.subcategory,
+    getIncidentCategoryDisplay(incident),
+    getIncidentSubcategoryDisplay(incident),
     incident.severity,
     incident.status,
     incident.location || '',
@@ -146,6 +146,32 @@ function summarizeUnsafeItems(value: unknown): string {
     })
     .filter(Boolean)
     .join('; ');
+}
+
+function getIncidentCategoryDisplay(incident: Incident): string {
+  const metadata = (incident as any)?.metadata ?? null;
+  const metaCategoriesRaw = Array.isArray(metadata?.categories) ? metadata.categories : null;
+  const parsedMetaCategories: string[] = Array.isArray(metaCategoriesRaw)
+    ? metaCategoriesRaw.map((c: unknown) => String(c ?? '').trim()).filter((c) => c.length > 0)
+    : [];
+  if (parsedMetaCategories.length === 0) return incident.category;
+  const unique = Array.from(new Set(parsedMetaCategories));
+  const primary = incident.category;
+  const extras = unique.filter((c) => c !== primary);
+  return extras.length > 0 ? [primary, ...extras].join('; ') : primary;
+}
+
+function getIncidentSubcategoryDisplay(incident: Incident): string {
+  const metadata = (incident as any)?.metadata ?? null;
+  const metaSubcategoriesRaw = Array.isArray(metadata?.subcategories) ? metadata.subcategories : null;
+  const parsedMetaSubcategories: string[] = Array.isArray(metaSubcategoriesRaw)
+    ? metaSubcategoriesRaw.map((s: unknown) => String(s ?? '').trim()).filter((s) => s.length > 0)
+    : [];
+  if (parsedMetaSubcategories.length === 0) return incident.subcategory;
+  const unique = Array.from(new Set(parsedMetaSubcategories));
+  const primary = incident.subcategory;
+  const extras = unique.filter((s) => s !== primary);
+  return extras.length > 0 ? [primary, ...extras].join('; ') : primary;
 }
 
 /**
@@ -226,7 +252,7 @@ function generateIncidentHTML(
         </div>
         <div class="field">
           <span class="field-label">Category:</span>
-          <span class="field-value">${incident.category} / ${incident.subcategory}</span>
+          <span class="field-value">${getIncidentCategoryDisplay(incident)} / ${getIncidentSubcategoryDisplay(incident)}</span>
         </div>
         <div class="field">
           <span class="field-label">Severity:</span>

@@ -165,7 +165,9 @@ export function IncidentCreateModal(props: {
   );
   const [incidentTypeOther, setIncidentTypeOther] = useState('');
   const [category, setCategory] = useState<IncidentCategory>(INCIDENT_CATEGORIES[0]);
+  const [selectedCategories, setSelectedCategories] = useState<IncidentCategory[]>([INCIDENT_CATEGORIES[0]]);
   const [subcategory, setSubcategory] = useState('');
+  const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
   const [subcategoryManual, setSubcategoryManual] = useState('');
   const [useManualSubcategory, setUseManualSubcategory] = useState(false);
 
@@ -227,11 +229,30 @@ export function IncidentCreateModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const availableSubcategories = useMemo(() => INCIDENT_SUBCATEGORIES[category] || [], [category]);
+  const availableSubcategories = useMemo(() => {
+    const baseCategories = (selectedCategories.length > 0 ? selectedCategories : [category]) as IncidentCategory[];
+    const all = new Set<string>();
+    for (const c of baseCategories) {
+      for (const s of INCIDENT_SUBCATEGORIES[c] ?? []) {
+        all.add(s);
+      }
+    }
+    return Array.from(all);
+  }, [selectedCategories, category]);
   const finalSubcategory = useMemo(
     () => (useManualSubcategory ? subcategoryManual.trim() : subcategory.trim()),
     [useManualSubcategory, subcategory, subcategoryManual]
   );
+  const allSelectedSubcategories = useMemo(() => {
+    const values = new Set<string>();
+    for (const s of selectedSubcategories) {
+      const trimmed = s.trim();
+      if (trimmed) values.add(trimmed);
+    }
+    const primary = finalSubcategory;
+    if (primary) values.add(primary);
+    return Array.from(values);
+  }, [selectedSubcategories, finalSubcategory]);
   const finalIncidentType = useMemo(
     () => {
       const selected = Object.entries(incidentTypeSelections)
@@ -259,13 +280,13 @@ export function IncidentCreateModal(props: {
       title.trim().length > 0 &&
       briefDescription.trim().length > 0 &&
       finalIncidentType.length > 0 &&
-      finalSubcategory.length > 0 &&
+      allSelectedSubcategories.length > 0 &&
       natureOfIncident.trim().length > 0 &&
       causeOfIncident.trim().length > 0 &&
       reportedBy.trim().length > 0 &&
       reportedTo.trim().length > 0
     );
-  }, [title, briefDescription, finalIncidentType, finalSubcategory, natureOfIncident, causeOfIncident, reportedBy, reportedTo]);
+  }, [title, briefDescription, finalIncidentType, allSelectedSubcategories, natureOfIncident, causeOfIncident, reportedBy, reportedTo]);
 
   function releasePreviews(items: UploadDraft[]) {
     for (const item of items) {
@@ -280,7 +301,9 @@ export function IncidentCreateModal(props: {
     setIncidentTypeSelections(Object.fromEntries(INCIDENT_TYPES.map((t) => [t, false])));
     setIncidentTypeOther('');
     setCategory(INCIDENT_CATEGORIES[0]);
+    setSelectedCategories([INCIDENT_CATEGORIES[0]]);
     setSubcategory('');
+    setSelectedSubcategories([]);
     setSubcategoryManual('');
     setUseManualSubcategory(false);
     setTitle('');
@@ -360,9 +383,33 @@ export function IncidentCreateModal(props: {
     }
     setIncidentTypeSelections(nextTypeSelections);
     setIncidentTypeOther(customTypes.join(', '));
-    setCategory(editingIncident.category ?? INCIDENT_CATEGORIES[0]);
+
+    const metadata = (editingIncident as any)?.metadata ?? null;
+    const metaCategoriesRaw = Array.isArray(metadata?.categories) ? metadata.categories : null;
+    const parsedMetaCategories: IncidentCategory[] = Array.isArray(metaCategoriesRaw)
+      ? metaCategoriesRaw
+          .map((c: unknown) => String(c ?? '').trim())
+          .filter((c): c is IncidentCategory => (INCIDENT_CATEGORIES as readonly string[]).includes(c))
+      : [];
+    const baseCategory = (editingIncident.category as IncidentCategory) ?? INCIDENT_CATEGORIES[0];
+    const nextCategories: IncidentCategory[] =
+      parsedMetaCategories.length > 0 ? Array.from(new Set(parsedMetaCategories)) : [baseCategory];
+    setSelectedCategories(nextCategories);
+    setCategory(nextCategories[0] ?? INCIDENT_CATEGORIES[0]);
+
     const existingSubcategory = String(editingIncident.subcategory ?? '');
-    const validSubcategories = INCIDENT_SUBCATEGORIES[editingIncident.category as IncidentCategory] ?? [];
+    const metaSubcategoriesRaw = Array.isArray(metadata?.subcategories) ? metadata.subcategories : null;
+    const parsedMetaSubcategories: string[] = Array.isArray(metaSubcategoriesRaw)
+      ? metaSubcategoriesRaw.map((s: unknown) => String(s ?? '').trim()).filter((s) => s.length > 0)
+      : [];
+    const validSubcategories = INCIDENT_SUBCATEGORIES[baseCategory as IncidentCategory] ?? [];
+    if (parsedMetaSubcategories.length > 0) {
+      setSelectedSubcategories(parsedMetaSubcategories);
+    } else if (existingSubcategory) {
+      setSelectedSubcategories([existingSubcategory]);
+    } else {
+      setSelectedSubcategories([]);
+    }
     if (validSubcategories.includes(existingSubcategory)) {
       setSubcategory(existingSubcategory);
       setSubcategoryManual('');
@@ -370,7 +417,7 @@ export function IncidentCreateModal(props: {
     } else {
       setSubcategory('');
       setSubcategoryManual(existingSubcategory);
-      setUseManualSubcategory(true);
+      setUseManualSubcategory(Boolean(existingSubcategory));
     }
     setTitle(editingIncident.title ?? '');
     setBriefDescription(String(editingIncident.description ?? ''));
@@ -751,11 +798,13 @@ export function IncidentCreateModal(props: {
         }))
         .filter((entry) => entry.personId || entry.personName);
       const incidentTypeValue = finalIncidentType;
+      const primaryCategory = (selectedCategories[0] ?? category) as IncidentCategory;
+      const subcategoriesForMetadata = allSelectedSubcategories;
 
       if (isEditing && editingIncident) {
         const updated = await updateIncident(editingIncident.id, {
           module,
-          category,
+          category: primaryCategory,
           subcategory: finalSubcategory,
           title: incidentTitle,
           description: briefDescription.trim() || null,
@@ -794,7 +843,9 @@ export function IncidentCreateModal(props: {
           location: location.trim() || null,
           metadata: {
             ...(editingIncident as any)?.metadata,
-            affectedPersons: affectedPersonsPayload
+            affectedPersons: affectedPersonsPayload,
+            categories: selectedCategories,
+            subcategories: subcategoriesForMetadata
           }
         } as any);
         await uploadEvidenceForIncident(updated.id, evidenceUploads, 'incident');
@@ -836,7 +887,7 @@ export function IncidentCreateModal(props: {
         const incident = await createIncident({
           companyId: props.companyId,
           module,
-          category,
+          category: primaryCategory,
           subcategory: finalSubcategory,
           title: incidentTitle,
           description: briefDescription.trim() || undefined,
@@ -878,7 +929,9 @@ export function IncidentCreateModal(props: {
           createdByUserId: props.createdByUserId,
           autoGenerateNcr: generateNcr,
           metadata: {
-            affectedPersons: affectedPersonsPayload
+            affectedPersons: affectedPersonsPayload,
+            categories: selectedCategories,
+            subcategories: subcategoriesForMetadata
           }
         });
 
@@ -1180,23 +1233,31 @@ export function IncidentCreateModal(props: {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Category *</label>
-              <select
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value as IncidentCategory);
-                  setSubcategory('');
-                  setSubcategoryManual('');
-                  setUseManualSubcategory(false);
-                }}
-                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
-              >
-                {INCIDENT_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Category * (multi-select)</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-lg border border-surface-200 p-3">
+                {INCIDENT_CATEGORIES.map((c) => {
+                  const checked = selectedCategories.includes(c);
+                  return (
+                    <label key={c} className="flex items-start gap-2 text-sm text-charcoal">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          setSelectedCategories((prev) => {
+                            const next = e.target.checked ? [...prev, c] : prev.filter((x) => x !== c);
+                            const deduped = Array.from(new Set(next));
+                            const fallback = deduped.length > 0 ? deduped : [INCIDENT_CATEGORIES[0]];
+                            setCategory(fallback[0]);
+                            return fallback;
+                          });
+                        }}
+                        className="mt-0.5 w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
+                      />
+                      <span>{c}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Subcategory *</label>
@@ -1209,7 +1270,11 @@ export function IncidentCreateModal(props: {
                         setUseManualSubcategory(true);
                         return;
                       }
-                      setSubcategory(e.target.value);
+                      const value = e.target.value;
+                      setSubcategory(value);
+                      setSelectedSubcategories((prev) =>
+                        value && !prev.includes(value) ? [...prev, value] : prev
+                      );
                     }}
                     className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
                     required
@@ -1241,6 +1306,34 @@ export function IncidentCreateModal(props: {
                     >
                       Select from category list
                     </button>
+                  </div>
+                )}
+                {allSelectedSubcategories.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {allSelectedSubcategories.map((s) => (
+                      <span
+                        key={s}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-100 text-xs text-charcoal"
+                      >
+                        {s}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedSubcategories((prev) => prev.filter((x) => x !== s));
+                            if (subcategory === s) {
+                              setSubcategory('');
+                            }
+                            if (useManualSubcategory && subcategoryManual.trim() === s) {
+                              setSubcategoryManual('');
+                            }
+                          }}
+                          className="text-charcoal-400 hover:text-charcoal-600"
+                          aria-label={`Remove ${s}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
                   </div>
                 )}
               </div>

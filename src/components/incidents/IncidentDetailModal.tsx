@@ -170,6 +170,34 @@ export function IncidentDetailModal(props: {
     return [score ? `Score ${score}` : null, rating ? String(rating).toUpperCase() : null].filter(Boolean).join(' • ');
   }, [incident]);
 
+  const categoryDisplay = useMemo(() => {
+    if (!incident) return '—';
+    const metadata = (incident as any)?.metadata ?? null;
+    const metaCategoriesRaw = Array.isArray(metadata?.categories) ? metadata.categories : null;
+    const parsedMetaCategories: string[] = Array.isArray(metaCategoriesRaw)
+      ? metaCategoriesRaw.map((c: unknown) => String(c ?? '').trim()).filter((c) => c.length > 0)
+      : [];
+    if (parsedMetaCategories.length === 0) return incident.category;
+    const unique = Array.from(new Set(parsedMetaCategories));
+    const primary = incident.category;
+    const extras = unique.filter((c) => c !== primary);
+    return extras.length > 0 ? [primary, ...extras].join('; ') : primary;
+  }, [incident]);
+
+  const subcategoryDisplay = useMemo(() => {
+    if (!incident) return '—';
+    const metadata = (incident as any)?.metadata ?? null;
+    const metaSubcategoriesRaw = Array.isArray(metadata?.subcategories) ? metadata.subcategories : null;
+    const parsedMetaSubcategories: string[] = Array.isArray(metaSubcategoriesRaw)
+      ? metaSubcategoriesRaw.map((s: unknown) => String(s ?? '').trim()).filter((s) => s.length > 0)
+      : [];
+    if (parsedMetaSubcategories.length === 0) return incident.subcategory;
+    const unique = Array.from(new Set(parsedMetaSubcategories));
+    const primary = incident.subcategory;
+    const extras = unique.filter((s) => s !== primary);
+    return extras.length > 0 ? [primary, ...extras].join('; ') : primary;
+  }, [incident]);
+
   const causeOptions = useMemo(() => {
     const parseCsv = (raw: string, type: 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure') =>
       raw
@@ -296,7 +324,7 @@ export function IncidentDetailModal(props: {
           <div className="min-w-0">
             <p className="text-sm font-semibold text-charcoal truncate">{incident.title}</p>
             <p className="text-xs text-charcoal-500 mt-0.5">
-              {incident.category} • {incident.subcategory} • {riskSummary}
+              {categoryDisplay} • {subcategoryDisplay} • {riskSummary}
             </p>
           </div>
           <div className="flex items-center gap-2">

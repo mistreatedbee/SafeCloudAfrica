@@ -345,7 +345,34 @@ export function IncidentsPage() {
                       {incident.assignee_user_id ? `User ${shortId(incident.assignee_user_id)}` : 'Unassigned'}
                     </span>
                     <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
-                      {incident.category} • {incident.subcategory}
+                      {(() => {
+                        const metadata = (incident as any)?.metadata ?? null;
+                        const metaCategoriesRaw = Array.isArray(metadata?.categories) ? metadata.categories : null;
+                        const metaSubcategoriesRaw = Array.isArray(metadata?.subcategories) ? metadata.subcategories : null;
+                        const parsedMetaCategories: string[] = Array.isArray(metaCategoriesRaw)
+                          ? metaCategoriesRaw.map((c: unknown) => String(c ?? '').trim()).filter((c) => c.length > 0)
+                          : [];
+                        const parsedMetaSubcategories: string[] = Array.isArray(metaSubcategoriesRaw)
+                          ? metaSubcategoriesRaw.map((s: unknown) => String(s ?? '').trim()).filter((s) => s.length > 0)
+                          : [];
+                        const primaryCategory = incident.category;
+                        const primarySubcategory = incident.subcategory;
+                        const categoryExtras = Array.from(new Set(parsedMetaCategories)).filter(
+                          (c) => c && c !== primaryCategory
+                        );
+                        const subcategoryExtras = Array.from(new Set(parsedMetaSubcategories)).filter(
+                          (s) => s && s !== primarySubcategory
+                        );
+                        const categoryLabel =
+                          categoryExtras.length > 0
+                            ? [primaryCategory, ...categoryExtras].join('; ')
+                            : primaryCategory;
+                        const subcategoryLabel =
+                          subcategoryExtras.length > 0
+                            ? [primarySubcategory, ...subcategoryExtras].join('; ')
+                            : primarySubcategory;
+                        return `${categoryLabel} • ${subcategoryLabel}`;
+                      })()}
                     </span>
                   </div>
                 </div>
