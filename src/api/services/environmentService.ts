@@ -166,6 +166,7 @@ export async function upsertEnvRiskOpportunity(input: any): Promise<any> {
 export async function listEnvWasteDisposal(companyId: UUID, filters?: any): Promise<any[]> {
   let q = insforge.database.from('env_waste_disposal').select('*').eq('company_id', companyId).order('date', { ascending: false }).limit(2000);
   if (filters?.status && filters.status !== 'all') q = q.eq('status', filters.status);
+  if (filters?.disposalStatus && filters.disposalStatus !== 'all') q = q.eq('disposal_status', filters.disposalStatus);
   if (filters?.fromDate) q = q.gte('date', filters.fromDate);
   if (filters?.toDate) q = q.lte('date', filters.toDate);
   if (filters?.responsibleUserId) q = q.eq('responsible_user_id', filters.responsibleUserId);
@@ -178,22 +179,71 @@ export async function listEnvWasteDisposal(companyId: UUID, filters?: any): Prom
 export async function upsertEnvWasteDisposal(input: any): Promise<any> {
   if (!yes(input.actorRole ?? null, WRITE_ROLES)) throw new Error('You do not have permission to save waste disposal records.');
   if (input.status === 'Approved' && !yes(input.actorRole ?? null, APPROVE_ROLES)) throw new Error('Only owner/admin can approve waste disposal records.');
+
+  if (input.id) {
+    const { data: existing, error: existingError } = await insforge.database
+      .from('env_waste_disposal')
+      .select('disposal_status')
+      .eq('company_id', input.companyId)
+      .eq('id', input.id)
+      .single();
+    if (existingError) throw new Error(getErrorMessage(existingError));
+    if (existing && (existing as any).disposal_status === 'Correctly Disposed') {
+      throw new Error('Waste record has been closed and cannot be edited.');
+    }
+  }
+
+  const disposalStatus = input.disposalStatus && typeof input.disposalStatus === 'string' ? input.disposalStatus : 'Open';
+  const dateDisposed =
+    disposalStatus === 'Correctly Disposed'
+      ? input.dateDisposed || new Date().toISOString().slice(0, 10)
+      : input.dateDisposed || null;
+
   const payload = {
-    company_id: input.companyId, ref_no: String(input.refNo ?? '').trim(), date: input.date, site_department: String(input.siteDepartment ?? '').trim(),
-    waste_category: String(input.wasteCategory ?? '').trim(), waste_type_name: String(input.wasteTypeName ?? '').trim(), waste_classification: input.wasteClassification,
-    quantity_value: Number(input.quantityValue), quantity_unit: String(input.quantityUnit ?? '').trim(), storage_location: input.storageLocation?.trim() || null,
-    disposal_method: input.disposalMethod?.trim() || null, disposal_site: input.disposalSite?.trim() || null, contractor_name: input.contractorName?.trim() || null,
-    contractor_licence_file_ids: input.contractorLicenceFileIds ?? [], contractor_licence_expiry_date: input.contractorLicenceExpiryDate || null,
-    facility_name: input.facilityName?.trim() || null, facility_permit_file_ids: input.facilityPermitFileIds ?? [], facility_permit_expiry_date: input.facilityPermitExpiryDate || null,
-    responsible_user_id: input.responsibleUserId ?? null, responsible_external_name: input.responsibleExternalName?.trim() || null, remarks: input.remarks?.trim() || null,
-    non_conformances_deviations: input.nonConformancesDeviations ?? [], reviewed_by_user_id: input.reviewedByUserId ?? null, approved_by_user_id: input.approvedByUserId ?? null,
-    approved_at: input.approvedAt || null, status: input.status ?? 'Draft', escalation_flag: false
+    company_id: input.companyId,
+    ref_no: String(input.refNo ?? '').trim(),
+    date: input.date,
+    site_department: String(input.siteDepartment ?? '').trim(),
+    waste_category: String(input.wasteCategory ?? '').trim(),
+    waste_type_name: String(input.wasteTypeName ?? '').trim(),
+    waste_classification: input.wasteClassification,
+    quantity_value: Number(input.quantityValue),
+    quantity_unit: String(input.quantityUnit ?? '').trim(),
+    storage_location: input.storageLocation?.trim() || null,
+    disposal_method: input.disposalMethod?.trim() || null,
+    disposal_site: input.disposalSite?.trim() || null,
+    contractor_name: input.contractorName?.trim() || null,
+    contractor_licence_file_ids: input.contractorLicenceFileIds ?? [],
+    contractor_licence_expiry_date: input.contractorLicenceExpiryDate || null,
+    facility_name: input.facilityName?.trim() || null,
+    facility_permit_file_ids: input.facilityPermitFileIds ?? [],
+    facility_permit_expiry_date: input.facilityPermitExpiryDate || null,
+    responsible_user_id: input.responsibleUserId ?? null,
+    responsible_external_name: input.responsibleExternalName?.trim() || null,
+    remarks: input.remarks?.trim() || null,
+    non_conformances_deviations: input.nonConformancesDeviations ?? [],
+    reviewed_by_user_id: input.reviewedByUserId ?? null,
+    approved_by_user_id: input.approvedByUserId ?? null,
+    approved_at: input.approvedAt || null,
+    status: input.status ?? 'Draft',
+    escalation_flag: false,
+    custom_waste_type: input.customWasteType?.trim() || null,
+    disposal_status: disposalStatus,
+    date_disposed: dateDisposed
   };
-  const query = input.id ? insforge.database.from('env_waste_disposal').update(payload).eq('company_id', input.companyId).eq('id', input.id) : insforge.database.from('env_waste_disposal').insert({ ...payload, created_by_user_id: input.actorUserId });
+  const query = input.id
+    ? insforge.database.from('env_waste_disposal').update(payload).eq('company_id', input.companyId).eq('id', input.id)
+    : insforge.database.from('env_waste_disposal').insert({ ...payload, created_by_user_id: input.actorUserId });
   const { data, error } = await query.select('*').single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to save waste disposal record.');
-  await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: input.id ? 'environment.waste.update' : 'environment.waste.create', entityType: 'env_waste_disposal', entityId: (data as any).id as UUID });
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: input.id ? 'environment.waste.update' : 'environment.waste.create',
+    entityType: 'env_waste_disposal',
+    entityId: (data as any).id as UUID
+  });
   return data;
 }
 

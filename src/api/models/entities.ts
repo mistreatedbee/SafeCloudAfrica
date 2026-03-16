@@ -1423,6 +1423,45 @@ export type EnvironmentMonitoring = {
   created_at: string;
 };
 
+export type EnvWasteDisposalDisposalStatus = 'Open' | 'Pending Disposal' | 'Correctly Disposed';
+
+export type EnvWasteDisposal = {
+  id: UUID;
+  company_id: UUID;
+  ref_no: string;
+  date: string;
+  site_department: string;
+  waste_category: string;
+  waste_type_name: string;
+  waste_classification: 'General' | 'Hazardous';
+  quantity_value: number;
+  quantity_unit: string;
+  storage_location: string | null;
+  disposal_method: string | null;
+  disposal_site: string | null;
+  contractor_name: string | null;
+  contractor_licence_file_ids: UUID[];
+  contractor_licence_expiry_date: string | null;
+  facility_name: string | null;
+  facility_permit_file_ids: UUID[];
+  facility_permit_expiry_date: string | null;
+  responsible_user_id: UUID | null;
+  responsible_external_name: string | null;
+  remarks: string | null;
+  non_conformances_deviations: string[];
+  reviewed_by_user_id: UUID | null;
+  approved_by_user_id: UUID | null;
+  approved_at: string | null;
+  status: 'Draft' | 'Submitted' | 'Approved';
+  escalation_flag: boolean;
+  custom_waste_type: string | null;
+  disposal_status: EnvWasteDisposalDisposalStatus;
+  date_disposed: string | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
 export type LegalComplianceStatus = 'NON_COMPLIANT' | 'PARTIALLY_COMPLIANT' | 'COMPLIANT';
 export type LegalUpdateCompletionStatus = 'OPEN' | 'CLOSED';
 
