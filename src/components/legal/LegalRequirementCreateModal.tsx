@@ -19,6 +19,7 @@ import { listRiskAssessments, type RiskAssessment } from '../../api/services/ris
 import { listQualityNcrs } from '../../api/services/qualityNcrsService';
 import { SelectOrType } from '../ui/SelectOrType';
 import { DocumentPicker } from '../documents/DocumentPicker';
+import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 
 const APPLICABILITY_DEFAULTS = [
   { id: 'all', value: 'All operations', label: 'All operations' },
@@ -44,8 +45,12 @@ export function LegalRequirementCreateModal(props: {
   );
   const [applicability, setApplicability] = useState(editing?.applicability ?? '');
   const [actionsNeeded, setActionsNeeded] = useState(editing?.actions_needed ?? '');
+  const [finding, setFinding] = useState(editing?.finding ?? '');
+  const [targetDate, setTargetDate] = useState(editing?.target_date ?? '');
   const [complianceStatus, setComplianceStatus] = useState<LegalComplianceStatus>(editing?.compliance_status ?? 'PARTIALLY_COMPLIANT');
-  const [responsibleUserId, setResponsibleUserId] = useState(editing?.responsible_user_id ?? '');
+  const [responsibleEmployeeId, setResponsibleEmployeeId] = useState<UUID | ''>(
+    (editing?.responsible_employee_id ?? '') as UUID | ''
+  );
   const [responsibleExternalName, setResponsibleExternalName] = useState(editing?.responsible_external_name ?? '');
   const [evidenceLinks, setEvidenceLinks] = useState<LegalRequirementEvidenceLink[]>(editing?.evidence_links ?? []);
   const [loading, setLoading] = useState(false);
@@ -69,7 +74,18 @@ export function LegalRequirementCreateModal(props: {
   const [riskSearch, setRiskSearch] = useState('');
   const [ncrSearch, setNcrSearch] = useState('');
 
-  const canSubmit = useMemo(() => requirementStandard.trim().length > 2, [requirementStandard]);
+  const todayIso = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
+
+  const canSubmit = useMemo(
+    () => requirementStandard.trim().length > 2 && finding.trim().length > 0,
+    [requirementStandard, finding]
+  );
 
   useEffect(() => {
     if (!props.open) return;
@@ -163,6 +179,19 @@ export function LegalRequirementCreateModal(props: {
               linkedNcrId ? { linkedModuleType: 'ncr', linkedRecordId: linkedNcrId as UUID } : null
             ].filter((x): x is { linkedModuleType: 'document' | 'risk_assessment' | 'ncr'; linkedRecordId: UUID } => Boolean(x));
 
+      if (targetDate) {
+        const target = new Date(targetDate);
+        if (Number.isNaN(target.getTime())) {
+          throw new Error('Target date is invalid.');
+        }
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const targetOnly = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+        if (targetOnly.getTime() < today.getTime()) {
+          throw new Error('Target date cannot be in the past.');
+        }
+      }
+
       const payload = {
         companyId: props.companyId,
         actorUserId: props.actorUserId,
@@ -170,8 +199,10 @@ export function LegalRequirementCreateModal(props: {
         requirementStandard,
         applicability,
         actionsNeeded,
+        finding,
+        targetDate: targetDate || null,
         complianceStatus,
-        responsibleUserId: (responsibleUserId || null) as UUID | null,
+        responsibleEmployeeId: (responsibleEmployeeId || null) as UUID | null,
         responsibleExternalName,
         references,
         evidenceLinks,
@@ -188,8 +219,10 @@ export function LegalRequirementCreateModal(props: {
               requirementStandard,
               applicability,
               actionsNeeded,
+              finding,
+              targetDate: targetDate || null,
               complianceStatus,
-              responsibleUserId: (responsibleUserId || null) as UUID | null,
+              responsibleEmployeeId: (responsibleEmployeeId || null) as UUID | null,
               responsibleExternalName,
               references,
               evidenceLinks,
@@ -283,6 +316,16 @@ export function LegalRequirementCreateModal(props: {
           />
 
           <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Finding *</label>
+            <textarea
+              value={finding}
+              onChange={(e) => setFinding(e.target.value)}
+              rows={3}
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm"
+            />
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-charcoal mb-1.5">Actions needed</label>
             <textarea value={actionsNeeded} onChange={(e) => setActionsNeeded(e.target.value)} rows={3} className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm" />
           </div>
@@ -374,18 +417,27 @@ export function LegalRequirementCreateModal(props: {
 
           <div className="space-y-2">
             <label className="block text-sm font-medium text-charcoal">Responsible person</label>
-            <select value={responsibleUserId} onChange={(e) => setResponsibleUserId(e.target.value)} className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm">
-              <option value="">Select user (or type external name below)</option>
-              {props.userOptions.map((u) => (
-                <option key={u.userId} value={u.userId}>
-                  {u.label}
-                </option>
-              ))}
-            </select>
+            <HrEmployeeSelect
+              companyId={props.companyId}
+              value={responsibleEmployeeId}
+              onChange={(id) => setResponsibleEmployeeId(id)}
+              placeholder="Select employee (or type external name below)"
+            />
             <input
               value={responsibleExternalName}
               onChange={(e) => setResponsibleExternalName(e.target.value)}
               placeholder="Type external responsible person"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Target Date</label>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={(e) => setTargetDate(e.target.value)}
+              min={todayIso}
               className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm"
             />
           </div>

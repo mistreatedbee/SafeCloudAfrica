@@ -265,8 +265,11 @@ export async function createLegalRequirement(input: {
   requirementStandard: string;
   applicability?: string | null;
   actionsNeeded?: string | null;
+  finding?: string | null;
+  targetDate?: string | null;
   complianceStatus: LegalComplianceStatus;
   responsibleUserId?: UUID | null;
+  responsibleEmployeeId?: UUID | null;
   responsibleExternalName?: string | null;
   references?: LegalRequirementReference[] | null;
   evidenceLinks?: LegalRequirementEvidenceLink[] | null;
@@ -276,6 +279,50 @@ export async function createLegalRequirement(input: {
   const requirementStandard = input.requirementStandard.trim();
   if (!requirementStandard) throw new Error('Requirement/Standard is required.');
 
+  if (input.targetDate) {
+    const target = new Date(input.targetDate);
+    if (Number.isNaN(target.getTime())) {
+      throw new Error('Target date is invalid.');
+    }
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const targetOnly = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+    if (targetOnly.getTime() < today.getTime()) {
+      throw new Error('Target date cannot be in the past.');
+    }
+  }
+
+  let responsibleUserId: UUID | null = (input.responsibleUserId ?? null) as UUID | null;
+  let responsibleEmployeeId: UUID | null = (input.responsibleEmployeeId ?? null) as UUID | null;
+
+  if (responsibleEmployeeId && !responsibleUserId) {
+    const { data, error } = await insforge.database
+      .from('hr_employees')
+      .select('id,user_id')
+      .eq('company_id', input.companyId)
+      .eq('id', responsibleEmployeeId)
+      .maybeSingle();
+    if (error) throw new Error(getErrorMessage(error));
+    if (data) {
+      responsibleEmployeeId = (data as any).id as UUID;
+      responsibleUserId = ((data as any).user_id ?? null) as UUID | null;
+    }
+  } else if (!responsibleEmployeeId && responsibleUserId) {
+    const { data, error } = await insforge.database
+      .from('hr_employees')
+      .select('id,user_id')
+      .eq('company_id', input.companyId)
+      .eq('user_id', responsibleUserId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(getErrorMessage(error));
+    if (data) {
+      responsibleEmployeeId = (data as any).id as UUID;
+      responsibleUserId = ((data as any).user_id ?? null) as UUID | null;
+    }
+  }
+
   const payload = {
     company_id: input.companyId,
     module: 'legal',
@@ -283,6 +330,8 @@ export async function createLegalRequirement(input: {
     requirement: requirementStandard,
     applicability: input.applicability?.trim() || null,
     actions_needed: input.actionsNeeded?.trim() || null,
+    finding: input.finding?.trim() || null,
+    target_date: input.targetDate || null,
     compliance_status: input.complianceStatus,
     status:
       input.complianceStatus === 'COMPLIANT'
@@ -290,7 +339,8 @@ export async function createLegalRequirement(input: {
         : input.complianceStatus === 'NON_COMPLIANT'
           ? 'non-compliant'
           : 'in-progress',
-    responsible_user_id: input.responsibleUserId ?? null,
+    responsible_user_id: responsibleUserId,
+    responsible_employee_id: responsibleEmployeeId,
     responsible_external_name: input.responsibleExternalName?.trim() || null,
     references: asReferences(input.references),
     reference: asReferences(input.references)
@@ -343,8 +393,11 @@ export async function updateLegalRequirement(input: {
     requirementStandard?: string;
     applicability?: string | null;
     actionsNeeded?: string | null;
+    finding?: string | null;
+    targetDate?: string | null;
     complianceStatus?: LegalComplianceStatus;
     responsibleUserId?: UUID | null;
+    responsibleEmployeeId?: UUID | null;
     responsibleExternalName?: string | null;
     references?: LegalRequirementReference[] | null;
     evidenceLinks?: LegalRequirementEvidenceLink[] | null;
@@ -366,6 +419,22 @@ export async function updateLegalRequirement(input: {
   }
   if (typeof input.patch.applicability !== 'undefined') updateData.applicability = input.patch.applicability?.trim() || null;
   if (typeof input.patch.actionsNeeded !== 'undefined') updateData.actions_needed = input.patch.actionsNeeded?.trim() || null;
+   if (typeof input.patch.finding !== 'undefined') updateData.finding = input.patch.finding?.trim() || null;
+  if (typeof input.patch.targetDate !== 'undefined') {
+    if (input.patch.targetDate) {
+      const target = new Date(input.patch.targetDate);
+      if (Number.isNaN(target.getTime())) {
+        throw new Error('Target date is invalid.');
+      }
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const targetOnly = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+      if (targetOnly.getTime() < today.getTime()) {
+        throw new Error('Target date cannot be in the past.');
+      }
+    }
+    updateData.target_date = input.patch.targetDate || null;
+  }
   if (typeof input.patch.complianceStatus !== 'undefined') {
     updateData.compliance_status = input.patch.complianceStatus;
     updateData.status =
@@ -375,7 +444,59 @@ export async function updateLegalRequirement(input: {
           ? 'non-compliant'
           : 'in-progress';
   }
-  if (typeof input.patch.responsibleUserId !== 'undefined') updateData.responsible_user_id = input.patch.responsibleUserId;
+  let patchResponsibleUserIdDefined = false;
+  let patchResponsibleUserId: UUID | null = null;
+  if (typeof input.patch.responsibleUserId !== 'undefined') {
+    patchResponsibleUserIdDefined = true;
+    patchResponsibleUserId = (input.patch.responsibleUserId ?? null) as UUID | null;
+  }
+  let patchResponsibleEmployeeIdDefined = false;
+  let patchResponsibleEmployeeId: UUID | null = null;
+  if (typeof input.patch.responsibleEmployeeId !== 'undefined') {
+    patchResponsibleEmployeeIdDefined = true;
+    patchResponsibleEmployeeId = (input.patch.responsibleEmployeeId ?? null) as UUID | null;
+  }
+
+  if (patchResponsibleEmployeeIdDefined || patchResponsibleUserIdDefined) {
+    if (patchResponsibleEmployeeId === null && patchResponsibleUserId === null) {
+      updateData.responsible_employee_id = null;
+      updateData.responsible_user_id = null;
+    } else {
+      let responsibleUserId: UUID | null = patchResponsibleUserId;
+      let responsibleEmployeeId: UUID | null = patchResponsibleEmployeeId;
+
+      if (responsibleEmployeeId && !responsibleUserId) {
+        const { data, error } = await insforge.database
+          .from('hr_employees')
+          .select('id,user_id')
+          .eq('company_id', input.companyId)
+          .eq('id', responsibleEmployeeId)
+          .maybeSingle();
+        if (error) throw new Error(getErrorMessage(error));
+        if (data) {
+          responsibleEmployeeId = (data as any).id as UUID;
+          responsibleUserId = ((data as any).user_id ?? null) as UUID | null;
+        }
+      } else if (!responsibleEmployeeId && responsibleUserId) {
+        const { data, error } = await insforge.database
+          .from('hr_employees')
+          .select('id,user_id')
+          .eq('company_id', input.companyId)
+          .eq('user_id', responsibleUserId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw new Error(getErrorMessage(error));
+        if (data) {
+          responsibleEmployeeId = (data as any).id as UUID;
+          responsibleUserId = ((data as any).user_id ?? null) as UUID | null;
+        }
+      }
+
+      updateData.responsible_employee_id = responsibleEmployeeId ?? null;
+      updateData.responsible_user_id = responsibleUserId ?? null;
+    }
+  }
   if (typeof input.patch.responsibleExternalName !== 'undefined') {
     updateData.responsible_external_name = input.patch.responsibleExternalName?.trim() || null;
   }

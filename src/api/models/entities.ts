@@ -1446,7 +1446,10 @@ export type LegalRequirement = {
   applicability: string | null;
   actions_needed: string | null;
   compliance_status: LegalComplianceStatus;
+  finding?: string | null;
+  target_date?: string | null;
   responsible_user_id: UUID | null;
+  responsible_employee_id?: UUID | null;
   responsible_external_name: string | null;
   references: LegalRequirementReference[] | null;
   evidence_links: LegalRequirementEvidenceLink[] | null;

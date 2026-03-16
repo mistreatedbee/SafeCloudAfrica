@@ -109,6 +109,10 @@ export function LegalRequirementDetailPage() {
                 {data.requirement.applicability || '-'}
               </p>
               <p className="text-sm text-charcoal-600">
+                <span className="font-medium">Finding: </span>
+                {data.requirement.finding || '-'}
+              </p>
+              <p className="text-sm text-charcoal-600">
                 <span className="font-medium">Actions needed: </span>
                 {data.requirement.actions_needed || '-'}
               </p>
@@ -117,6 +121,10 @@ export function LegalRequirementDetailPage() {
                 {data.requirement.responsible_user_id
                   ? userMap.get(data.requirement.responsible_user_id) ?? data.requirement.responsible_user_id
                   : data.requirement.responsible_external_name || '-'}
+              </p>
+              <p className="text-sm text-charcoal-600">
+                <span className="font-medium">Target date: </span>
+                {data.requirement.target_date || '-'}
               </p>
 
               <div className="space-y-1">
