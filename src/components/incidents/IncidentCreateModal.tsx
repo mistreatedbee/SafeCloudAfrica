@@ -427,7 +427,6 @@ export function IncidentCreateModal(props: {
     setCauseOfIncident((editingIncident as any).cause_of_incident ?? (editingIncident as any).cause ?? '');
     setAffectedPersonId((editingIncident as any).affected_person_id ?? null);
     setAffectedPersonName((editingIncident as any).affected_person ?? '');
-    const metadata = (editingIncident as any)?.metadata ?? null;
     const metadataPersons = Array.isArray(metadata?.affectedPersons) ? metadata.affectedPersons : null;
     if (metadataPersons && metadataPersons.length > 0) {
       setAffectedPersons(
