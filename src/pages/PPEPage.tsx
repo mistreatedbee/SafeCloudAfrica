@@ -105,6 +105,22 @@ function getQuickRange(key: 'this_month' | 'last_month' | 'this_year' | 'last_ye
   return { from: `${y}-01-01`, to: `${y}-12-31`, year: y };
 }
 
+type PpeStockExpiryStatus = 'no_expiry' | 'expired' | 'expiring_7' | 'expiring_30' | 'valid';
+
+function getPpeStockExpiryStatus(expiryDate?: string | null): PpeStockExpiryStatus {
+  if (!expiryDate) return 'no_expiry';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(expiryDate);
+  if (Number.isNaN(d.getTime())) return 'no_expiry';
+  d.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor((d.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  if (diffDays < 0) return 'expired';
+  if (diffDays <= 7) return 'expiring_7';
+  if (diffDays <= 30) return 'expiring_30';
+  return 'valid';
+}
+
 export function PPEPage() {
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
@@ -168,6 +184,9 @@ export function PPEPage() {
       departmentId: ''
     };
   });
+  const [inventoryExpiryFilter, setInventoryExpiryFilter] = useState<
+    'all' | 'expired' | 'expiring_7' | 'expiring_30' | 'valid' | 'no_expiry'
+  >('all');
 
   const { data: myProfile } = useAsync(
     async () => {
@@ -419,22 +438,22 @@ export function PPEPage() {
     return {
       raw: i,
       id: `PPE-${String(i.id).slice(0, 8)}`,
-      issueDate: i.issue_date ?? (i.issued_at ? i.issued_at.slice(0, 10) : '‚Äî'),
+      issueDate: i.issue_date ?? (i.issued_at ? i.issued_at.slice(0, 10) : 'ó'),
       item: i.ppe_item_name ?? item?.name ?? `Item ${String(i.ppe_item_id).slice(0, 8)}`,
-      size: i.size ?? '‚Äî',
-      reason: i.reason_for_issue ?? '‚Äî',
+      size: i.size ?? 'ó',
+      reason: i.reason_for_issue ?? 'ó',
       issuer: i.issued_by_name ?? `User ${String(i.issued_by_user_id).slice(0, 8)}`,
       issuedTo: i.issued_to_user_id
         ? (profiles?.find((p) => p.user_id === i.issued_to_user_id)?.full_name ?? `User ${String(i.issued_to_user_id).slice(0, 8)}`)
-        : (i.issued_to_employee_number ?? '‚Äî'),
-      departmentName: dept?.name ?? '‚Äî',
+        : (i.issued_to_employee_number ?? 'ó'),
+      departmentName: dept?.name ?? 'ó',
       quantity: i.quantity_issued ?? 1,
       totalCost:
         i.total_cost_at_issue != null
           ? `R ${Number(i.total_cost_at_issue).toFixed(2)}`
           : item?.unit_cost != null
           ? `R ${Number((item.unit_cost ?? 0) * (i.quantity_issued ?? 1)).toFixed(0)}`
-          : '‚Äî'
+          : 'ó'
     };
   });
 
@@ -455,22 +474,53 @@ export function PPEPage() {
         ? 'bg-warning/10 text-warning'
         : 'bg-teal/10 text-teal';
 
+    const expiryStatus = getPpeStockExpiryStatus(s.expiry_date ?? null);
+    const expiryLabel =
+      expiryStatus === 'expired'
+        ? 'Expired'
+        : expiryStatus === 'expiring_7'
+        ? 'Expiring ?7d'
+        : expiryStatus === 'expiring_30'
+        ? 'Expiring ?30d'
+        : expiryStatus === 'valid'
+        ? 'Valid'
+        : 'No expiry';
+    const expiryClass =
+      expiryStatus === 'expired'
+        ? 'bg-critical/10 text-critical'
+        : expiryStatus === 'expiring_7'
+        ? 'bg-warning/10 text-warning'
+        : expiryStatus === 'expiring_30'
+        ? 'bg-amber-100 text-amber-800'
+        : expiryStatus === 'valid'
+        ? 'bg-teal/10 text-teal'
+        : 'bg-surface-200 text-charcoal-600';
+
     return {
       raw: s,
       id: `STK-${String(s.id).slice(0, 8)}`,
       itemName: item?.name ?? `Item ${String(s.ppe_item_id).slice(0, 8)}`,
-      siteName: site?.name ?? '‚Äî',
-      departmentName: dept?.name ?? '‚Äî',
+      siteName: site?.name ?? 'ó',
+      departmentName: dept?.name ?? 'ó',
       onHand: s.on_hand_qty,
       reserved: s.reserved_qty,
       reorderLevel: s.reorder_level,
       reorderQty: s.reorder_qty,
       status,
       statusClass,
-      dateOrdered: s.date_ordered ?? '‚Äî',
-      dateStockReceived: s.date_stock_received ?? '‚Äî',
-      capturedByName: s.captured_by_name ?? '‚Äî'
+      dateOrdered: s.date_ordered ?? 'ó',
+      dateStockReceived: s.date_stock_received ?? 'ó',
+      capturedByName: s.captured_by_name ?? 'ó',
+      expiryDate: s.expiry_date ?? 'ó',
+      expiryStatus,
+      expiryLabel,
+      expiryClass
     };
+  });
+
+  const filteredStockRows = stockRows.filter((row) => {
+    if (inventoryExpiryFilter === 'all') return true;
+    return row.expiryStatus === inventoryExpiryFilter;
   });
 
   const openReorderCount = (reorderRequests ?? []).filter(
@@ -484,16 +534,16 @@ export function PPEPage() {
     return {
       raw: i,
       id: `PPE-${String(i.id).slice(0, 8)}`,
-      siteName: i.site_name_text ?? site?.name ?? '‚Äî',
-      departmentName: i.department_name_text ?? dept?.name ?? '‚Äî',
-      person: i.contractor_or_employee_name || '‚Äî',
+      siteName: i.site_name_text ?? site?.name ?? 'ó',
+      departmentName: i.department_name_text ?? dept?.name ?? 'ó',
+      person: i.contractor_or_employee_name || 'ó',
       ppeType: i.ppe_type.replace(/_/g, ' '),
       category: i.issue_category.replace(/_/g, ' '),
       risk: i.risk_level,
       status: i.status.replace(/_/g, ' '),
       targetDate: i.target_completion_date
         ? new Date(i.target_completion_date).toLocaleDateString('en-ZA')
-        : '‚Äî',
+        : 'ó',
       isOverdue
     };
   });
@@ -897,7 +947,7 @@ export function PPEPage() {
                       Most Expensive PPE Item (Selected Period)
                     </p>
                     <p className="mt-1 text-sm font-medium text-charcoal truncate">
-                      {reportSummary?.topItemBySpend?.name ?? 'ó'}
+                      {reportSummary?.topItemBySpend?.name ?? 'ù'}
                     </p>
                     <p className="text-xs text-charcoal-500">
                       {formatMoney(reportSummary?.topItemBySpend?.totalCost ?? 0)}
@@ -908,7 +958,7 @@ export function PPEPage() {
                       Highest Spend Category/Type
                     </p>
                     <p className="mt-1 text-sm font-medium text-charcoal truncate">
-                      {highestSpendCategory?.name ?? 'ó'}
+                      {highestSpendCategory?.name ?? 'ù'}
                     </p>
                     <p className="text-xs text-charcoal-500">
                       {formatMoney(highestSpendCategory?.totalCost ?? 0)}
@@ -1110,7 +1160,7 @@ export function PPEPage() {
                   {trackerLoading && (
                     <tr>
                       <td colSpan={8} className="px-5 py-4 text-sm text-charcoal-500">
-                        Loading PPE issues‚Ä¶
+                        Loading PPE issuesÖ
                       </td>
                     </tr>
                   )}
@@ -1307,7 +1357,7 @@ export function PPEPage() {
                     {loading && (
                       <tr>
                         <td colSpan={11} className="px-5 py-4 text-sm text-charcoal-500">
-                          Loading‚Ä¶
+                          LoadingÖ
                         </td>
                       </tr>
                     )}
@@ -1358,10 +1408,30 @@ export function PPEPage() {
             variants={itemVariants}
             className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden"
           >
-            <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-surface-200 flex flex-wrap items-center justify-between gap-3">
               <h3 className="font-semibold text-charcoal">PPE Inventory</h3>
+              <div className="flex items-center gap-3 text-xs">
+                <label className="flex items-center gap-2">
+                  <span className="text-charcoal-500">Expiry filter</span>
+                  <select
+                    value={inventoryExpiryFilter}
+                    onChange={(e) =>
+                      setInventoryExpiryFilter(e.target.value as typeof inventoryExpiryFilter)
+                    }
+                    className="px-2 py-1.5 border border-surface-300 rounded-lg bg-white"
+                  >
+                    <option value="all">All</option>
+                    <option value="expired">Expired</option>
+                    <option value="expiring_7">Expiring ?7 days</option>
+                    <option value="expiring_30">Expiring ?30 days</option>
+                    <option value="valid">Valid</option>
+                    <option value="no_expiry">No expiry date</option>
+                  </select>
+                </label>
+              </div>
               <span className="text-sm text-charcoal-400">
-                {stockRows.length} stock {stockRows.length === 1 ? 'record' : 'records'}
+                {filteredStockRows.length} stock{' '}
+                {filteredStockRows.length === 1 ? 'record' : 'records'}
               </span>
             </div>
             <div className="overflow-x-auto">
@@ -1402,6 +1472,9 @@ export function PPEPage() {
                       Captured by
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
+                      Expiry
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
                       Status
                     </th>
                     <th className="px-5 py-3 text-right text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
@@ -1413,7 +1486,7 @@ export function PPEPage() {
                   {stocksLoading && (
                     <tr>
                       <td colSpan={13} className="px-5 py-4 text-sm text-charcoal-500">
-                        Loading inventory‚Ä¶
+                        Loading inventoryÖ
                       </td>
                     </tr>
                   )}
@@ -1424,14 +1497,14 @@ export function PPEPage() {
                       </td>
                     </tr>
                   )}
-                  {!stocksLoading && !stocksError && stockRows.length === 0 && (
+                  {!stocksLoading && !stocksError && filteredStockRows.length === 0 && (
                     <tr>
                       <td colSpan={13} className="px-5 py-4 text-sm text-charcoal-500">
                         No PPE stock records yet. Use &quot;Add Stock&quot; to create one.
                       </td>
                     </tr>
                   )}
-                  {stockRows.map((row) => (
+                  {filteredStockRows.map((row) => (
                     <tr key={row.id} className="hover:bg-surface-50 transition-colors">
                       <td className="px-5 py-4 text-sm font-medium text-teal">{row.id}</td>
                       <td className="px-5 py-4 text-sm text-charcoal">{row.itemName}</td>
@@ -1444,6 +1517,20 @@ export function PPEPage() {
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.dateOrdered}</td>
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.dateStockReceived}</td>
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.capturedByName}</td>
+                      <td className="px-5 py-4 text-sm">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-charcoal-500 text-xs">
+                            {row.expiryDate === '‚Äî'
+                              ? 'ó'
+                              : new Date(row.expiryDate).toLocaleDateString('en-ZA')}
+                          </span>
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${row.expiryClass}`}
+                          >
+                            {row.expiryLabel}
+                          </span>
+                        </div>
+                      </td>
                       <td className="px-5 py-4 text-sm">
                         <span
                           className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${row.statusClass}`}
