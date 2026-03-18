@@ -12,10 +12,11 @@ export async function listAuditChecklistTemplates(companyId: UUID): Promise<Audi
   return (data ?? []) as AuditChecklistTemplate[];
 }
 
-export async function getAuditChecklistTemplate(id: UUID): Promise<AuditChecklistTemplate | null> {
+export async function getAuditChecklistTemplate(companyId: UUID, id: UUID): Promise<AuditChecklistTemplate | null> {
   const { data, error } = await insforge.database
     .from('audit_checklist_templates')
     .select('*')
+    .eq('company_id', companyId)
     .eq('id', id)
     .single();
   if (error && error.code !== 'PGRST116') throw new Error(getErrorMessage(error));

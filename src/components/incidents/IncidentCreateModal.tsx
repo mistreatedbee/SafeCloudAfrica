@@ -178,6 +178,7 @@ export function IncidentCreateModal(props: {
   const [natureOfIncident, setNatureOfIncident] = useState('');
   const [causeOfIncident, setCauseOfIncident] = useState('');
   const [affectedPersonId, setAffectedPersonId] = useState<UUID | null>(null);
+  const [affectedEmployeeId, setAffectedEmployeeId] = useState<UUID | null>(null);
   const [affectedPersonName, setAffectedPersonName] = useState('');
   const [affectedPersons, setAffectedPersons] = useState<AffectedPersonEntry[]>([
     {
@@ -427,6 +428,8 @@ export function IncidentCreateModal(props: {
     setCauseOfIncident((editingIncident as any).cause_of_incident ?? (editingIncident as any).cause ?? '');
     setAffectedPersonId((editingIncident as any).affected_person_id ?? null);
     setAffectedPersonName((editingIncident as any).affected_person ?? '');
+    // Keep the primary HR employee reference separate so we can persist both employee_id and user_id consistently.
+    setAffectedEmployeeId((editingIncident as any).affected_person_id ?? null);
     const metadataPersons = Array.isArray(metadata?.affectedPersons) ? metadata.affectedPersons : null;
     if (metadataPersons && metadataPersons.length > 0) {
       setAffectedPersons(
@@ -786,6 +789,7 @@ export function IncidentCreateModal(props: {
       const unsafeConditionsData = Object.values(unsafeConditions);
       const incidentTitle = title.trim();
       const affectedPersonValue = affectedPersonName.trim() || undefined;
+      const affectedPersonNameSnapshot = affectedPersonName.trim() || null;
       const affectedPersonsPayload = affectedPersons
         .map((entry) => ({
           personId: entry.personId,
@@ -812,6 +816,9 @@ export function IncidentCreateModal(props: {
           natureOfIncident: natureOfIncident.trim() || null,
           causeOfIncident: causeOfIncident.trim() || null,
           affectedPerson: affectedPersonValue || null,
+          affectedUserId: affectedPersonId ?? null,
+          affectedPersonName: affectedPersonNameSnapshot,
+          affectedEmployeeId: affectedEmployeeId ?? null,
           reportedBy: reportedBy.trim() || null,
           reportedTo: reportedTo.trim() || null,
           copyToEmails: copyToEmails.length > 0 ? copyToEmails : null,
@@ -895,6 +902,9 @@ export function IncidentCreateModal(props: {
           natureOfIncident: natureOfIncident.trim(),
           causeOfIncident: causeOfIncident.trim(),
           affectedPerson: affectedPersonValue || undefined,
+          affectedUserId: affectedPersonId ?? null,
+          affectedPersonName: affectedPersonNameSnapshot,
+          affectedEmployeeId: affectedEmployeeId ?? null,
           reportedBy: reportedBy.trim(),
           reportedTo: reportedTo.trim(),
           copyToEmails,
@@ -1408,10 +1418,11 @@ export function IncidentCreateModal(props: {
                           companyId={props.companyId}
                           selectedPersonId={entry.personId}
                           selectedPersonName={entry.personName}
-                          onChange={(personId, personName) => {
+                          onChange={(personId, personName, employeeId) => {
                             if (index === 0) {
                               setAffectedPersonId(personId);
                               setAffectedPersonName(personName ?? '');
+                              setAffectedEmployeeId(employeeId);
                             }
                             setAffectedPersons((prev) =>
                               prev.map((p) =>

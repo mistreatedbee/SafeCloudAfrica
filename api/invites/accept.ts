@@ -41,7 +41,11 @@ export default async function handler(req: any, res: any) {
     const expired = !!expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
 
     if (expired && (status === 'PENDING' || status === 'SENT' || status === 'FAILED')) {
-      await insforge.database.from('company_invites').update({ status: 'EXPIRED' }).eq('id', invite.id);
+      await insforge.database
+        .from('company_invites')
+        .update({ status: 'EXPIRED' })
+        .eq('company_id', String(invite.company_id))
+        .eq('id', invite.id);
       return res.status(410).json({ ok: false, reason: 'expired', error: 'Invite expired. Request a new invite.' });
     }
 

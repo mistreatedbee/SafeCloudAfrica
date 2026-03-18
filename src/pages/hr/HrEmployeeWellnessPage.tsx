@@ -147,20 +147,22 @@ export function HrEmployeeWellnessPage() {
 
   const employeeById = useMemo(() => new Map((employees ?? []).map((e) => [e.id, e])), [employees]);
 
-  const handleEmployeeChange = (userId: UUID | '', meta: { nameSnapshot: string }) => {
-    setSelectedEmployeeUserId(userId);
+  const handleEmployeeChange = (
+    employeeId: UUID | '',
+    meta: { nameSnapshot: string; employeeId?: UUID | null; employeeNumber?: string | null; userId?: UUID | null }
+  ) => {
+    setSelectedEmployeeId((employeeId || null) as any);
+    setSelectedEmployeeUserId((meta.userId ?? '') as any);
     setSelectedAssessmentId(null);
     setError(null);
-    if (!userId || !employees?.length) {
-      setSelectedEmployeeId(null);
+    if (!employeeId || !employees?.length) {
       setEmployeeNumberSnapshot('');
       setDepartmentSnapshot('');
       setJobTitleSnapshot('');
       setLineManagerSnapshot('');
       return;
     }
-    const emp = employees.find((e) => e.user_id === userId) ?? null;
-    setSelectedEmployeeId(emp?.id ?? null);
+    const emp = employees.find((e) => e.id === employeeId) ?? null;
     setEmployeeNumberSnapshot(emp?.employee_no ?? '');
     setJobTitleSnapshot(emp?.job_title ?? '');
     setDepartmentSnapshot(emp?.department_id ? String(emp.department_id) : '');
@@ -492,7 +494,8 @@ export function HrEmployeeWellnessPage() {
             <div className="md:col-span-2">
               <HrEmployeeSelect
                 companyId={activeCompanyId ?? null}
-                value={selectedEmployeeUserId}
+                valueField="id"
+                value={(selectedEmployeeId ?? '') as any}
                 onChange={handleEmployeeChange}
                 label="Employee Name"
                 placeholder="Select employee"

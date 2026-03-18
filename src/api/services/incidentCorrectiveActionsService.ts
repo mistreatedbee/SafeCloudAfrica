@@ -76,6 +76,7 @@ export async function createIncidentCorrectiveAction(
 }
 
 export async function updateIncidentCorrectiveAction(
+  companyId: UUID,
   actionId: UUID,
   patch: UpdateIncidentCorrectiveActionInput
 ): Promise<IncidentCorrectiveAction> {
@@ -102,6 +103,7 @@ export async function updateIncidentCorrectiveAction(
   const { data, error } = await insforge.database
     .from('incident_corrective_actions')
     .update(updateData)
+    .eq('company_id', companyId)
     .eq('id', actionId)
     .select('*')
     .single();
@@ -128,10 +130,11 @@ export async function updateIncidentCorrectiveAction(
   return data as IncidentCorrectiveAction;
 }
 
-export async function listIncidentCorrectiveActions(incidentId: UUID): Promise<IncidentCorrectiveAction[]> {
+export async function listIncidentCorrectiveActions(companyId: UUID, incidentId: UUID): Promise<IncidentCorrectiveAction[]> {
   const { data, error } = await insforge.database
     .from('incident_corrective_actions')
     .select('*')
+    .eq('company_id', companyId)
     .eq('incident_id', incidentId)
     .order('created_at', { ascending: false });
 
@@ -139,10 +142,11 @@ export async function listIncidentCorrectiveActions(incidentId: UUID): Promise<I
   return (data ?? []) as IncidentCorrectiveAction[];
 }
 
-export async function getIncidentCorrectiveAction(actionId: UUID): Promise<IncidentCorrectiveAction | null> {
+export async function getIncidentCorrectiveAction(companyId: UUID, actionId: UUID): Promise<IncidentCorrectiveAction | null> {
   const { data, error } = await insforge.database
     .from('incident_corrective_actions')
     .select('*')
+    .eq('company_id', companyId)
     .eq('id', actionId)
     .single();
 
@@ -150,11 +154,12 @@ export async function getIncidentCorrectiveAction(actionId: UUID): Promise<Incid
   return (data ?? null) as IncidentCorrectiveAction | null;
 }
 
-export async function deleteIncidentCorrectiveAction(actionId: UUID): Promise<void> {
-  const existing = await getIncidentCorrectiveAction(actionId);
+export async function deleteIncidentCorrectiveAction(companyId: UUID, actionId: UUID): Promise<void> {
+  const existing = await getIncidentCorrectiveAction(companyId, actionId);
   const { error } = await insforge.database
     .from('incident_corrective_actions')
     .delete()
+    .eq('company_id', companyId)
     .eq('id', actionId);
 
   if (error) throw new Error(getErrorMessage(error));

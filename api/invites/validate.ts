@@ -39,6 +39,7 @@ export default async function handler(req: any, res: any) {
       await insforge.database
         .from('company_invites')
         .update({ status: 'EXPIRED' })
+        .eq('company_id', String((data as any).company_id))
         .eq('id', (data as any).id);
       return res.status(410).json({ ok: false, reason: 'expired' });
     }

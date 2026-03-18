@@ -176,10 +176,11 @@ export async function getKPIAssessment(assessmentId: UUID, organizationId: UUID)
   return data as KPIAssessment | null;
 }
 
-export async function listKPIAssessmentLines(assessmentId: UUID): Promise<KPIAssessmentLine[]> {
+export async function listKPIAssessmentLines(assessmentId: UUID, organizationId: UUID): Promise<KPIAssessmentLine[]> {
   const { data, error } = await insforge.database
     .from('kpi_assessment_lines')
     .select('*')
+    .eq('organization_id', organizationId)
     .eq('assessment_id', assessmentId)
     .order('created_at', { ascending: true });
   if (error) throw new Error(getErrorMessage(error));
@@ -197,7 +198,7 @@ export async function listKPIAssessmentLinesByAssessmentIds(assessmentIds: UUID[
 }
 
 export async function refreshAssessmentOverallScore(assessmentId: UUID, organizationId: UUID): Promise<void> {
-  const lines = await listKPIAssessmentLines(assessmentId);
+  const lines = await listKPIAssessmentLines(assessmentId, organizationId);
   const score = computeOverallScore(lines);
   const achievement = computeAchievementPercentage(lines);
   const band = score != null ? getOverallRatingBand(score) : null;
@@ -285,7 +286,7 @@ export async function updateKPIAssessment(
     }
 
     if (nextStatus === 'completed' || nextStatus === 'closed') {
-      const lines = await listKPIAssessmentLines(assessmentId);
+      const lines = await listKPIAssessmentLines(assessmentId, organizationId);
       const unrated = lines.filter((l) => l.manager_rating == null);
       if (unrated.length > 0) {
         throw new Error('Manager rating is required for all KPI Questionnaires before completion/closure.');

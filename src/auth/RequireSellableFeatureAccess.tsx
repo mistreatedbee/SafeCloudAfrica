@@ -1,7 +1,6 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useTenant } from '../tenant/TenantContext';
-import { getDashboardRoute } from '../api/services/platformAdminService';
 import type { SellableFeatureKey } from '../api/services/sellableFeaturesService';
 import { SellableFeatureLockedPage } from '../pages/features/SellableFeatureLockedPage';
 
@@ -9,16 +8,12 @@ export function RequireSellableFeatureAccess(props: {
   featureKey: SellableFeatureKey;
   children: React.ReactElement;
 }) {
-  const { sellableFeatures, activeRole, isPlatformAdmin } = useTenant();
+  const { sellableFeatures, isPlatformAdmin } = useTenant();
 
   if (isPlatformAdmin) return props.children;
   const state = sellableFeatures[props.featureKey];
 
-  if (!state.enabled) {
-    const dashboardPath = activeRole ? getDashboardRoute(activeRole) : '/app';
-    return <Navigate to={dashboardPath} replace />;
-  }
-  if (state.locked) {
+  if (!state.enabled || state.locked) {
     return <SellableFeatureLockedPage featureKey={props.featureKey} />;
   }
 

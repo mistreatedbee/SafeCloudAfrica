@@ -7,31 +7,55 @@ import type { UUID } from '../../api/models/entities';
 export type HrEmployeeSelectProps = {
   companyId: UUID | null;
   value: UUID | '';
-  onChange: (userId: UUID | '', meta: { nameSnapshot: string; employeeId?: UUID | null; employeeNumber?: string | null }) => void;
+  /**
+   * Which field the select `value` represents.
+   * - `user_id`: selects the linked platform user id (only employees with user accounts are shown by default)
+   * - `id`: selects the HR employee row id (all employees are shown by default)
+   */
+  valueField?: 'user_id' | 'id';
+  includeUnlinked?: boolean;
+  onChange: (
+    selectedValue: UUID | '',
+    meta: {
+      nameSnapshot: string;
+      employeeId?: UUID | null;
+      employeeNumber?: string | null;
+      userId?: UUID | null;
+    }
+  ) => void;
   placeholder?: string;
   label?: string;
   disabled?: boolean;
   onEmployeeChange?: (employee: HrEmployee | null) => void;
 };
 
-export function HrEmployeeSelect({ companyId, value, onChange, placeholder = 'Select', label, disabled, onEmployeeChange }: HrEmployeeSelectProps) {
+export function HrEmployeeSelect({
+  companyId,
+  value,
+  valueField = 'user_id',
+  includeUnlinked,
+  onChange,
+  placeholder = 'Select',
+  label,
+  disabled,
+  onEmployeeChange
+}: HrEmployeeSelectProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const shouldIncludeUnlinked = includeUnlinked ?? valueField === 'id';
 
   const { data: employees, loading } = useAsync<HrEmployee[]>(
     async () => {
       if (!companyId) return [];
       const rows = await listHrEmployees(companyId);
-      // Only include employees linked to a user account since KPI assessments
-      // store user-based identifiers for employee/manager references.
       return rows
-        .filter((e) => e.user_id)
+        .filter((e) => (shouldIncludeUnlinked ? true : !!e.user_id))
         .sort((a, b) => {
           const nameA = `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim().toLowerCase();
           const nameB = `${b.first_name ?? ''} ${b.last_name ?? ''}`.trim().toLowerCase();
           return nameA.localeCompare(nameB);
         });
     },
-    [companyId]
+    [companyId, shouldIncludeUnlinked]
   );
 
   const filteredEmployees = useMemo(() => {
@@ -53,18 +77,26 @@ export function HrEmployeeSelect({ companyId, value, onChange, placeholder = 'Se
   }, [employees, searchQuery]);
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const userId = (e.target.value || '') as UUID | '';
-    if (!userId) {
-      onChange('', { nameSnapshot: '', employeeId: null, employeeNumber: null });
+    const selectedValue = (e.target.value || '') as UUID | '';
+    if (!selectedValue) {
+      onChange('', { nameSnapshot: '', employeeId: null, employeeNumber: null, userId: null });
       onEmployeeChange?.(null);
       return;
     }
-    const match = (employees ?? []).find((emp) => emp.user_id === userId);
+    const match =
+      valueField === 'id'
+        ? (employees ?? []).find((emp) => emp.id === selectedValue)
+        : (employees ?? []).find((emp) => emp.user_id === selectedValue);
     const snapshot =
       match && (match.first_name || match.last_name)
         ? `${match.first_name ?? ''} ${match.last_name ?? ''}`.trim()
         : match?.email ?? '';
-    onChange(userId, { nameSnapshot: snapshot, employeeId: match?.id ?? null, employeeNumber: match?.employee_no ?? null });
+    onChange(selectedValue, {
+      nameSnapshot: snapshot,
+      employeeId: match?.id ?? null,
+      employeeNumber: match?.employee_no ?? null,
+      userId: (match?.user_id ?? null) as UUID | null
+    });
     if (match) onEmployeeChange?.(match);
   };
 
@@ -96,7 +128,7 @@ export function HrEmployeeSelect({ companyId, value, onChange, placeholder = 'Se
           const empId = e.employee_no || '';
           const display = empId ? `${empId} – ${name}` : name;
           return (
-            <option key={e.id} value={e.user_id ?? ''}>
+            <option key={e.id} value={(valueField === 'id' ? e.id : (e.user_id ?? '')) as any}>
               {display}
             </option>
           );

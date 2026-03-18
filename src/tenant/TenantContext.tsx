@@ -127,6 +127,26 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     void refreshTenant();
   }, [refreshTenant]);
 
+  // Lightweight periodic refresh so Super Admin toggles reflect quickly on org dashboards
+  // without requiring a full page reload.
+  useEffect(() => {
+    if (!user?.id) return;
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void refreshTenant();
+    }, 15000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshTenant();
+    };
+    window.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onVisibility);
+    };
+  }, [refreshTenant, user?.id]);
+
   const setActiveCompanyId = useCallback((companyId: UUID) => {
     setActiveCompanyIdState(companyId);
     storeActiveCompanyId(companyId);

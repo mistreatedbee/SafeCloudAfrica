@@ -13,7 +13,7 @@ import { Layout } from '../components/layout/Layout';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { listIncidents } from '../api/services/incidentsService';
+import { deleteIncident, listIncidents } from '../api/services/incidentsService';
 import type { Incident } from '../api/models/entities';
 import { useUser } from '@insforge/react';
 
@@ -76,6 +76,7 @@ export function IncidentsPage() {
   const [editingIncident, setEditingIncident] = useState<Incident | null>(null);
   const [viewIncident, setViewIncident] = useState<Incident | null>(null);
   const canEditInvestigation = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
+  const canDeleteAny = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
 
   useEffect(() => {
     setCreateOpen(isNew);
@@ -328,7 +329,39 @@ export function IncidentsPage() {
                       >
                         Edit
                       </button>
-                      <button className="text-critical hover:text-critical-600 text-sm">Delete</button>
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!activeCompanyId || !user?.id) return;
+                          const isOwner = String((incident as any).created_by_user_id) === String(user.id);
+                          if (!canDeleteAny && !isOwner) return;
+                          // eslint-disable-next-line no-alert
+                          const ok = window.confirm('Delete this incident? This cannot be undone.');
+                          if (!ok) return;
+                          try {
+                            await deleteIncident({
+                              companyId: activeCompanyId,
+                              incidentId: incident.id,
+                              actorUserId: user.id
+                            });
+                            if (String(viewIncident?.id) === String(incident.id)) setViewIncident(null);
+                            void retry();
+                          } catch (_) {
+                            // eslint-disable-next-line no-alert
+                            alert('Could not delete incident. Please try again or contact support.');
+                          }
+                        }}
+                        className={`text-sm ${
+                          canDeleteAny || String((incident as any).created_by_user_id) === String(user?.id)
+                            ? 'text-critical hover:text-critical-600'
+                            : 'text-charcoal-300 cursor-not-allowed'
+                        }`}
+                        disabled={!canDeleteAny && String((incident as any).created_by_user_id) !== String(user?.id)}
+                        aria-disabled={!canDeleteAny && String((incident as any).created_by_user_id) !== String(user?.id)}
+                      >
+                        Delete
+                      </button>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">

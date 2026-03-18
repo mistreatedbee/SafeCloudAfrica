@@ -199,7 +199,10 @@ export function TrainingPage() {
           createdByUserId={user.id}
           defaultUserId={activeRole === 'employee' ? user.id : undefined}
           courses={courses ?? []}
-          onAdded={() => setAddOpen(false)}
+          onAdded={() => {
+            setRecordsRefresh((r) => r + 1);
+            setAddOpen(false);
+          }}
         />
       )}
       <div className="flex flex-wrap gap-2 border-b border-surface-200 mb-4">

@@ -110,8 +110,23 @@ export function HrLeavePage() {
   }, [balancesByLeaveTypeAndYear, currentYear, selectedLeaveTypeId]);
 
   const totalDaysSelected = useMemo(() => {
-    const ms = Math.max(0, new Date(endDate).getTime() - new Date(startDate).getTime());
-    return Math.round(ms / (24 * 60 * 60 * 1000)) + 1;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+    if (end.getTime() < start.getTime()) return 0;
+
+    // Count days inclusive, excluding Sundays.
+    const cursor = new Date(start);
+    cursor.setHours(0, 0, 0, 0);
+    const endDay = new Date(end);
+    endDay.setHours(0, 0, 0, 0);
+
+    let days = 0;
+    while (cursor.getTime() <= endDay.getTime()) {
+      if (cursor.getDay() !== 0) days += 1; // 0 = Sunday
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return days;
   }, [startDate, endDate]);
 
   const selectedLeaveNameLower = trimmedLeaveTypeName.toLowerCase();

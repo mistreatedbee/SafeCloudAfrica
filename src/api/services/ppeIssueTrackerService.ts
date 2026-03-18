@@ -107,6 +107,27 @@ export async function getPpeIssueTrackerById(
   return (data ?? null) as PpeIssueTracker | null;
 }
 
+export async function deletePpeIssueTracker(input: {
+  companyId: UUID;
+  issueId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('ppe_issue_tracker')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.issueId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'ppe_issue_tracker.delete',
+    entityType: 'ppe_issue_tracker',
+    entityId: input.issueId
+  });
+}
+
 export type CreatePpeIssueTrackerInput = {
   companyId: UUID;
   createdByUserId: UUID;

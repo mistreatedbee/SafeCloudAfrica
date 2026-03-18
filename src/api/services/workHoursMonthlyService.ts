@@ -160,6 +160,7 @@ export async function upsertWorkHoursMonthly(input: UpsertWorkHoursMonthlyInput)
     const { data, error } = await insforge.database
       .from('work_hours_monthly')
       .update(payload)
+      .eq('company_id', input.companyId)
       .eq('id', existing.id)
       .select('*')
       .single();

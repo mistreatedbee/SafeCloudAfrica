@@ -419,6 +419,7 @@ export function LegalRequirementCreateModal(props: {
             <label className="block text-sm font-medium text-charcoal">Responsible person</label>
             <HrEmployeeSelect
               companyId={props.companyId}
+              valueField="id"
               value={responsibleEmployeeId}
               onChange={(id) => setResponsibleEmployeeId(id)}
               placeholder="Select employee (or type external name below)"

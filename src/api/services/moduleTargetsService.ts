@@ -41,7 +41,10 @@ export async function createModuleTarget(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create module target.');
   return data as ModuleTarget;
-}export async function updateModuleTarget(input: {
+}
+
+export async function updateModuleTarget(input: {
+  companyId: UUID;
   id: UUID;
   name?: string;
   currentValue?: number;
@@ -55,7 +58,14 @@ export async function createModuleTarget(input: {
   if (typeof input.targetValue !== 'undefined') patch.target_value = input.targetValue;
   if (typeof input.unit !== 'undefined') patch.unit = input.unit;
   if (typeof input.achieved !== 'undefined') patch.achieved = input.achieved;
-  patch.updated_at = new Date().toISOString();  const { data, error } = await insforge.database.from('module_targets').update(patch).eq('id', input.id).select('*').single();
+  patch.updated_at = new Date().toISOString();
+  const { data, error } = await insforge.database
+    .from('module_targets')
+    .update(patch)
+    .eq('company_id', input.companyId)
+    .eq('id', input.id)
+    .select('*')
+    .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update module target.');
   return data as ModuleTarget;

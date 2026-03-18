@@ -41,6 +41,7 @@ export async function createKPIFinding(input: CreateKPIFindingInput): Promise<KP
   await insforge.database
     .from('kpi_assessment_lines')
     .update({ finding_generated: true, finding_id: finding.finding_id, updated_at: new Date().toISOString() })
+    .eq('organization_id', input.organizationId)
     .eq('line_id', input.lineId);
 
   await createActivityLog({

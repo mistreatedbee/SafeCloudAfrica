@@ -453,7 +453,10 @@ export async function acceptInviteByToken(input: { token: string; userId: UUID }
   } as CompanyMembership;
 }
 
-export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID }): Promise<CompanyInvite> {
+export async function resendInvite(input: {
+  inviteId: UUID;
+  actorUserId: UUID;
+}): Promise<{ invite: CompanyInvite; emailSent: boolean; inviteLink?: string }> {
   const headers = await getAuthHeaders();
   const response = await fetch('/api/invites/resend', {
     method: 'POST',
@@ -467,7 +470,11 @@ export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID })
   if (!response.ok || !data?.ok || !data?.invite) {
     throw new Error(data?.error || 'Failed to resend invite.');
   }
-  return data.invite as CompanyInvite;
+  return {
+    invite: data.invite as CompanyInvite,
+    emailSent: !!data.emailSent,
+    inviteLink: data.inviteLink ? String(data.inviteLink) : undefined
+  };
 }
 
 export async function getInviteLinkForInviteId(input: { inviteId: UUID }): Promise<string> {

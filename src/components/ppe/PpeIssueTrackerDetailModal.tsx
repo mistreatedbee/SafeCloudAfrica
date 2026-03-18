@@ -4,6 +4,7 @@ import type { PpeIssueTracker, PpeIssueTrackerStatus, UUID } from '../../api/mod
 import { formatAuthError } from '../../auth/authMessages';
 import {
   addPpeIssueProgressUpdate,
+  deletePpeIssueTracker,
   setPpeIssueAuditorConfirmation,
   setPpeIssueManagerSignoff,
   setPpeIssueSafetyOfficerVerification,
@@ -27,6 +28,7 @@ export function PpeIssueTrackerDetailModal(props: {
   canManagerSignoff: boolean;
   canSafetyVerify: boolean;
   canAuditorConfirm: boolean;
+  canDelete?: boolean;
   onChanged?: () => void;
 }) {
   const [localIssue, setLocalIssue] = useState<PpeIssueTracker>(props.issue);
@@ -54,6 +56,7 @@ export function PpeIssueTrackerDetailModal(props: {
       : localIssue.status === 'under_review'
       ? 'bg-indigo-100 text-indigo-800'
       : 'bg-surface-200 text-charcoal-700';
+  const canManageWorkflow = props.canManagerSignoff || props.canSafetyVerify || props.canAuditorConfirm;
 
   async function handleStatusChange(nextStatus: PpeIssueTrackerStatus) {
     setError(null);
@@ -142,6 +145,27 @@ export function PpeIssueTrackerDetailModal(props: {
       });
       setLocalIssue(updated);
       props.onChanged?.();
+    } catch (err: any) {
+      setError(formatAuthError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteDuplicate() {
+    setError(null);
+    try {
+      if (!props.canDelete) return;
+      const ok = confirm('Delete this PPE issue tracker record? This is intended for removing duplicates.');
+      if (!ok) return;
+      setSaving(true);
+      await deletePpeIssueTracker({
+        companyId: props.companyId,
+        issueId: localIssue.id,
+        actorUserId: props.actorUserId
+      });
+      props.onChanged?.();
+      props.onClose();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {
@@ -362,6 +386,18 @@ export function PpeIssueTrackerDetailModal(props: {
 
             <div className="space-y-3 border-t border-surface-200 pt-4">
               <p className="text-xs uppercase tracking-wide text-charcoal-400">Closure & sign-off</p>
+              {props.canDelete && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void handleDeleteDuplicate()}
+                    className="px-3 py-2 rounded-lg border border-critical/40 text-critical text-xs font-medium hover:bg-critical/5 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    Delete duplicate
+                  </button>
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                 <div className="space-y-1">
                   <p className="text-charcoal-500">Department manager</p>
@@ -401,7 +437,7 @@ export function PpeIssueTrackerDetailModal(props: {
                 </div>
               </div>
 
-              {props.canManageWorkflow && (
+              {canManageWorkflow && (
                 <div className="flex flex-wrap gap-2">
                   {props.canManagerSignoff && !localIssue.department_manager_user_id && (
                     <button

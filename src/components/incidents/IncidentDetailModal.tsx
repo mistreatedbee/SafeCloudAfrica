@@ -72,7 +72,7 @@ export function IncidentDetailModal(props: {
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
   const { data: correctiveActions = [] } = useAsync<IncidentCorrectiveAction[]>(
-    async () => (incident && props.companyId ? listIncidentCorrectiveActions(incident.id) : []),
+    async () => (incident && props.companyId ? listIncidentCorrectiveActions(props.companyId, incident.id) : []),
     [incident?.id, props.companyId, refreshCorrectiveActions]
   );
 

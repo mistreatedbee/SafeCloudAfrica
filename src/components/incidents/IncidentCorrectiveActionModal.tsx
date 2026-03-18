@@ -192,7 +192,7 @@ export function IncidentCorrectiveActionModal({
           sourceCauseText: sourceCauseText ?? null
         };
 
-        const updated = await updateIncidentCorrectiveAction(actionId, updateData);
+        const updated = await updateIncidentCorrectiveAction(companyId, actionId, updateData);
         const evidenceUrls: string[] = [...(initial.evidence_document_urls || [])];
         for (const file of evidenceFiles) {
           const key = `${companyId}/incident_corrective_action/${updated.id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
@@ -213,7 +213,7 @@ export function IncidentCorrectiveActionModal({
         }
 
         if (evidenceUrls.length > 0) {
-          await updateIncidentCorrectiveAction(actionId, { evidenceDocumentUrls: evidenceUrls });
+          await updateIncidentCorrectiveAction(companyId, actionId, { evidenceDocumentUrls: evidenceUrls });
         }
       } else {
         const createData: CreateIncidentCorrectiveActionInput = {
@@ -249,7 +249,7 @@ export function IncidentCorrectiveActionModal({
         }
 
         if (evidenceUrls.length > 0) {
-          await updateIncidentCorrectiveAction(created.id, { evidenceDocumentUrls: evidenceUrls });
+          await updateIncidentCorrectiveAction(companyId, created.id, { evidenceDocumentUrls: evidenceUrls });
         }
       }
 

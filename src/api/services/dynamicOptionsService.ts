@@ -127,6 +127,7 @@ export async function upsertOption(input: UpsertOptionInput): Promise<DynamicOpt
     await insforge.database
       .from('dynamic_options')
       .update({ usage_count: (existing.usage_count ?? 0) + 1 })
+      .eq('company_id', input.companyId)
       .eq('id', existing.id);
     return { ...existing, usage_count: (existing.usage_count ?? 0) + 1 };
   }

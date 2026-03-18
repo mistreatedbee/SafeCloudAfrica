@@ -42,6 +42,7 @@ export async function upsertPreAuditSubmission(input: {
     const { data, error } = await insforge.database
       .from('audit_pre_submissions')
       .update(row)
+      .eq('company_id', input.companyId)
       .eq('id', existing.id)
       .select('*')
       .single();

@@ -745,6 +745,8 @@ export async function stopTimeEntry(input: {
   const { data, error } = await insforge.database
     .from('task_time_logs')
     .update({ ended_at: nowIso, minutes, updated_at: nowIso })
+    .eq('company_id', input.companyId)
+    .eq('task_id', input.taskId)
     .eq('id', input.timeLogId)
     .select('*')
     .single();

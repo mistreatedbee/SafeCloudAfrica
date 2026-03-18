@@ -46,6 +46,7 @@ export function PpeIssueModal(props: {
   const [reasonForIssue, setReasonForIssue] = useState('');
   const [reasonOther, setReasonOther] = useState('');
   const [issuedToUserId, setIssuedToUserId] = useState('');
+  const [issuedToEmployeeId, setIssuedToEmployeeId] = useState('');
   const [issuedToEmployeeNumber, setIssuedToEmployeeNumber] = useState('');
   const [jobRole, setJobRole] = useState('');
   const [nextIssueDate, setNextIssueDate] = useState('');
@@ -198,10 +199,7 @@ export function PpeIssueModal(props: {
         quantityIssued: Math.max(1, quantityIssued),
         reasonForIssue: reasonForIssue === 'Other' ? (reasonOther.trim() || null) : (reasonForIssue || null),
         issuedToUserId: issuedToUserId ? (issuedToUserId as UUID) : null,
-        issuedToEmployeeId:
-          issuedToUserId
-            ? ((employees ?? []).find((emp) => emp.user_id === (issuedToUserId as UUID))?.id ?? null)
-            : null,
+        issuedToEmployeeId: issuedToEmployeeId ? (issuedToEmployeeId as UUID) : null,
         issuedToEmployeeNumber: issuedToEmployeeNumber.trim() || null,
         jobRole: jobRole.trim() || null,
         unitCostAtIssue: unitCost ?? null,
@@ -241,6 +239,7 @@ export function PpeIssueModal(props: {
     setReasonForIssue('');
     setReasonOther('');
     setIssuedToUserId('');
+    setIssuedToEmployeeId('');
     setIssuedToEmployeeNumber('');
     setJobRole('');
     setNextIssueDate('');
@@ -396,18 +395,19 @@ export function PpeIssueModal(props: {
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Issued to (HR employee)</label>
               <select
-                value={issuedToUserId}
+                value={issuedToEmployeeId}
                 onChange={(e) => {
-                  const value = e.target.value;
-                  setIssuedToUserId(value);
-                  const emp = (employees ?? []).find((x) => x.user_id === value);
-                  if (emp?.employee_no) setIssuedToEmployeeNumber(emp.employee_no);
+                  const employeeId = e.target.value;
+                  setIssuedToEmployeeId(employeeId);
+                  const emp = (employees ?? []).find((x) => String(x.id) === String(employeeId)) ?? null;
+                  setIssuedToUserId(emp?.user_id ? String(emp.user_id) : '');
+                  if (emp?.employee_no) setIssuedToEmployeeNumber(String(emp.employee_no));
                 }}
                 className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
               >
                 <option value="">Select employee</option>
                 {(employees ?? []).map((emp) => (
-                  <option key={emp.id} value={emp.user_id ?? ''}>
+                  <option key={emp.id} value={emp.id}>
                     {`${emp.last_name ?? ''}, ${emp.first_name ?? ''}`.trim()} — {emp.employee_no}
                   </option>
                 ))}

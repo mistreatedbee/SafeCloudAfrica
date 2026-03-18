@@ -438,22 +438,22 @@ export function PPEPage() {
     return {
       raw: i,
       id: `PPE-${String(i.id).slice(0, 8)}`,
-      issueDate: i.issue_date ?? (i.issued_at ? i.issued_at.slice(0, 10) : 'ó'),
+      issueDate: i.issue_date ?? (i.issued_at ? i.issued_at.slice(0, 10) : '?'),
       item: i.ppe_item_name ?? item?.name ?? `Item ${String(i.ppe_item_id).slice(0, 8)}`,
-      size: i.size ?? 'ó',
-      reason: i.reason_for_issue ?? 'ó',
+      size: i.size ?? '?',
+      reason: i.reason_for_issue ?? '?',
       issuer: i.issued_by_name ?? `User ${String(i.issued_by_user_id).slice(0, 8)}`,
       issuedTo: i.issued_to_user_id
         ? (profiles?.find((p) => p.user_id === i.issued_to_user_id)?.full_name ?? `User ${String(i.issued_to_user_id).slice(0, 8)}`)
-        : (i.issued_to_employee_number ?? 'ó'),
-      departmentName: dept?.name ?? 'ó',
+        : (i.issued_to_employee_number ?? '?'),
+      departmentName: dept?.name ?? '?',
       quantity: i.quantity_issued ?? 1,
       totalCost:
         i.total_cost_at_issue != null
           ? `R ${Number(i.total_cost_at_issue).toFixed(2)}`
           : item?.unit_cost != null
           ? `R ${Number((item.unit_cost ?? 0) * (i.quantity_issued ?? 1)).toFixed(0)}`
-          : 'ó'
+          : '?'
     };
   });
 
@@ -500,18 +500,18 @@ export function PPEPage() {
       raw: s,
       id: `STK-${String(s.id).slice(0, 8)}`,
       itemName: item?.name ?? `Item ${String(s.ppe_item_id).slice(0, 8)}`,
-      siteName: site?.name ?? 'ó',
-      departmentName: dept?.name ?? 'ó',
+      siteName: site?.name ?? '?',
+      departmentName: dept?.name ?? '?',
       onHand: s.on_hand_qty,
       reserved: s.reserved_qty,
       reorderLevel: s.reorder_level,
       reorderQty: s.reorder_qty,
       status,
       statusClass,
-      dateOrdered: s.date_ordered ?? 'ó',
-      dateStockReceived: s.date_stock_received ?? 'ó',
-      capturedByName: s.captured_by_name ?? 'ó',
-      expiryDate: s.expiry_date ?? 'ó',
+      dateOrdered: s.date_ordered ?? '?',
+      dateStockReceived: s.date_stock_received ?? '?',
+      capturedByName: s.captured_by_name ?? '?',
+      expiryDate: s.expiry_date ?? '?',
       expiryStatus,
       expiryLabel,
       expiryClass
@@ -534,16 +534,16 @@ export function PPEPage() {
     return {
       raw: i,
       id: `PPE-${String(i.id).slice(0, 8)}`,
-      siteName: i.site_name_text ?? site?.name ?? 'ó',
-      departmentName: i.department_name_text ?? dept?.name ?? 'ó',
-      person: i.contractor_or_employee_name || 'ó',
+      siteName: i.site_name_text ?? site?.name ?? '?',
+      departmentName: i.department_name_text ?? dept?.name ?? '?',
+      person: i.contractor_or_employee_name || '?',
       ppeType: i.ppe_type.replace(/_/g, ' '),
       category: i.issue_category.replace(/_/g, ' '),
       risk: i.risk_level,
       status: i.status.replace(/_/g, ' '),
       targetDate: i.target_completion_date
         ? new Date(i.target_completion_date).toLocaleDateString('en-ZA')
-        : 'ó',
+        : '?',
       isOverdue
     };
   });
@@ -657,6 +657,7 @@ export function PPEPage() {
               canManagerSignoff={canManagerSignoff}
               canSafetyVerify={canSafetyVerify}
               canAuditorConfirm={canAuditorConfirm}
+              canDelete={activeRole === 'owner' || activeRole === 'admin'}
               onChanged={() => setRefreshKey((k) => k + 1)}
             />
           )}
@@ -947,7 +948,7 @@ export function PPEPage() {
                       Most Expensive PPE Item (Selected Period)
                     </p>
                     <p className="mt-1 text-sm font-medium text-charcoal truncate">
-                      {reportSummary?.topItemBySpend?.name ?? 'ù'}
+                      {reportSummary?.topItemBySpend?.name ?? '?'}
                     </p>
                     <p className="text-xs text-charcoal-500">
                       {formatMoney(reportSummary?.topItemBySpend?.totalCost ?? 0)}
@@ -958,7 +959,7 @@ export function PPEPage() {
                       Highest Spend Category/Type
                     </p>
                     <p className="mt-1 text-sm font-medium text-charcoal truncate">
-                      {highestSpendCategory?.name ?? 'ù'}
+                      {highestSpendCategory?.name ?? '?'}
                     </p>
                     <p className="text-xs text-charcoal-500">
                       {formatMoney(highestSpendCategory?.totalCost ?? 0)}
@@ -1160,7 +1161,7 @@ export function PPEPage() {
                   {trackerLoading && (
                     <tr>
                       <td colSpan={8} className="px-5 py-4 text-sm text-charcoal-500">
-                        Loading PPE issuesÖ
+                        Loading PPE issues?
                       </td>
                     </tr>
                   )}
@@ -1357,7 +1358,7 @@ export function PPEPage() {
                     {loading && (
                       <tr>
                         <td colSpan={11} className="px-5 py-4 text-sm text-charcoal-500">
-                          LoadingÖ
+                          Loading?
                         </td>
                       </tr>
                     )}
@@ -1486,7 +1487,7 @@ export function PPEPage() {
                   {stocksLoading && (
                     <tr>
                       <td colSpan={13} className="px-5 py-4 text-sm text-charcoal-500">
-                        Loading inventoryÖ
+                        Loading inventory?
                       </td>
                     </tr>
                   )}
@@ -1520,8 +1521,8 @@ export function PPEPage() {
                       <td className="px-5 py-4 text-sm">
                         <div className="flex flex-col gap-1">
                           <span className="text-charcoal-500 text-xs">
-                            {row.expiryDate === '‚Äî'
-                              ? 'ó'
+                            {row.expiryDate === '?'
+                              ? '?'
                               : new Date(row.expiryDate).toLocaleDateString('en-ZA')}
                           </span>
                           <span

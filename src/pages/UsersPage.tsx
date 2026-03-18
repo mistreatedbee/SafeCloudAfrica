@@ -250,10 +250,20 @@ export function UsersPage() {
     setInviteActionLoadingId(inviteId);
     setInviteFeedback(null);
     try {
-      await resendInvite({ inviteId: inviteId as any, actorUserId: user.id });
+      const result = await resendInvite({ inviteId: inviteId as any, actorUserId: user.id });
       await refreshInvites();
+      if (!result.emailSent) {
+        setLatestInviteLink(result.inviteLink ?? null);
+        setInviteFeedback({
+          type: 'error',
+          text: 'Invite updated, but email failed. Copy the invite link and send it manually.'
+        });
+        return;
+      }
+      setLatestInviteLink(null);
       setInviteFeedback({ type: 'success', text: 'Invite resent successfully.' });
     } catch (err: any) {
+      setLatestInviteLink(null);
       setInviteFeedback({ type: 'error', text: err?.message || 'Failed to resend invite.' });
     } finally {
       setInviteActionLoadingId(null);

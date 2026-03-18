@@ -64,10 +64,10 @@ export function KPIAssessmentDetailPage() {
 
   const { data: lines, loading: loadingLines } = useAsync<KPIAssessmentLine[]>(
     async () => {
-      if (!assessmentId) return [];
-      return listKPIAssessmentLines(assessmentId as any);
+      if (!activeCompanyId || !assessmentId) return [];
+      return listKPIAssessmentLines(assessmentId as any, activeCompanyId);
     },
-    [assessmentId, refresher]
+    [activeCompanyId, assessmentId, refresher]
   );
 
   const { data: findings } = useAsync<KPIFinding[]>(

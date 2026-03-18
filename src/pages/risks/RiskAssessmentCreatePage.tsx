@@ -414,9 +414,9 @@ export function RiskAssessmentCreatePage() {
         {error && <div className="text-sm text-critical">{error}</div>}
 
         <div className="flex items-center gap-3">
-          <button disabled={saving} onClick={() => void save('draft')} className="px-4 py-2 rounded-lg border border-charcoal-300 text-sm">{saving ? 'Saving...' : 'Save Draft'}</button>
-          <button disabled={saving} onClick={() => void save('submitted')} className="px-4 py-2 rounded-lg bg-teal text-white text-sm">{saving ? 'Saving...' : 'Submit'}</button>
-          <button disabled={saving} onClick={() => navigate('/risk-assessments')} className="text-sm text-charcoal-500">Cancel</button>
+          <button type="button" disabled={saving} onClick={() => void save('draft')} className="px-4 py-2 rounded-lg border border-charcoal-300 text-sm">{saving ? 'Saving...' : 'Save Draft'}</button>
+          <button type="button" disabled={saving} onClick={() => void save('submitted')} className="px-4 py-2 rounded-lg bg-teal text-white text-sm">{saving ? 'Saving...' : 'Submit'}</button>
+          <button type="button" disabled={saving} onClick={() => navigate('/risk-assessments')} className="text-sm text-charcoal-500">Cancel</button>
         </div>
       </div>
     </Layout>

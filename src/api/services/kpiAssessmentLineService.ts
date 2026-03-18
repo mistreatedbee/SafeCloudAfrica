@@ -3,10 +3,11 @@ import type { KPIAssessmentLine, KpiImportance, UUID } from '../models/entities'
 import { getErrorMessage } from '../insforge/errors';
 import { refreshAssessmentOverallScore } from './kpiAssessmentService';
 
-export async function getKPIAssessmentLine(lineId: UUID): Promise<KPIAssessmentLine | null> {
+export async function getKPIAssessmentLine(lineId: UUID, organizationId: UUID): Promise<KPIAssessmentLine | null> {
   const { data, error } = await insforge.database
     .from('kpi_assessment_lines')
     .select('*')
+    .eq('organization_id', organizationId)
     .eq('line_id', lineId)
     .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
@@ -31,6 +32,7 @@ export async function updateKPIAssessmentLine(
       ...nextPatch,
       updated_at: new Date().toISOString()
     })
+    .eq('organization_id', organizationId)
     .eq('line_id', lineId)
     .select('*')
     .single();
@@ -55,6 +57,7 @@ export async function addKPIAssessmentLine(
   const { data, error } = await insforge.database
     .from('kpi_assessment_lines')
     .insert({
+      organization_id: organizationId,
       assessment_id: assessmentId,
       kpi_item_id: input.kpiItemId ?? null,
       custom_kpi_title: input.customKpiTitle ?? null,
@@ -71,7 +74,11 @@ export async function addKPIAssessmentLine(
 }
 
 export async function deleteKPIAssessmentLine(lineId: UUID, assessmentId: UUID, organizationId: UUID): Promise<void> {
-  const { error } = await insforge.database.from('kpi_assessment_lines').delete().eq('line_id', lineId);
+  const { error } = await insforge.database
+    .from('kpi_assessment_lines')
+    .delete()
+    .eq('organization_id', organizationId)
+    .eq('line_id', lineId);
   if (error) throw new Error(getErrorMessage(error));
   await refreshAssessmentOverallScore(assessmentId, organizationId);
 }
