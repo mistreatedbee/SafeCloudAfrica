@@ -23,7 +23,7 @@ import {
 } from '../../api/services/riskAssessmentsService';
 import { listQualityNcrs } from '../../api/services/qualityNcrsService';
 import { listLegalRequirementsForLinkedRecord } from '../../api/services/legalRequirementsService';
-import type { LegalRequirement, QualityNcr, UUID } from '../../api/models/entities';
+import type { LegalRequirement, QualityNcr } from '../../api/models/entities';
 import { getPublicUrl } from '../../api/services/storageService';
 import { columnsForType, typeLabel } from './riskTemplates';
 
