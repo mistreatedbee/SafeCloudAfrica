@@ -574,6 +574,18 @@ export function App() {
             }
           />
           <Route
+            path="/dashboard/health/wellness/employee-wellness"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireModuleEnabled module="health">
+                    <HrEmployeeWellnessPage />
+                  </RequireModuleEnabled>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/modules/legal"
             element={
               <RequireSignedIn>
@@ -711,7 +723,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrEmployeeWellnessPage />
+                    <Navigate to="/dashboard/health/wellness/employee-wellness" replace />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>

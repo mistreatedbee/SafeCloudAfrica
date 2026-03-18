@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
+import { useLocation } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
@@ -87,6 +88,7 @@ const ACTIVITY_ROWS: Omit<ActivityRow, 'participation' | 'comments'>[] = [
 ];
 
 export function HrEmployeeWellnessPage() {
+  const location = useLocation();
   const { activeCompanyId } = useTenant();
   const { user } = useUser();
   const [selectedEmployeeUserId, setSelectedEmployeeUserId] = useState<UUID | ''>('');
@@ -428,7 +430,7 @@ export function HrEmployeeWellnessPage() {
   return (
     <Layout title="Employee Wellness Programme">
       <div className="space-y-4">
-        <HrSectionNav />
+        {location.pathname.startsWith('/dashboard/hr') && <HrSectionNav />}
         {error && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">

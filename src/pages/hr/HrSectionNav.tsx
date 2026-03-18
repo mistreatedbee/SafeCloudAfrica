@@ -10,7 +10,6 @@ const HR_LINKS = [
   { to: '/dashboard/hr/performance', label: 'Performance' },
   { to: '/dashboard/hr/hours', label: 'Hours Worked' },
   { to: '/dashboard/hr/leave', label: 'Leave' },
-  { to: '/dashboard/hr/wellness', label: 'Employee Wellness Programme' },
   { to: '/dashboard/hr/settings', label: 'Settings' }
 ] as const;
 
