@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
@@ -431,6 +431,13 @@ export function HrEmployeeWellnessPage() {
     <Layout title="Employee Wellness Programme">
       <div className="space-y-4">
         {location.pathname.startsWith('/dashboard/hr') && <HrSectionNav />}
+        {location.pathname.startsWith('/dashboard/health') && (
+          <div>
+            <Link to="/dashboard/health/wellness" className="text-sm font-medium text-teal hover:underline">
+              ← Back to Wellness Programme
+            </Link>
+          </div>
+        )}
         {error && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">

@@ -119,8 +119,7 @@ const managementGroups: NavGroup[] = [
       { name: 'Medical Surveillance', path: '/dashboard/health/medical', icon: CalendarIcon },
       { name: 'Exposure Monitoring', path: '/dashboard/health/hygiene', icon: ClipboardCheckIcon },
       { name: 'IOD / Health Incidents', path: '/dashboard/incidents/management?module=health', icon: AlertCircleIcon },
-      { name: 'Wellness Programme', path: '/dashboard/health/wellness', icon: UsersIcon },
-      { name: 'Employee Wellness Programme', path: '/dashboard/health/wellness/employee-wellness', icon: UsersIcon }
+      { name: 'Wellness Programme', path: '/dashboard/health/wellness', icon: UsersIcon }
     ]
   },
   {
