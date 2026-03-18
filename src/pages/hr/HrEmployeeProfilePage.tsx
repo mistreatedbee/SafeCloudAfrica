@@ -8,7 +8,7 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { canViewRestrictedFields, getEmployeeIntegratedProfile, logRestrictedFieldAccess } from '../../api/services/hrService';
 import type { UUID } from '../../api/models/core';
 import type { CompanyRole } from '../../api/models/core';
-import type { HrEmployee } from '../../api/services/hrService';
+import type { HrEmployee, HrEmployeeDependent, HrEmployeeSensitiveDetails } from '../../api/services/hrService';
 import { HrEmployeeEditModal } from '../../components/hr/HrEmployeeEditModal';
 
 const TABS = ['overview', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'tasks', 'audit'] as const;
@@ -37,6 +37,9 @@ export function HrEmployeeProfilePage() {
   }, [activeCompanyId, id, refreshKey]);
 
   const employee = payload?.employee as HrEmployee | undefined;
+  const canSensitive = Boolean(payload?.canSensitive);
+  const sensitiveDetails = (payload?.sensitiveDetails as HrEmployeeSensitiveDetails | null | undefined) ?? null;
+  const dependents = (payload?.dependents as HrEmployeeDependent[] | undefined) ?? [];
   const leaveBalances = (payload?.balances as Array<Record<string, unknown>> | undefined) ?? [];
   const leaveRequests = (payload?.leaveRequests as Array<Record<string, unknown>> | undefined) ?? [];
 
@@ -215,6 +218,9 @@ export function HrEmployeeProfilePage() {
             actorUserId={user.id as UUID}
             employee={employee}
             canViewRestrictedFields={!!canRestricted}
+            canAccessSensitiveFields={canSensitive}
+            initialSensitiveDetails={sensitiveDetails}
+            initialDependents={dependents}
             onSaved={() => {
               setShowEdit(false);
               setRefreshKey((x) => x + 1);

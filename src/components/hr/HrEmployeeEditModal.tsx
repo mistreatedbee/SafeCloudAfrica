@@ -3,8 +3,8 @@ import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { UUID, Department, Site } from '../../api/models/entities';
-import type { HrEmployee } from '../../api/services/hrService';
-import { upsertHrEmployee } from '../../api/services/hrService';
+import type { HrEmployee, HrEmployeeDependent, HrEmployeeSensitiveDetails } from '../../api/services/hrService';
+import { replaceHrEmployeeDependents, upsertHrEmployee, upsertHrEmployeeSensitiveDetails } from '../../api/services/hrService';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listDepartments } from '../../api/services/departmentsService';
 import { listSites } from '../../api/services/sitesService';
@@ -17,11 +17,38 @@ type Props = {
   actorUserId: UUID;
   employee: HrEmployee;
   canViewRestrictedFields: boolean;
+  canAccessSensitiveFields: boolean;
+  initialSensitiveDetails?: HrEmployeeSensitiveDetails | null;
+  initialDependents?: HrEmployeeDependent[];
   onSaved?: () => void;
 };
 
+type DependentDraft = {
+  key: string;
+  dependent_name: string;
+  relationship: string;
+  contact_details: string;
+};
+
+function newDependentDraft(): DependentDraft {
+  return {
+    key: String(Math.random()).slice(2),
+    dependent_name: '',
+    relationship: '',
+    contact_details: ''
+  };
+}
+
+function maskAccountNumber(value: string | null | undefined): string {
+  const v = String(value ?? '').trim();
+  if (!v) return '';
+  const last4 = v.replace(/\s+/g, '').slice(-4);
+  return `${'•'.repeat(Math.max(0, v.length - 4))}${last4}`;
+}
+
 export function HrEmployeeEditModal(props: Props) {
   const { employee } = props;
+  const sd = props.initialSensitiveDetails ?? null;
 
   const [firstName, setFirstName] = useState(employee.first_name ?? '');
   const [lastName, setLastName] = useState(employee.last_name ?? '');
@@ -32,6 +59,7 @@ export function HrEmployeeEditModal(props: Props) {
   const [employmentStatus, setEmploymentStatus] = useState(employee.employment_status);
   const [employmentType, setEmploymentType] = useState(employee.employment_type ?? '');
   const [startDate, setStartDate] = useState(employee.start_date ?? '');
+  const [contractExpiryDate, setContractExpiryDate] = useState(employee.contract_expiry_date ?? '');
   const [departmentId, setDepartmentId] = useState<string>(String(employee.department_id ?? ''));
   const [siteId, setSiteId] = useState<string>(String(employee.site_id ?? ''));
   const [supervisorUserId, setSupervisorUserId] = useState<UUID | ''>((employee.supervisor_user_id as UUID) ?? '');
@@ -41,6 +69,37 @@ export function HrEmployeeEditModal(props: Props) {
   const [address, setAddress] = useState(employee.address ?? '');
   const [emergencyContactName, setEmergencyContactName] = useState(employee.emergency_contact_name ?? '');
   const [emergencyContactPhone, setEmergencyContactPhone] = useState(employee.emergency_contact_phone ?? '');
+
+  // Sensitive sections (only saved when canAccessSensitiveFields)
+  const [medicalAidName, setMedicalAidName] = useState(sd?.medical_aid_name ?? '');
+  const [medicalAidMembershipNumber, setMedicalAidMembershipNumber] = useState(sd?.medical_aid_membership_number ?? '');
+
+  const [maritalStatus, setMaritalStatus] = useState<HrEmployeeSensitiveDetails['marital_status']>(sd?.marital_status ?? null);
+  const [partnerName, setPartnerName] = useState(sd?.partner_name ?? '');
+
+  const [taxNumber, setTaxNumber] = useState(sd?.tax_number ?? '');
+  const [passportNumber, setPassportNumber] = useState(sd?.passport_number ?? '');
+  const [passportExpiryDate, setPassportExpiryDate] = useState(sd?.passport_expiry_date ?? '');
+  const [permitNumber, setPermitNumber] = useState(sd?.permit_number ?? '');
+  const [permitExpiryDate, setPermitExpiryDate] = useState(sd?.permit_expiry_date ?? '');
+  const [countryOfIssue, setCountryOfIssue] = useState(sd?.country_of_issue ?? '');
+
+  const [bankName, setBankName] = useState(sd?.bank_name ?? '');
+  const [accountHolderName, setAccountHolderName] = useState(sd?.account_holder_name ?? '');
+  const [branchCode, setBranchCode] = useState(sd?.branch_code ?? '');
+  const [accountType, setAccountType] = useState(sd?.account_type ?? '');
+  const [accountNumberMasked] = useState(maskAccountNumber(sd?.account_number));
+  const [editAccountNumber, setEditAccountNumber] = useState(false);
+  const [accountNumberDraft, setAccountNumberDraft] = useState('');
+
+  const [dependents, setDependents] = useState<DependentDraft[]>(
+    (props.initialDependents ?? []).map((d) => ({
+      key: d.id,
+      dependent_name: d.dependent_name ?? '',
+      relationship: d.relationship ?? '',
+      contact_details: d.contact_details ?? ''
+    }))
+  );
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,9 +117,24 @@ export function HrEmployeeEditModal(props: Props) {
     );
   }, [email, employeeNo, firstName, lastName, startDate]);
 
+  const dependentValidationError = useMemo(() => {
+    if (!props.canAccessSensitiveFields) return null;
+    for (const d of dependents) {
+      const anyFilled = d.dependent_name.trim() || d.relationship.trim() || d.contact_details.trim();
+      if (anyFilled && (!d.dependent_name.trim() || !d.relationship.trim())) {
+        return 'Each dependent must have a name and relationship.';
+      }
+    }
+    return null;
+  }, [dependents, props.canAccessSensitiveFields]);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || loading) return;
+    if (dependentValidationError) {
+      setError(dependentValidationError);
+      return;
+    }
     setError(null);
     try {
       setLoading(true);
@@ -77,6 +151,7 @@ export function HrEmployeeEditModal(props: Props) {
         employment_status: employmentStatus,
         employment_type: employmentType.trim() || employee.employment_type,
         start_date: startDate.trim(),
+        contract_expiry_date: contractExpiryDate.trim() || null,
         department_id: departmentId ? (departmentId as any) : null,
         site_id: siteId ? (siteId as any) : null,
         supervisor_user_id: supervisorUserId || null,
@@ -86,6 +161,46 @@ export function HrEmployeeEditModal(props: Props) {
         emergency_contact_name: props.canViewRestrictedFields ? (emergencyContactName.trim() || null) : employee.emergency_contact_name,
         emergency_contact_phone: props.canViewRestrictedFields ? (emergencyContactPhone.trim() || null) : employee.emergency_contact_phone
       });
+
+      if (props.canAccessSensitiveFields) {
+        await upsertHrEmployeeSensitiveDetails({
+          companyId: props.companyId,
+          employeeId: employee.id,
+          actorUserId: props.actorUserId,
+          patch: {
+            medical_aid_name: medicalAidName.trim() || null,
+            medical_aid_membership_number: medicalAidMembershipNumber.trim() || null,
+            marital_status: maritalStatus ?? null,
+            partner_name: partnerName.trim() || null,
+            tax_number: taxNumber.trim() || null,
+            passport_number: passportNumber.trim() || null,
+            passport_expiry_date: passportExpiryDate.trim() || null,
+            permit_number: permitNumber.trim() || null,
+            permit_expiry_date: permitExpiryDate.trim() || null,
+            country_of_issue: countryOfIssue.trim() || null,
+            bank_name: bankName.trim() || null,
+            account_holder_name: accountHolderName.trim() || null,
+            account_number: editAccountNumber ? (accountNumberDraft.trim() || null) : (sd?.account_number ?? null),
+            branch_code: branchCode.trim() || null,
+            account_type: accountType.trim() || null
+          }
+        });
+
+        const cleanedDependents = dependents
+          .map((d) => ({
+            dependent_name: d.dependent_name.trim(),
+            relationship: d.relationship.trim(),
+            contact_details: d.contact_details.trim() || null
+          }))
+          .filter((d) => d.dependent_name || d.relationship || d.contact_details);
+
+        await replaceHrEmployeeDependents({
+          companyId: props.companyId,
+          employeeId: employee.id,
+          actorUserId: props.actorUserId,
+          dependents: cleanedDependents
+        });
+      }
 
       props.onSaved?.();
     } catch (err: any) {
@@ -120,6 +235,8 @@ export function HrEmployeeEditModal(props: Props) {
               <p className="text-sm text-charcoal-600 mt-1">{error}</p>
             </div>
           )}
+
+          <SectionTitle title="Employee Info" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -169,6 +286,22 @@ export function HrEmployeeEditModal(props: Props) {
               />
             </div>
           </div>
+
+          <SectionTitle title="Contract" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Contract expiry date</label>
+              <input
+                type="date"
+                value={contractExpiryDate ?? ''}
+                onChange={(e) => setContractExpiryDate(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              />
+              <p className="text-xs text-charcoal-400 mt-1">Optional — used for contract renewal/termination reminders.</p>
+            </div>
+          </div>
+
+          <SectionTitle title="Work Details" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -268,6 +401,263 @@ export function HrEmployeeEditModal(props: Props) {
             </div>
           </div>
 
+          {props.canAccessSensitiveFields && (
+            <>
+              <SectionTitle title="Personal Info" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Marital status</label>
+                  <select
+                    value={maritalStatus ?? ''}
+                    onChange={(e) => setMaritalStatus((e.target.value || null) as any)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  >
+                    <option value="">Select (optional)</option>
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                    <option value="Divorced">Divorced</option>
+                    <option value="Separated">Separated</option>
+                    <option value="Widowed">Widowed</option>
+                    <option value="Domestic Partner">Domestic Partner</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Partner’s name</label>
+                  <input
+                    value={partnerName}
+                    onChange={(e) => setPartnerName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <SectionTitle title="Medical Info" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Medical Aid Name</label>
+                  <input
+                    value={medicalAidName}
+                    onChange={(e) => setMedicalAidName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Medical Aid Membership Number</label>
+                  <input
+                    value={medicalAidMembershipNumber}
+                    onChange={(e) => setMedicalAidMembershipNumber(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <SectionTitle title="Legal Info" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Tax Number</label>
+                  <input
+                    value={taxNumber}
+                    onChange={(e) => setTaxNumber(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Country of Issue</label>
+                  <input
+                    value={countryOfIssue}
+                    onChange={(e) => setCountryOfIssue(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Passport Number</label>
+                  <input
+                    value={passportNumber}
+                    onChange={(e) => setPassportNumber(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Passport Expiry Date</label>
+                  <input
+                    type="date"
+                    value={passportExpiryDate ?? ''}
+                    onChange={(e) => setPassportExpiryDate(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Permit Number</label>
+                  <input
+                    value={permitNumber}
+                    onChange={(e) => setPermitNumber(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Permit Expiry Date</label>
+                  <input
+                    type="date"
+                    value={permitExpiryDate ?? ''}
+                    onChange={(e) => setPermitExpiryDate(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <SectionTitle title="Banking Info" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Bank Name</label>
+                  <input
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Account Holder Name</label>
+                  <input
+                    value={accountHolderName}
+                    onChange={(e) => setAccountHolderName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Account Number</label>
+                  {!editAccountNumber ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={accountNumberMasked || ''}
+                        readOnly
+                        placeholder="Not set"
+                        className="w-full px-4 py-2.5 bg-surface-50 border border-surface-300 rounded-lg text-sm text-charcoal-600"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditAccountNumber(true);
+                          setAccountNumberDraft(sd?.account_number ?? '');
+                        }}
+                        className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={accountNumberDraft}
+                        onChange={(e) => setAccountNumberDraft(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditAccountNumber(false);
+                          setAccountNumberDraft('');
+                        }}
+                        className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                  <p className="text-xs text-charcoal-400 mt-1">Account number is masked by default.</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Account Type</label>
+                  <input
+                    value={accountType}
+                    onChange={(e) => setAccountType(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Branch Code</label>
+                  <input
+                    value={branchCode}
+                    onChange={(e) => setBranchCode(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <SectionTitle title="Dependents" />
+              <div className="space-y-3">
+                {dependents.length === 0 && (
+                  <p className="text-sm text-charcoal-500">No dependents added.</p>
+                )}
+                {dependents.map((d, idx) => (
+                  <div key={d.key} className="border border-surface-200 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-charcoal">Dependent {idx + 1}</p>
+                      <button
+                        type="button"
+                        onClick={() => setDependents((prev) => prev.filter((x) => x.key !== d.key))}
+                        className="text-sm font-medium text-critical hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Dependent name</label>
+                        <input
+                          value={d.dependent_name}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setDependents((prev) => prev.map((x) => x.key === d.key ? { ...x, dependent_name: v } : x));
+                          }}
+                          className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-charcoal mb-1.5">Relationship</label>
+                        <input
+                          value={d.relationship}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setDependents((prev) => prev.map((x) => x.key === d.key ? { ...x, relationship: v } : x));
+                          }}
+                          className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-charcoal mb-1.5">Contact details</label>
+                      <input
+                        value={d.contact_details}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setDependents((prev) => prev.map((x) => x.key === d.key ? { ...x, contact_details: v } : x));
+                        }}
+                        className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setDependents((prev) => [...prev, newDependentDraft()])}
+                  className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-semibold text-charcoal hover:bg-surface-50"
+                >
+                  Add dependent
+                </button>
+              </div>
+            </>
+          )}
+
           {props.canViewRestrictedFields && (
             <div className="border border-surface-200 rounded-xl p-4 space-y-4">
               <p className="text-xs font-semibold text-charcoal-600 uppercase tracking-wide">Restricted (POPIA)</p>
@@ -341,6 +731,14 @@ export function HrEmployeeEditModal(props: Props) {
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function SectionTitle(props: { title: string }) {
+  return (
+    <div className="pt-2">
+      <p className="text-xs font-semibold text-charcoal-600 uppercase tracking-wide">{props.title}</p>
     </div>
   );
 }

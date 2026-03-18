@@ -26,11 +26,45 @@ export type HrEmployee = {
   employment_status: 'ONBOARDING' | 'ACTIVE' | 'ON_LEAVE' | 'SUSPENDED' | 'TERMINATED' | 'ARCHIVED';
   start_date: string;
   end_date: string | null;
+  contract_expiry_date: string | null;
   probation_end_date: string | null;
   next_review_date: string | null;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
   created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HrEmployeeSensitiveDetails = {
+  employee_id: UUID;
+  company_id: UUID;
+  medical_aid_name: string | null;
+  medical_aid_membership_number: string | null;
+  marital_status: 'Single' | 'Married' | 'Divorced' | 'Separated' | 'Widowed' | 'Domestic Partner' | null;
+  partner_name: string | null;
+  tax_number: string | null;
+  passport_number: string | null;
+  passport_expiry_date: string | null;
+  permit_number: string | null;
+  permit_expiry_date: string | null;
+  country_of_issue: string | null;
+  bank_name: string | null;
+  account_holder_name: string | null;
+  account_number: string | null;
+  branch_code: string | null;
+  account_type: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HrEmployeeDependent = {
+  id: UUID;
+  company_id: UUID;
+  employee_id: UUID;
+  dependent_name: string;
+  relationship: string;
+  contact_details: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -271,6 +305,88 @@ export async function upsertHrEmployee(input: Partial<HrEmployee> & {
     entityId: employee.id
   });
   return employee;
+}
+
+export async function canAccessSensitiveEmployeeFields(companyId: UUID): Promise<boolean> {
+  const { data, error } = await insforge.database.rpc('hr_can_access_sensitive_employee_fields', { p_company_id: companyId });
+  if (error) throw new Error(getErrorMessage(error));
+  return Boolean(data);
+}
+
+export async function getHrEmployeeSensitiveDetails(companyId: UUID, employeeId: UUID): Promise<HrEmployeeSensitiveDetails | null> {
+  const { data, error } = await insforge.database
+    .from('hr_employee_sensitive_details')
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('employee_id', employeeId)
+    .maybeSingle();
+  if (error) throw new Error(getErrorMessage(error));
+  return (data as HrEmployeeSensitiveDetails) ?? null;
+}
+
+export async function upsertHrEmployeeSensitiveDetails(input: {
+  companyId: UUID;
+  employeeId: UUID;
+  actorUserId: UUID;
+  patch: Partial<Omit<HrEmployeeSensitiveDetails, 'employee_id' | 'company_id' | 'created_at' | 'updated_at'>>;
+}): Promise<HrEmployeeSensitiveDetails> {
+  const row = await upsertTable<HrEmployeeSensitiveDetails>(
+    'hr_employee_sensitive_details',
+    {
+      company_id: input.companyId,
+      employee_id: input.employeeId,
+      ...input.patch,
+      updated_at: new Date().toISOString()
+    },
+    'employee_id'
+  );
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr.employee_sensitive.upsert',
+    entityType: 'hr_employee_sensitive_details',
+    entityId: input.employeeId
+  }).catch(() => {});
+  return row;
+}
+
+export async function listHrEmployeeDependents(companyId: UUID, employeeId: UUID): Promise<HrEmployeeDependent[]> {
+  const { data, error } = await insforge.database
+    .from('hr_employee_dependents')
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('employee_id', employeeId)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as HrEmployeeDependent[];
+}
+
+export async function replaceHrEmployeeDependents(input: {
+  companyId: UUID;
+  employeeId: UUID;
+  actorUserId: UUID;
+  dependents: Array<Pick<HrEmployeeDependent, 'dependent_name' | 'relationship' | 'contact_details'>>;
+}): Promise<number> {
+  const payload = input.dependents.map((d) => ({
+    dependent_name: d.dependent_name,
+    relationship: d.relationship,
+    contact_details: d.contact_details ?? null
+  }));
+  const { data, error } = await insforge.database.rpc('hr_replace_employee_dependents', {
+    p_company_id: input.companyId,
+    p_employee_id: input.employeeId,
+    p_dependents: payload as any
+  });
+  if (error) throw new Error(getErrorMessage(error));
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr.employee_dependents.replace',
+    entityType: 'hr_employee',
+    entityId: input.employeeId,
+    metadata: { dependents: payload.length }
+  }).catch(() => {});
+  return Number(data ?? 0);
 }
 
 export async function archiveHrEmployee(companyId: UUID, employeeId: UUID, actorUserId: UUID): Promise<void> {
@@ -879,6 +995,8 @@ export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: 
   const employee = await getHrEmployeeById(companyId, employeeId);
   if (!employee) return { employee: null };
 
+  const canSensitive = await canAccessSensitiveEmployeeFields(companyId).catch(() => false);
+
   const [documents, contracts, leaveRequests, balances, timesheets, performance, disciplinary, monthlyHours, auditTrail, trainingRecords, incidents, healthExpiring, assignedTasks, kpiHistory] = await Promise.all([
     listHrRecords(companyId, 'hr_employee_documents', { employee_id: employeeId }),
     listHrRecords(companyId, 'hr_employment_contracts', { employee_id: employeeId }),
@@ -969,6 +1087,13 @@ export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: 
     })()
   ]);
 
+  const [sensitiveDetails, dependents] = canSensitive
+    ? await Promise.all([
+      getHrEmployeeSensitiveDetails(companyId, employeeId).catch(() => null),
+      listHrEmployeeDependents(companyId, employeeId).catch(() => [])
+    ])
+    : [null, [] as HrEmployeeDependent[]];
+
   return {
     employee,
     documents,
@@ -984,7 +1109,10 @@ export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: 
     healthExpiring,
     assignedTasks,
     kpiHistory,
-    auditTrail
+    auditTrail,
+    canSensitive,
+    sensitiveDetails,
+    dependents
   };
 }
 
