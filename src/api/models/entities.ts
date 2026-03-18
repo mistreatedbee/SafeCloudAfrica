@@ -53,6 +53,7 @@ export type CompanyMembership = {
   company_id: UUID;
   user_id: UUID;
   role: CompanyRole;
+  is_hr_manager?: boolean;
   status?: OrganizationMemberStatus;
   department_id?: UUID | null;
   site_id?: UUID | null;

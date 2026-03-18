@@ -571,6 +571,19 @@ export async function updateMembershipStatus(input: {
   if (error) throw new Error(getErrorMessage(error));
 }
 
+export async function updateMembershipHrManagerFlag(input: {
+  companyId: UUID;
+  membershipId: UUID;
+  isHrManager: boolean;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('company_memberships')
+    .update({ is_hr_manager: input.isHrManager })
+    .eq('company_id', input.companyId)
+    .eq('id', input.membershipId);
+  if (error) throw new Error(getErrorMessage(error));
+}
+
 export function getDefaultEmployeeLimit(licenseType: LicenseType): number {
   switch (licenseType) {
     case 'starter_6m':

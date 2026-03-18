@@ -10,6 +10,7 @@ import {
   listCompanyInvites,
   listCompanyMemberships,
   resendInvite,
+  updateMembershipHrManagerFlag,
   updateMembershipRole,
   updateMembershipStatus,
   type InviteCreateResult
@@ -80,6 +81,7 @@ export function UsersPage() {
   const canEditProfiles = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager';
   const canEditEmployeeId = isPlatformAdmin || activeRole === 'owner' || activeRole === 'admin';
   const canManageMemberships = activeRole === 'owner' || activeRole === 'admin';
+  const canManageHrManagers = isPlatformAdmin || canManageMemberships;
   const allowedInviteRoles: CompanyRole[] =
     activeRole === 'owner'
       ? ['admin', 'manager', 'supervisor', 'consultant', 'employee', 'auditor']
@@ -126,6 +128,7 @@ export function UsersPage() {
       name: profileByUserId.get(m.user_id as any)?.full_name ?? `User ${shortId(m.user_id)}`,
       role: formatRole(m.role),
       roleRaw: m.role,
+      isHrManager: Boolean((m as any).is_hr_manager),
       email: profileByUserId.get(m.user_id as any)?.email ?? '-',
       status: m.status ?? 'ACTIVE',
       userId: m.user_id
@@ -200,6 +203,21 @@ export function UsersPage() {
       });
     } catch (err: any) {
       setInviteFeedback({ type: 'error', text: err?.message || 'Failed to update user status.' });
+    } finally {
+      setMembershipActionLoadingId(null);
+    }
+  }
+
+  async function handleHrManagerToggle(membershipId: string, nextValue: boolean) {
+    if (!activeCompanyId) return;
+    setMembershipActionLoadingId(membershipId);
+    setInviteFeedback(null);
+    try {
+      await updateMembershipHrManagerFlag({ companyId: activeCompanyId, membershipId: membershipId as any, isHrManager: nextValue });
+      await refreshUsersData();
+      setInviteFeedback({ type: 'success', text: nextValue ? 'HR Manager access enabled.' : 'HR Manager access removed.' });
+    } catch (err: any) {
+      setInviteFeedback({ type: 'error', text: err?.message || 'Failed to update HR Manager access.' });
     } finally {
       setMembershipActionLoadingId(null);
     }
@@ -420,6 +438,7 @@ export function UsersPage() {
                     <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">ID</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Name</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Role</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">HR Access</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Email</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Status</th>
                     <th className="px-4 py-2 text-right text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Actions</th>
@@ -428,14 +447,14 @@ export function UsersPage() {
                 <tbody className="divide-y divide-surface-100">
                   {(membersLoading || invitesLoading) && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-3 text-sm text-charcoal-500">
+                      <td colSpan={7} className="px-4 py-3 text-sm text-charcoal-500">
                         Loading...
                       </td>
                     </tr>
                   )}
                   {!membersLoading && !invitesLoading && filteredUsers.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-3 text-sm text-charcoal-500">
+                      <td colSpan={7} className="px-4 py-3 text-sm text-charcoal-500">
                         No users found.
                       </td>
                     </tr>
@@ -445,6 +464,27 @@ export function UsersPage() {
                       <td className="px-4 py-3 text-sm font-medium text-teal">{u.id}</td>
                       <td className="px-4 py-3 text-sm text-charcoal">{u.name}</td>
                       <td className="px-4 py-3 text-sm text-charcoal-500">{u.role}</td>
+                      <td className="px-4 py-3 text-sm text-charcoal-500">
+                        {u.membershipId ? (
+                          <div className="inline-flex items-center gap-2">
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${u.isHrManager ? 'bg-teal-50 text-teal-800 border border-teal-200' : 'bg-surface-100 text-charcoal-600'}`}>
+                              {u.isHrManager ? 'HR Manager' : 'Standard'}
+                            </span>
+                            {canManageHrManagers && String(u.userId) !== String(user?.id) && (
+                              <button
+                                type="button"
+                                disabled={membershipActionLoadingId === u.membershipId}
+                                onClick={() => void handleHrManagerToggle(u.membershipId as any, !u.isHrManager)}
+                                className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {u.isHrManager ? 'Remove' : 'Make HR Manager'}
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-charcoal-300">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-sm text-charcoal-500">{u.email}</td>
                       <td className="px-4 py-3 text-sm text-charcoal-500">{u.status}</td>
                       <td className="px-4 py-3 text-right">
