@@ -1,15 +1,22 @@
 import { createClient } from '@insforge/sdk';
 
-const DEFAULT_BASE_URL = 'https://pas375jb.us-west.insforge.app';
-
 type InsforgeClient = ReturnType<typeof createClient>;
 
 function getBaseUrl(): string {
-  return (
-    process.env.INSFORGE_BASE_URL ||
-    process.env.VITE_INSFORGE_BASE_URL ||
-    DEFAULT_BASE_URL
-  );
+  const raw =
+    process.env.INSFORGE_BASE_URL?.trim() ||
+    process.env.VITE_INSFORGE_BASE_URL?.trim() ||
+    '';
+  if (!raw) {
+    throw new Error(
+      'InsForge base URL not configured. Set INSFORGE_BASE_URL or VITE_INSFORGE_BASE_URL (e.g. on Vercel serverless env).'
+    );
+  }
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return raw.replace(/\/+$/, '');
+  }
 }
 
 function getAnonKey(): string {

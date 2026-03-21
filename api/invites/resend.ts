@@ -1,17 +1,18 @@
 import { addDaysIso, getServerInsforge, nowIso, readBearerToken } from '../_insforge';
 import { logStructuredLine, sendAlertWebhook } from '../_observability';
-import { buildInviteLink, generateRawInviteToken, hashInviteToken, normalizeInviteStatus, toInviteEmailHtml } from './_shared';
+import {
+  buildInviteLink,
+  generateRawInviteToken,
+  hashInviteToken,
+  normalizeInviteStatus,
+  resolvePublicOrigin,
+  toInviteEmailHtml
+} from './_shared';
 
 const MODULE = 'api.invites.resend';
 
 function normalizeRole(role: unknown): string {
   return String(role ?? '').trim().toLowerCase();
-}
-
-function getOrigin(req: any): string {
-  const proto = req.headers?.['x-forwarded-proto'] || 'https';
-  const host = req.headers?.['x-forwarded-host'] || req.headers?.host || 'safe-cloud-africa.vercel.app';
-  return `${proto}://${host}`;
 }
 
 export default async function handler(req: any, res: any) {
@@ -77,7 +78,7 @@ export default async function handler(req: any, res: any) {
       error_message: null
     };
 
-    const inviteLink = buildInviteLink(rawToken, getOrigin(req));
+    const inviteLink = buildInviteLink(rawToken, resolvePublicOrigin(req));
     const profileRes = await insforge.database
       .from('user_profiles')
       .select('full_name, email')

@@ -14,8 +14,65 @@ export function hashInviteToken(rawToken: string): string {
   return createHash('sha256').update(rawToken.trim()).digest('hex');
 }
 
+function originFromUrlCandidate(candidate: string): string | null {
+  const c = candidate.trim();
+  if (!c) return null;
+  try {
+    return new URL(c).origin;
+  } catch {
+    const stripped = c.replace(/\/+$/, '');
+    return stripped || null;
+  }
+}
+
+/** Request Host / forwarded headers, then APP_URL, VITE_APP_URL, VERCEL_URL, then local dev default. */
+export function resolvePublicOrigin(req: any): string {
+  const protoRaw = req.headers?.['x-forwarded-proto'];
+  const proto = (Array.isArray(protoRaw) ? protoRaw[0] : protoRaw) || 'https';
+  const p = String(proto).split(',')[0].trim() || 'https';
+  const hostRaw = req.headers?.['x-forwarded-host'] || req.headers?.host;
+  const host = typeof hostRaw === 'string' ? hostRaw.split(',')[0].trim() : '';
+  if (host) {
+    const fromHeaders = originFromUrlCandidate(`${p}://${host}`);
+    if (fromHeaders) return fromHeaders;
+  }
+
+  const fromApp = process.env.APP_URL?.trim();
+  if (fromApp) {
+    const o = originFromUrlCandidate(fromApp);
+    if (o) return o;
+  }
+  const fromVite = process.env.VITE_APP_URL?.trim();
+  if (fromVite) {
+    const o = originFromUrlCandidate(fromVite);
+    if (o) return o;
+  }
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) {
+    const hostOnly = vercel.replace(/^https?:\/\//, '').split('/')[0];
+    if (hostOnly) return `https://${hostOnly}`;
+  }
+  return 'http://localhost:5173';
+}
+
+function resolveInviteAppBase(appUrl?: string): string {
+  const vercelHost = process.env.VERCEL_URL?.trim();
+  const fromVercel = vercelHost
+    ? `https://${vercelHost.replace(/^https?:\/\//, '').split('/')[0]}`
+    : '';
+  const ordered = [appUrl?.trim(), process.env.APP_URL?.trim(), process.env.VITE_APP_URL?.trim(), fromVercel];
+  for (const raw of ordered) {
+    if (!raw) continue;
+    const o = originFromUrlCandidate(raw);
+    if (o) return o;
+  }
+  throw new Error(
+    'Public app URL not configured. Set APP_URL, VITE_APP_URL, or VERCEL_URL, or ensure the request includes Host / x-forwarded-host.'
+  );
+}
+
 export function buildInviteLink(rawToken: string, appUrl?: string): string {
-  const base = (appUrl || process.env.APP_URL || process.env.VITE_APP_URL || 'https://safe-cloud-africa.vercel.app').replace(/\/+$/, '');
+  const base = resolveInviteAppBase(appUrl);
   return `${base}/invite/accept?token=${encodeURIComponent(rawToken)}`;
 }
 
