@@ -64,17 +64,18 @@ export function IncidentDetailModal(props: {
   const [investigationEvidence, setInvestigationEvidence] = useState<EvidenceAttachment[]>([]);
   const [evidenceRenamingId, setEvidenceRenamingId] = useState<string | null>(null);
   const [evidenceRenameValue, setEvidenceRenameValue] = useState('');
-  const [investigation, setInvestigation] = useState<IncidentInvestigation | null>(null);
+  const [, setInvestigation] = useState<IncidentInvestigation | null>(null);
   const [correctiveActionModalOpen, setCorrectiveActionModalOpen] = useState(false);
   const [editingCorrectiveActionId, setEditingCorrectiveActionId] = useState<UUID | null>(null);
   const [createFromCause, setCreateFromCause] = useState<{ type: 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure'; text: string } | null>(null);
   const [refreshCorrectiveActions, setRefreshCorrectiveActions] = useState(0);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
-  const { data: correctiveActions = [] } = useAsync<IncidentCorrectiveAction[]>(
+  const { data: correctiveActionsData } = useAsync<IncidentCorrectiveAction[]>(
     async () => (incident && props.companyId ? listIncidentCorrectiveActions(props.companyId, incident.id) : []),
     [incident?.id, props.companyId, refreshCorrectiveActions]
   );
+  const correctiveActions = correctiveActionsData ?? [];
 
   const [notes, setNotes] = useState('');
   const [instructionBreakdown, setInstructionBreakdown] = useState('');

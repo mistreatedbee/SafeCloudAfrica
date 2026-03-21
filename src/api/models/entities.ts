@@ -772,10 +772,8 @@ export type QualityNcr = {
   company_id: UUID;
   module: ModuleKey;
   site_id?: UUID | null;
-  site_id?: UUID | null;
   department_id?: UUID | null;
   nc_number: string | null;
-  date_identified?: string | null;
   date_identified?: string | null;
   ncr_type?: string | null;
   ncr_category?: string | null;
@@ -1075,10 +1073,6 @@ export type InspectionRunItem = {
   auditor_verified_at?: string | null;
   ncr_closed_at?: string | null;
   ncr_closed_by_user_id?: UUID | null;
-  manager_approved_by_user_id?: UUID | null;
-  manager_approved_at?: string | null;
-  auditor_verified_by_user_id?: UUID | null;
-  auditor_verified_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -2355,3 +2349,6 @@ export type AuditFinding = {
   created_by_user_id: UUID;
   created_at: string;
 };
+
+/** Re-export for consumers that import identifiers alongside entity types. */
+export type { ModuleKey, UUID } from './core';

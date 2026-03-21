@@ -2,11 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
-import type { Department, HrEmployee, PPEItem, Site, UUID } from '../../api/models/entities';
+import type { Department, PPEItem, Site, UUID } from '../../api/models/entities';
 import { createPpeStock } from '../../api/services/ppeService';
 import { getMyProfile } from '../../api/services/profilesService';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listHrEmployees } from '../../api/services/hrService';
+import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
 
 export function PpeStockCreateModal(props: {
   open: boolean;

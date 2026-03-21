@@ -5,8 +5,7 @@
  * Uses a simple HTML-to-PDF approach (can be enhanced with pdfkit or puppeteer)
  */
 
-import type { UUID } from '../models/core';
-import type { Incident, QualityNcr, Audit, PPEIssue } from '../models/entities';
+import type { EvidenceAttachment, Incident, IncidentCorrectiveAction, QualityNcr, Audit, PPEIssue } from '../models/entities';
 
 export interface ExportOptions {
   includeEvidence?: boolean;
@@ -14,6 +13,9 @@ export interface ExportOptions {
   fontSize?: number;
   orientation?: 'portrait' | 'landscape';
   companyName?: string;
+  generatedBy?: string;
+  evidenceList?: EvidenceAttachment[];
+  correctiveActions?: IncidentCorrectiveAction[];
 }
 
 export type ExportFormat = 'pdf' | 'csv' | 'xlsx';
@@ -25,7 +27,15 @@ export async function exportIncidentPDF(
   incident: Incident,
   options: ExportOptions = {}
 ): Promise<Blob> {
-  const { includeEvidence = true, includeSignatures = true, fontSize = 11, companyName = '' } = options;
+  const {
+    includeEvidence = true,
+    includeSignatures = true,
+    fontSize = 11,
+    companyName = '',
+    generatedBy,
+    evidenceList,
+    correctiveActions
+  } = options;
 
   // Generate HTML content
   const html = generateIncidentHTML(incident, {
@@ -33,6 +43,9 @@ export async function exportIncidentPDF(
     includeSignatures,
     fontSize,
     companyName,
+    generatedBy,
+    evidenceList,
+    correctiveActions
   });
 
   // Convert to PDF (using simple approach - can upgrade to pdfkit)
@@ -201,12 +214,28 @@ export function exportAuditChecklistCSV(
   return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /**
  * Generate incident HTML for PDF
  */
 function generateIncidentHTML(
   incident: Incident,
-  options: { includeEvidence: boolean; includeSignatures: boolean; fontSize: number; companyName?: string }
+  options: {
+    includeEvidence: boolean;
+    includeSignatures: boolean;
+    fontSize: number;
+    companyName?: string;
+    generatedBy?: string;
+    evidenceList?: EvidenceAttachment[];
+    correctiveActions?: IncidentCorrectiveAction[];
+  }
 ): string {
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString();
   const unsafeActs = summarizeUnsafeItems((incident as any).immediate_causes_unsafe_acts) || 'Not specified';
@@ -241,7 +270,7 @@ function generateIncidentHTML(
     <body>
       <div class="header">
         <h1>Incident Report</h1>
-        <p>Generated: ${new Date().toLocaleString()}</p>
+        <p>Generated: ${new Date().toLocaleString()}${options.generatedBy ? ` — ${escapeHtml(options.generatedBy)}` : ''}</p>
       </div>
 
       <div class="section">
@@ -325,9 +354,38 @@ function generateIncidentHTML(
       ${options.includeEvidence ? `
       <div class="section">
         <div class="section-title">Evidence & Attachments</div>
-        <p style="color: #666;">Evidence files attached separately</p>
+        ${
+          options.evidenceList && options.evidenceList.length > 0
+            ? `<ul style="margin: 0; padding-left: 20px;">${options.evidenceList
+                .map(
+                  (ev) =>
+                    `<li>${escapeHtml(String((ev as any).display_title ?? ev.title ?? (ev as any).original_filename ?? ev.storage_key ?? '—'))}</li>`
+                )
+                .join('')}</ul>`
+            : '<p style="color: #666;">Evidence files attached separately</p>'
+        }
       </div>
       ` : ''}
+
+      ${
+        options.correctiveActions && options.correctiveActions.length > 0
+          ? `
+      <div class="section">
+        <div class="section-title">Corrective actions</div>
+        <table>
+          <thead><tr><th>Action</th><th>Status</th><th>Due</th></tr></thead>
+          <tbody>
+            ${options.correctiveActions
+              .map(
+                (a) =>
+                  `<tr><td>${escapeHtml(String(a.action_title ?? '—'))}</td><td>${escapeHtml(String(a.status ?? '—'))}</td><td>${escapeHtml(a.due_date ? new Date(a.due_date).toLocaleDateString() : '—')}</td></tr>`
+              )
+              .join('')}
+          </tbody>
+        </table>
+      </div>`
+          : ''
+      }
 
       <div class="footer">
         <div class="footer-left">SafeCloud Africa</div>

@@ -6,6 +6,8 @@ export type AsyncState<T> = {
   loading: boolean;
   retry: () => void;
   refetch: () => void;
+  /** Alias for `refetch` / `retry` (invalidate and reload). */
+  refresh: () => void;
   isBackendUnavailable: boolean;
 };
 
@@ -30,6 +32,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[]): AsyncState<T> {
     loading: true,
     retry: () => {},
     refetch: () => {},
+    refresh: () => {},
     isBackendUnavailable: false
   });
   const retry = useCallback(() => {
@@ -38,11 +41,11 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[]): AsyncState<T> {
 
   useEffect(() => {
     let cancelled = false;
-    setState((s) => ({ ...s, loading: true, error: null, retry, refetch: retry, isBackendUnavailable: false }));
+    setState((s) => ({ ...s, loading: true, error: null, retry, refetch: retry, refresh: retry, isBackendUnavailable: false }));
     fn()
       .then((data) => {
         if (cancelled) return;
-        setState({ data, error: null, loading: false, retry, refetch: retry, isBackendUnavailable: false });
+        setState({ data, error: null, loading: false, retry, refetch: retry, refresh: retry, isBackendUnavailable: false });
       })
       .catch((error) => {
         if (cancelled) return;
@@ -52,6 +55,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[]): AsyncState<T> {
           loading: false,
           retry,
           refetch: retry,
+          refresh: retry,
           isBackendUnavailable: isBackendUnavailableError(error)
         });
       });
@@ -61,6 +65,12 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[]): AsyncState<T> {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, reloadToken, retry]);
 
-  return { ...state, retry, refetch: retry, isBackendUnavailable: isBackendUnavailableError(state.error) };
+  return {
+    ...state,
+    retry,
+    refetch: retry,
+    refresh: retry,
+    isBackendUnavailable: isBackendUnavailableError(state.error)
+  };
 }
 
