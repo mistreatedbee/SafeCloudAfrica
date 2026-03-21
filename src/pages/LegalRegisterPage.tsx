@@ -17,6 +17,8 @@ import {
 import { listUserProfiles } from '../api/services/profilesService';
 import { downloadTextFile } from '../utils/csv';
 import { LegalRequirementCreateModal } from '../components/legal/LegalRequirementCreateModal';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { GavelIcon } from 'lucide-react';
 
 function canWrite(role: CompanyRole | null): boolean {
   return role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor' || role === 'consultant';
@@ -50,7 +52,7 @@ export function LegalRegisterPage() {
 
   const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
 
-  const { data, loading, error, refresh } = useAsync(
+  const { data, loading, error, refetch } = useAsync(
     async () => {
       if (!activeCompanyId) return null;
       await runLegalUpdateReminderSweep(activeCompanyId).catch(() => undefined);
@@ -117,6 +119,25 @@ export function LegalRegisterPage() {
     win.print();
   };
 
+  const hasLegalRegisterFilters =
+    Boolean(search.trim()) ||
+    Boolean(complianceStatus) ||
+    Boolean(responsibleUserId) ||
+    Boolean(applicability.trim()) ||
+    Boolean(createdFrom || createdTo || updatedFrom || updatedTo);
+
+  function clearLegalRegisterFilters() {
+    setSearch('');
+    setComplianceStatus('');
+    setResponsibleUserId('');
+    setApplicability('');
+    setCreatedFrom('');
+    setCreatedTo('');
+    setUpdatedFrom('');
+    setUpdatedTo('');
+    setPage(1);
+  }
+
   return (
     <Layout title="Legal Requirements Register">
       {activeCompanyId && user?.id && (
@@ -135,7 +156,7 @@ export function LegalRegisterPage() {
             setModalOpen(false);
             setEditing(null);
             setRefreshKey((k) => k + 1);
-            await refresh();
+            await refetch();
           }}
         />
       )}
@@ -270,11 +291,29 @@ export function LegalRegisterPage() {
                   );
                 })}
                 {rows.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center text-charcoal-500">
-                      No legal requirements found.
-                    </td>
-                  </tr>
+                  <ListEmptyState
+                    tableColSpan={7}
+                    icon={GavelIcon}
+                    title="No legal requirements match"
+                    description="Build your register to link standards, evidence, owners, and compliance status."
+                    primaryAction={
+                      writable
+                        ? {
+                            kind: 'button',
+                            label: 'Add requirement',
+                            onClick: () => {
+                              setEditing(null);
+                              setModalOpen(true);
+                            }
+                          }
+                        : { kind: 'link', to: '/modules/legal', label: 'Legal module' }
+                    }
+                    secondaryAction={
+                      hasLegalRegisterFilters
+                        ? { kind: 'button', label: 'Clear filters', onClick: clearLegalRegisterFilters }
+                        : undefined
+                    }
+                  />
                 )}
               </tbody>
             </table>

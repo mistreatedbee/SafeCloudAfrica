@@ -6,6 +6,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { getEnvironmentDashboardStats, runEnvironmentReminderSweep } from '../../api/services/environmentService';
 import { StatCard } from '../../components/ui/StatCard';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from 'recharts';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
+import { Trash2Icon } from 'lucide-react';
 
 const quickLinks = [
   { to: '/dashboard/environment/eia', label: 'Environmental Impact Assessment (EIA)' },
@@ -98,7 +100,13 @@ export function EnvironmentDashboardPage() {
                       </tr>
                     ))}
                     {data.wasteQuantityTrend.length === 0 && (
-                      <tr><td colSpan={3} className="px-3 py-6 text-center text-charcoal-500">No waste data yet.</td></tr>
+                      <ListEmptyState
+                        tableColSpan={3}
+                        icon={Trash2Icon}
+                        title="No waste data for this period"
+                        description="Log waste movements and quantities in the waste register to populate this trend."
+                        primaryAction={{ kind: 'link', to: '/dashboard/environment/waste', label: 'Open waste register' }}
+                      />
                     )}
                   </tbody>
                 </table>

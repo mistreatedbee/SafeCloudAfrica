@@ -22,6 +22,7 @@ import { DocumentUploadModal } from '../components/documents/DocumentUploadModal
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../api/services/documentsStorageService';
 import { listLegalRequirementsForLinkedRecord } from '../api/services/legalRequirementsService';
 import type { LegalRequirement } from '../api/models/entities';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -243,11 +244,29 @@ export function DocumentsPage() {
                     </tr>
                   )}
                   {!loading && filteredDocs.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-5 py-4 text-sm text-charcoal-500">
-                        No documents found.
-                      </td>
-                    </tr>
+                    <ListEmptyState
+                      tableColSpan={7}
+                      icon={FileTextIcon}
+                      title={documents.length === 0 ? 'No documents uploaded' : 'No documents match filters'}
+                      description="Upload controlled documents with version and status so teams always use the right file."
+                      primaryAction={
+                        canUpload
+                          ? { kind: 'button', label: 'Upload document', onClick: () => setUploadOpen(true) }
+                          : { kind: 'link', to: '/templates', label: 'Template library' }
+                      }
+                      secondaryAction={
+                        documents.length > 0 && (searchQuery.trim() || selectedCategory)
+                          ? {
+                              kind: 'button',
+                              label: 'Clear search & category',
+                              onClick: () => {
+                                setSearchQuery('');
+                                setSelectedCategory(null);
+                              }
+                            }
+                          : undefined
+                      }
+                    />
                   )}
                   {filteredDocs.map((doc) => (
                   <tr

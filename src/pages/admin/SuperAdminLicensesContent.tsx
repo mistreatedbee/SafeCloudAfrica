@@ -15,6 +15,8 @@ import {
   type CreateLicenseInput,
   type CreateLicenseKeyInput
 } from '../../api/services/licensesService';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
+import { KeyIcon, IdCardIcon } from 'lucide-react';
 
 const PLAN_OPTIONS: { value: CreateLicenseInput['plan_name']; label: string }[] = [
   { value: 'base', label: 'Base' },
@@ -170,7 +172,7 @@ export function SuperAdminLicensesContent() {
   return (
     <div className="space-y-6">
       {/* Generate license key (for client activation) */}
-      <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
+      <div id="superadmin-generate-license-key" className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
         <h2 className="text-base font-semibold text-charcoal mb-4">Generate license key (for client activation)</h2>
         {keyMessage && (
           <div
@@ -271,7 +273,19 @@ export function SuperAdminLicensesContent() {
         </div>
         {keysLoading && <div className="p-5 text-sm text-charcoal-500">Loading…</div>}
         {!keysLoading && (!keysList || keysList.length === 0) && (
-          <div className="p-5 text-sm text-charcoal-500">No license keys yet. Generate one above.</div>
+          <div className="p-5">
+            <ListEmptyState
+              embedded
+              icon={KeyIcon}
+              title="No license keys yet"
+              description="Generate a key so clients can activate plans and seat limits without manual setup."
+              primaryAction={{
+                kind: 'button',
+                label: 'Go to generator',
+                onClick: () => document.getElementById('superadmin-generate-license-key')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+            />
+          </div>
         )}
         {!keysLoading && keysList && keysList.length > 0 && (
           <div className="overflow-x-auto">
@@ -314,7 +328,7 @@ export function SuperAdminLicensesContent() {
       </div>
 
       {/* Create License form (existing org) */}
-      <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
+      <div id="superadmin-create-license" className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
         <h2 className="text-base font-semibold text-charcoal mb-4">Create license</h2>
         {message && (
           <div
@@ -421,7 +435,19 @@ export function SuperAdminLicensesContent() {
           <div className="p-5 text-sm text-charcoal-500">Loading…</div>
         )}
         {!loading && list.length === 0 && (
-          <div className="p-5 text-sm text-charcoal-500">No licenses yet. Create one above.</div>
+          <div className="p-5">
+            <ListEmptyState
+              embedded
+              icon={IdCardIcon}
+              title="No active licenses yet"
+              description="Create a license for an existing organisation to set plan, seats, and billing period."
+              primaryAction={{
+                kind: 'button',
+                label: 'Go to create form',
+                onClick: () => document.getElementById('superadmin-create-license')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+            />
+          </div>
         )}
         {!loading && list.length > 0 && (
           <div className="overflow-x-auto">

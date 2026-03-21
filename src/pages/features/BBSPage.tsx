@@ -10,6 +10,7 @@ import type { BbsObservation } from '../../api/models/entities';
 import { BbsObservationCreateModal } from '../../components/features/BbsObservationCreateModal';
 import { isSellableFeatureAccessError } from '../../api/services/sellableFeaturesService';
 import { SellableFeatureLockedPage } from './SellableFeatureLockedPage';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -114,9 +115,17 @@ export function BBSPage() {
 
         <motion.div variants={itemVariants} className="space-y-3">
           {rows.length === 0 && (
-            <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-              <p className="text-sm text-charcoal-500">No observations yet.</p>
-            </div>
+            <ListEmptyState
+              icon={EyeIcon}
+              title={(data ?? []).length === 0 ? 'No BBS observations yet' : 'No observations match your search'}
+              description="Log safe and at-risk behaviours to coach teams and spot trends early."
+              primaryAction={{ kind: 'button', label: 'New observation', onClick: () => setCreateOpen(true) }}
+              secondaryAction={
+                (data ?? []).length > 0 && q.trim()
+                  ? { kind: 'button', label: 'Clear search', onClick: () => setQ('') }
+                  : undefined
+              }
+            />
           )}
           {rows.map((o) => (
             <div key={o.id} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">

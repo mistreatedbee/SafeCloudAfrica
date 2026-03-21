@@ -17,6 +17,8 @@ import {
 } from '../api/services/improvementService';
 import { listUserProfiles } from '../api/services/profilesService';
 import { toCsv, downloadTextFile } from '../utils/csv';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { ClipboardListIcon } from 'lucide-react';
 
 type DateRange = {
   from: string;
@@ -83,7 +85,7 @@ export function ImprovementPage() {
     [activeCompanyId]
   );
 
-  const { data: summary, refresh: refreshSummary } = useAsync(
+  const { data: summary, refetch: refreshSummary } = useAsync(
     async () => {
       if (!activeCompanyId) return null;
       return await getImprovementSummary(activeCompanyId);
@@ -91,7 +93,7 @@ export function ImprovementPage() {
     [activeCompanyId, refreshKey]
   );
 
-  const { data: records, loading, error, refresh } = useAsync<ImprovementRecord[]>(
+  const { data: records, loading, error, refetch: refresh } = useAsync<ImprovementRecord[]>(
     async () => {
       if (!activeCompanyId) return [];
       const list = await listImprovements({
@@ -190,6 +192,33 @@ export function ImprovementPage() {
     const text = prompt('Add comment');
     if (!text?.trim()) return;
     navigate(`/improvement/${rec.id}?comment=${encodeURIComponent(text.trim())}`);
+  }
+
+  const hasImprovementFilters =
+    Boolean(statusFilter) ||
+    Boolean(typeFilter) ||
+    Boolean(riskFilter) ||
+    Boolean(deptFilter) ||
+    Boolean(sourceFilter) ||
+    Boolean(raisedByFilter) ||
+    Boolean(responsibleFilter) ||
+    Boolean(search.trim()) ||
+    Boolean(dateRaised.from || dateRaised.to) ||
+    Boolean(dateTarget.from || dateTarget.to) ||
+    Boolean(dateClosure.from || dateClosure.to);
+
+  function clearImprovementFilters() {
+    setStatusFilter('');
+    setTypeFilter('');
+    setRiskFilter('');
+    setDeptFilter('');
+    setSourceFilter('');
+    setRaisedByFilter('');
+    setResponsibleFilter('');
+    setSearch('');
+    setDateRaised({ from: '', to: '' });
+    setDateTarget({ from: '', to: '' });
+    setDateClosure({ from: '', to: '' });
   }
 
   function exportCsv() {
@@ -439,11 +468,18 @@ export function ImprovementPage() {
                   );
                 })}
                 {(records ?? []).length === 0 && (
-                  <tr>
-                    <td colSpan={13} className="px-3 py-6 text-center text-charcoal-500">
-                      No improvements found.
-                    </td>
-                  </tr>
+                  <ListEmptyState
+                    tableColSpan={13}
+                    icon={ClipboardListIcon}
+                    title="No improvement records match"
+                    description="Create a corrective action or improvement, or widen your filters to see more rows."
+                    primaryAction={{ kind: 'link', to: '/improvement/new', label: 'New improvement / CAPA' }}
+                    secondaryAction={
+                      hasImprovementFilters
+                        ? { kind: 'button', label: 'Clear filters', onClick: clearImprovementFilters }
+                        : undefined
+                    }
+                  />
                 )}
               </tbody>
             </table>

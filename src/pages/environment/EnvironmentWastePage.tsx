@@ -6,6 +6,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { listUserProfiles } from '../../api/services/profilesService';
 import { listEnvWasteDisposal, upsertEnvWasteDisposal } from '../../api/services/environmentService';
 import { toCsv, downloadTextFile } from '../../utils/csv';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
+import { Trash2Icon } from 'lucide-react';
 
 const currentYear = new Date().getFullYear();
 const OTHER_WASTE_TYPE_VALUE = '__OTHER__';
@@ -59,7 +61,7 @@ export function EnvironmentWastePage() {
   });
 
   const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
-  const { data: rows, loading, error, refresh } = useAsync(async () => {
+  const { data: rows, loading, error, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listEnvWasteDisposal(activeCompanyId, {
       year,
@@ -149,7 +151,7 @@ export function EnvironmentWastePage() {
       customWasteType: ''
     });
     setRefreshKey((k) => k + 1);
-    await refresh();
+    await refetch();
   }
 
   function startEdit(row: any) {
@@ -221,7 +223,7 @@ export function EnvironmentWastePage() {
           </button>
         </div>
 
-        <form onSubmit={onSave} className="bg-white border rounded-xl p-4 space-y-3">
+        <form id="env-waste-form" onSubmit={onSave} className="bg-white border rounded-xl p-4 space-y-3">
           <p className="font-semibold text-sm">{editing ? 'Edit waste record' : 'Create waste record'}</p>
           {isClosed && (
             <div className="text-xs text-critical bg-critical-50 border border-critical-100 rounded-lg px-3 py-2">
@@ -508,11 +510,17 @@ export function EnvironmentWastePage() {
                   </tr>
                 ))}
                 {(rows ?? []).length === 0 && (
-                  <tr>
-                    <td colSpan={11} className="px-3 py-6 text-center text-charcoal-500">
-                      No waste records.
-                    </td>
-                  </tr>
+                  <ListEmptyState
+                    tableColSpan={11}
+                    icon={Trash2Icon}
+                    title="No waste disposal records"
+                    description="Track waste types, quantities, storage, contractors, and disposal evidence in one register."
+                    primaryAction={{
+                      kind: 'button',
+                      label: 'Go to create form',
+                      onClick: () => document.getElementById('env-waste-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    }}
+                  />
                 )}
               </tbody>
             </table>

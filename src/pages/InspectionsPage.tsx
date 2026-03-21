@@ -13,6 +13,7 @@ import { InspectionCreateModal } from '../components/inspections/InspectionCreat
 import { InspectionChecklistLibrary } from '../components/inspections/InspectionChecklistLibrary';
 import { toCsv, downloadTextFile } from '../utils/csv';
 import { useIdentity } from '../hooks/useIdentity';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -220,9 +221,25 @@ export function InspectionsPage() {
                   </div>
                 )}
                 {!loading && !error && filteredInspections.length === 0 && (
-                  <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-                    <p className="text-sm text-charcoal-500">No inspections yet.</p>
-                  </div>
+                  <ListEmptyState
+                    icon={ClipboardCheckIcon}
+                    title={rows.length === 0 ? 'No inspections yet' : 'No inspections match your search'}
+                    description={
+                      rows.length === 0
+                        ? 'Schedule inspections to run checklists, capture findings, and track follow-up.'
+                        : 'Try a different search term or clear the box to see all inspections.'
+                    }
+                    primaryAction={
+                      canSchedule
+                        ? { kind: 'button', label: 'Create inspection', onClick: () => navigate('/inspections/new') }
+                        : { kind: 'link', to: '/tasks', label: 'View tasks' }
+                    }
+                    secondaryAction={
+                      rows.length > 0 && searchQuery.trim()
+                        ? { kind: 'button', label: 'Clear search', onClick: () => setSearchQuery('') }
+                        : undefined
+                    }
+                  />
                 )}
           {filteredInspections.map((inspection) => (
                   <div

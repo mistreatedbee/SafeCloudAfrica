@@ -7,6 +7,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { listUserProfiles } from '../../api/services/profilesService';
 import { listEnvWaterMonitoring, upsertEnvWaterMonitoring, listLegalRequirementOptions } from '../../api/services/environmentService';
 import { toCsv, downloadTextFile } from '../../utils/csv';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
+import { DropletsIcon } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { EvidenceModal } from '../../components/evidence/EvidenceModal';
 
@@ -84,7 +86,7 @@ export function EnvironmentWaterPage() {
 
   const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
   const { data: legalOptions } = useAsync(async () => (activeCompanyId ? await listLegalRequirementOptions(activeCompanyId) : []), [activeCompanyId]);
-  const { data: rows, loading, error, refresh } = useAsync(async () => {
+  const { data: rows, loading, error, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listEnvWaterMonitoring(activeCompanyId, { year, status, fromDate: fromDate || undefined, toDate: toDate || undefined, responsibleUserId: responsibleUserId || undefined, search });
   }, [activeCompanyId, year, status, fromDate, toDate, responsibleUserId, search, refreshKey]);
@@ -154,7 +156,7 @@ export function EnvironmentWaterPage() {
       approvedAt: ''
     });
     setRefreshKey((k) => k + 1);
-    await refresh();
+    await refetch();
   }
 
   function startEdit(row: any) {
@@ -222,7 +224,7 @@ export function EnvironmentWaterPage() {
           <button type="button" onClick={() => downloadTextFile(`environment-water-${new Date().toISOString().slice(0, 10)}.csv`, toCsv((rows ?? []).map((r: any) => ({ reference_number: r.reference_number, sampling_date: r.sampling_date, site_facility_name: r.site_facility_name, overall_compliance_status: r.overall_compliance_status, system_generated_capa_id: r.system_generated_capa_id ?? '' }))), 'text/csv;charset=utf-8')} className="px-3 py-2 border rounded-lg text-sm hover:bg-surface-50">Export CSV</button>
         </div>
 
-        <form onSubmit={onSave} className="bg-white border rounded-xl p-4 space-y-3">
+        <form id="env-water-monitoring-form" onSubmit={onSave} className="bg-white border rounded-xl p-4 space-y-3">
           <p className="font-semibold text-sm">{editing ? 'Edit water monitoring' : 'Create water monitoring'}</p>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <input value={form.referenceNumber} onChange={(e) => setForm({ ...form, referenceNumber: e.target.value })} placeholder="Reference number" className="px-3 py-2 border rounded-lg text-sm" required />
@@ -383,9 +385,17 @@ export function EnvironmentWaterPage() {
                   </tr>
                 ))}
                 {(rows ?? []).length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="px-3 py-6 text-center text-charcoal-500">No water monitoring records.</td>
-                  </tr>
+                  <ListEmptyState
+                    tableColSpan={9}
+                    icon={DropletsIcon}
+                    title="No water monitoring records"
+                    description="Record sampling results, parameters, and lab evidence for each site and sampling point."
+                    primaryAction={{
+                      kind: 'button',
+                      label: 'Go to create form',
+                      onClick: () => document.getElementById('env-water-monitoring-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    }}
+                  />
                 )}
               </tbody>
             </table>

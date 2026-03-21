@@ -4,6 +4,7 @@ import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { listRiskAssessments, type RiskAssessment } from '../../api/services/risksService';
 import { AlertOctagonIcon, BarChart3Icon, AlertTriangleIcon, ClipboardListIcon } from 'lucide-react';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
 
 export function RiskAssessmentDashboardPage() {
   const { activeCompanyId } = useTenant();
@@ -134,7 +135,15 @@ export function RiskAssessmentDashboardPage() {
                 </span>
               ))}
               {Object.keys(byType).length === 0 && (
-                <p className="text-gray-500 text-sm">No assessments yet</p>
+                <div className="w-full">
+                  <ListEmptyState
+                    embedded
+                    icon={BarChart3Icon}
+                    title="No assessments loaded"
+                    description="Create assessments to see counts by type on this dashboard."
+                    primaryAction={{ kind: 'link', to: '/risks', label: 'Open risk assessments' }}
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -158,7 +167,13 @@ export function RiskAssessmentDashboardPage() {
             <AlertTriangleIcon className="w-5 h-5 text-amber-600" /> Needs review (priority)
           </h3>
           {needsReview.length === 0 ? (
-            <p className="text-gray-500 text-sm">No assessments currently requiring review.</p>
+            <ListEmptyState
+              embedded
+              icon={AlertTriangleIcon}
+              title="Nothing needs review right now"
+              description="Assessments in review or pending approval will be listed here for quick access."
+              primaryAction={{ kind: 'link', to: '/risks', label: 'Browse assessments' }}
+            />
           ) : (
             <ul className="space-y-2">
               {needsReview.map((a) => (

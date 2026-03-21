@@ -7,6 +7,8 @@ import { listKPIFindings, attachProofToFinding, closeKPIFindingWithSignOff } fro
 import { uploadFile } from '../../api/services/storageService';
 import type { KPIFinding, KpiFindingStatus } from '../../api/models/entities';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
+import { SearchIcon } from 'lucide-react';
 
 export function KPIFindingsListPage() {
   const navigate = useNavigate();
@@ -102,9 +104,15 @@ export function KPIFindingsListPage() {
       )}
 
       {!loading && list.length === 0 && (
-        <div className="bg-white rounded-xl border border-surface-300 p-6 shadow-card">
-          <p className="text-charcoal-500">No findings.</p>
-        </div>
+        <ListEmptyState
+          icon={SearchIcon}
+          title={statusFilter === 'all' ? 'No KPI findings yet' : 'No findings for this status'}
+          description="Findings from assessments appear here for evidence upload and manager sign-off."
+          primaryAction={{ kind: 'link', to: '/modules/hr/kpis/assessments', label: 'Open KPI assessments' }}
+          secondaryAction={
+            statusFilter !== 'all' ? { kind: 'button', label: 'Show all statuses', onClick: () => setStatusFilter('all') } : undefined
+          }
+        />
       )}
 
       {!loading && list.length > 0 && (

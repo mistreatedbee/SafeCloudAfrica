@@ -8,6 +8,8 @@ import { listUserProfiles } from '../../api/services/profilesService';
 import { listEnvAirQuality, upsertEnvAirQuality, listLegalRequirementOptions } from '../../api/services/environmentService';
 import { toCsv, downloadTextFile } from '../../utils/csv';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
+import { WindIcon } from 'lucide-react';
 
 const currentYear = new Date().getFullYear();
 
@@ -61,7 +63,7 @@ export function EnvironmentAirPage() {
 
   const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
   const { data: legalOptions } = useAsync(async () => (activeCompanyId ? await listLegalRequirementOptions(activeCompanyId) : []), [activeCompanyId]);
-  const { data: rows, loading, error, refresh } = useAsync(async () => {
+  const { data: rows, loading, error, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listEnvAirQuality(activeCompanyId, { year, status, fromDate: fromDate || undefined, toDate: toDate || undefined, responsibleUserId: responsibleUserId || undefined, search });
   }, [activeCompanyId, year, status, fromDate, toDate, responsibleUserId, search, refreshKey]);
@@ -118,7 +120,7 @@ export function EnvironmentAirPage() {
       approvedAt: ''
     });
     setRefreshKey((k) => k + 1);
-    await refresh();
+    await refetch();
   }
 
   function startEdit(row: any) {
@@ -176,7 +178,7 @@ export function EnvironmentAirPage() {
           <button type="button" onClick={() => downloadTextFile(`environment-air-${new Date().toISOString().slice(0, 10)}.csv`, toCsv((rows ?? []).map((r: any) => ({ reference_number: r.reference_number, monitoring_date: r.monitoring_date, monitoring_location: r.monitoring_location, overall_status: r.overall_status, system_generated_capa_id: r.system_generated_capa_id ?? '' }))), 'text/csv;charset=utf-8')} className="px-3 py-2 border rounded-lg text-sm hover:bg-surface-50">Export CSV</button>
         </div>
 
-        <form onSubmit={onSave} className="bg-white border rounded-xl p-4 space-y-3">
+        <form id="env-air-quality-form" onSubmit={onSave} className="bg-white border rounded-xl p-4 space-y-3">
           <p className="font-semibold text-sm">{editing ? 'Edit air quality monitoring' : 'Create air quality monitoring'}</p>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <input value={form.referenceNumber} onChange={(e) => setForm({ ...form, referenceNumber: e.target.value })} placeholder="Reference number" className="px-3 py-2 border rounded-lg text-sm" required />
@@ -342,7 +344,19 @@ export function EnvironmentAirPage() {
 
         {error && <div className="text-sm text-critical">{String(error.message)}</div>}
         {loading ? <p className="text-sm text-charcoal-500">Loading...</p> : (
-          <div className="bg-white border rounded-xl overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Reference</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Location</th><th className="px-3 py-2 text-left">Method</th><th className="px-3 py-2 text-left">Overall</th><th className="px-3 py-2 text-left">Reviewer</th><th className="px-3 py-2 text-left">NCR</th><th className="px-3 py-2 text-left">Actions</th></tr></thead><tbody className="divide-y divide-surface-100">{(rows ?? []).map((r: any) => <tr key={r.id}><td className="px-3 py-2">{r.reference_number}</td><td className="px-3 py-2">{r.monitoring_date}</td><td className="px-3 py-2">{r.monitoring_location}</td><td className="px-3 py-2">{r.method_used}</td><td className="px-3 py-2">{r.overall_status}</td><td className="px-3 py-2">{r.reviewed_by_user_id ? (userLabel.get(r.reviewed_by_user_id) ?? r.reviewed_by_user_id) : '-'}</td><td className="px-3 py-2">{r.system_generated_capa_id ? <Link to="/dashboard/management/ncrs" className="text-teal hover:underline">View NCR</Link> : '-'}</td><td className="px-3 py-2"><button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button></td></tr>)}{(rows ?? []).length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-charcoal-500">No air quality records.</td></tr>}</tbody></table></div>
+          <div className="bg-white border rounded-xl overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Reference</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Location</th><th className="px-3 py-2 text-left">Method</th><th className="px-3 py-2 text-left">Overall</th><th className="px-3 py-2 text-left">Reviewer</th><th className="px-3 py-2 text-left">NCR</th><th className="px-3 py-2 text-left">Actions</th></tr></thead><tbody className="divide-y divide-surface-100">{(rows ?? []).map((r: any) => <tr key={r.id}><td className="px-3 py-2">{r.reference_number}</td><td className="px-3 py-2">{r.monitoring_date}</td><td className="px-3 py-2">{r.monitoring_location}</td><td className="px-3 py-2">{r.method_used}</td><td className="px-3 py-2">{r.overall_status}</td><td className="px-3 py-2">{r.reviewed_by_user_id ? (userLabel.get(r.reviewed_by_user_id) ?? r.reviewed_by_user_id) : '-'}</td><td className="px-3 py-2">{r.system_generated_capa_id ? <Link to="/dashboard/management/ncrs" className="text-teal hover:underline">View NCR</Link> : '-'}</td><td className="px-3 py-2"><button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button></td></tr>)}{(rows ?? []).length === 0 && (
+                    <ListEmptyState
+                      tableColSpan={8}
+                      icon={WindIcon}
+                      title="No air quality monitoring records"
+                      description="Log stack or ambient results, methods, limits, and approvals for each monitoring event."
+                      primaryAction={{
+                        kind: 'button',
+                        label: 'Go to create form',
+                        onClick: () => document.getElementById('env-air-quality-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      }}
+                    />
+                  )}</tbody></table></div>
         )}
       </div>
     </Layout>

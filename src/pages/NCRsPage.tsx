@@ -9,6 +9,7 @@ import type { QualityNcr, UUID } from '../api/models/entities';
 import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
 import NCRDetailModal from '../components/ncrs/NCRDetailModal';
 import { Layout } from '../components/layout/Layout';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -131,6 +132,26 @@ export default function NCRsPage() {
 
   const filteredNCRs = ncrs;
 
+  const hasNcrFilters =
+    selectedStatus !== 'all' ||
+    selectedSource !== 'all' ||
+    selectedRisk !== 'all' ||
+    Boolean(dateFrom || dateTo) ||
+    Boolean(departmentIdFilter.trim()) ||
+    Boolean(assignedUserFilter.trim()) ||
+    assignedToMeOnly;
+
+  function resetNcrFilters() {
+    setSelectedStatus('all');
+    setSelectedSource('all');
+    setSelectedRisk('all');
+    setDateFrom('');
+    setDateTo('');
+    setDepartmentIdFilter('');
+    setAssignedUserFilter('');
+    setAssignedToMeOnly(false);
+  }
+
   return (
     <>
       <Layout title="Non-Conformances (NCR)">
@@ -247,12 +268,20 @@ export default function NCRsPage() {
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-600"></div>
               </div>
             ) : filteredNCRs.length === 0 ? (
-              <motion.div
-                variants={itemVariants}
-                className="text-center py-12 bg-white rounded-xl border border-surface-300 shadow-card"
-              >
-                <AlertTriangle className="w-12 h-12 text-charcoal-400 mx-auto mb-3" />
-                <p className="text-charcoal-600">No non-conformance reports found</p>
+              <motion.div variants={itemVariants}>
+                <ListEmptyState
+                  icon={AlertTriangle}
+                  title="No non-conformance reports"
+                  description="Raise NCRs from audits, inspections, or quality issues and track them to closure."
+                  primaryAction={
+                    canCreateNcr
+                      ? { kind: 'button', label: 'New NCR', onClick: () => setIsCreateModalOpen(true) }
+                      : { kind: 'link', to: '/modules/quality', label: 'Quality module' }
+                  }
+                  secondaryAction={
+                    hasNcrFilters ? { kind: 'button', label: 'Clear filters', onClick: resetNcrFilters } : undefined
+                  }
+                />
               </motion.div>
             ) : (
               filteredNCRs.map((ncr) => (

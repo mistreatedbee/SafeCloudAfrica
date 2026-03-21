@@ -6,6 +6,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { listKPIAssessments, normalizeAssessmentStatus } from '../../api/services/kpiAssessmentService';
 import type { KPIAssessment, KpiAssessmentType, KpiAssessmentStatus } from '../../api/models/entities';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
+import { ClipboardListIcon } from 'lucide-react';
 
 type StatusFilter = 'all' | Extract<KpiAssessmentStatus, 'draft' | 'in_progress' | 'under_review' | 'completed' | 'closed'>;
 
@@ -97,9 +99,29 @@ export function KPIAssessmentsListPage() {
       )}
 
       {!loading && filtered.length === 0 && (
-        <div className="bg-white rounded-xl border border-surface-300 p-6 shadow-card">
-          <p className="text-charcoal-500">No KPI Assessments found.</p>
-        </div>
+        <ListEmptyState
+          icon={ClipboardListIcon}
+          title="No KPI assessments match"
+          description="Run employee or project assessments, then track scores, achievement, and review status here."
+          primaryAction={
+            canCreate
+              ? { kind: 'link', to: '/modules/hr/kpis/assessments/new', label: 'New KPI assessment' }
+              : { kind: 'link', to: '/modules/hr', label: 'HR module' }
+          }
+          secondaryAction={
+            filterType !== 'all' || filterStatus !== 'all' || search.trim()
+              ? {
+                  kind: 'button',
+                  label: 'Clear filters',
+                  onClick: () => {
+                    setFilterType('all');
+                    setFilterStatus('all');
+                    setSearch('');
+                  }
+                }
+              : undefined
+          }
+        />
       )}
 
       {!loading && filtered.length > 0 && (

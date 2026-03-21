@@ -8,8 +8,10 @@ import {
   FileTextIcon,
   TrendingUpIcon,
   HardHatIcon,
-  ArrowRightIcon } from
-'lucide-react';
+  ArrowRightIcon,
+  TargetIcon,
+  ActivityIcon
+} from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { ComplianceScore } from '../components/ui/ComplianceScore';
 import { StatCard } from '../components/ui/StatCard';
@@ -25,6 +27,7 @@ import { listModuleTargets } from '../api/services/moduleTargetsService';
 import { listActivityLogs } from '../api/services/activityLogService';
 import { isNearMiss } from '../api/utils/incidents';
 import { FirstWinBanner } from '../components/onboarding/FirstWinBanner';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
 
 const containerVariants = {
   hidden: {
@@ -212,7 +215,13 @@ export function SafetyPage() {
             </h3>
             <div className="space-y-4">
               {safetyObjectives.length === 0 && (
-                <p className="text-sm text-charcoal-500">No objectives configured yet.</p>
+                <ListEmptyState
+                  embedded
+                  icon={TargetIcon}
+                  title="No safety objectives yet"
+                  description="Define module targets to track progress and status on this dashboard."
+                  primaryAction={{ kind: 'link', to: '/planning-review', label: 'Open planning & review' }}
+                />
               )}
               {safetyObjectives.map((objective, index) => (
                 <div key={`${objective.name}-${index}`}>
@@ -317,8 +326,15 @@ export function SafetyPage() {
             </div>
             <div className="divide-y divide-surface-100">
               {(activity ?? []).length === 0 && (
-                <div className="px-5 py-4">
-                  <p className="text-sm text-charcoal-500">No activity yet.</p>
+                <div className="px-5 py-2">
+                  <ListEmptyState
+                    embedded
+                    icon={ActivityIcon}
+                    title="No recent safety activity"
+                    description="Incidents, inspections, risks, and PPE actions will appear here as your team works in the safety module."
+                    primaryAction={{ kind: 'link', to: '/incidents', label: 'Go to incidents' }}
+                    secondaryAction={{ kind: 'link', to: '/inspections', label: 'Inspections' }}
+                  />
                 </div>
               )}
               {(activity ?? []).map((a) => (

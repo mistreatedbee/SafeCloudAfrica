@@ -16,6 +16,7 @@ import { ComplianceScore } from '../components/ui/ComplianceScore';
 import { StatCard } from '../components/ui/StatCard';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
 import { countOpenQualityNcrs, listQualityNcrs } from '../api/services/qualityNcrsService';
@@ -269,8 +270,14 @@ export function QualityPage() {
             </div>
             <div className="divide-y divide-surface-100">
               {(recentNcrs ?? []).length === 0 && (
-                <div className="px-5 py-3">
-                  <p className="text-sm text-charcoal-500">No NCRs yet.</p>
+                <div className="px-3 py-2">
+                  <ListEmptyState
+                    embedded
+                    icon={AlertCircleIcon}
+                    title="No recent non-conformances"
+                    description="When NCRs are logged for your organisation, the latest ones will appear here."
+                    primaryAction={{ kind: 'link', to: '/dashboard/management/ncrs', label: 'Open NCR register' }}
+                  />
                 </div>
               )}
               {(recentNcrs ?? []).map((ncr) =>

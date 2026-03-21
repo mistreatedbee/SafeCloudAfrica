@@ -7,6 +7,7 @@ import { listAllMemberships, updateMembershipRole, type MembershipRow } from '..
 import { logPlatformAdminAction } from '../../../api/services/platformAdminAuditService';
 import type { CompanyRole } from '../../../api/models/core';
 import type { UUID } from '../../../api/models/entities';
+import { ListEmptyState } from '../../../components/ui/ListEmptyState';
 
 const ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor', 'consultant', 'employee', 'auditor'];
 
@@ -20,7 +21,7 @@ export function SuperAdminUsersPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [version, setVersion] = useState(0);
 
-  const { data: rows, loading, error } = useAsync(listAllMemberships, [version]);
+  const { data: rows, loading, error, refetch } = useAsync(listAllMemberships, [version]);
 
   const list = rows ?? [];
   const filtered = useMemo(() => {
@@ -89,7 +90,24 @@ export function SuperAdminUsersPage() {
 
       {loading && <p className="text-sm text-charcoal-500">Loading…</p>}
 
-      {!loading && list.length === 0 && <p className="text-sm text-charcoal-500">No memberships found.</p>}
+      {!loading && list.length === 0 && (
+        <ListEmptyState
+          icon={UsersIcon}
+          title="No memberships found"
+          description="When users join organisations, their memberships will be listed here for platform-wide role management."
+          primaryAction={{ kind: 'button', label: 'Refresh', onClick: refetch }}
+          secondaryAction={{ kind: 'link', to: '/super-admin/organisations', label: 'Organisations' }}
+        />
+      )}
+
+      {!loading && list.length > 0 && filtered.length === 0 && (
+        <ListEmptyState
+          icon={UsersIcon}
+          title="No users match your search"
+          description="Try another email, organisation name, or clear the search box."
+          primaryAction={{ kind: 'button', label: 'Clear search', onClick: () => setQuery('') }}
+        />
+      )}
 
       {!loading && filtered.length > 0 && (
         <div className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
+import { ClipboardCheckIcon } from 'lucide-react';
 import { useTenant } from '../../tenant/TenantContext';
 import { listPreWorkInstances } from '../../api/services/risksService';
 
@@ -27,10 +29,12 @@ export function PreWorkInstancesPage() {
         {loading ? (
           <p className="text-gray-500">Loading...</p>
         ) : instances.length === 0 ? (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 text-center text-gray-500">
-            <p>No pre-work instances yet.</p>
-            <Link to="/risk-assessments/new" className="text-blue-600 hover:underline mt-2 inline-block">Create a Pre-work Assessment</Link>
-          </div>
+          <ListEmptyState
+            icon={ClipboardCheckIcon}
+            title="No pre-work instances yet"
+            description="Daily pre-work sign-offs appear here once employees complete instances linked to a pre-work assessment."
+            primaryAction={{ kind: 'link', to: '/risk-assessments/new?type=prework', label: 'Create pre-work assessment' }}
+          />
         ) : (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">

@@ -8,6 +8,7 @@ import { listApprovals } from '../api/services/approvalsService';
 import type { Approval } from '../api/models/entities';
 import { useUser } from '@insforge/react';
 import { ApprovalDecisionModal } from '../components/approvals/ApprovalDecisionModal';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -85,9 +86,13 @@ export function ApprovalsPage() {
             </div>
           )}
           {!loading && !error && approvals.length === 0 && (
-            <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-              <p className="text-sm text-charcoal-500">No approval requests yet.</p>
-            </div>
+            <ListEmptyState
+              icon={PenToolIcon}
+              title="No approval requests yet"
+              description="When workflows need a formal sign-off, pending items will show up here for you to approve or reject."
+              primaryAction={{ kind: 'button', label: 'Refresh list', onClick: () => setRefreshKey((k) => k + 1) }}
+              secondaryAction={{ kind: 'link', to: '/tasks', label: 'View tasks' }}
+            />
           )}
           {(mine.length ? mine : approvals).map((a) => (
             <div key={a.id} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">

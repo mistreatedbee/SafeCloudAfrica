@@ -15,6 +15,7 @@ import {
   type SellableFeaturesConfig
 } from '../../../api/services/sellableFeaturesService';
 import type { Company, UUID } from '../../../api/models/entities';
+import { ListEmptyState } from '../../../components/ui/ListEmptyState';
 
 function formatDateZA(iso: string): string {
   const d = new Date(iso);
@@ -232,11 +233,18 @@ export function SuperAdminOrganisationsPage() {
                 </tr>
               )}
               {!loading && filtered.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-4 text-sm text-charcoal-500">
-                    No organisations found.
-                  </td>
-                </tr>
+                <ListEmptyState
+                  tableColSpan={7}
+                  icon={Building2Icon}
+                  title={companies.length === 0 ? 'No organisations in the platform' : 'No organisations match your search'}
+                  description="Review tenant plans, modules, seat usage, and subscription status from this register."
+                  primaryAction={{ kind: 'button', label: 'Refresh', onClick: () => setRefresh((r) => r + 1) }}
+                  secondaryAction={
+                    companies.length > 0 && query.trim()
+                      ? { kind: 'button', label: 'Clear search', onClick: () => setQuery('') }
+                      : { kind: 'link', to: '/super-admin/overview', label: 'Overview' }
+                  }
+                />
               )}
               {!loading &&
                 filtered.map((c) => (

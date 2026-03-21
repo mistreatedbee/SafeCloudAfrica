@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { FileTextIcon } from 'lucide-react';
 import { useAsync } from '../../../api/hooks/useAsync';
 import { listPlatformAdminAuditLogs } from '../../../api/services/platformAdminAuditService';
+import { ListEmptyState } from '../../../components/ui/ListEmptyState';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -11,7 +12,7 @@ function formatDate(iso: string): string {
 }
 
 export function SuperAdminAuditLogsPage() {
-  const { data: logs, loading, error } = useAsync(() => listPlatformAdminAuditLogs(200), []);
+  const { data: logs, loading, error, refetch } = useAsync(() => listPlatformAdminAuditLogs(200), []);
 
   const list = logs ?? [];
 
@@ -30,7 +31,13 @@ export function SuperAdminAuditLogsPage() {
       {loading && <p className="text-sm text-charcoal-500">Loading…</p>}
 
       {!loading && list.length === 0 && (
-        <p className="text-sm text-charcoal-500">No audit entries yet.</p>
+        <ListEmptyState
+          icon={FileTextIcon}
+          title="No audit entries yet"
+          description="Super Admin actions such as license changes, module toggles, and role updates will appear here."
+          primaryAction={{ kind: 'button', label: 'Refresh', onClick: refetch }}
+          secondaryAction={{ kind: 'link', to: '/super-admin/overview', label: 'Super admin overview' }}
+        />
       )}
 
       {!loading && list.length > 0 && (

@@ -11,6 +11,7 @@ import type { EmergencyDrill, Document } from '../../api/models/entities';
 import { EmergencyDrillCreateModal } from '../../components/features/EmergencyDrillCreateModal';
 import { isSellableFeatureAccessError } from '../../api/services/sellableFeaturesService';
 import { SellableFeatureLockedPage } from './SellableFeatureLockedPage';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -152,8 +153,18 @@ export function EmergencyPreparednessPage() {
           </div>
           <div className="divide-y divide-surface-100">
             {(drills ?? []).length === 0 && (
-              <div className="px-5 py-4">
-                <p className="text-sm text-charcoal-500">No drills yet.</p>
+              <div className="px-3 py-2">
+                <ListEmptyState
+                  embedded
+                  icon={ClipboardCheckIcon}
+                  title="No emergency drills scheduled"
+                  description="Schedule drills to prove your plans, train responders, and keep compliance evidence ready."
+                  primaryAction={
+                    canManage
+                      ? { kind: 'button', label: 'Schedule drill', onClick: () => setCreateOpen(true) }
+                      : { kind: 'link', to: '/documents', label: 'View documents' }
+                  }
+                />
               </div>
             )}
             {(drills ?? []).map((d) => (

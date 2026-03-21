@@ -25,6 +25,8 @@ import {
 import { listUserProfiles } from '../api/services/profilesService';
 import { SelectOrType } from '../components/ui/SelectOrType';
 import { downloadTextFile, toCsv } from '../utils/csv';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { ListTodoIcon } from 'lucide-react';
 
 type FormMode = 'create' | 'edit' | 'view';
 type RegisterForm = {
@@ -509,7 +511,19 @@ export default function QualityInternalExternalIssuesPage() {
                     <td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => openViewIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">View</button>{canWrite && <button type="button" onClick={() => openEditIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Edit</button>}{canApprove && <button type="button" onClick={() => void handleApproveRegister()} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Approve</button>}{canExport && <button type="button" onClick={() => exportRows([row], `internal-external-issue-${row.ref_no}`)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Export</button>}</div></td>
                   </tr>
                 ))}
-                {(rows ?? []).length === 0 && <tr><td colSpan={15} className="px-3 py-6 text-center text-charcoal-500">No issues found for the selected filters.</td></tr>}
+                {(rows ?? []).length === 0 && (
+                  <ListEmptyState
+                    tableColSpan={15}
+                    icon={ListTodoIcon}
+                    title="No issues in this register"
+                    description="Capture internal and external issues with ratings, controls, owners, and linked risk or NCR records."
+                    primaryAction={
+                      canWrite && selectedRegisterId
+                        ? { kind: 'button', label: 'Add issue', onClick: openCreateIssue }
+                        : { kind: 'link', to: '/dashboard/quality/issues', label: 'Quality issues' }
+                    }
+                  />
+                )}
               </tbody>
             </table>
           )}

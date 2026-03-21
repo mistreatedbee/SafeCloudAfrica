@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CalendarIcon, AlertTriangle } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
 import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import type { UUID } from '../api/models/entities';
@@ -119,10 +120,21 @@ export function RiskReviewsPage() {
         )}
 
         {!loading && filtered.length === 0 && (
-          <div className="bg-white rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-500">
-            <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-            <p>No risk assessments currently require review for the selected filter.</p>
-          </div>
+          <ListEmptyState
+            icon={AlertTriangle}
+            title={assessments.length === 0 ? 'No review due dates set' : 'No assessments match this filter'}
+            description={
+              assessments.length === 0
+                ? 'Add review due dates on risk assessments to see them in this queue.'
+                : 'Try “All” or another time window to see upcoming or overdue reviews.'
+            }
+            primaryAction={{ kind: 'link', to: '/risks', label: 'Risk assessments' }}
+            secondaryAction={
+              filter !== 'all' && assessments.length > 0
+                ? { kind: 'button', label: 'Show all due', onClick: () => setFilter('all') }
+                : undefined
+            }
+          />
         )}
 
         {!loading && filtered.length > 0 && (

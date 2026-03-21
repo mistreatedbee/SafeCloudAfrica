@@ -16,6 +16,8 @@ import {
 } from '../api/services/customerComplaintsService';
 import { downloadTextFile, toCsv } from '../utils/csv';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { MessageSquareWarningIcon } from 'lucide-react';
 
 type FormMode = 'create' | 'edit' | 'view';
 
@@ -111,7 +113,7 @@ export default function QualityCustomerComplaintsPage() {
   const canEditRef = roleCanEditRef(activeRole ?? null);
   const readOnly = formMode === 'view' || (formMode === 'edit' && !canEdit);
 
-  const { data: complaints, loading, error, refresh } = useAsync(async () => {
+  const { data: complaints, loading, error, refetch } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return [];
     return await listCustomerComplaints({
       companyId: activeCompanyId,
@@ -153,7 +155,7 @@ export default function QualityCustomerComplaintsPage() {
 
   async function reload() {
     setRefreshKey((v) => v + 1);
-    await refresh();
+    await refetch();
   }
 
   function openCreate() {
@@ -419,11 +421,13 @@ export default function QualityCustomerComplaintsPage() {
                   </tr>
                 ))}
                 {(complaints ?? []).length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="px-3 py-6 text-center text-charcoal-500">
-                      No complaints found for the selected filters.
-                    </td>
-                  </tr>
+                  <ListEmptyState
+                    tableColSpan={9}
+                    icon={MessageSquareWarningIcon}
+                    title="No complaints match your filters"
+                    description="Log customer feedback, actions, and closure evidence in one structured register."
+                    primaryAction={{ kind: 'button', label: 'Create complaint', onClick: openCreate }}
+                  />
                 )}
               </tbody>
             </table>

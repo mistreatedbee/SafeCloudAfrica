@@ -14,6 +14,8 @@ import {
 } from '../api/services/legalRequirementsService';
 import { listUserProfiles } from '../api/services/profilesService';
 import { downloadTextFile } from '../utils/csv';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { ScrollTextIcon } from 'lucide-react';
 
 export function LegalUpdatesPage() {
   const { activeCompanyId } = useTenant();
@@ -71,6 +73,23 @@ export function LegalUpdatesPage() {
     win.document.close();
     win.print();
   };
+
+  const hasLegalUpdatesFilters =
+    Boolean(requirementSearch.trim()) ||
+    Boolean(completionStatus) ||
+    Boolean(responsibleUserId) ||
+    Boolean(deadlineFrom || deadlineTo) ||
+    overdueOnly;
+
+  function clearLegalUpdatesFilters() {
+    setRequirementSearch('');
+    setCompletionStatus('');
+    setResponsibleUserId('');
+    setDeadlineFrom('');
+    setDeadlineTo('');
+    setOverdueOnly(false);
+    setPage(1);
+  }
 
   return (
     <Layout title="Legal Update Tracking">
@@ -171,11 +190,18 @@ export function LegalUpdatesPage() {
                   );
                 })}
                 {rows.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="px-3 py-6 text-center text-charcoal-500">
-                      No legal updates found.
-                    </td>
-                  </tr>
+                  <ListEmptyState
+                    tableColSpan={9}
+                    icon={ScrollTextIcon}
+                    title="No legal updates match"
+                    description="Track amendments, impacts, and completion status for each requirement in your register."
+                    primaryAction={{ kind: 'link', to: '/dashboard/legal/register', label: 'Legal register' }}
+                    secondaryAction={
+                      hasLegalUpdatesFilters
+                        ? { kind: 'button', label: 'Clear filters', onClick: clearLegalUpdatesFilters }
+                        : undefined
+                    }
+                  />
                 )}
               </tbody>
             </table>

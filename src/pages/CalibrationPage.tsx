@@ -28,6 +28,8 @@ import {
   uploadCalibrationAttachments
 } from '../api/services/calibrationService';
 import { listEvidence } from '../api/services/evidenceService';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { ScaleIcon } from 'lucide-react';
 import { downloadDocumentFile, downloadBlob } from '../api/services/documentsStorageService';
 import { toCsv, downloadTextFile } from '../utils/csv';
 
@@ -363,7 +365,19 @@ export function CalibrationPage(props: { title?: string; defaultModuleTag?: Cali
                     <td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => openRow('view', row)} className="px-2 py-1 rounded border border-surface-300 text-xs">View</button>{canWrite && <button type="button" onClick={() => openRow('edit', row)} className="px-2 py-1 rounded border border-surface-300 text-xs">Edit</button>}{canDelete && <button type="button" onClick={() => void remove(row)} className="px-2 py-1 rounded border border-critical/30 text-critical text-xs">Delete</button>}<button type="button" onClick={() => void downloadCertificates(row)} className="px-2 py-1 rounded border border-surface-300 text-xs">Download certificate(s)</button></div></td>
                   </tr>
                 ))}
-                {(rows ?? []).length === 0 && <tr><td colSpan={16} className="px-3 py-6 text-center text-charcoal-500">No calibration records found.</td></tr>}
+                {(rows ?? []).length === 0 && (
+                  <ListEmptyState
+                    tableColSpan={16}
+                    icon={ScaleIcon}
+                    title="No calibration records"
+                    description="Track equipment, due dates, certificates, and responsible people in one register."
+                    primaryAction={
+                      canWrite
+                        ? { kind: 'button', label: 'New calibration', onClick: openCreate }
+                        : { kind: 'link', to: '/modules/quality', label: 'Quality module' }
+                    }
+                  />
+                )}
               </tbody>
             </table>
           )}

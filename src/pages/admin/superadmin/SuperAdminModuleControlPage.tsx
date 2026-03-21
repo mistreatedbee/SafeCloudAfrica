@@ -8,6 +8,7 @@ import { logPlatformAdminAction } from '../../../api/services/platformAdminAudit
 import type { Company } from '../../../api/models/entities';
 import type { ModuleKey } from '../../../api/models/core';
 import type { UUID } from '../../../api/models/entities';
+import { ListEmptyState } from '../../../components/ui/ListEmptyState';
 
 const MODULE_KEYS: { key: ModuleKey; label: string }[] = [
   { key: 'safety', label: 'Safety' },
@@ -150,7 +151,13 @@ export function SuperAdminModuleControlPage() {
       )}
 
       {!loading && list.length === 0 && (
-        <p className="text-sm text-charcoal-500">No organisations found.</p>
+        <ListEmptyState
+          icon={ToggleLeftIcon}
+          title="No organisations loaded"
+          description="Module toggles apply per tenant. Refresh to load companies from the database."
+          primaryAction={{ kind: 'button', label: 'Refresh', onClick: () => setVersion((v) => v + 1) }}
+          secondaryAction={{ kind: 'link', to: '/super-admin/organisations', label: 'Organisations' }}
+        />
       )}
     </motion.div>
   );

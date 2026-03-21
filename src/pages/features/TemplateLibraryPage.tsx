@@ -11,6 +11,7 @@ import { TemplateUploadModal } from '../../components/features/TemplateUploadMod
 import { downloadBlob, downloadDocumentFile } from '../../api/services/documentsStorageService';
 import { isSellableFeatureAccessError } from '../../api/services/sellableFeaturesService';
 import { SellableFeatureLockedPage } from './SellableFeatureLockedPage';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -96,9 +97,21 @@ export function TemplateLibraryPage() {
 
         <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filtered.length === 0 && (
-            <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
-              <p className="text-sm text-charcoal-500">No templates yet.</p>
-            </div>
+            <ListEmptyState
+              icon={FolderIcon}
+              title={(data ?? []).length === 0 ? 'No templates in the library' : 'No templates match your search'}
+              description="Upload reusable documents so teams can download the latest approved versions anytime."
+              primaryAction={
+                canManage
+                  ? { kind: 'button', label: 'Add template', onClick: () => setCreateOpen(true) }
+                  : { kind: 'link', to: '/documents', label: 'Browse documents' }
+              }
+              secondaryAction={
+                (data ?? []).length > 0 && q.trim()
+                  ? { kind: 'button', label: 'Clear search', onClick: () => setQ('') }
+                  : undefined
+              }
+            />
           )}
           {filtered.map((t) => (
             <div key={t.id} className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">

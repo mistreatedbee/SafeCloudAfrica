@@ -17,6 +17,7 @@ import { deleteIncident, listIncidents } from '../api/services/incidentsService'
 import type { Incident } from '../api/models/entities';
 import { useUser } from '@insforge/react';
 import { FirstWinBanner } from '../components/onboarding/FirstWinBanner';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
 
 const IncidentCreateModal = lazy(() => import('../components/incidents/IncidentCreateModal').then(m => ({ default: m.IncidentCreateModal })));
 const IncidentDetailModal = lazy(() => import('../components/incidents/IncidentDetailModal').then(m => ({ default: m.IncidentDetailModal })));
@@ -284,9 +285,28 @@ export function IncidentsPage() {
           )}
 
           {!loading && list.length === 0 && activeCompanyId && (
-            <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-              <p className="text-sm text-charcoal-500">No incidents found.</p>
-            </div>
+            <ListEmptyState
+              icon={AlertTriangleIcon}
+              title={scopedIncidents.length === 0 ? 'No incidents yet' : 'No incidents match your filters'}
+              description={
+                scopedIncidents.length === 0
+                  ? 'Log incidents to track investigations, corrective actions, and trends.'
+                  : 'Adjust search, date range, or filters to see more records.'
+              }
+              primaryAction={{ kind: 'button', label: 'Report incident', onClick: () => setCreateOpen(true) }}
+              secondaryAction={
+                dateFilter !== 'all' || searchQuery.trim()
+                  ? {
+                      kind: 'button',
+                      label: 'Clear search & dates',
+                      onClick: () => {
+                        setSearchQuery('');
+                        setDateFilter('all');
+                      }
+                    }
+                  : undefined
+              }
+            />
           )}
 
           {list.map((incident) => (

@@ -5,7 +5,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { listKpiItems, createKpiItem } from '../../api/services/kpiItemService';
 import type { KPIItem, KpiImportance } from '../../api/models/entities';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
-import { XIcon } from 'lucide-react';
+import { XIcon, BookMarkedIcon } from 'lucide-react';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
 
 export function KPILibraryPage() {
   const { activeCompanyId } = useTenant();
@@ -74,9 +75,12 @@ export function KPILibraryPage() {
       )}
 
       {!loading && (items ?? []).length === 0 && (
-        <div className="bg-white rounded-xl border border-surface-300 p-6 shadow-card">
-          <p className="text-charcoal-500">No KPI templates yet. Add one or use custom KPI Questionnaires when creating assessments.</p>
-        </div>
+        <ListEmptyState
+          icon={BookMarkedIcon}
+          title="No KPI questionnaire templates yet"
+          description="Create reusable questionnaires for assessments, or add custom questions when you start a new assessment."
+          primaryAction={{ kind: 'button', label: 'Add KPI template', onClick: () => setModalOpen(true) }}
+        />
       )}
 
       {!loading && (items ?? []).length > 0 && (

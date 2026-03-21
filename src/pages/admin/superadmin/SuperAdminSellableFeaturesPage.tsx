@@ -12,6 +12,7 @@ import {
 } from '../../../api/services/sellableFeaturesService';
 import { logPlatformAdminAction } from '../../../api/services/platformAdminAuditService';
 import type { Company, UUID } from '../../../api/models/entities';
+import { ListEmptyState } from '../../../components/ui/ListEmptyState';
 
 export function SuperAdminSellableFeaturesPage() {
   const { user } = useUser();
@@ -157,7 +158,15 @@ export function SuperAdminSellableFeaturesPage() {
         </div>
       )}
 
-      {!loading && rows.length === 0 && <p className="text-sm text-charcoal-500">No organisations found.</p>}
+      {!loading && rows.length === 0 && (
+        <ListEmptyState
+          icon={LockIcon}
+          title="No organisations loaded"
+          description="Lock or unlock sellable accelerants per tenant once companies are available."
+          primaryAction={{ kind: 'button', label: 'Refresh', onClick: () => setVersion((v) => v + 1) }}
+          secondaryAction={{ kind: 'link', to: '/super-admin/organisations', label: 'Organisations' }}
+        />
+      )}
     </motion.div>
   );
 }
