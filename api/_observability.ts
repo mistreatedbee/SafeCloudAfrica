@@ -56,8 +56,8 @@ export function recordOperationalEvent(input: RecordOperationalEventInput): void
       organization_id: input.organization_id ?? null,
       details: input.details ?? null
     })
-    .then(() => {})
-    .catch(() => {});
+    .then(() => undefined)
+    .catch(() => undefined);
 }
 
 const WEBHOOK_TIMEOUT_MS = 5000;
@@ -74,6 +74,8 @@ export function sendAlertWebhook(body: Record<string, unknown>): void {
     body: JSON.stringify({ ts: new Date().toISOString(), ...body }),
     signal: controller.signal
   })
-    .catch(() => {})
-    .finally(() => clearTimeout(t));
+    .catch(() => undefined)
+    .finally(() => {
+      clearTimeout(t);
+    });
 }

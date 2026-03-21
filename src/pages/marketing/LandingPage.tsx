@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { motion, useAnimation, useInView } from 'framer-motion';
+import { motion, useInView } from 'framer-motion';
 import {
   ArrowRightIcon,
   CloudIcon,
@@ -40,7 +40,6 @@ function scrollToHash(hash: string) {
 // Counter component for stats
 function Counter({ from = 0, to, duration = 2 }: { from?: number; to: number; duration?: number }) {
   const [count, setCount] = useState(from);
-  const controls = useAnimation();
   const ref = React.useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -245,7 +244,7 @@ export function LandingPage() {
             Logos shown are illustrative placeholders until partner marks are approved for display.
           </p>
           <div className="mt-8 grid grid-cols-2 md:grid-cols-5 gap-8 items-center justify-items-center">
-            {['MineCorp', 'BuildSafe', 'EcoEnergy', 'AgriHealth', 'TransNet'].map((name, i) => (
+            {['MineCorp', 'BuildSafe', 'EcoEnergy', 'AgriHealth', 'TransNet'].map((name) => (
               <motion.div
                 key={name}
                 whileHover={{ scale: 1.1 }}
@@ -403,10 +402,10 @@ export function LandingPage() {
               </p>
             </div>
             <Link
-              to="/app"
+              to="/login"
               className="hidden sm:inline-flex items-center gap-1.5 text-sm font-normal text-charcoal-500 hover:text-teal transition-colors"
             >
-              Open the app <ArrowRightIcon className="w-3.5 h-3.5" />
+              Log in <ArrowRightIcon className="w-3.5 h-3.5" />
             </Link>
           </div>
 

@@ -41,7 +41,7 @@ export default async function handler(req: any, res: any) {
   }
 
   let logUserId: string | null = null;
-  let logOrgId: string | null = companyId;
+  const logOrgId: string | null = companyId;
 
   try {
     const insforge = getServerInsforge(authToken);

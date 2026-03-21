@@ -663,7 +663,7 @@ export function PPEPage() {
           )}
         </>
       )}
-      <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+      <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6 min-w-0 max-w-full">
         <motion.div variants={itemVariants} className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-navy-50 rounded-xl">

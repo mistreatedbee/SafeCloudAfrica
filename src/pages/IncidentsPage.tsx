@@ -156,7 +156,7 @@ export function IncidentsPage() {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="space-y-6">
+        className="space-y-6 min-w-0 max-w-full">
 
         {activeRole !== 'employee' ? <FirstWinBanner persona="safety" /> : null}
 

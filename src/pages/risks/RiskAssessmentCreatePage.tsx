@@ -246,7 +246,7 @@ export function RiskAssessmentCreatePage() {
 
   return (
     <Layout title="New Risk Assessment">
-      <div className="space-y-5">
+      <div className="space-y-5 min-w-0 max-w-full">
         <div>
           <h1 className="text-2xl font-bold text-charcoal">{typeLabel(type)}</h1>
           <p className="text-sm text-charcoal-500">Create and populate the assessment table in one flow.</p>
