@@ -1,5 +1,6 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangleIcon, RefreshCwIcon } from 'lucide-react';
+import { reportClientError } from '../utils/reportClientError';
 
 interface Props {
   children: ReactNode;
@@ -20,6 +21,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error('ErrorBoundary caught:', error, errorInfo);
+    reportClientError({
+      module: 'ErrorBoundary',
+      error,
+      componentStack: errorInfo.componentStack
+    });
   }
 
   handleRetry = (): void => {

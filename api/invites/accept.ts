@@ -1,5 +1,8 @@
 import { getServerInsforge, nowIso, readBearerToken } from '../_insforge';
+import { logStructuredLine, sendAlertWebhook } from '../_observability';
 import { hashInviteToken, normalizeInviteStatus } from './_shared';
+
+const MODULE = 'api.invites.accept';
 
 function normalizeRole(role: unknown): string {
   return String(role ?? '').trim().toLowerCase();
@@ -16,12 +19,17 @@ export default async function handler(req: any, res: any) {
   const token = String(req.body?.token ?? '').trim();
   if (!token) return res.status(400).json({ ok: false, error: 'token is required' });
 
+  let logUserId: string | null = null;
+  let logOrgId: string | null = null;
+
   try {
     const insforge = getServerInsforge(authToken);
     const session = await insforge.auth.getCurrentSession();
     const userId = session.data?.session?.user?.id;
     const userEmail = String(session.data?.session?.user?.email || '').trim().toLowerCase();
     if (!userId || !userEmail) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+
+    logUserId = String(userId);
 
     const tokenHash = hashInviteToken(token);
     const inviteRes = await insforge.database
@@ -36,6 +44,7 @@ export default async function handler(req: any, res: any) {
     }
 
     const invite = inviteRes.data as any;
+    logOrgId = String(invite.company_id || '') || null;
     const status = normalizeInviteStatus(invite.status);
     const expiresAt = invite.expires_at ? new Date(invite.expires_at) : null;
     const expired = !!expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
@@ -148,7 +157,21 @@ export default async function handler(req: any, res: any) {
       role: normalizeRole((inviteUpdate.data as any).role)
     });
   } catch (err: any) {
-    console.error('INVITE_ACCEPT_ERROR', err);
-    return res.status(500).json({ ok: false, error: String(err?.message || err) });
+    const msg = String(err?.message || err);
+    logStructuredLine({
+      module: MODULE,
+      level: 'error',
+      message: msg,
+      user_id: logUserId,
+      organization_id: logOrgId
+    });
+    sendAlertWebhook({
+      kind: 'invite_api',
+      module: MODULE,
+      message: msg,
+      user_id: logUserId,
+      organization_id: logOrgId
+    });
+    return res.status(500).json({ ok: false, error: msg });
   }
 }

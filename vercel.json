@@ -21,6 +21,14 @@
       "destination": "/api/invites/resend"
     },
     {
+      "source": "/api/client-log",
+      "destination": "/api/client-log"
+    },
+    {
+      "source": "/api/cron/heartbeat",
+      "destination": "/api/cron/heartbeat"
+    },
+    {
       "source": "/functions/(.*)",
       "destination": "https://pas375jb.us-west.insforge.app/api/functions/invoke/$1"
     },
@@ -29,6 +37,12 @@
       "destination": "https://pas375jb.us-west.insforge.app/api/$1"
     },
     { "source": "/(.*)", "destination": "/" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/heartbeat",
+      "schedule": "0 * * * *"
+    }
   ]
 }
 

@@ -2350,5 +2350,18 @@ export type AuditFinding = {
   created_at: string;
 };
 
+/** Server-written rows; readable by platform super-admins (RLS). */
+export type PlatformOperationalEventRow = {
+  id: UUID;
+  event_type: string;
+  status: 'success' | 'failure' | 'info';
+  module: string;
+  message: string;
+  user_id: UUID | null;
+  organization_id: UUID | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+};
+
 /** Re-export for consumers that import identifiers alongside entity types. */
 export type { ModuleKey, UUID } from './core';

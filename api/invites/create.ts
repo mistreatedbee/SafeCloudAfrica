@@ -1,5 +1,8 @@
 import { addDaysIso, getServerInsforge, nowIso, readBearerToken } from '../_insforge';
+import { logStructuredLine, sendAlertWebhook } from '../_observability';
 import { buildInviteLink, generateRawInviteToken, hashInviteToken, toInviteEmailHtml } from './_shared';
+
+const MODULE = 'api.invites.create';
 
 function normalizeRole(role: unknown): string {
   return String(role ?? '').trim().toLowerCase();
@@ -37,6 +40,9 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ ok: false, error: 'companyId, email and role are required' });
   }
 
+  let logUserId: string | null = null;
+  let logOrgId: string | null = companyId;
+
   try {
     const insforge = getServerInsforge(authToken);
     const sessionResult = await insforge.auth.getCurrentSession();
@@ -45,6 +51,8 @@ export default async function handler(req: any, res: any) {
     if (!userId) {
       return res.status(401).json({ ok: false, error: 'Unauthorized' });
     }
+
+    logUserId = String(userId);
 
     const [companyRes, membershipRes] = await Promise.all([
       insforge.database.from('companies').select('id, name, primary_admin_user_id, employee_limit, license_user_limit').eq('id', companyId).maybeSingle(),
@@ -114,7 +122,13 @@ export default async function handler(req: any, res: any) {
 
     const insertRes = await insforge.database.from('company_invites').insert(insertPayload).select('*').single();
     if (insertRes.error || !insertRes.data) {
-      console.error('INVITE_CREATE_ERROR', insertRes.error);
+      logStructuredLine({
+        module: MODULE,
+        level: 'error',
+        message: String(insertRes.error?.message || insertRes.error || 'insert failed'),
+        user_id: logUserId,
+        organization_id: logOrgId
+      });
       return res.status(500).json({ ok: false, error: 'Failed to create invite' });
     }
 
@@ -142,7 +156,7 @@ export default async function handler(req: any, res: any) {
     try {
       const emailRes = await fetch(`${getOrigin(req)}/api/email/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
           to: email,
           subject: emailContent.subject,
@@ -186,7 +200,21 @@ export default async function handler(req: any, res: any) {
       inviteLink
     });
   } catch (err: any) {
-    console.error('INVITE_CREATE_ERROR', err);
-    return res.status(500).json({ ok: false, error: String(err?.message || err) });
+    const msg = String(err?.message || err);
+    logStructuredLine({
+      module: MODULE,
+      level: 'error',
+      message: msg,
+      user_id: logUserId,
+      organization_id: logOrgId
+    });
+    sendAlertWebhook({
+      kind: 'invite_api',
+      module: MODULE,
+      message: msg,
+      user_id: logUserId,
+      organization_id: logOrgId
+    });
+    return res.status(500).json({ ok: false, error: msg });
   }
 }

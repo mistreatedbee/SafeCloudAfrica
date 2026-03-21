@@ -1,5 +1,8 @@
 import { addDaysIso, getServerInsforge, nowIso, readBearerToken } from '../_insforge';
+import { logStructuredLine, sendAlertWebhook } from '../_observability';
 import { buildInviteLink, generateRawInviteToken, hashInviteToken, normalizeInviteStatus, toInviteEmailHtml } from './_shared';
+
+const MODULE = 'api.invites.resend';
 
 function normalizeRole(role: unknown): string {
   return String(role ?? '').trim().toLowerCase();
@@ -23,12 +26,17 @@ export default async function handler(req: any, res: any) {
   const sendEmail = req.body?.sendEmail !== false;
   if (!inviteId) return res.status(400).json({ ok: false, error: 'inviteId is required' });
 
+  let logUserId: string | null = null;
+  let logOrgId: string | null = null;
+
   try {
     const insforge = getServerInsforge(authToken);
     const session = await insforge.auth.getCurrentSession();
     const userId = session.data?.session?.user?.id;
     const userEmail = session.data?.session?.user?.email || 'no-reply@safecloudafrica.com';
     if (!userId) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+
+    logUserId = String(userId);
 
     const inviteRes = await insforge.database
       .from('company_invites')
@@ -42,6 +50,7 @@ export default async function handler(req: any, res: any) {
 
     const invite = inviteRes.data as any;
     const companyId = String(invite.company_id);
+    logOrgId = companyId;
 
     const membershipRes = await insforge.database
       .from('company_memberships')
@@ -93,7 +102,7 @@ export default async function handler(req: any, res: any) {
       try {
         const emailRes = await fetch(`${getOrigin(req)}/api/email/send`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
           body: JSON.stringify({
             to: invite.email,
             subject: emailContent.subject,
@@ -126,13 +135,33 @@ export default async function handler(req: any, res: any) {
       .single();
 
     if (updateRes.error || !updateRes.data) {
-      console.error('INVITE_RESEND_ERROR', updateRes.error);
+      logStructuredLine({
+        module: MODULE,
+        level: 'error',
+        message: String(updateRes.error?.message || updateRes.error || 'update failed'),
+        user_id: logUserId,
+        organization_id: logOrgId
+      });
       return res.status(500).json({ ok: false, error: 'Failed to update invite' });
     }
 
     return res.status(200).json({ ok: true, emailSent, invite: updateRes.data, inviteLink });
   } catch (err: any) {
-    console.error('INVITE_RESEND_ERROR', err);
-    return res.status(500).json({ ok: false, error: String(err?.message || err) });
+    const msg = String(err?.message || err);
+    logStructuredLine({
+      module: MODULE,
+      level: 'error',
+      message: msg,
+      user_id: logUserId,
+      organization_id: logOrgId
+    });
+    sendAlertWebhook({
+      kind: 'invite_api',
+      module: MODULE,
+      message: msg,
+      user_id: logUserId,
+      organization_id: logOrgId
+    });
+    return res.status(500).json({ ok: false, error: msg });
   }
 }

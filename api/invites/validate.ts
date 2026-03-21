@@ -1,5 +1,8 @@
 import { getServerInsforge } from '../_insforge';
+import { logStructuredLine, sendAlertWebhook } from '../_observability';
 import { hashInviteToken, mapInvalidReason, normalizeInviteStatus } from './_shared';
+
+const MODULE = 'api.invites.validate';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
@@ -23,7 +26,17 @@ export default async function handler(req: any, res: any) {
       .maybeSingle();
 
     if (error) {
-      console.error('INVITE_VALIDATE_ERROR', error);
+      logStructuredLine({
+        module: MODULE,
+        level: 'error',
+        message: String((error as { message?: string }).message || error),
+        organization_id: null
+      });
+      sendAlertWebhook({
+        kind: 'invite_api',
+        module: MODULE,
+        message: 'Database error validating invite'
+      });
       return res.status(500).json({ ok: false, reason: 'not_found', error: 'Could not validate invite' });
     }
 
@@ -61,7 +74,9 @@ export default async function handler(req: any, res: any) {
       }
     });
   } catch (err: any) {
-    console.error('INVITE_VALIDATE_ERROR', err);
-    return res.status(500).json({ ok: false, reason: 'not_found', error: String(err?.message || err) });
+    const msg = String(err?.message || err);
+    logStructuredLine({ module: MODULE, level: 'error', message: msg, organization_id: null });
+    sendAlertWebhook({ kind: 'invite_api', module: MODULE, message: msg });
+    return res.status(500).json({ ok: false, reason: 'not_found', error: msg });
   }
 }

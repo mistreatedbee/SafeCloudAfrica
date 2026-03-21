@@ -110,6 +110,7 @@ import { SuperAdminModuleControlPage } from './pages/admin/superadmin/SuperAdmin
 import { SuperAdminSellableFeaturesPage } from './pages/admin/superadmin/SuperAdminSellableFeaturesPage';
 import { SuperAdminAuditLogsPage } from './pages/admin/superadmin/SuperAdminAuditLogsPage';
 import { SuperAdminSupportModePage } from './pages/admin/superadmin/SuperAdminSupportModePage';
+import { SuperAdminHealthPage } from './pages/admin/superadmin/SuperAdminHealthPage';
 import { OwnerDashboardPage } from './pages/owner/OwnerDashboardPage';
 import { OwnerOnboardingWizardPage } from './pages/owner/OwnerOnboardingWizardPage';
 import { EmployeeDashboardPage } from './pages/employee/EmployeeDashboardPage';
@@ -205,6 +206,7 @@ export function App() {
             <Route path="module-control" element={<SuperAdminModuleControlPage />} />
             <Route path="sellable-features" element={<SuperAdminSellableFeaturesPage />} />
             <Route path="audit-logs" element={<SuperAdminAuditLogsPage />} />
+            <Route path="platform-health" element={<SuperAdminHealthPage />} />
             <Route path="support-mode" element={<SuperAdminSupportModePage />} />
             <Route path="*" element={<Navigate to="overview" replace />} />
           </Route>

@@ -25,12 +25,13 @@ type TenantContextValue = {
   refreshTenant: () => Promise<void>;
 };
 
-const ACTIVE_COMPANY_KEY = 'sca_active_company_id_v3';
+/** localStorage key for active org; shared with client error reporting. */
+export const ACTIVE_COMPANY_STORAGE_KEY = 'sca_active_company_id_v3';
 const TenantContext = createContext<TenantContextValue | null>(null);
 
 function getStoredActiveCompanyId(): UUID | null {
   try {
-    return (localStorage.getItem(ACTIVE_COMPANY_KEY) as UUID | null) ?? null;
+    return (localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) as UUID | null) ?? null;
   } catch {
     return null;
   }
@@ -38,8 +39,8 @@ function getStoredActiveCompanyId(): UUID | null {
 
 function storeActiveCompanyId(companyId: UUID | null): void {
   try {
-    if (!companyId) localStorage.removeItem(ACTIVE_COMPANY_KEY);
-    else localStorage.setItem(ACTIVE_COMPANY_KEY, companyId);
+    if (!companyId) localStorage.removeItem(ACTIVE_COMPANY_STORAGE_KEY);
+    else localStorage.setItem(ACTIVE_COMPANY_STORAGE_KEY, companyId);
   } catch {
     // ignore storage errors
   }
