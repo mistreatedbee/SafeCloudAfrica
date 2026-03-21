@@ -20,6 +20,7 @@ import { countMyIncidents } from '../../api/services/incidentsService';
 import { countExpiringTrainingForUser } from '../../api/services/trainingService';
 import { getEmployeeIntegratedProfile, getHrEmployeeByUserId } from '../../api/services/hrService';
 import type { UUID } from '../../api/models/core';
+import { FirstWinBanner } from '../../components/onboarding/FirstWinBanner';
 
 export function EmployeeDashboardPage() {
   const { activeCompanyId } = useTenant();
@@ -81,6 +82,7 @@ export function EmployeeDashboardPage() {
   return (
     <Layout title="My Dashboard">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+        <FirstWinBanner persona="employee" />
         <div className="bg-gradient-to-r from-navy to-navy-700 rounded-2xl p-6 text-white">
           <h1 className="text-2xl font-bold mb-1">Hello, {firstName}</h1>
           <p className="text-navy-200">

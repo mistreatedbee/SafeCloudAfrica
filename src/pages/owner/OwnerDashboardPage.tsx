@@ -28,6 +28,7 @@ import { listAudits } from '../../api/services/auditsService';
 import { listSites } from '../../api/services/sitesService';
 import { listDepartments } from '../../api/services/departmentsService';
 import { listInspections } from '../../api/services/inspectionsService';
+import { FirstWinBanner } from '../../components/onboarding/FirstWinBanner';
 
 export function OwnerDashboardPage() {
   const { activeCompanyId, activeCompany } = useTenant();
@@ -162,6 +163,7 @@ export function OwnerDashboardPage() {
             <p className="text-sm text-charcoal-600 mt-1">Your system is ready.</p>
           </div>
         )}
+        <FirstWinBanner persona="owner" />
         <div className="bg-gradient-to-r from-navy to-navy-700 rounded-2xl p-6 text-white">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, lazy, Suspense } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -16,6 +16,7 @@ import { useAsync } from '../api/hooks/useAsync';
 import { deleteIncident, listIncidents } from '../api/services/incidentsService';
 import type { Incident } from '../api/models/entities';
 import { useUser } from '@insforge/react';
+import { FirstWinBanner } from '../components/onboarding/FirstWinBanner';
 
 const IncidentCreateModal = lazy(() => import('../components/incidents/IncidentCreateModal').then(m => ({ default: m.IncidentCreateModal })));
 const IncidentDetailModal = lazy(() => import('../components/incidents/IncidentDetailModal').then(m => ({ default: m.IncidentDetailModal })));
@@ -155,6 +156,8 @@ export function IncidentsPage() {
         initial="hidden"
         animate="visible"
         className="space-y-6">
+
+        {activeRole !== 'employee' ? <FirstWinBanner persona="safety" /> : null}
 
         {/* Stats */}
         <motion.div

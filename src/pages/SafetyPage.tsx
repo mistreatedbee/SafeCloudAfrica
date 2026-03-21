@@ -1,7 +1,6 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useUser } from '@insforge/react';
 import {
   ShieldIcon,
   AlertTriangleIcon,
@@ -25,6 +24,7 @@ import { getPpeCompliance } from '../api/services/ppeService';
 import { listModuleTargets } from '../api/services/moduleTargetsService';
 import { listActivityLogs } from '../api/services/activityLogService';
 import { isNearMiss } from '../api/utils/incidents';
+import { FirstWinBanner } from '../components/onboarding/FirstWinBanner';
 
 const containerVariants = {
   hidden: {
@@ -63,8 +63,8 @@ function timeAgo(iso: string): string {
 
 export function SafetyPage() {
   const navigate = useNavigate();
-  const { user } = useUser();
-  const { activeCompanyId } = useTenant();
+  const { activeCompanyId, activeRole } = useTenant();
+  const showSafetyFirstWin = activeRole != null && activeRole !== 'employee';
 
   const { data: summary } = useAsync(
     async () => {
@@ -133,6 +133,8 @@ export function SafetyPage() {
         initial="hidden"
         animate="visible"
         className="space-y-6">
+
+        {showSafetyFirstWin ? <FirstWinBanner persona="safety" /> : null}
 
         {/* Module Header */}
         <motion.div

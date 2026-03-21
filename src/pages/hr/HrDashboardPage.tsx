@@ -1,4 +1,4 @@
-﻿import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
@@ -6,10 +6,13 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { getHrDashboardStats } from '../../api/services/hrService';
 import { listHrEmployees, listHrLeaveRequests, listHrTimesheets } from '../../api/services/hrService';
+import { FirstWinBanner } from '../../components/onboarding/FirstWinBanner';
 
 export function HrDashboardPage() {
   const navigate = useNavigate();
-  const { activeCompanyId } = useTenant();
+  const { activeCompanyId, activeRole, memberships } = useTenant();
+  const activeMembership = memberships.find((m) => m.company_id === activeCompanyId);
+  const showHrFirstWin = activeRole === 'admin' || activeMembership?.is_hr_manager === true;
 
   const { data: stats } = useAsync(async () => {
     if (!activeCompanyId) return null;
@@ -61,6 +64,7 @@ export function HrDashboardPage() {
   return (
     <Layout title="HR Dashboard">
       <div className="space-y-4">
+        {showHrFirstWin ? <FirstWinBanner persona="hr" /> : null}
         <HrSectionNav />
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
