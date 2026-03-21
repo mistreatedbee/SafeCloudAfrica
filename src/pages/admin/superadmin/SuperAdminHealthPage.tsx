@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { ActivityIcon, CheckCircle2Icon, XCircleIcon } from 'lucide-react';
+import { ActivityIcon, CheckCircle2Icon, DatabaseIcon, ExternalLinkIcon, XCircleIcon } from 'lucide-react';
 import { useAsync } from '../../../api/hooks/useAsync';
 import {
   checkInsforgeReachable,
@@ -20,6 +20,47 @@ function lastByType(rows: PlatformOperationalEventRow[], eventType: string): Pla
   return rows.find((r) => r.event_type === eventType) ?? null;
 }
 
+function readViteEnv(key: string): string | undefined {
+  const v = (import.meta as { env?: Record<string, string | undefined> }).env?.[key];
+  return v != null && String(v).trim() ? String(v).trim() : undefined;
+}
+
+type BackupDisplaySource = 'event' | 'env' | 'none';
+
+function resolveBackupDisplay(
+  lastVerified: PlatformOperationalEventRow | null,
+  envIso: string | undefined
+): { source: BackupDisplaySource; label: string; detail: string } {
+  if (lastVerified) {
+    return {
+      source: 'event',
+      label: formatDate(lastVerified.created_at),
+      detail: lastVerified.message || 'Recorded verification (platform_operational_events).'
+    };
+  }
+  if (envIso) {
+    const d = new Date(envIso);
+    if (!Number.isNaN(d.getTime())) {
+      return {
+        source: 'env',
+        label: d.toLocaleString(),
+        detail: 'Declared at deploy time (VITE_PLATFORM_LAST_BACKUP_DECLARED_AT). Not a live InsForge API read.'
+      };
+    }
+    return {
+      source: 'env',
+      label: envIso,
+      detail: 'VITE_PLATFORM_LAST_BACKUP_DECLARED_AT is set but not a valid ISO 8601 date.'
+    };
+  }
+  return {
+    source: 'none',
+    label: 'Not declared',
+    detail:
+      'Set VITE_PLATFORM_LAST_BACKUP_DECLARED_AT (redeploy) or insert a backup.verified row — see docs/BACKUP-AND-RESTORE.md.'
+  };
+}
+
 export function SuperAdminHealthPage() {
   const eventsQuery = useAsync(() => listPlatformOperationalEvents(500), []);
   const failuresQuery = useAsync(() => countOperationalFailuresLast24h(), []);
@@ -29,6 +70,13 @@ export function SuperAdminHealthPage() {
   const lastEmailOk = useMemo(() => lastByType(rows, 'email.sent'), [rows]);
   const lastEmailFail = useMemo(() => lastByType(rows, 'email.failed'), [rows]);
   const lastCron = useMemo(() => lastByType(rows, 'cron.heartbeat'), [rows]);
+  const lastBackupVerified = useMemo(() => lastByType(rows, 'backup.verified'), [rows]);
+  const envBackupDeclared = readViteEnv('VITE_PLATFORM_LAST_BACKUP_DECLARED_AT');
+  const backupRunbookUrl = readViteEnv('VITE_BACKUP_RUNBOOK_URL');
+  const backupDisplay = useMemo(
+    () => resolveBackupDisplay(lastBackupVerified, envBackupDeclared),
+    [lastBackupVerified, envBackupDeclared]
+  );
 
   const loading = eventsQuery.loading || failuresQuery.loading || pingQuery.loading;
   const loadError = eventsQuery.error || failuresQuery.error || pingQuery.error;
@@ -95,6 +143,46 @@ export function SuperAdminHealthPage() {
                 ? `${lastCron.status}: ${lastCron.message}`
                 : 'No heartbeat yet. Configure Vercel cron and CRON_SECRET, or ping from InsForge cron (see scripts/insforge-functions/README).'}
             </p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5 space-y-3 md:col-span-2">
+            <h3 className="text-sm font-semibold text-charcoal flex items-center gap-2">
+              <DatabaseIcon className="w-4 h-4 text-teal flex-shrink-0" /> Backups &amp; recovery
+            </h3>
+            <p className="text-xs text-charcoal-500">
+              Database and file storage are primarily InsForge&apos;s responsibility. The date below is a{' '}
+              <span className="font-medium text-charcoal-600">declared or recorded</span> verification, not a live backup
+              API (until provider integration exists). There is no in-app restore.
+            </p>
+            <div>
+              <p className="text-xs font-semibold text-charcoal-500 uppercase tracking-wide">Last recorded verification</p>
+              <p className="text-sm text-charcoal-600 mt-0.5">{backupDisplay.label}</p>
+              <p className="text-xs text-charcoal-500 mt-1 break-words">{backupDisplay.detail}</p>
+              {backupDisplay.source !== 'none' && (
+                <p className="text-xs text-charcoal-400 mt-1">
+                  Source: {backupDisplay.source === 'event' ? 'platform_operational_events (backup.verified)' : 'environment variable'}
+                </p>
+              )}
+            </div>
+            <div>
+              {backupRunbookUrl ? (
+                <a
+                  href={backupRunbookUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-teal hover:underline"
+                >
+                  Backup &amp; restore runbook
+                  <ExternalLinkIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                </a>
+              ) : (
+                <p className="text-sm text-charcoal-500">
+                  Runbook: <code className="text-xs bg-surface-100 px-1 rounded">docs/BACKUP-AND-RESTORE.md</code> in the
+                  repository. Set <code className="text-xs bg-surface-100 px-1 rounded">VITE_BACKUP_RUNBOOK_URL</code> for a
+                  clickable link (e.g. GitHub blob URL).
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}
