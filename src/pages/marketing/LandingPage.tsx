@@ -121,6 +121,9 @@ export function LandingPage() {
             <button onClick={() => scrollToHash('#faq')} className="hover:text-charcoal transition-colors">
               FAQ
             </button>
+            <Link to="/security" className="hover:text-charcoal transition-colors">
+              Security
+            </Link>
           </nav>
 
           <div className="flex items-center gap-2">

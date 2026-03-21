@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { CloudIcon, MailIcon, ShieldCheckIcon } from 'lucide-react';
 
 export function MarketingFooter() {
@@ -28,6 +29,12 @@ export function MarketingFooter() {
           <div>
             <p className="text-sm font-semibold text-charcoal">Platform</p>
             <ul className="mt-3 space-y-2 text-sm text-charcoal-500">
+              <li>
+                <Link to="/security" className="inline-flex items-center gap-1.5 hover:text-teal transition-colors">
+                  <ShieldCheckIcon className="w-3.5 h-3.5" />
+                  Security &amp; trust
+                </Link>
+              </li>
               <li>Documents (DMS)</li>
               <li>Tasks & Time</li>
               <li>Incidents & CAPA</li>

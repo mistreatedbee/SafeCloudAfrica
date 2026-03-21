@@ -411,6 +411,13 @@ export async function createHrLeaveRequest(input: Omit<HrLeaveRequest, 'id' | 'c
     status: input.status ?? 'SUBMITTED',
     submitted_at: input.submitted_at ?? new Date().toISOString()
   });
+  await createActivityLog({
+    companyId: input.company_id,
+    actorUserId: input.created_by_user_id,
+    action: 'hr.leave.request.create',
+    entityType: 'hr_leave_request',
+    entityId: row.id
+  }).catch(() => undefined);
   if (input.approverUserId) {
     await createNotification(input.company_id, input.approverUserId, 'info', 'Leave Approval Required', 'A new leave request requires your approval.');
   }
@@ -465,6 +472,13 @@ export async function listHrTimesheets(companyId: UUID, employeeId?: UUID): Prom
 export async function upsertHrTimesheet(input: Omit<HrTimesheet, 'id' | 'created_at' | 'updated_at' | 'approved_by_user_id' | 'approved_at' | 'decline_reason'>): Promise<HrTimesheet> {
   const row = await upsertTable<HrTimesheet>('hr_timesheets', { ...input, updated_at: new Date().toISOString() }, 'company_id,employee_id,date');
   const d = new Date(input.date);
+  await createActivityLog({
+    companyId: input.company_id,
+    actorUserId: input.created_by_user_id,
+    action: 'hr.timesheet.upsert',
+    entityType: 'hr_timesheet',
+    entityId: row.id
+  }).catch(() => undefined);
   await recalculateHrMonthlyHours(input.company_id, input.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.created_by_user_id).catch(() => {});
   return row;
 }
@@ -493,6 +507,14 @@ export async function approveHrTimesheet(input: {
   if (!data) throw new Error('Failed to approve timesheet');
   const row = data as HrTimesheet;
   const d = new Date(row.date);
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr.timesheet.approval',
+    entityType: 'hr_timesheet',
+    entityId: input.timesheetId,
+    metadata: { decision: input.decision }
+  }).catch(() => undefined);
   await recalculateHrMonthlyHours(row.company_id, row.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.actorUserId).catch(() => {});
   return row;
 }

@@ -179,7 +179,12 @@ export function UsersPage() {
     setMembershipActionLoadingId(membershipId);
     setInviteFeedback(null);
     try {
-      await updateMembershipRole({ companyId: activeCompanyId, membershipId: membershipId as any, role });
+      await updateMembershipRole({
+        companyId: activeCompanyId,
+        membershipId: membershipId as any,
+        role,
+        actorUserId: user?.id as any
+      });
       await refreshUsersData();
       setInviteFeedback({ type: 'success', text: 'User role updated successfully.' });
     } catch (err: any) {
@@ -195,7 +200,12 @@ export function UsersPage() {
     setMembershipActionLoadingId(membershipId);
     setInviteFeedback(null);
     try {
-      await updateMembershipStatus({ companyId: activeCompanyId, membershipId: membershipId as any, status: nextStatus });
+      await updateMembershipStatus({
+        companyId: activeCompanyId,
+        membershipId: membershipId as any,
+        status: nextStatus,
+        actorUserId: user?.id as any
+      });
       await refreshUsersData();
       setInviteFeedback({
         type: 'success',
@@ -213,7 +223,12 @@ export function UsersPage() {
     setMembershipActionLoadingId(membershipId);
     setInviteFeedback(null);
     try {
-      await updateMembershipHrManagerFlag({ companyId: activeCompanyId, membershipId: membershipId as any, isHrManager: nextValue });
+      await updateMembershipHrManagerFlag({
+        companyId: activeCompanyId,
+        membershipId: membershipId as any,
+        isHrManager: nextValue,
+        actorUserId: user?.id as any
+      });
       await refreshUsersData();
       setInviteFeedback({ type: 'success', text: nextValue ? 'HR Manager access enabled.' : 'HR Manager access removed.' });
     } catch (err: any) {

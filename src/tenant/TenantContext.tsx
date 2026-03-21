@@ -1,7 +1,8 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { insforge } from '../api/insforge/client';
 import type { Company, CompanyMembership, UUID } from '../api/models/entities';
+import { createActivityLog } from '../api/services/activityLogService';
 import type { CompanyRole, ModuleKey } from '../api/models/core';
 import { ensureMeAsSuperAdmin, isPlatformAdmin as checkPlatformAdmin } from '../api/services/platformAdminService';
 import { getEnabledModuleKeys } from '../api/services/orgModulesService';
@@ -15,6 +16,8 @@ type TenantContextValue = {
   activeCompanyId: UUID | null;
   activeCompany: Company | null;
   activeRole: CompanyRole | null;
+  /** Active company membership row (role, is_hr_manager, scope, etc.). */
+  activeMembership: MembershipWithCompany | null;
   /** Module keys enabled for the active org (Super Admin control). Empty = all enabled (e.g. no config). */
   enabledModules: ModuleKey[];
   sellableFeatures: SellableFeaturesConfig;
@@ -71,6 +74,8 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [activeCompanyId, setActiveCompanyIdState] = useState<UUID | null>(getStoredActiveCompanyId());
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [isTenantLoaded, setIsTenantLoaded] = useState(false);
+  /** Avoid duplicate session.workspace.active rows on periodic refresh; key = userId:companyId. */
+  const workspaceSessionLoggedRef = useRef<string | null>(null);
 
   const refreshTenant = useCallback(async () => {
     if (!isLoaded) return;
@@ -79,6 +84,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       setActiveCompanyIdState(null);
       storeActiveCompanyId(null);
       setIsPlatformAdmin(false);
+      workspaceSessionLoggedRef.current = null;
       setIsTenantLoaded(true);
       return;
     }
@@ -110,6 +116,19 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
       const dbIsAdmin = await checkPlatformAdmin(user.id as UUID);
       setIsPlatformAdmin(dbIsAdmin);
+
+      if (next) {
+        const sessionKey = `${user.id}:${next}`;
+        if (workspaceSessionLoggedRef.current !== sessionKey) {
+          workspaceSessionLoggedRef.current = sessionKey;
+          void createActivityLog({
+            companyId: next,
+            actorUserId: user.id as UUID,
+            action: 'session.workspace.active',
+            metadata: { source: 'tenant_context' }
+          }).catch(() => undefined);
+        }
+      }
     } catch {
       // Ensure we don't stay in loading state forever (e.g. network/RLS errors)
       setMemberships([]);
@@ -163,6 +182,11 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     return memberships.find((m) => m.company_id === activeCompanyId)?.role ?? null;
   }, [activeCompanyId, memberships]);
 
+  const activeMembership = useMemo<MembershipWithCompany | null>(() => {
+    if (!activeCompanyId) return null;
+    return memberships.find((m) => m.company_id === activeCompanyId) ?? null;
+  }, [activeCompanyId, memberships]);
+
   const enabledModules = useMemo<ModuleKey[]>(() => {
     return getEnabledModuleKeys(activeCompany ?? null);
   }, [activeCompany]);
@@ -176,6 +200,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       activeCompanyId,
       activeCompany,
       activeRole,
+      activeMembership,
       enabledModules,
       sellableFeatures,
       isPlatformAdmin,
@@ -183,7 +208,19 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       setActiveCompanyId,
       refreshTenant
     }),
-    [activeCompany, activeCompanyId, activeRole, enabledModules, isPlatformAdmin, isTenantLoaded, memberships, refreshTenant, sellableFeatures, setActiveCompanyId]
+    [
+      activeCompany,
+      activeCompanyId,
+      activeRole,
+      activeMembership,
+      enabledModules,
+      isPlatformAdmin,
+      isTenantLoaded,
+      memberships,
+      refreshTenant,
+      sellableFeatures,
+      setActiveCompanyId
+    ]
   );
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;

@@ -26,7 +26,7 @@ function getRestrictedTrackerStatus(row: HealthRestrictedDuty): 'Open' | 'Closed
 
 export function HealthMedicalPage() {
   const { user } = useUser();
-  const { activeCompanyId, activeRole } = useTenant();
+  const { activeCompanyId, activeRole, activeMembership } = useTenant();
   const [tab, setTab] = useState<TabKey>('Medical Records');
   const [refreshKey, setRefreshKey] = useState(0);
   const [restrictedFilter, setRestrictedFilter] = useState<RestrictedTrackerStatusFilter>('all');
@@ -47,8 +47,14 @@ export function HealthMedicalPage() {
 
   const { data: medicals } = useAsync<HealthMedical[]>(async () => {
     if (!activeCompanyId) return [];
-    return await listHealthMedicals({ companyId: activeCompanyId, actorUserId: user?.id, actorRole: activeRole as CompanyRole, limit: 300 });
-  }, [activeCompanyId, user?.id, activeRole, refreshKey]);
+    return await listHealthMedicals({
+      companyId: activeCompanyId,
+      actorUserId: user?.id,
+      actorRole: activeRole as CompanyRole,
+      actorIsHrManager: activeMembership?.is_hr_manager === true,
+      limit: 300
+    });
+  }, [activeCompanyId, user?.id, activeRole, activeMembership?.is_hr_manager, refreshKey]);
 
   const { data: restrictedDuty } = useAsync(async () => {
     if (!activeCompanyId) return [];

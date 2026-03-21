@@ -17,14 +17,18 @@ type Tab = (typeof TABS)[number];
 export function HrEmployeeProfilePage() {
   const { id } = useParams();
   const { user } = useUser();
-  const { activeCompanyId, activeRole, isPlatformAdmin } = useTenant();
+  const { activeCompanyId, activeRole, activeMembership, isPlatformAdmin } = useTenant();
   const [tab, setTab] = useState<Tab>('overview');
   const [showEdit, setShowEdit] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const allowedRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
-  const canEditEmployee = !!(isPlatformAdmin || (activeRole && allowedRoles.includes(activeRole)));
+  const canEditEmployee = !!(
+    isPlatformAdmin ||
+    activeMembership?.is_hr_manager === true ||
+    (activeRole && allowedRoles.includes(activeRole))
+  );
 
   const { data: canRestricted } = useAsync(async () => {
     if (!activeCompanyId) return false;

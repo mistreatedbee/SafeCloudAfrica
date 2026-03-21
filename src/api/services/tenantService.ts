@@ -112,6 +112,7 @@ export async function getCompanyById(companyId: UUID): Promise<Company | null> {
 
 export async function updateCompanyProfile(input: {
   companyId: UUID;
+  actorUserId?: UUID;
   name?: string;
   metadata?: Record<string, unknown> | null;
   code?: string | null;
@@ -130,6 +131,17 @@ export async function updateCompanyProfile(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update company.');
+  const keys = Object.keys(patch);
+  if (input.actorUserId && keys.length > 0) {
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.actorUserId,
+      action: 'company.profile.update',
+      entityType: 'company',
+      entityId: input.companyId,
+      metadata: { fields: keys }
+    }).catch(() => undefined);
+  }
   return data as Company;
 }
 
@@ -556,6 +568,7 @@ export async function updateMembershipRole(input: {
   companyId: UUID;
   membershipId: UUID;
   role: CompanyRole;
+  actorUserId?: UUID;
 }): Promise<void> {
   const { error } = await insforge.database
     .from('company_memberships')
@@ -563,12 +576,23 @@ export async function updateMembershipRole(input: {
     .eq('company_id', input.companyId)
     .eq('id', input.membershipId);
   if (error) throw new Error(getErrorMessage(error));
+  if (input.actorUserId) {
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.actorUserId,
+      action: 'company.membership.role_change',
+      entityType: 'company_membership',
+      entityId: input.membershipId,
+      metadata: { role: input.role }
+    }).catch(() => undefined);
+  }
 }
 
 export async function updateMembershipStatus(input: {
   companyId: UUID;
   membershipId: UUID;
   status: 'INVITED' | 'ACTIVE' | 'DISABLED';
+  actorUserId?: UUID;
 }): Promise<void> {
   const { error } = await insforge.database
     .from('company_memberships')
@@ -576,12 +600,23 @@ export async function updateMembershipStatus(input: {
     .eq('company_id', input.companyId)
     .eq('id', input.membershipId);
   if (error) throw new Error(getErrorMessage(error));
+  if (input.actorUserId) {
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.actorUserId,
+      action: 'company.membership.status_change',
+      entityType: 'company_membership',
+      entityId: input.membershipId,
+      metadata: { status: input.status }
+    }).catch(() => undefined);
+  }
 }
 
 export async function updateMembershipHrManagerFlag(input: {
   companyId: UUID;
   membershipId: UUID;
   isHrManager: boolean;
+  actorUserId?: UUID;
 }): Promise<void> {
   const { error } = await insforge.database
     .from('company_memberships')
@@ -589,6 +624,16 @@ export async function updateMembershipHrManagerFlag(input: {
     .eq('company_id', input.companyId)
     .eq('id', input.membershipId);
   if (error) throw new Error(getErrorMessage(error));
+  if (input.actorUserId) {
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.actorUserId,
+      action: 'company.membership.hr_manager_toggle',
+      entityType: 'company_membership',
+      entityId: input.membershipId,
+      metadata: { is_hr_manager: input.isHrManager }
+    }).catch(() => undefined);
+  }
 }
 
 export function getDefaultEmployeeLimit(licenseType: LicenseType): number {

@@ -21,7 +21,7 @@ type TabKey = (typeof tabs)[number];
 
 export function HealthWellnessPage() {
   const { user } = useUser();
-  const { activeCompanyId, activeRole } = useTenant();
+  const { activeCompanyId, activeRole, activeMembership } = useTenant();
   const [tab, setTab] = useState<TabKey>('Programmes/Campaigns');
   const [refreshKey, setRefreshKey] = useState(0);
   const [vaccineOptions, setVaccineOptions] = useState<OptionItem[]>([]);
@@ -69,8 +69,12 @@ export function HealthWellnessPage() {
 
   const { data: substanceCases } = useAsync(async () => {
     if (!activeCompanyId) return [];
-    return await listHealthSubstanceCases({ companyId: activeCompanyId, actorRole: activeRole as CompanyRole });
-  }, [activeCompanyId, activeRole, refreshKey]);
+    return await listHealthSubstanceCases({
+      companyId: activeCompanyId,
+      actorRole: activeRole as CompanyRole,
+      actorIsHrManager: activeMembership?.is_hr_manager === true
+    });
+  }, [activeCompanyId, activeRole, activeMembership?.is_hr_manager, refreshKey]);
 
   const { data: vaccinations } = useAsync(async () => {
     if (!activeCompanyId) return [];
@@ -95,7 +99,8 @@ export function HealthWellnessPage() {
       immediateActionTaken: substanceForm.immediateActionTaken,
       outcome: substanceForm.outcome as any,
       createdByUserId: user.id,
-      actorRole: activeRole as CompanyRole
+      actorRole: activeRole as CompanyRole,
+      actorIsHrManager: activeMembership?.is_hr_manager === true
     });
     setRefreshKey((k) => k + 1);
   }

@@ -86,6 +86,7 @@ export function OwnerOnboardingWizardPage() {
       const onboardingCompletedAt = new Date().toISOString();
       await updateCompanyProfile({
         companyId: activeCompanyId,
+        actorUserId: user?.id as UUID,
         metadata: {
           ...meta,
           onboarding_completed_at: onboardingCompletedAt,

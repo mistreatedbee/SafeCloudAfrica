@@ -18,6 +18,12 @@ import { createNotification } from './notificationsService';
 const OPEN_TASK_STATUSES = ['draft', 'assigned', 'accepted', 'in-progress', 'awaiting-evidence', 'under-review', 'approved', 'reopened', 'overdue'];
 const MEDICAL_RESTRICTED_VIEW_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
 
+function canViewMedicalUnmasked(role: CompanyRole | null, isHrManager?: boolean): boolean {
+  if (isHrManager) return true;
+  if (role && MEDICAL_RESTRICTED_VIEW_ROLES.includes(role)) return true;
+  return false;
+}
+
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -34,12 +40,13 @@ function daysUntil(dateText: string): number {
   return Math.floor((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-function maskMedicalRestrictedFields(record: HealthMedical, role: CompanyRole | null): HealthMedical {
-  if (role && MEDICAL_RESTRICTED_VIEW_ROLES.includes(role)) return record;
+function maskMedicalRestrictedFields(record: HealthMedical, role: CompanyRole | null, isHrManager?: boolean): HealthMedical {
+  if (canViewMedicalUnmasked(role, isHrManager)) return record;
   return { ...record, chronic_illness_notes: null, restricted_duty_details: null, notes: null };
 }
 
-function maskSubstanceRestrictedFields(record: HealthSubstanceCase, role: CompanyRole | null): HealthSubstanceCase {
+function maskSubstanceRestrictedFields(record: HealthSubstanceCase, role: CompanyRole | null, isHrManager?: boolean): HealthSubstanceCase {
+  if (isHrManager) return record;
   if (role && ['owner', 'admin', 'manager'].includes(role)) return record;
   return { ...record, employee_comments: null, hr_manager_comments: null };
 }
@@ -80,6 +87,8 @@ export type ListHealthMedicalsInput = {
   limit?: number;
   actorUserId?: UUID;
   actorRole?: CompanyRole | null;
+  /** Designated HR manager on membership; aligns with health RLS health_can_write_clinical. */
+  actorIsHrManager?: boolean;
 };
 
 export async function listHealthMedicals(input: ListHealthMedicalsInput): Promise<HealthMedical[]> {
@@ -95,7 +104,9 @@ export async function listHealthMedicals(input: ListHealthMedicalsInput): Promis
   }
   const { data, error } = await q.order('medical_date', { ascending: false }).limit(input.limit ?? 300);
   if (error) throw new Error(getErrorMessage(error));
-  const rows = ((data ?? []) as HealthMedical[]).map((r) => maskMedicalRestrictedFields(r, input.actorRole ?? null));
+  const rows = ((data ?? []) as HealthMedical[]).map((r) =>
+    maskMedicalRestrictedFields(r, input.actorRole ?? null, input.actorIsHrManager)
+  );
   if (input.actorUserId) {
     await createActivityLog({
       companyId: input.companyId,
@@ -288,11 +299,23 @@ export async function createHealthHygieneRecord(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create hygiene record.');
   const record = data as HealthHygieneRecord;
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.createdByUserId,
+    action: 'health.hygiene.create',
+    entityType: 'health_hygiene_record',
+    entityId: record.id
+  }).catch(() => undefined);
   const actionPlanId = await autoCreateHygieneActionPlan(input.companyId, record, input.createdByUserId);
   return actionPlanId ? { ...record, action_plan_id: actionPlanId } : record;
 }
 
-export async function updateHealthHygieneRecord(companyId: UUID, recordId: UUID, patch: Partial<HealthHygieneRecord>): Promise<HealthHygieneRecord> {
+export async function updateHealthHygieneRecord(
+  companyId: UUID,
+  recordId: UUID,
+  patch: Partial<HealthHygieneRecord>,
+  actorUserId?: UUID
+): Promise<HealthHygieneRecord> {
   const { data, error } = await insforge.database
     .from('health_hygiene_records')
     .update({ ...patch, updated_at: new Date().toISOString() })
@@ -302,12 +325,31 @@ export async function updateHealthHygieneRecord(companyId: UUID, recordId: UUID,
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update hygiene record.');
+  if (actorUserId) {
+    await createActivityLog({
+      companyId,
+      actorUserId,
+      action: 'health.hygiene.update',
+      entityType: 'health_hygiene_record',
+      entityId: recordId,
+      metadata: { fields: Object.keys(patch) }
+    }).catch(() => undefined);
+  }
   return data as HealthHygieneRecord;
 }
 
-export async function deleteHealthHygieneRecord(companyId: UUID, recordId: UUID): Promise<void> {
+export async function deleteHealthHygieneRecord(companyId: UUID, recordId: UUID, actorUserId?: UUID): Promise<void> {
   const { error } = await insforge.database.from('health_hygiene_records').delete().eq('company_id', companyId).eq('id', recordId);
   if (error) throw new Error(getErrorMessage(error));
+  if (actorUserId) {
+    await createActivityLog({
+      companyId,
+      actorUserId,
+      action: 'health.hygiene.delete',
+      entityType: 'health_hygiene_record',
+      entityId: recordId
+    }).catch(() => undefined);
+  }
 }
 
 export async function listHealthWellnessCampaigns(companyId: UUID): Promise<HealthWellnessCampaign[]> {
@@ -368,7 +410,8 @@ export async function deleteHealthWellnessCampaign(companyId: UUID, campaignId: 
   if (error) throw new Error(getErrorMessage(error));
 }
 
-function ensureSubstanceWriteAccess(role: CompanyRole | null | undefined): void {
+function ensureSubstanceWriteAccess(role: CompanyRole | null | undefined, isHrManager?: boolean): void {
+  if (isHrManager) return;
   if (!role || !['owner', 'admin', 'manager'].includes(role)) {
     throw new Error('You do not have permission to access substance abuse records.');
   }
@@ -377,8 +420,9 @@ function ensureSubstanceWriteAccess(role: CompanyRole | null | undefined): void 
 export async function listHealthSubstanceCases(input: {
   companyId: UUID;
   actorRole?: CompanyRole | null;
+  actorIsHrManager?: boolean;
 }): Promise<HealthSubstanceCase[]> {
-  ensureSubstanceWriteAccess(input.actorRole);
+  ensureSubstanceWriteAccess(input.actorRole, input.actorIsHrManager);
   const { data, error } = await insforge.database
     .from('health_substance_cases')
     .select('*')
@@ -386,7 +430,9 @@ export async function listHealthSubstanceCases(input: {
     .order('date_of_report', { ascending: false })
     .limit(300);
   if (error) throw new Error(getErrorMessage(error));
-  return ((data ?? []) as HealthSubstanceCase[]).map((row) => maskSubstanceRestrictedFields(row, input.actorRole ?? null));
+  return ((data ?? []) as HealthSubstanceCase[]).map((row) =>
+    maskSubstanceRestrictedFields(row, input.actorRole ?? null, input.actorIsHrManager)
+  );
 }
 
 export async function createHealthSubstanceCase(input: {
@@ -412,8 +458,9 @@ export async function createHealthSubstanceCase(input: {
   attachmentFileIds?: UUID[];
   createdByUserId: UUID;
   actorRole?: CompanyRole | null;
+  actorIsHrManager?: boolean;
 }): Promise<HealthSubstanceCase> {
-  ensureSubstanceWriteAccess(input.actorRole);
+  ensureSubstanceWriteAccess(input.actorRole, input.actorIsHrManager);
   const { data, error } = await insforge.database
     .from('health_substance_cases')
     .insert({
@@ -443,10 +490,23 @@ export async function createHealthSubstanceCase(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create substance abuse case.');
-  return maskSubstanceRestrictedFields(data as HealthSubstanceCase, input.actorRole ?? null);
+  const row = data as HealthSubstanceCase;
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.createdByUserId,
+    action: 'health.substance.create',
+    entityType: 'health_substance_case',
+    entityId: row.id
+  }).catch(() => undefined);
+  return maskSubstanceRestrictedFields(row, input.actorRole ?? null, input.actorIsHrManager);
 }
 
-export async function updateHealthSubstanceCase(companyId: UUID, caseId: UUID, patch: Partial<HealthSubstanceCase>): Promise<HealthSubstanceCase> {
+export async function updateHealthSubstanceCase(
+  companyId: UUID,
+  caseId: UUID,
+  patch: Partial<HealthSubstanceCase>,
+  actorUserId?: UUID
+): Promise<HealthSubstanceCase> {
   const { data, error } = await insforge.database
     .from('health_substance_cases')
     .update({ ...patch, updated_at: new Date().toISOString() })
@@ -456,12 +516,31 @@ export async function updateHealthSubstanceCase(companyId: UUID, caseId: UUID, p
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update substance abuse case.');
+  if (actorUserId) {
+    await createActivityLog({
+      companyId,
+      actorUserId,
+      action: 'health.substance.update',
+      entityType: 'health_substance_case',
+      entityId: caseId,
+      metadata: { fields: Object.keys(patch) }
+    }).catch(() => undefined);
+  }
   return data as HealthSubstanceCase;
 }
 
-export async function deleteHealthSubstanceCase(companyId: UUID, caseId: UUID): Promise<void> {
+export async function deleteHealthSubstanceCase(companyId: UUID, caseId: UUID, actorUserId?: UUID): Promise<void> {
   const { error } = await insforge.database.from('health_substance_cases').delete().eq('company_id', companyId).eq('id', caseId);
   if (error) throw new Error(getErrorMessage(error));
+  if (actorUserId) {
+    await createActivityLog({
+      companyId,
+      actorUserId,
+      action: 'health.substance.delete',
+      entityType: 'health_substance_case',
+      entityId: caseId
+    }).catch(() => undefined);
+  }
 }
 
 export async function listHealthVaccinations(input: { companyId: UUID; dueInDays?: number; employeeUserId?: UUID }): Promise<HealthVaccination[]> {
@@ -507,10 +586,23 @@ export async function createHealthVaccination(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create vaccination record.');
-  return data as HealthVaccination;
+  const row = data as HealthVaccination;
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.createdByUserId,
+    action: 'health.vaccination.create',
+    entityType: 'health_vaccination',
+    entityId: row.id
+  }).catch(() => undefined);
+  return row;
 }
 
-export async function updateHealthVaccination(companyId: UUID, vaccinationId: UUID, patch: Partial<HealthVaccination>): Promise<HealthVaccination> {
+export async function updateHealthVaccination(
+  companyId: UUID,
+  vaccinationId: UUID,
+  patch: Partial<HealthVaccination>,
+  actorUserId?: UUID
+): Promise<HealthVaccination> {
   const { data, error } = await insforge.database
     .from('health_vaccinations')
     .update({ ...patch, updated_at: new Date().toISOString() })
@@ -520,12 +612,31 @@ export async function updateHealthVaccination(companyId: UUID, vaccinationId: UU
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update vaccination record.');
+  if (actorUserId) {
+    await createActivityLog({
+      companyId,
+      actorUserId,
+      action: 'health.vaccination.update',
+      entityType: 'health_vaccination',
+      entityId: vaccinationId,
+      metadata: { fields: Object.keys(patch) }
+    }).catch(() => undefined);
+  }
   return data as HealthVaccination;
 }
 
-export async function deleteHealthVaccination(companyId: UUID, vaccinationId: UUID): Promise<void> {
+export async function deleteHealthVaccination(companyId: UUID, vaccinationId: UUID, actorUserId?: UUID): Promise<void> {
   const { error } = await insforge.database.from('health_vaccinations').delete().eq('company_id', companyId).eq('id', vaccinationId);
   if (error) throw new Error(getErrorMessage(error));
+  if (actorUserId) {
+    await createActivityLog({
+      companyId,
+      actorUserId,
+      action: 'health.vaccination.delete',
+      entityType: 'health_vaccination',
+      entityId: vaccinationId
+    }).catch(() => undefined);
+  }
 }
 
 export async function getHealthDashboardStats(companyId: UUID) {

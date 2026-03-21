@@ -6,6 +6,9 @@ import { RequireCompanyRole } from './auth/RequireCompanyRole';
 import { RequireSellableFeatureAccess } from './auth/RequireSellableFeatureAccess';
 import { RequireActiveSubscription } from './auth/RequireActiveSubscription';
 import { RequireModuleEnabled } from './auth/RequireModuleEnabled';
+import { RequireHrPersonnelAccess } from './auth/RequireHrPersonnelAccess';
+import { RequireHrLeaveHoursAccess } from './auth/RequireHrLeaveHoursAccess';
+import { RequireHealthMedicalAccess } from './auth/RequireHealthMedicalAccess';
 import { OwnerOnboardingGate } from './auth/OwnerOnboardingGate';
 import { AuthSessionListener } from './auth/AuthSessionListener';
 import { TenantProvider } from './tenant/TenantContext';
@@ -100,6 +103,7 @@ import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { LandingPage } from './pages/marketing/LandingPage';
+import { SecurityPage } from './pages/marketing/SecurityPage';
 import { SeedDemoPage } from './pages/admin/SeedDemoPage';
 import { AdminLicensePage } from './pages/admin/AdminLicensePage';
 import { SuperAdminLayout } from './components/layout/SuperAdminLayout';
@@ -130,6 +134,7 @@ export function App() {
         <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
+          <Route path="/security" element={<SecurityPage />} />
 
           {/* Auth */}
           <Route path="/login" element={<LoginPage />} />
@@ -545,7 +550,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="health">
-                    <HealthMedicalPage />
+                    <RequireHealthMedicalAccess>
+                      <HealthMedicalPage />
+                    </RequireHealthMedicalAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -605,7 +612,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <Navigate to="/dashboard/hr" replace />
+                    <RequireHrPersonnelAccess>
+                      <Navigate to="/dashboard/hr" replace />
+                    </RequireHrPersonnelAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -617,7 +626,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrDashboardPage />
+                    <RequireHrPersonnelAccess>
+                      <HrDashboardPage />
+                    </RequireHrPersonnelAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -629,7 +640,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrEmployeesPage />
+                    <RequireHrPersonnelAccess>
+                      <HrEmployeesPage />
+                    </RequireHrPersonnelAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -641,7 +654,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrEmployeeProfilePage />
+                    <RequireHrPersonnelAccess>
+                      <HrEmployeeProfilePage />
+                    </RequireHrPersonnelAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -653,7 +668,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrDocumentsPage />
+                    <RequireHrPersonnelAccess>
+                      <HrDocumentsPage />
+                    </RequireHrPersonnelAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -665,7 +682,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrRecruitmentPage />
+                    <RequireHrPersonnelAccess>
+                      <HrRecruitmentPage />
+                    </RequireHrPersonnelAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -677,7 +696,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrLabourPage />
+                    <RequireHrPersonnelAccess>
+                      <HrLabourPage />
+                    </RequireHrPersonnelAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -689,7 +710,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrPerformancePage />
+                    <RequireHrPersonnelAccess>
+                      <HrPerformancePage />
+                    </RequireHrPersonnelAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -701,7 +724,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrHoursPage />
+                    <RequireHrLeaveHoursAccess>
+                      <HrHoursPage />
+                    </RequireHrLeaveHoursAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -713,7 +738,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrLeavePage />
+                    <RequireHrLeaveHoursAccess>
+                      <HrLeavePage />
+                    </RequireHrLeaveHoursAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -725,7 +752,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <Navigate to="/dashboard/health/wellness/employee-wellness" replace />
+                    <RequireHrPersonnelAccess>
+                      <Navigate to="/dashboard/health/wellness/employee-wellness" replace />
+                    </RequireHrPersonnelAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -737,7 +766,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrSettingsPage />
+                    <RequireHrPersonnelAccess>
+                      <HrSettingsPage />
+                    </RequireHrPersonnelAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -749,7 +780,9 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <KPIModuleLayout />
+                    <RequireHrPersonnelAccess>
+                      <KPIModuleLayout />
+                    </RequireHrPersonnelAccess>
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>

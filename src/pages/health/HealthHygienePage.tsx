@@ -175,22 +175,27 @@ export function HealthHygienePage() {
 
   async function saveEdit(record: HealthHygieneRecord) {
     if (!activeCompanyId || !editRow) return;
-    await updateHealthHygieneRecord(activeCompanyId, record.id, {
-      site_location: editRow.work_area || null,
-      monitoring_type: editRow.process_activity || record.monitoring_type,
-      results_summary: editRow.result_obtained || null,
-      result_details: {
-        work_area: editRow.work_area,
-        process_activity: editRow.process_activity,
-        hazard_identified: editRow.hazard_identified,
-        monitoring_method: editRow.monitoring_method,
-        equipment_used: editRow.equipment_used,
-        exposure_limit: editRow.exposure_limit,
-        result_obtained: editRow.result_obtained,
-        comments: editRow.comments
+    await updateHealthHygieneRecord(
+      activeCompanyId,
+      record.id,
+      {
+        site_location: editRow.work_area || null,
+        monitoring_type: editRow.process_activity || record.monitoring_type,
+        results_summary: editRow.result_obtained || null,
+        result_details: {
+          work_area: editRow.work_area,
+          process_activity: editRow.process_activity,
+          hazard_identified: editRow.hazard_identified,
+          monitoring_method: editRow.monitoring_method,
+          equipment_used: editRow.equipment_used,
+          exposure_limit: editRow.exposure_limit,
+          result_obtained: editRow.result_obtained,
+          comments: editRow.comments
+        },
+        compliance_status: mapChoiceToCompliance(editCompliance as HygieneComplianceChoice)
       },
-      compliance_status: mapChoiceToCompliance(editCompliance as HygieneComplianceChoice)
-    });
+      user?.id as UUID
+    );
     setEditingId(null);
     setEditRow(null);
     setEditCompliance('');

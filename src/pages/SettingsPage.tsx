@@ -16,6 +16,7 @@ import { useUser } from '@insforge/react';
 import { updateCompanyProfile } from '../api/services/tenantService';
 import { insforge } from '../api/insforge/client';
 import { formatAuthError } from '../auth/authMessages';
+import type { UUID } from '../api/models/core';
 const settingsSections = [
 {
   id: 'company',
@@ -144,7 +145,7 @@ export function SettingsPage() {
     setSaveError(null);
     setSaveOk(null);
     try {
-      await updateCompanyProfile({ companyId: activeCompanyId, ...patch });
+      await updateCompanyProfile({ companyId: activeCompanyId, actorUserId: user?.id as UUID, ...patch });
       await refreshTenant();
       setSaveOk(okMessage);
       setTimeout(() => setSaveOk(null), 4000);
