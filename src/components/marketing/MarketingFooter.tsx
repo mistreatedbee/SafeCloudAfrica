@@ -18,11 +18,28 @@ export function MarketingFooter() {
               </div>
             </div>
             <p className="text-sm text-charcoal-500 mt-4 max-w-md">
-              Integrated Digital Safety Management Programme (IDSMP) aligned to ISO 45001, ISO 9001, and ISO 14001.
+              Integrated Digital Safety Management Programme (IDSMP) for documents, incidents, training, and compliance
+              workflows—built to align with international ISO standards.
             </p>
+            <div className="mt-3">
+              <Link
+                to="/#iso-alignment"
+                className="text-sm font-medium text-teal hover:underline underline-offset-2"
+              >
+                Learn more about ISO alignment
+              </Link>
+            </div>
             <div className="mt-4 inline-flex items-center gap-2 text-sm text-charcoal-500">
-              <ShieldCheckIcon className="w-4 h-4 text-success" />
+              <ShieldCheckIcon className="w-4 h-4 text-success shrink-0" />
               Built for auditability, evidence, and long-term scale.
+            </div>
+            <div className="mt-4">
+              <Link
+                to="/register"
+                className="text-sm font-medium text-charcoal-500 hover:text-teal transition-colors"
+              >
+                Get started
+              </Link>
             </div>
           </div>
 
@@ -64,4 +81,3 @@ export function MarketingFooter() {
     </footer>
   );
 }
-

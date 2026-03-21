@@ -13,23 +13,14 @@ import {
   BarChart3Icon,
   SparklesIcon,
   CheckCircleIcon,
-  UsersIcon,
   BuildingIcon,
   ZapIcon,
-  LayersIcon,
   SettingsIcon,
   StarIcon,
   ChevronDownIcon,
-  ExternalLinkIcon,
   AwardIcon,
-  ClockIcon,
   ServerIcon,
-  GlobeIcon,
-  LockIcon,
   MessageCircleIcon,
-  HelpCircleIcon,
-  XIcon,
-  CalendarIcon,
   CreditCardIcon
 } from 'lucide-react';
 import { MarketingFooter } from '../../components/marketing/MarketingFooter';
@@ -74,21 +65,12 @@ function Counter({ from = 0, to, duration = 2 }: { from?: number; to: number; du
 export function LandingPage() {
   const location = useLocation();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [showScrollCta, setShowScrollCta] = useState(false);
+  const [isoDetailOpen, setIsoDetailOpen] = useState(false);
 
   useEffect(() => {
     if (location.hash) scrollToHash(location.hash);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.hash]);
-
-  // Show floating CTA after scrolling
-  useEffect(() => {
-    const handleScroll = () => {
-      setShowScrollCta(window.scrollY > 400);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   return (
     <div className="min-h-screen bg-surface">
@@ -118,6 +100,12 @@ export function LandingPage() {
             <button onClick={() => scrollToHash('#testimonials')} className="hover:text-charcoal transition-colors">
               Testimonials
             </button>
+            <button onClick={() => scrollToHash('#case-studies')} className="hover:text-charcoal transition-colors">
+              Case studies
+            </button>
+            <button onClick={() => scrollToHash('#iso-alignment')} className="hover:text-charcoal transition-colors">
+              ISO
+            </button>
             <button onClick={() => scrollToHash('#faq')} className="hover:text-charcoal transition-colors">
               FAQ
             </button>
@@ -143,23 +131,7 @@ export function LandingPage() {
         </div>
       </header>
 
-      {/* Floating CTA button */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: showScrollCta ? 1 : 0, y: showScrollCta ? 0 : 20 }}
-        transition={{ duration: 0.3 }}
-        className="fixed bottom-6 right-6 z-50"
-      >
-        <Link
-          to="/register"
-          className="flex items-center gap-2 px-5 py-3 rounded-full bg-teal text-white font-semibold shadow-lg hover:bg-teal-600 transition-colors"
-        >
-          <SparklesIcon className="w-5 h-5" />
-          Get started
-        </Link>
-      </motion.div>
-
-      {/* Hero (unchanged) */}
+      {/* Hero */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute -top-24 -right-24 w-72 h-72 bg-teal/15 blur-3xl rounded-full animate-pulse" />
@@ -182,30 +154,38 @@ export function LandingPage() {
               </motion.h1>
 
               <motion.p variants={item} className="mt-4 text-base text-charcoal-500 max-w-xl">
-                Safe Cloud Africa is a cloud-based, ISO-aligned platform built to manage documents, tasks, incidents,
-                training, audits, risks, approvals, and compliance scoring—end to end.
+                Safe Cloud Africa is a cloud-based platform built to manage documents, tasks, incidents, training, audits,
+                risks, approvals, and compliance scoring—end to end.
               </motion.p>
 
-              <motion.div variants={item} className="mt-6 flex flex-wrap items-center gap-3">
+              <motion.div variants={item} className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <Link
                   to="/register"
-                  className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-teal text-white font-semibold hover:bg-teal-600 transition-colors"
+                  className="inline-flex w-fit items-center gap-2 px-5 py-3 rounded-lg bg-teal text-white font-semibold hover:bg-teal-600 transition-colors"
                 >
-                  Login / Get started <ArrowRightIcon className="w-4 h-4" />
+                  Get started <ArrowRightIcon className="w-4 h-4" />
                 </Link>
-                <a
-                  href="#modules"
-                  className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-white border border-surface-300 text-charcoal font-semibold hover:bg-surface-50 transition-colors"
-                >
-                  View modules
-                </a>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => scrollToHash('#modules')}
+                    className="text-teal font-medium hover:underline underline-offset-2"
+                  >
+                    View modules
+                  </button>
+                  <span className="text-charcoal-300 hidden sm:inline" aria-hidden>
+                    ·
+                  </span>
+                  <Link to="/login" className="text-charcoal-500 hover:text-teal transition-colors">
+                    Log in
+                  </Link>
+                </div>
               </motion.div>
 
               <motion.div variants={item} className="mt-7 flex items-start gap-3 text-sm text-charcoal-500">
-                <ShieldCheckIcon className="w-5 h-5 text-success mt-0.5" />
+                <ShieldCheckIcon className="w-5 h-5 text-success mt-0.5 shrink-0" />
                 <p>
-                  Designed for <span className="font-semibold text-charcoal">auditability</span>, evidence storage, and long-term scalability
-                  (ISO 45001 / 9001 / 14001).
+                  Designed for <span className="font-semibold text-charcoal">auditability</span>, evidence storage, and long-term scalability.
                 </p>
               </motion.div>
             </div>
@@ -239,9 +219,9 @@ export function LandingPage() {
                 </div>
               </div>
               <div className="mt-4 p-4 rounded-xl bg-navy text-white">
-                <p className="text-sm font-semibold">Aligned to ISO clauses (Annex SL)</p>
+                <p className="text-sm font-semibold">Keep work traceable</p>
                 <p className="text-sm text-navy-200 mt-1">
-                  Each module maps to clauses for planning, operational control, performance evaluation, and improvement.
+                  Approvals, versions, and activity history help your team show what happened—and when—without digging through inboxes.
                 </p>
               </div>
             </motion.div>
@@ -259,7 +239,10 @@ export function LandingPage() {
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
           <p className="text-center text-sm font-semibold text-charcoal-500 uppercase tracking-wider">
-            Trusted by leading organisations across Africa
+            Trusted by teams across Africa
+          </p>
+          <p className="text-center text-xs text-charcoal-400 mt-2 max-w-xl mx-auto">
+            Logos shown are illustrative placeholders until partner marks are approved for display.
           </p>
           <div className="mt-8 grid grid-cols-2 md:grid-cols-5 gap-8 items-center justify-items-center">
             {['MineCorp', 'BuildSafe', 'EcoEnergy', 'AgriHealth', 'TransNet'].map((name, i) => (
@@ -274,6 +257,54 @@ export function LandingPage() {
                 </div>
               </motion.div>
             ))}
+          </div>
+        </div>
+      </motion.section>
+
+      {/* ISO alignment — one line + optional detail */}
+      <motion.section
+        id="iso-alignment"
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.5 }}
+        className="bg-surface-50 border-b border-surface-200"
+      >
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+          <div className="rounded-2xl border border-surface-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex gap-3 min-w-0">
+                <AwardIcon className="w-6 h-6 text-teal shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-navy">Built to align with international ISO standards.</p>
+                  <p className="text-sm text-charcoal-500 mt-1">
+                    We structure workflows so you can run your programme in a clear, reviewable way—not a pile of spreadsheets.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsoDetailOpen((o) => !o)}
+                className="shrink-0 inline-flex items-center gap-1.5 text-sm font-medium text-teal hover:text-teal-700 self-start"
+              >
+                {isoDetailOpen ? 'Hide detail' : 'What this means'}
+                <ChevronDownIcon className={`w-4 h-4 transition-transform ${isoDetailOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+            <motion.div
+              initial={false}
+              animate={{ height: isoDetailOpen ? 'auto' : 0 }}
+              className="overflow-hidden"
+            >
+              <ul className="mt-4 pt-4 border-t border-surface-200 space-y-2 text-sm text-charcoal-500 list-disc pl-5">
+                <li>Document and record key activities so evidence is easy to find when you need it.</li>
+                <li>Support regular checks and improvements with tasks, audits, and incident follow-up in one place.</li>
+                <li>Help teams stay competent with training records and reminders—without manual chasing.</li>
+              </ul>
+              <p className="mt-3 text-xs text-charcoal-400">
+                Certification is issued by accredited bodies; your organisation remains responsible for its management system.
+              </p>
+            </motion.div>
           </div>
         </div>
       </motion.section>
@@ -371,8 +402,11 @@ export function LandingPage() {
                 Built around Quality, Safety, Health, Legal, HR, and General—plus supporting modules for evidence and control.
               </p>
             </div>
-            <Link to="/app" className="hidden sm:inline-flex items-center gap-2 text-sm font-semibold text-teal hover:text-teal-700">
-              Open the app <ArrowRightIcon className="w-4 h-4" />
+            <Link
+              to="/app"
+              className="hidden sm:inline-flex items-center gap-1.5 text-sm font-normal text-charcoal-500 hover:text-teal transition-colors"
+            >
+              Open the app <ArrowRightIcon className="w-3.5 h-3.5" />
             </Link>
           </div>
 
@@ -475,7 +509,7 @@ export function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14">
           <h2 className="text-2xl font-bold text-navy text-center">What our clients say</h2>
           <p className="text-sm text-charcoal-500 mt-2 text-center max-w-2xl mx-auto">
-            Join hundreds of organisations already using Safe Cloud Africa
+            Representative feedback—replace with verified quotes when available.
           </p>
 
           <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -526,6 +560,62 @@ export function LandingPage() {
               </motion.div>
             ))}
           </div>
+        </div>
+      </motion.section>
+
+      {/* Case study teasers */}
+      <motion.section
+        id="case-studies"
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.6 }}
+        className="max-w-6xl mx-auto px-4 sm:px-6 py-14"
+      >
+        <h2 className="text-2xl font-bold text-navy text-center">Customer stories</h2>
+        <p className="text-sm text-charcoal-500 mt-2 text-center max-w-2xl mx-auto">
+          Short case teasers—full stories and metrics coming soon.
+        </p>
+        <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            {
+              org: 'MineCorp',
+              sector: 'Mining & resources',
+              outcome: 'Unified incident reporting and training records so sites could prep for audits from one dashboard.'
+            },
+            {
+              org: 'BuildSafe',
+              sector: 'Construction',
+              outcome: 'Fewer missed toolbox talks and clearer accountability across subcontractors and site leads.'
+            },
+            {
+              org: 'AgriHealth',
+              sector: 'Agri-processing',
+              outcome: 'Competency tracking and document control that scaled as they added shifts and seasonal workers.'
+            }
+          ].map((cs, i) => (
+            <motion.div
+              key={cs.org}
+              initial={{ opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: i * 0.08 }}
+              className="rounded-2xl border border-surface-200 bg-white p-6 shadow-sm flex flex-col"
+            >
+              <div className="flex items-center gap-2 text-charcoal-500">
+                <BuildingIcon className="w-5 h-5 text-teal shrink-0" />
+                <span className="text-xs font-medium uppercase tracking-wide">{cs.sector}</span>
+              </div>
+              <p className="mt-3 font-semibold text-charcoal">{cs.org}</p>
+              <p className="mt-2 text-sm text-charcoal-500 flex-1">{cs.outcome}</p>
+              <a
+                href={`mailto:support@safecloud.africa?subject=${encodeURIComponent(`Case study: ${cs.org}`)}`}
+                className="mt-4 inline-flex text-sm font-medium text-teal hover:underline underline-offset-2 w-fit"
+              >
+                Read story
+              </a>
+            </motion.div>
+          ))}
         </div>
       </motion.section>
 
@@ -607,6 +697,12 @@ export function LandingPage() {
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />HR Module included free</li>
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Email support</li>
               </ul>
+              <Link
+                to="/register"
+                className="mt-4 inline-block text-sm font-medium text-teal hover:underline underline-offset-2"
+              >
+                Choose Base plan
+              </Link>
             </motion.div>
 
             {/* Growth */}
@@ -631,6 +727,12 @@ export function LandingPage() {
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />HR Module included free</li>
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Priority support</li>
               </ul>
+              <Link
+                to="/register"
+                className="mt-4 inline-block text-sm font-medium text-teal hover:underline underline-offset-2"
+              >
+                Choose Growth plan
+              </Link>
             </motion.div>
 
             {/* Professional */}
@@ -654,6 +756,12 @@ export function LandingPage() {
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />HR Module included free</li>
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Advanced analytics</li>
               </ul>
+              <Link
+                to="/register"
+                className="mt-4 inline-block text-sm font-medium text-teal hover:underline underline-offset-2"
+              >
+                Choose Professional plan
+              </Link>
             </motion.div>
 
             {/* Enterprise */}
@@ -677,9 +785,12 @@ export function LandingPage() {
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Dedicated support</li>
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Onboarding & training</li>
               </ul>
-              <Link to="/contact" className="mt-4 inline-block w-full text-center px-4 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-700 transition-colors">
+              <a
+                href="mailto:support@safecloud.africa?subject=Enterprise%20sales%20inquiry"
+                className="mt-4 inline-flex text-sm font-medium text-teal hover:underline underline-offset-2"
+              >
                 Contact sales
-              </Link>
+              </a>
             </motion.div>
           </div>
 
@@ -695,13 +806,13 @@ export function LandingPage() {
                 <h3 className="font-bold text-charcoal">Need only HR Module?</h3>
                 <p className="text-sm text-charcoal-500">Employee management standalone – for 1–5 users</p>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-4">
                 <span className="text-2xl font-bold text-navy">R3,000<span className="text-sm font-normal text-charcoal-500">/mo</span></span>
                 <Link
                   to="/register?plan=hr"
-                  className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-teal text-white font-semibold hover:bg-teal-600 transition-colors"
+                  className="text-sm font-medium text-teal hover:underline underline-offset-2"
                 >
-                  Select <ArrowRightIcon className="w-4 h-4" />
+                  Select HR-only plan
                 </Link>
               </div>
             </div>
@@ -757,7 +868,7 @@ export function LandingPage() {
           {[
             {
               q: 'Is Safe Cloud Africa really aligned with ISO standards?',
-              a: 'Yes, each module maps directly to clauses in ISO 45001, 9001, and 14001. We follow Annex SL structure for easy integration.'
+              a: 'Yes. The platform is built so common ISO management-system practices—clear records, reviews, and improvement loops—are easier to run day to day. See the ISO section above for a plain-language overview; certification is always handled by an accredited body.'
             },
             {
               q: 'Can I try the platform before purchasing?',
