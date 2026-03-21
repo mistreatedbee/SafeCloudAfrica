@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { lazy, Suspense, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -10,12 +10,14 @@ import {
   FilterIcon
 } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
+import { ChartSuspenseFallback } from '../components/ui/RouteSuspenseFallback';
+
+const IncidentAnalyticsTrendChartsSection = lazy(() => import('./IncidentAnalyticsTrendChartsSection'));
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
 import { listIncidentsWithFilters } from '../api/services/incidentsService';
 import type { Incident } from '../api/models/entities';
 import type { IncidentCategory, RiskLevel } from '../api/models/core';
-import { IncidentTrendCharts } from '../components/incidents/IncidentTrendCharts';
 import { listIncidentInvestigationsForIncidents } from '../api/services/incidentInvestigationsService';
 import type { UUID } from '../api/models/core';
 
@@ -341,7 +343,12 @@ export function IncidentAnalyticsPage() {
         </div>
 
         {/* Trend Charts */}
-        <IncidentTrendCharts incidents={trendIncidents} period={trendPeriod === '1month' ? '1month' : trendPeriod === '2months' ? '2months' : '12months'} />
+        <Suspense fallback={<ChartSuspenseFallback />}>
+          <IncidentAnalyticsTrendChartsSection
+            incidents={trendIncidents}
+            period={trendPeriod === '1month' ? '1month' : trendPeriod === '2months' ? '2months' : '12months'}
+          />
+        </Suspense>
 
         {/* Monthly Trend Chart */}
         <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">

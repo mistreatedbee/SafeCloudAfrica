@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { RequirePlatformAdmin } from './auth/RequirePlatformAdmin';
 import { RequireWorkspace } from './auth/RequireWorkspace';
@@ -13,124 +14,128 @@ import { OwnerOnboardingGate } from './auth/OwnerOnboardingGate';
 import { AuthSessionListener } from './auth/AuthSessionListener';
 import { TenantProvider } from './tenant/TenantContext';
 import { AppDashboardRedirect } from './components/AppDashboardRedirect';
-import { DashboardPage } from './pages/DashboardPage';
-import { SafetyPage } from './pages/SafetyPage';
-import { QualityPage } from './pages/QualityPage';
-import { EnvironmentPage } from './pages/EnvironmentPage';
-import { EnvironmentDashboardPage } from './pages/environment/EnvironmentDashboardPage';
-import { EnvironmentEiaPage } from './pages/environment/EnvironmentEiaPage';
-import { EnvironmentRiskOpportunityPage } from './pages/environment/EnvironmentRiskOpportunityPage';
-import { EnvironmentWastePage } from './pages/environment/EnvironmentWastePage';
-import { EnvironmentWaterPage } from './pages/environment/EnvironmentWaterPage';
-import { EnvironmentAirPage } from './pages/environment/EnvironmentAirPage';
-import { DocumentsPage } from './pages/DocumentsPage';
-import { TasksPage } from './pages/TasksPage';
-import { IncidentsPage } from './pages/IncidentsPage';
-import { TrainingPage } from './pages/TrainingPage';
-import { AuditsPage } from './pages/AuditsPage';
-import { InspectionsPage } from './pages/InspectionsPage';
-import { InspectionDetailPage } from './pages/InspectionDetailPage';
-import { InspectionRunReportPage } from './pages/InspectionRunReportPage';
-import { ReportsPage } from './pages/ReportsPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { ProfilePage } from './pages/ProfilePage';
-import { HelpSupportPage } from './pages/HelpSupportPage';
-import NCRsPage from './pages/NCRsPage';
-import QualityCustomerComplaintsPage from './pages/QualityCustomerComplaintsPage';
-import QualityInternalExternalIssuesPage from './pages/QualityInternalExternalIssuesPage';
-import CalibrationPage from './pages/CalibrationPage';
-import { RisksPage } from './pages/RisksPage';
-import { RiskAssessmentCreatePage } from './pages/risks/RiskAssessmentCreatePage';
-import { RiskAssessmentDetailPage } from './pages/risks/RiskAssessmentDetailPage';
-import { RiskAssessmentEditPage } from './pages/risks/RiskAssessmentEditPage';
-import { PPEPage } from './pages/PPEPage';
-import { LegalRegisterPage } from './pages/LegalRegisterPage';
-import { LegalRequirementDetailPage } from './pages/LegalRequirementDetailPage';
-import { LegalUpdatesPage } from './pages/LegalUpdatesPage';
-import { UsersPage } from './pages/UsersPage';
-import { PlanningReviewPage } from './pages/PlanningReviewPage';
-import { ApprovalsPage } from './pages/ApprovalsPage';
-import { DocumentReviewsPage } from './pages/DocumentReviewsPage';
-import { ReviewMeetingDetailPage } from './pages/ReviewMeetingDetailPage';
-import { ReviewMeetingActionsBoardPage } from './pages/ReviewMeetingActionsBoardPage';
-import { ImprovementPage } from './pages/ImprovementPage';
-import { ImprovementDetailPage } from './pages/ImprovementDetailPage';
-import { CapaDetailPage } from './pages/CapaDetailPage';
-import { GeneralModulePage } from './pages/modules/GeneralModulePage';
-import { HealthDashboardPage } from './pages/health/HealthDashboardPage';
-import { HealthMedicalPage } from './pages/health/HealthMedicalPage';
-import { HealthHygienePage } from './pages/health/HealthHygienePage';
-import { HealthWellnessPage } from './pages/health/HealthWellnessPage';
-import { LegalModulePage } from './pages/modules/LegalModulePage';
-import { HrDashboardPage } from './pages/hr/HrDashboardPage';
-import { HrEmployeesPage } from './pages/hr/HrEmployeesPage';
-import { HrEmployeeProfilePage } from './pages/hr/HrEmployeeProfilePage';
-import { HrDocumentsPage } from './pages/hr/HrDocumentsPage';
-import { HrRecruitmentPage } from './pages/hr/HrRecruitmentPage';
-import { HrLabourPage } from './pages/hr/HrLabourPage';
-import { HrPerformancePage } from './pages/hr/HrPerformancePage';
-import { HrHoursPage } from './pages/hr/HrHoursPage';
-import { HrLeavePage } from './pages/hr/HrLeavePage';
-import { HrSettingsPage } from './pages/hr/HrSettingsPage';
-import { HrEmployeeWellnessPage } from './pages/hr/HrEmployeeWellnessPage';
-import { KPIModuleLayout } from './pages/kpi/KPIModuleLayout';
-import { KPIDashboardPage } from './pages/kpi/KPIDashboardPage';
-import { KPIAssessmentsListPage } from './pages/kpi/KPIAssessmentsListPage';
-import { KPIAssessmentCreatePage } from './pages/kpi/KPIAssessmentCreatePage';
-import { KPIAssessmentDetailPage } from './pages/kpi/KPIAssessmentDetailPage';
-import { KPILibraryPage } from './pages/kpi/KPILibraryPage';
-import { KPIFindingsListPage } from './pages/kpi/KPIFindingsListPage';
-import { KPIReportsPage } from './pages/kpi/KPIReportsPage';
-import { KPIAnalyticsPage } from './pages/kpi/KPIAnalyticsPage';
-import { SecurityModulePage } from './pages/modules/SecurityModulePage';
-import { SafetyManagementPage } from './pages/modules/SafetyManagementPage';
-import { IncidentAnalyticsPage } from './pages/IncidentAnalyticsPage';
-import { SafetyStatisticsPage } from './pages/analytics/SafetyStatisticsPage';
-import { ComplianceAnalyticsPage } from './pages/analytics/ComplianceAnalyticsPage';
-import { QualityAnalyticsPage } from './pages/analytics/QualityAnalyticsPage';
-import { HCSModulePage } from './pages/modules/HCSModulePage';
-import { PjoPage } from './pages/PjoPage';
-import { BBSPage } from './pages/features/BBSPage';
-import { ContractorsVisitorsPage } from './pages/features/ContractorsVisitorsPage';
-import { EmergencyPreparednessPage } from './pages/features/EmergencyPreparednessPage';
-import { TemplateLibraryPage } from './pages/features/TemplateLibraryPage';
-import { AssetManagementPage } from './pages/features/AssetManagementPage';
-import { HazardousChemicalManagementPage } from './pages/features/HazardousChemicalManagementPage';
-import { LogoutPage } from './pages/auth/LogoutPage';
-import { InviteAcceptPage } from './pages/auth/InviteAcceptPage';
-import { LoginPage } from './pages/auth/LoginPage';
-import { RegisterPage } from './pages/auth/RegisterPage';
-import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
-import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
-import { LandingPage } from './pages/marketing/LandingPage';
-import { SecurityPage } from './pages/marketing/SecurityPage';
-import { SeedDemoPage } from './pages/admin/SeedDemoPage';
-import { AdminLicensePage } from './pages/admin/AdminLicensePage';
-import { SuperAdminLayout } from './components/layout/SuperAdminLayout';
-import { SuperAdminOverviewPage } from './pages/admin/superadmin/SuperAdminOverviewPage';
-import { SuperAdminOrganisationsPage } from './pages/admin/superadmin/SuperAdminOrganisationsPage';
-import { SuperAdminLicensesPage } from './pages/admin/superadmin/SuperAdminLicensesPage';
-import { SuperAdminModuleControlPage } from './pages/admin/superadmin/SuperAdminModuleControlPage';
-import { SuperAdminSellableFeaturesPage } from './pages/admin/superadmin/SuperAdminSellableFeaturesPage';
-import { SuperAdminAuditLogsPage } from './pages/admin/superadmin/SuperAdminAuditLogsPage';
-import { SuperAdminSupportModePage } from './pages/admin/superadmin/SuperAdminSupportModePage';
-import { SuperAdminHealthPage } from './pages/admin/superadmin/SuperAdminHealthPage';
-import { OwnerDashboardPage } from './pages/owner/OwnerDashboardPage';
-import { OwnerOnboardingWizardPage } from './pages/owner/OwnerOnboardingWizardPage';
-import { EmployeeDashboardPage } from './pages/employee/EmployeeDashboardPage';
-import { ExternalDashboardPage } from './pages/external/ExternalDashboardPage';
-import { ActivateLicensePage } from './pages/activate/ActivateLicensePage';
-import { BillingStatusPage } from './pages/BillingStatusPage';
-import { AccessDeniedPage } from './pages/AccessDeniedPage';
-import { WorkspaceOnboardingPage } from './pages/onboarding/WorkspaceOnboardingPage';
-import { HoursWorkedPage } from './pages/management/HoursWorkedPage';
-import { OperationalInputsPage } from './pages/management/OperationalInputsPage';
+import { RouteSuspenseFallback } from './components/ui/RouteSuspenseFallback';
+import {
+  AccessDeniedPage,
+  ActivateLicensePage,
+  AdminLicensePage,
+  ApprovalsPage,
+  AssetManagementPage,
+  AuditsPage,
+  BBSPage,
+  BillingStatusPage,
+  CalibrationPage,
+  CapaDetailPage,
+  ComplianceAnalyticsPage,
+  ContractorsVisitorsPage,
+  DashboardPage,
+  DocumentReviewsPage,
+  DocumentsPage,
+  EmergencyPreparednessPage,
+  EmployeeDashboardPage,
+  EnvironmentAirPage,
+  EnvironmentDashboardPage,
+  EnvironmentEiaPage,
+  EnvironmentPage,
+  EnvironmentRiskOpportunityPage,
+  EnvironmentWastePage,
+  EnvironmentWaterPage,
+  ExternalDashboardPage,
+  ForgotPasswordPage,
+  GeneralModulePage,
+  HazardousChemicalManagementPage,
+  HCSModulePage,
+  HealthDashboardPage,
+  HealthHygienePage,
+  HealthMedicalPage,
+  HealthWellnessPage,
+  HelpSupportPage,
+  HoursWorkedPage,
+  HrDashboardPage,
+  HrDocumentsPage,
+  HrEmployeeProfilePage,
+  HrEmployeesPage,
+  HrEmployeeWellnessPage,
+  HrHoursPage,
+  HrLabourPage,
+  HrLeavePage,
+  HrPerformancePage,
+  HrRecruitmentPage,
+  HrSettingsPage,
+  ImprovementDetailPage,
+  ImprovementPage,
+  IncidentAnalyticsPage,
+  IncidentsPage,
+  InspectionDetailPage,
+  InspectionRunReportPage,
+  InspectionsPage,
+  InviteAcceptPage,
+  KPIAnalyticsPage,
+  KPIAssessmentCreatePage,
+  KPIAssessmentDetailPage,
+  KPIAssessmentsListPage,
+  KPIDashboardPage,
+  KPIFindingsListPage,
+  KPILibraryPage,
+  KPIModuleLayout,
+  KPIReportsPage,
+  LandingPage,
+  LegalModulePage,
+  LegalRegisterPage,
+  LegalRequirementDetailPage,
+  LegalUpdatesPage,
+  LoginPage,
+  LogoutPage,
+  NCRsPage,
+  OperationalInputsPage,
+  OwnerDashboardPage,
+  OwnerOnboardingWizardPage,
+  PjoPage,
+  PlanningReviewPage,
+  PPEPage,
+  ProfilePage,
+  QualityAnalyticsPage,
+  QualityCustomerComplaintsPage,
+  QualityInternalExternalIssuesPage,
+  QualityPage,
+  RegisterPage,
+  ReportsPage,
+  ResetPasswordPage,
+  ReviewMeetingActionsBoardPage,
+  ReviewMeetingDetailPage,
+  RiskAssessmentCreatePage,
+  RiskAssessmentDetailPage,
+  RiskAssessmentEditPage,
+  RisksPage,
+  SafetyManagementPage,
+  SafetyPage,
+  SafetyStatisticsPage,
+  SecurityModulePage,
+  SecurityPage,
+  SeedDemoPage,
+  SettingsPage,
+  SuperAdminAuditLogsPage,
+  SuperAdminHealthPage,
+  SuperAdminLayout,
+  SuperAdminLicensesPage,
+  SuperAdminModuleControlPage,
+  SuperAdminOrganisationsPage,
+  SuperAdminOverviewPage,
+  SuperAdminSellableFeaturesPage,
+  SuperAdminSupportModePage,
+  TasksPage,
+  TemplateLibraryPage,
+  TrainingPage,
+  UsersPage,
+  WorkspaceOnboardingPage,
+} from './app/lazyPages';
 import { SELLABLE_FEATURE_ROUTE_PATHS } from './api/services/sellableFeaturesService';
 export function App() {
   return (
     <BrowserRouter>
       <TenantProvider>
         <AuthSessionListener />
+        <Suspense fallback={<RouteSuspenseFallback />}>
         <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
@@ -1800,6 +1805,7 @@ export function App() {
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </TenantProvider>
     </BrowserRouter>);
 

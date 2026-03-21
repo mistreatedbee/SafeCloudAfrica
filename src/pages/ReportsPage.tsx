@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useUser } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
@@ -12,7 +12,9 @@ import {
   PieChartIcon } from
 'lucide-react';
 import { Layout } from '../components/layout/Layout';
-import { TrendChart } from '../components/ui/TrendChart';
+import { ChartSuspenseFallback } from '../components/ui/RouteSuspenseFallback';
+
+const ReportsTrendCharts = lazy(() => import('./ReportsTrendCharts'));
 import { toCsv, downloadTextFile } from '../utils/csv';
 import { listIncidents } from '../api/services/incidentsService';
 import { listTasks } from '../api/services/tasksService';
@@ -533,8 +535,12 @@ export function ReportsPage() {
           variants={itemVariants}
           className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-          <TrendChart title="Incident Trends" type="line" height={280} data={charts?.incidentTrends ?? []} />
-          <TrendChart title="Monthly Comparison" type="bar" height={280} data={charts?.comparison ?? []} />
+          <Suspense fallback={<ChartSuspenseFallback />}>
+            <ReportsTrendCharts
+              incidentTrends={charts?.incidentTrends ?? []}
+              comparison={charts?.comparison ?? []}
+            />
+          </Suspense>
         </motion.div>
 
         {/* Recent Reports */}
