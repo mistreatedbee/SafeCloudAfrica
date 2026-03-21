@@ -95,15 +95,20 @@ export function PpeItemCreateModal(props: {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
+      <div className="relative w-full max-w-xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+        <div className="flex items-center justify-between px-4 py-4 sm:px-6 border-b border-surface-200">
           <p className="text-sm font-semibold text-charcoal">Add PPE item</p>
-          <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
+          <button
+            type="button"
+            onClick={props.onClose}
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 shrink-0"
+            aria-label="Close"
+          >
             <XIcon className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="p-5 space-y-4">
+        <form onSubmit={onSubmit} className="p-4 sm:p-6 space-y-4">
           {error && (
             <div className="bg-critical/5 border border-critical/20 rounded-xl p-3">
               <p className="text-sm font-semibold text-critical">Could not create item</p>
@@ -156,7 +161,7 @@ export function PpeItemCreateModal(props: {
             </label>
             <div className="space-y-2">
               {sizeRows.map((row, index) => (
-                <div key={row.id} className="grid grid-cols-5 gap-2">
+                <div key={row.id} className="grid grid-cols-1 sm:grid-cols-5 gap-3">
                   <input
                     value={row.size}
                     onChange={(e) => {
@@ -165,7 +170,7 @@ export function PpeItemCreateModal(props: {
                       setSizeRows(next);
                     }}
                     placeholder="Size (e.g. Small)"
-                    className="col-span-3 w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                    className="sm:col-span-3 w-full min-h-[44px] px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                   />
                   <input
                     type="number"
@@ -178,7 +183,7 @@ export function PpeItemCreateModal(props: {
                       setSizeRows(next);
                     }}
                     placeholder="Price"
-                    className="col-span-2 w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                    className="sm:col-span-2 w-full min-h-[44px] px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                   />
                 </div>
               ))}
@@ -257,18 +262,18 @@ export function PpeItemCreateModal(props: {
             />
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-2">
             <button
               type="button"
               onClick={props.onClose}
-              className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+              className="min-h-[44px] inline-flex items-center justify-center px-4 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!canSubmit || loading}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-700 disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto"
             >
               {loading && <LoadingSpinner size={16} />}
               Create

@@ -319,19 +319,19 @@ export function IncidentDetailModal(props: {
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-4xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
-          <div className="min-w-0">
+      <div className="relative w-full max-w-4xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-6 border-b border-surface-200">
+          <div className="min-w-0 flex-1 basis-full sm:basis-auto">
             <p className="text-sm font-semibold text-charcoal truncate">{incident.title}</p>
             <p className="text-xs text-charcoal-500 mt-0.5">
               {categoryDisplay} • {subcategoryDisplay} • {riskSummary}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
             <button
               type="button"
               onClick={() => void handleExportPdf()}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-3 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"
             >
               <FileTextIcon className="w-4 h-4" />
               Export PDF
@@ -339,31 +339,32 @@ export function IncidentDetailModal(props: {
             <button
               type="button"
               onClick={props.onClose}
-              className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500"
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500"
+              aria-label="Close"
             >
               <XIcon className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-5 py-3 border-b border-surface-200 bg-surface-50">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6 border-b border-surface-200 bg-surface-50">
           <button
             type="button"
             onClick={() => setTab('details')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${tab === 'details' ? 'bg-white border border-surface-200' : 'text-charcoal-500 hover:text-charcoal'}`}
+            className={`min-h-[44px] px-3 inline-flex items-center rounded-lg text-sm font-semibold ${tab === 'details' ? 'bg-white border border-surface-200' : 'text-charcoal-500 hover:text-charcoal'}`}
           >
             Details
           </button>
           <button
             type="button"
             onClick={() => setTab('investigation')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${tab === 'investigation' ? 'bg-white border border-surface-200' : 'text-charcoal-500 hover:text-charcoal'}`}
+            className={`min-h-[44px] px-3 inline-flex items-center rounded-lg text-sm font-semibold ${tab === 'investigation' ? 'bg-white border border-surface-200' : 'text-charcoal-500 hover:text-charcoal'}`}
           >
             Investigation
           </button>
         </div>
 
-        <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 space-y-4">
           {error && (
             <div className="bg-critical/5 border border-critical/20 rounded-xl p-3">
               <p className="text-sm font-semibold text-critical">Error</p>
@@ -592,7 +593,7 @@ export function IncidentDetailModal(props: {
           {tab === 'investigation' && (
             <div className="space-y-4">
               <div className="rounded-xl border border-surface-200 p-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-charcoal">Investigation notes & structured fields</p>
                     <p className="text-xs text-charcoal-500 mt-0.5">
@@ -604,7 +605,7 @@ export function IncidentDetailModal(props: {
                       type="button"
                       onClick={() => void saveInvestigation()}
                       disabled={loading}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60"
+                      className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 w-full sm:w-auto shrink-0"
                     >
                       {loading ? <LoadingSpinner size={16} /> : <SaveIcon className="w-4 h-4" />}
                       Save

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { SearchIcon, PlusIcon, CalendarIcon, ClipboardCheckIcon, AlertCircleIcon, XCircleIcon } from 'lucide-react';
@@ -145,12 +145,12 @@ export function InspectionsPage() {
 
         {/* Tabs + Header Actions */}
         <motion.div variants={itemVariants} className="space-y-4">
-          <div className="flex items-center justify-between border-b border-surface-200 pb-2">
-            <div className="flex items-center gap-4 text-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-surface-200 pb-2">
+            <div className="flex flex-wrap items-center gap-4 text-sm">
               <button
                 type="button"
                 onClick={() => setActiveTab('list')}
-                className={`pb-1 border-b-2 ${
+                className={`min-h-[44px] inline-flex items-center pb-1 border-b-2 ${
                   activeTab === 'list'
                     ? 'border-teal text-teal font-semibold'
                     : 'border-transparent text-charcoal-500'
@@ -161,7 +161,7 @@ export function InspectionsPage() {
               <button
                 type="button"
                 onClick={() => setActiveTab('library')}
-                className={`pb-1 border-b-2 ${
+                className={`min-h-[44px] inline-flex items-center pb-1 border-b-2 ${
                   activeTab === 'library'
                     ? 'border-teal text-teal font-semibold'
                     : 'border-transparent text-charcoal-500'
@@ -171,12 +171,12 @@ export function InspectionsPage() {
               </button>
             </div>
             {activeTab === 'list' && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={handleExportCsv}
                   disabled={!activeCompanyId || filteredInspections.length === 0}
-                  className="flex items-center justify-center gap-2 px-4 py-2.5 bg-navy text-white rounded-lg text-sm font-medium hover:bg-navy-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-2 min-h-[44px] px-4 bg-navy text-white rounded-lg text-sm font-medium hover:bg-navy-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto"
                 >
                   Export CSV
                 </button>
@@ -184,7 +184,7 @@ export function InspectionsPage() {
                   type="button"
                   disabled={!canSchedule}
                   onClick={() => navigate('/inspections/new')}
-                  className="flex items-center justify-center gap-2 px-5 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-2 min-h-[44px] px-5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto"
                 >
                   <PlusIcon className="w-4 h-4" />
                   Create Inspection

@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeftIcon, CalendarIcon, ClipboardCheckIcon, AlertCircleIcon, CheckCircleIcon } from 'lucide-react';
+import { ArrowLeftIcon, CalendarIcon, ClipboardCheckIcon, CheckCircleIcon } from 'lucide-react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
@@ -21,6 +21,10 @@ import { listUserProfiles } from '../api/services/profilesService';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
+import {
+  InspectionChecklistItemCard,
+  InspectionChecklistItemTableRow
+} from '../components/inspections/InspectionChecklistItemViews';
 
 type RunWithItems = { run: InspectionRun; items: InspectionRunItem[] };
 
@@ -146,8 +150,13 @@ export function InspectionDetailPage() {
   return (
     <Layout title="Inspection detail">
       <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
-        <button type="button" onClick={() => navigate('/inspections')} className="inline-flex items-center gap-2 text-sm text-charcoal-500 hover:text-charcoal-800">
-          <ArrowLeftIcon className="w-4 h-4" />Back to inspections
+        <button
+          type="button"
+          onClick={() => navigate('/inspections')}
+          className="inline-flex items-center gap-2 min-h-[44px] text-sm text-charcoal-500 hover:text-charcoal-800 -ml-2 px-2 rounded-lg hover:bg-surface-100"
+        >
+          <ArrowLeftIcon className="w-4 h-4 shrink-0" />
+          Back to inspections
         </button>
 
         {inspectionError && <div className="bg-white rounded-xl border border-critical/30 p-4 text-sm text-critical">{inspectionError.message}</div>}
@@ -181,18 +190,53 @@ export function InspectionDetailPage() {
             </div>
 
             <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card space-y-4">
-              <div className="flex items-center justify-between border-b border-surface-200 pb-2">
-                <div className="flex items-center gap-4 text-sm">
-                  <button type="button" onClick={() => setActiveTab('checklist')} className={activeTab === 'checklist' ? 'pb-1 border-b-2 border-teal text-teal font-semibold' : 'pb-1 border-b-2 border-transparent text-charcoal-500'}>Checklist</button>
-                  <button type="button" onClick={() => setActiveTab('ncrs')} className={activeTab === 'ncrs' ? 'pb-1 border-b-2 border-teal text-teal font-semibold' : 'pb-1 border-b-2 border-transparent text-charcoal-500'}>NCRs</button>
-                  <button type="button" onClick={() => setActiveTab('capa')} className={activeTab === 'capa' ? 'pb-1 border-b-2 border-teal text-teal font-semibold' : 'pb-1 border-b-2 border-transparent text-charcoal-500'}>CAPA</button>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-surface-200 pb-2">
+                <div className="flex flex-wrap items-center gap-4 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('checklist')}
+                    className={`min-h-[44px] inline-flex items-center pb-1 border-b-2 ${
+                      activeTab === 'checklist' ? 'border-teal text-teal font-semibold' : 'border-transparent text-charcoal-500'
+                    }`}
+                  >
+                    Checklist
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ncrs')}
+                    className={`min-h-[44px] inline-flex items-center pb-1 border-b-2 ${
+                      activeTab === 'ncrs' ? 'border-teal text-teal font-semibold' : 'border-transparent text-charcoal-500'
+                    }`}
+                  >
+                    NCRs
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('capa')}
+                    className={`min-h-[44px] inline-flex items-center pb-1 border-b-2 ${
+                      activeTab === 'capa' ? 'border-teal text-teal font-semibold' : 'border-transparent text-charcoal-500'
+                    }`}
+                  >
+                    CAPA
+                  </button>
                 </div>
                 {activeTab === 'checklist' && latestRun && (
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full md:w-auto">
                     {(isAuditee || canScore) && latestRun.run.auditee_submission_status !== 'submitted' && (
-                      <button type="button" onClick={() => void handleSubmitSelfAssessment()} className="px-3 py-2 rounded-lg border border-surface-300 text-xs font-semibold hover:bg-surface-50">Submit Self-Assessment</button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSubmitSelfAssessment()}
+                        className="min-h-[44px] inline-flex items-center justify-center px-3 rounded-lg border border-surface-300 text-xs font-semibold hover:bg-surface-50 w-full sm:w-auto"
+                      >
+                        Submit Self-Assessment
+                      </button>
                     )}
-                    <button type="button" onClick={() => void handleCompleteRun()} disabled={completingRun || latestRun.run.status === 'completed'} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-xs font-semibold hover:bg-teal-600 disabled:opacity-60">
+                    <button
+                      type="button"
+                      onClick={() => void handleCompleteRun()}
+                      disabled={completingRun || latestRun.run.status === 'completed'}
+                      className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg bg-teal text-white text-xs font-semibold hover:bg-teal-600 disabled:opacity-60 w-full sm:w-auto"
+                    >
                       {completingRun ? <LoadingSpinner size={14} /> : <CheckCircleIcon className="w-4 h-4" />}
                       {latestRun.run.status === 'completed' ? 'Run completed' : 'Complete run'}
                     </button>
@@ -205,169 +249,72 @@ export function InspectionDetailPage() {
                   {runError && <div className="text-xs text-critical">{runError.message}</div>}
                   {!latestRun && <p className="text-sm text-charcoal-500">No checklist run found for this inspection.</p>}
                   {latestRun && (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-surface-200 text-xs text-charcoal-500">
-                            <th className="py-2 pr-3 text-left">#</th>
-                            <th className="py-2 pr-3 text-left">Category</th>
-                            <th className="py-2 pr-3 text-left">Req Ref</th>
-                            <th className="py-2 pr-3 text-left">Question</th>
-                            <th className="py-2 pr-3 text-left">Method</th>
-                            <th className="py-2 pr-3 text-left">Rating</th>
-                            <th className="py-2 pr-3 text-left">Risk</th>
-                            <th className="py-2 pr-3 text-left">Evidence Req</th>
-                            <th className="py-2 pr-3 text-left">CAPA</th>
-                            <th className="py-2 pr-3 text-left">Owner / Due</th>
-                            <th className="py-2 pr-3 text-left">Evidence</th>
-                            <th className="py-2 pr-3 text-left">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {latestRun.items.map((item, idx) => (
-                            <tr key={item.id} className="border-b border-surface-100 align-top">
-                              <td className="py-2 pr-3 text-xs">{idx + 1}</td>
-                              <td className="py-2 pr-3 text-xs">{item.audit_section_or_category || item.section || '-'}</td>
-                              <td className="py-2 pr-3 text-xs">{item.requirement_reference || '-'}</td>
-                              <td className="py-2 pr-3 text-xs">
-                                <p>{item.question}</p>
-                                <textarea
-                                  disabled={(!canScore && !isAuditee) || latestRun.run.status === 'completed'}
-                                  defaultValue={item.comments || ''}
-                                  onBlur={(e) => void handleUpdateItem(item, { comments: e.target.value })}
-                                  rows={2}
-                                  className="mt-1 w-full px-2 py-1 border border-surface-300 rounded text-xs"
-                                />
-                              </td>
-                              <td className="py-2 pr-3">
-                                <select
-                                  disabled={!canScore || latestRun.run.status === 'completed'}
-                                  value={item.inspection_method ?? 'observation'}
-                                  onChange={(e) => void handleUpdateItem(item, { inspection_method: e.target.value })}
-                                  className="px-2 py-1 border border-surface-300 rounded text-xs"
-                                >
-                                  <option value="physical-inspection">Physical</option>
-                                  <option value="observation">Observation</option>
-                                  <option value="record-review">Record review</option>
-                                </select>
-                              </td>
-                              <td className="py-2 pr-3">
-                                <select
-                                  disabled={!canScore || latestRun.run.status === 'completed'}
-                                  value={item.inspection_rating ?? 'C'}
-                                  onChange={(e) => void handleUpdateItem(item, { inspection_rating: e.target.value })}
-                                  className="px-2 py-1 border border-surface-300 rounded text-xs"
-                                >
-                                  <option value="C">Compliant (2)</option>
-                                  <option value="PC">Partially (1)</option>
-                                  <option value="NC">Non-Compliant (0)</option>
-                                </select>
-                              </td>
-                              <td className="py-2 pr-3">
-                                <select
-                                  disabled={!canScore || latestRun.run.status === 'completed'}
-                                  value={item.risk_level ?? 'medium'}
-                                  onChange={(e) => void handleUpdateItem(item, { risk_level: e.target.value })}
-                                  className="px-2 py-1 border border-surface-300 rounded text-xs"
-                                >
-                                  <option value="low">Low</option>
-                                  <option value="medium">Medium</option>
-                                  <option value="high">High</option>
-                                </select>
-                              </td>
-                              <td className="py-2 pr-3">
-                                <select
-                                  disabled={!canScore || latestRun.run.status === 'completed'}
-                                  value={item.evidence_required ? 'yes' : 'no'}
-                                  onChange={(e) => void handleUpdateItem(item, { evidence_required: e.target.value === 'yes' })}
-                                  className="px-2 py-1 border border-surface-300 rounded text-xs"
-                                >
-                                  <option value="yes">Yes</option>
-                                  <option value="no">No</option>
-                                </select>
-                              </td>
-                              <td className="py-2 pr-3">
-                                <select
-                                  disabled={!canScore || latestRun.run.status === 'completed'}
-                                  value={item.corrective_action_required ? 'yes' : 'no'}
-                                  onChange={(e) => void handleUpdateItem(item, { corrective_action_required: e.target.value === 'yes' })}
-                                  className="px-2 py-1 border border-surface-300 rounded text-xs"
-                                >
-                                  <option value="yes">Yes</option>
-                                  <option value="no">No</option>
-                                </select>
-                              </td>
-                              <td className="py-2 pr-3">
-                                <select
-                                  disabled={!canScore || latestRun.run.status === 'completed'}
-                                  value={item.responsible_person_id ?? ''}
-                                  onChange={(e) => void handleUpdateItem(item, { responsible_person_id: e.target.value || null })}
-                                  className="px-2 py-1 border border-surface-300 rounded text-xs mb-1"
-                                >
-                                  <option value="">Responsible</option>
-                                  {(userProfiles ?? []).map((p) => (
-                                    <option key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id}</option>
-                                  ))}
-                                </select>
-                                <input
-                                  type="date"
-                                  defaultValue={item.due_date ?? ''}
-                                  disabled={!canScore || latestRun.run.status === 'completed'}
-                                  onBlur={(e) => void handleUpdateItem(item, { due_date: e.target.value || null })}
-                                  className="px-2 py-1 border border-surface-300 rounded text-xs"
-                                />
-                              </td>
-                              <td className="py-2 pr-3 text-xs">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEvidenceItemId(String(item.id));
-                                    setEvidenceOpen(true);
-                                  }}
-                                  className="px-2 py-1 rounded border border-surface-300 hover:bg-surface-50"
-                                >
-                                  Upload/View
-                                </button>
-                              </td>
-                              <td className="py-2 pr-3 text-xs">
-                                {item.inspection_rating === 'NC' ? <span className="inline-flex items-center gap-1 text-critical"><AlertCircleIcon className="w-4 h-4" />NC</span> : <span className="inline-flex items-center gap-1 text-success"><CheckCircleIcon className="w-4 h-4" />OK</span>}
-                                <div className="mt-1">{item.status}</div>
-                                {isAuditee && item.status !== 'closed' && (
-                                  <button
-                                    type="button"
-                                    disabled={savingItemId === String(item.id)}
-                                    onClick={() => void handleUpdateItem(item, { status: 'awaiting-evidence', closure_requested_at: new Date().toISOString(), closure_evidence_submitted_at: new Date().toISOString() })}
-                                    className="mt-1 px-2 py-0.5 rounded border border-surface-300"
-                                  >
-                                    Submit closure
-                                  </button>
-                                )}
-                                {isManager && item.status === 'awaiting-evidence' && (
-                                  <button
-                                    type="button"
-                                    disabled={savingItemId === String(item.id)}
-                                    onClick={() => void handleUpdateItem(item, { status: 'in-progress', manager_approved_by_user_id: user?.id ?? null, manager_approved_at: new Date().toISOString() })}
-                                    className="mt-1 px-2 py-0.5 rounded border border-surface-300"
-                                  >
-                                    Manager sign-off
-                                  </button>
-                                )}
-                                {(canScore || isAuditor) && item.status === 'in-progress' && (
-                                  <button
-                                    type="button"
-                                    disabled={savingItemId === String(item.id)}
-                                    onClick={() => void handleUpdateItem(item, { status: 'closed', auditor_verified_by_user_id: user?.id ?? null, auditor_verified_at: new Date().toISOString() })}
-                                    className="mt-1 px-2 py-0.5 rounded border border-surface-300"
-                                  >
-                                    Verify & close
-                                  </button>
-                                )}
-                              </td>
+                    <>
+                      <div className="hidden md:block overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-surface-200 text-xs text-charcoal-500">
+                              <th className="py-2 pr-3 text-left">#</th>
+                              <th className="py-2 pr-3 text-left">Category</th>
+                              <th className="py-2 pr-3 text-left">Req Ref</th>
+                              <th className="py-2 pr-3 text-left">Question</th>
+                              <th className="py-2 pr-3 text-left">Method</th>
+                              <th className="py-2 pr-3 text-left">Rating</th>
+                              <th className="py-2 pr-3 text-left">Risk</th>
+                              <th className="py-2 pr-3 text-left">Evidence Req</th>
+                              <th className="py-2 pr-3 text-left">CAPA</th>
+                              <th className="py-2 pr-3 text-left">Owner / Due</th>
+                              <th className="py-2 pr-3 text-left">Evidence</th>
+                              <th className="py-2 pr-3 text-left">Status</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody>
+                            {latestRun.items.map((item, idx) => (
+                              <InspectionChecklistItemTableRow
+                                key={item.id}
+                                item={item}
+                                idx={idx}
+                                run={latestRun.run}
+                                userProfiles={userProfiles ?? []}
+                                canScore={canScore}
+                                isAuditee={isAuditee}
+                                isManager={isManager}
+                                isAuditor={isAuditor}
+                                savingItemId={savingItemId}
+                                userId={user?.id}
+                                onUpdateItem={handleUpdateItem}
+                                onOpenEvidence={(id) => {
+                                  setEvidenceItemId(id);
+                                  setEvidenceOpen(true);
+                                }}
+                              />
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="md:hidden space-y-4">
+                        {latestRun.items.map((item, idx) => (
+                          <InspectionChecklistItemCard
+                            key={item.id}
+                            item={item}
+                            idx={idx}
+                            run={latestRun.run}
+                            userProfiles={userProfiles ?? []}
+                            canScore={canScore}
+                            isAuditee={isAuditee}
+                            isManager={isManager}
+                            isAuditor={isAuditor}
+                            savingItemId={savingItemId}
+                            userId={user?.id}
+                            onUpdateItem={handleUpdateItem}
+                            onOpenEvidence={(id) => {
+                              setEvidenceItemId(id);
+                              setEvidenceOpen(true);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </>
                   )}
                 </>
               )}
