@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { useParams } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
@@ -10,6 +10,7 @@ import type { UUID } from '../../api/models/core';
 import type { CompanyRole } from '../../api/models/core';
 import type { HrEmployee, HrEmployeeDependent, HrEmployeeSensitiveDetails } from '../../api/services/hrService';
 import { HrEmployeeEditModal } from '../../components/hr/HrEmployeeEditModal';
+import { useDraftManager } from '../../session/DraftManagerProvider';
 
 const TABS = ['overview', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'tasks', 'audit'] as const;
 type Tab = (typeof TABS)[number];
@@ -57,6 +58,20 @@ export function HrEmployeeProfilePage() {
       { key: 'emergency_contact_phone', value: employee.emergency_contact_phone }
     ];
   }, [employee]);
+
+  const { restoreDraft } = useDraftManager();
+
+  useEffect(() => {
+    if (!employee) return;
+    if (!user?.id) return;
+    if (!canEditEmployee) return;
+    if (!payload) return;
+    if (showEdit) return;
+
+    const draftKey = `hr-employee-edit:${employee.id}:${user.id}`;
+    const restored = restoreDraft(draftKey);
+    if (restored) setShowEdit(true);
+  }, [canEditEmployee, employee, payload, restoreDraft, showEdit, user?.id]);
 
   const onRestrictedView = async (field: string) => {
     if (!activeCompanyId || !user?.id || !id) return;

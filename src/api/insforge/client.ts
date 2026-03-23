@@ -27,6 +27,9 @@ export const insforge = createClient({
   anonKey,
   // Use SDK-managed session persistence + refresh.
   persistSession: true,
-  autoRefreshToken: true
+  // Disable SDK auto-refresh so we can control refresh timing via `SessionManagerProvider`.
+  // The app performs silent refresh when it's safe (active users + form editing), and switches to
+  // a modal-only flow for the inactivity window (45 min warning / 60 min logout).
+  autoRefreshToken: false
 });
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { HeartIcon, CalendarIcon, AlertTriangleIcon, GraduationCapIcon, UploadIcon } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
@@ -14,6 +14,7 @@ import { countExpiringMedical, listMedicalCertificates } from '../../api/service
 import type { MedicalCertificate, ModuleTarget } from '../../api/models/entities';
 import { MedicalCertificateUploadModal } from '../../components/health/MedicalCertificateUploadModal';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/services/documentsStorageService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -27,6 +28,8 @@ export function HealthModulePage() {
   const { activeCompanyId, activeRole } = useTenant();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const { restoreLatestDraftByPrefix } = useDraftManager();
 
   const canUploadForSelf = !!user?.id;
   const canUploadForOthers = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
@@ -89,6 +92,18 @@ export function HealthModulePage() {
     const diffMs = upcoming[0] - Date.now();
     return Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
   }, [certificates]);
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    if (uploadOpen) return;
+    if (!(canUploadForSelf || canUploadForOthers)) return;
+
+    const prefix = `medical-certificate-upload:${activeCompanyId}:${user.id}:`;
+    const latest = restoreLatestDraftByPrefix<unknown>(prefix);
+    if (!latest) return;
+
+    setUploadOpen(true);
+  }, [activeCompanyId, canUploadForOthers, canUploadForSelf, restoreLatestDraftByPrefix, uploadOpen, user?.id]);
 
   return (
     <Layout title="Health Management">

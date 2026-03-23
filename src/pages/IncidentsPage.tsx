@@ -18,6 +18,7 @@ import type { Incident } from '../api/models/entities';
 import { useUser } from '@insforge/react';
 import { FirstWinBanner } from '../components/onboarding/FirstWinBanner';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { useDraftManager } from '../session/DraftManagerProvider';
 
 const IncidentCreateModal = lazy(() => import('../components/incidents/IncidentCreateModal').then(m => ({ default: m.IncidentCreateModal })));
 const IncidentDetailModal = lazy(() => import('../components/incidents/IncidentDetailModal').then(m => ({ default: m.IncidentDetailModal })));
@@ -83,6 +84,18 @@ export function IncidentsPage() {
   useEffect(() => {
     setCreateOpen(isNew);
   }, [isNew]);
+
+  const { restoreDraft } = useDraftManager();
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    if (!isNew) return;
+    if (createOpen) return;
+
+    const draftKey = `incident-modal:${activeCompanyId}:new`;
+    const restored = restoreDraft(draftKey);
+    if (restored) setCreateOpen(true);
+  }, [activeCompanyId, createOpen, isNew, restoreDraft, user?.id]);
 
   const { data: incidents, loading, error, retry, isBackendUnavailable } = useAsync<Incident[]>(
     async () => {

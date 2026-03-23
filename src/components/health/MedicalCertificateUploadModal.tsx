@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon, UploadIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { MedicalCertificate, UUID } from '../../api/models/entities';
 import { createMedicalCertificate } from '../../api/services/healthService';
 import { insforge } from '../../api/insforge/client';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export const MEDICAL_CERT_BUCKET = 'sca-medical-certificates';
 
@@ -16,16 +18,86 @@ export function MedicalCertificateUploadModal(props: {
   defaultUserId?: UUID;
   onUploaded?: () => void;
 }) {
+  const { restoreLatestDraftByPrefix, restoreDraft, clearDraft } = useDraftManager();
   const [userId, setUserId] = useState(props.defaultUserId ?? '');
   const [certificateType, setCertificateType] = useState('Fitness Certificate');
   const [issuedAt, setIssuedAt] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [status, setStatus] = useState<MedicalCertificate['status']>('valid');
   const [file, setFile] = useState<File | null>(null);
+  const [fileMetaName, setFileMetaName] = useState<string>('');
+  const [fileMetaType, setFileMetaType] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const draftKeyPrefix = `medical-certificate-upload:${props.companyId}:${props.actorUserId}:`;
+  const defaultUserDraftKey = props.defaultUserId ? `${draftKeyPrefix}${props.defaultUserId.trim()}` : null;
+  const draftKey = `${draftKeyPrefix}${(props.defaultUserId ?? userId).trim() || 'anon'}`;
+
   const canSubmit = useMemo(() => !!userId && certificateType.trim().length > 2, [certificateType, userId]);
+
+  const hasDirtyDraft = useMemo(() => {
+    return (
+      props.open &&
+      (certificateType.trim().length > 0 ||
+        issuedAt.trim().length > 0 ||
+        expiresAt.trim().length > 0 ||
+        status !== 'valid' ||
+        !!userId.trim() ||
+        !!fileMetaName)
+    );
+  }, [certificateType, expiresAt, fileMetaName, issuedAt, props.open, status, userId]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      userId,
+      certificateType,
+      issuedAt,
+      expiresAt,
+      status,
+      fileMetaName: fileMetaName || null,
+      fileMetaType: fileMetaType || null
+    })
+  });
+
+  useEffect(() => {
+    if (!props.open) return;
+    const restored = props.defaultUserId
+      ? restoreDraft<{
+          userId?: string;
+          certificateType?: string;
+          issuedAt?: string;
+          expiresAt?: string;
+          status?: MedicalCertificate['status'];
+          fileMetaName?: string | null;
+          fileMetaType?: string | null;
+        }>(defaultUserDraftKey as string)
+      : restoreLatestDraftByPrefix<{
+          userId?: string;
+          certificateType?: string;
+          issuedAt?: string;
+          expiresAt?: string;
+          status?: MedicalCertificate['status'];
+          fileMetaName?: string | null;
+          fileMetaType?: string | null;
+        }>(draftKeyPrefix)?.payload ?? null;
+
+    if (!restored) return;
+
+    setUserId(restored.userId ?? props.defaultUserId ?? '');
+    setCertificateType(restored.certificateType ?? 'Fitness Certificate');
+    setIssuedAt(restored.issuedAt ?? '');
+    setExpiresAt(restored.expiresAt ?? '');
+    setStatus(restored.status ?? 'valid');
+
+    // File objects cannot be restored. Keep metadata so the user can confirm what was selected.
+    setFile(null);
+    setFileMetaName(restored.fileMetaName ?? '');
+    setFileMetaType(restored.fileMetaType ?? '');
+  }, [defaultUserDraftKey, draftKeyPrefix, props.defaultUserId, props.open, restoreDraft, restoreLatestDraftByPrefix]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,6 +134,9 @@ export function MedicalCertificateUploadModal(props: {
       setExpiresAt('');
       setStatus('valid');
       setFile(null);
+      setFileMetaName('');
+      setFileMetaType('');
+      clearDraft(draftKey);
       if (!props.defaultUserId) setUserId('');
     } catch (err: any) {
       setError(formatAuthError(err));
@@ -152,7 +227,19 @@ export function MedicalCertificateUploadModal(props: {
 
           <div>
             <label className="block text-sm font-medium text-charcoal mb-1.5">File (optional)</label>
-            <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-full text-sm" />
+            <input
+              type="file"
+              onChange={(e) => {
+                const next = e.target.files?.[0] ?? null;
+                setFile(next);
+                setFileMetaName(next?.name ?? '');
+                setFileMetaType(next?.type ?? '');
+              }}
+              className="w-full text-sm"
+            />
+            {fileMetaName && !file && (
+              <p className="text-xs text-charcoal-400 mt-1">Previously selected file: {fileMetaName} (reselect to upload)</p>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">

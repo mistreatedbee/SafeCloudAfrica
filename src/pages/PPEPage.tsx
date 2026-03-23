@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { HardHatIcon, PlusIcon } from 'lucide-react';
 import {
@@ -63,6 +63,7 @@ import { PpeStockCreateModal } from '../components/ppe/PpeStockCreateModal';
 import { PpeStockDetailModal } from '../components/ppe/PpeStockDetailModal';
 import { PpeIssueTrackerCreateModal } from '../components/ppe/PpeIssueTrackerCreateModal';
 import { PpeIssueTrackerDetailModal } from '../components/ppe/PpeIssueTrackerDetailModal';
+import { useDraftManager } from '../session/DraftManagerProvider';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -195,6 +196,17 @@ export function PPEPage() {
     },
     [activeCompanyId, user?.id]
   );
+
+  const { restoreDraft } = useDraftManager();
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    if (issueOpen) return;
+
+    const draftKey = `ppe-issue:${activeCompanyId}:${user.id}`;
+    const restored = restoreDraft(draftKey);
+    if (restored) setIssueOpen(true);
+  }, [activeCompanyId, issueOpen, restoreDraft, user?.id]);
 
   const issuesFilters = useMemo((): PpeIssuesFilters => {
     const f: PpeIssuesFilters = { companyId: activeCompanyId!, limit: 500 };

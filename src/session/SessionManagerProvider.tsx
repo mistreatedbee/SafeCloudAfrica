@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { insforge } from '../api/insforge/client';
 import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY, USER_SIGNED_OUT_KEY } from '../auth/AuthSessionListener';
 import { useDraftManager } from './DraftManagerProvider';
+import { computeInactivityDecision } from './inactivityDecision';
 
 const WARNING_TIMEOUT_MS = 45 * 60 * 1000;
 const LOGOUT_TIMEOUT_MS = 60 * 60 * 1000;
@@ -46,7 +47,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoaded, isSignedIn, signOut } = useAuth();
-  const { flushAllDrafts } = useDraftManager();
+  const { flushAllDrafts, hasDirtyDrafts } = useDraftManager();
   const [showWarning, setShowWarning] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
@@ -220,22 +221,31 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     if (!isLoaded || !isSignedIn) return;
     const interval = window.setInterval(() => {
       const idleMs = Date.now() - lastActivityRef.current;
+      const formEditing = hasDirtyDrafts();
+      const { shouldShowWarning, shouldLogout } = computeInactivityDecision({
+        idleMs,
+        formEditing,
+        warningTimeoutMs: WARNING_TIMEOUT_MS,
+        logoutTimeoutMs: LOGOUT_TIMEOUT_MS
+      });
       const remaining = Math.max(0, LOGOUT_TIMEOUT_MS - idleMs);
       setRemainingMs(remaining);
 
-      if (idleMs >= WARNING_TIMEOUT_MS && idleMs < LOGOUT_TIMEOUT_MS) {
-        if (!showWarning) {
-          console.info('[session] inactivity warning shown');
-        }
-        setShowWarning(true);
-      }
-
-      if (idleMs >= LOGOUT_TIMEOUT_MS) {
+      if (shouldLogout) {
         void markSessionExpiredAndLogout('inactivity');
         return;
       }
 
-      if (!showWarning) {
+      if (shouldShowWarning) {
+        if (!showWarning) {
+          console.info('[session] inactivity warning shown');
+        }
+        setShowWarning(true);
+      } else if (showWarning) {
+        setShowWarning(false);
+      }
+
+      if (!shouldShowWarning) {
         void (async () => {
           const ok = await refreshSessionIfNeeded();
           if (!ok && refreshRetryCountRef.current <= MAX_REFRESH_RETRIES) {
@@ -249,7 +259,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       }
     }, CHECK_INTERVAL_MS);
     return () => window.clearInterval(interval);
-  }, [isLoaded, isSignedIn, markSessionExpiredAndLogout, refreshSessionIfNeeded, showWarning]);
+  }, [isLoaded, isSignedIn, markSessionExpiredAndLogout, refreshSessionIfNeeded, showWarning, hasDirtyDrafts]);
 
   const value = useMemo<SessionManagerContextValue>(
     () => ({

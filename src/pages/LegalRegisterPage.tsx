@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
@@ -19,6 +19,7 @@ import { downloadTextFile } from '../utils/csv';
 import { LegalRequirementCreateModal } from '../components/legal/LegalRequirementCreateModal';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
 import { GavelIcon } from 'lucide-react';
+import { useDraftManager } from '../session/DraftManagerProvider';
 
 function canWrite(role: CompanyRole | null): boolean {
   return role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor' || role === 'consultant';
@@ -51,6 +52,34 @@ export function LegalRegisterPage() {
   const [editing, setEditing] = useState<LegalRequirement | null>(null);
 
   const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
+
+  const { restoreLatestDraftByPrefix } = useDraftManager();
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    if (modalOpen) return;
+
+    const draftKeyPrefix = `legal-requirement:${activeCompanyId}:`;
+    const latest = restoreLatestDraftByPrefix<unknown>(draftKeyPrefix);
+    if (!latest) return;
+
+    // Ensure we only resume the draft for the current user.
+    if (!latest.key.endsWith(`:${user.id}`)) return;
+
+    const parts = latest.key.split(':');
+    // legal-requirement:<companyId>:<editingIdPart>:<actorUserId>
+    const editingIdPart = parts[2];
+    if (!editingIdPart) return;
+
+    if (editingIdPart === 'new') {
+      setEditing(null);
+      setModalOpen(true);
+      return;
+    }
+
+    setEditing({ id: editingIdPart } as any);
+    setModalOpen(true);
+  }, [activeCompanyId, modalOpen, restoreLatestDraftByPrefix, user?.id]);
 
   const { data, loading, error, refetch } = useAsync(
     async () => {

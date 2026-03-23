@@ -18,6 +18,8 @@ type DraftManagerContextValue = {
   registerDraft: (registration: DraftRegistration) => () => void;
   flushAllDrafts: () => Promise<void>;
   restoreDraft: <T>(key: string) => T | null;
+  hasDirtyDrafts: () => boolean;
+  restoreLatestDraftByPrefix: <T>(keyPrefix: string) => { key: string; updatedAt: number; payload: T } | null;
   clearDraft: (key: string) => void;
 };
 
@@ -48,6 +50,17 @@ function removeDraftSnapshot(key: string): void {
     localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
   } catch {
     // ignore
+  }
+}
+
+function readDraftSnapshotFromStorageKey<T>(storageKey: string): DraftSnapshot & { payload: T } | null {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DraftSnapshot;
+    return { ...parsed, payload: parsed.payload as T };
+  } catch {
+    return null;
   }
 }
 
@@ -82,9 +95,52 @@ export function DraftManagerProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  const hasDirtyDrafts = useCallback(() => {
+    const registrations = registrationsRef.current.values();
+    for (const registration of registrations) {
+      try {
+        if (registration.isDirty()) return true;
+      } catch {
+        // If a draft's `isDirty()` throws, treat it as non-blocking.
+      }
+    }
+    return false;
+  }, []);
+
   const restoreDraft = useCallback(<T,>(key: string): T | null => {
     return readDraftSnapshot<T>(key);
   }, []);
+
+  const restoreLatestDraftByPrefix = useCallback(
+    <T,>(keyPrefix: string): { key: string; updatedAt: number; payload: T } | null => {
+      try {
+        if (typeof localStorage === 'undefined') return null;
+
+        let latest: { key: string; updatedAt: number; payload: T } | null = null;
+
+        for (let i = 0; i < localStorage.length; i += 1) {
+          const storageKey = localStorage.key(i);
+          if (!storageKey) continue;
+          if (!storageKey.startsWith(STORAGE_PREFIX)) continue;
+
+          const draftKey = storageKey.slice(STORAGE_PREFIX.length);
+          if (!draftKey.startsWith(keyPrefix)) continue;
+
+          const snapshot = readDraftSnapshotFromStorageKey<T>(storageKey);
+          if (!snapshot) continue;
+
+          if (!latest || snapshot.updatedAt > latest.updatedAt) {
+            latest = { key: snapshot.key, updatedAt: snapshot.updatedAt, payload: snapshot.payload as T };
+          }
+        }
+
+        return latest;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
 
   const clearDraft = useCallback((key: string) => {
     removeDraftSnapshot(key);
@@ -95,9 +151,11 @@ export function DraftManagerProvider({ children }: { children: React.ReactNode }
       registerDraft,
       flushAllDrafts,
       restoreDraft,
+      hasDirtyDrafts,
+      restoreLatestDraftByPrefix,
       clearDraft
     }),
-    [registerDraft, flushAllDrafts, restoreDraft, clearDraft]
+    [registerDraft, flushAllDrafts, restoreDraft, hasDirtyDrafts, restoreLatestDraftByPrefix, clearDraft]
   );
 
   return <DraftManagerContext.Provider value={value}>{children}</DraftManagerContext.Provider>;

@@ -139,8 +139,51 @@ export function HrEmployeeEditModal(props: Props) {
         lastName.trim().length > 0 ||
         employeeNo.trim().length > 0 ||
         email.trim().length > 0 ||
-        phone.trim().length > 0),
-    [email, employeeNo, firstName, lastName, phone, props.open]
+        phone.trim().length > 0 ||
+        jobTitle.trim().length > 0 ||
+        startDate.trim().length > 0 ||
+        contractExpiryDate.trim().length > 0 ||
+        employmentType.trim().length > 0 ||
+        departmentId.trim().length > 0 ||
+        siteId.trim().length > 0 ||
+        supervisorUserId.trim().length > 0 ||
+        (props.canAccessSensitiveFields &&
+          (dependents.some(
+            (d) => d.dependent_name.trim().length > 0 || d.relationship.trim().length > 0 || d.contact_details.trim().length > 0
+          ) ||
+            medicalAidName.trim().length > 0 ||
+            medicalAidMembershipNumber.trim().length > 0 ||
+            partnerName.trim().length > 0 ||
+            maritalStatus !== null)) ||
+        (props.canViewRestrictedFields &&
+          (idNumber.trim().length > 0 || dateOfBirth.trim().length > 0 || address.trim().length > 0 || emergencyContactName.trim().length > 0 || emergencyContactPhone.trim().length > 0))),
+    [
+      address,
+      contractExpiryDate,
+      dateOfBirth,
+      dependents,
+      departmentId,
+      emergencyContactName,
+      emergencyContactPhone,
+      email,
+      employeeNo,
+      employmentType,
+      firstName,
+      idNumber,
+      jobTitle,
+      lastName,
+      medicalAidMembershipNumber,
+      medicalAidName,
+      maritalStatus,
+      partnerName,
+      phone,
+      props.canAccessSensitiveFields,
+      props.canViewRestrictedFields,
+      props.open,
+      siteId,
+      startDate,
+      supervisorUserId
+    ]
   );
 
   useDraftRegistration({
@@ -153,7 +196,44 @@ export function HrEmployeeEditModal(props: Props) {
       employeeNo,
       email,
       phone,
-      jobTitle
+      jobTitle,
+      employmentStatus,
+      employmentType,
+      startDate,
+      contractExpiryDate,
+      departmentId,
+      siteId,
+      supervisorUserId,
+      ...(props.canViewRestrictedFields
+        ? {
+            idNumber,
+            dateOfBirth,
+            address,
+            emergencyContactName,
+            emergencyContactPhone
+          }
+        : {}),
+      ...(props.canAccessSensitiveFields
+        ? {
+            dependents,
+            medicalAidName,
+            medicalAidMembershipNumber,
+            maritalStatus,
+            partnerName,
+            taxNumber,
+            passportNumber,
+            passportExpiryDate,
+            permitNumber,
+            permitExpiryDate,
+            countryOfIssue,
+            bankName,
+            accountHolderName,
+            branchCode,
+            accountType,
+            editAccountNumber,
+            accountNumberDraft
+          }
+        : {})
     })
   });
 
@@ -166,6 +246,35 @@ export function HrEmployeeEditModal(props: Props) {
       email?: string;
       phone?: string;
       jobTitle?: string;
+      employmentStatus?: HrEmployee['employment_status'];
+      employmentType?: string;
+      startDate?: string;
+      contractExpiryDate?: string;
+      departmentId?: string;
+      siteId?: string;
+      supervisorUserId?: UUID | '' | null;
+      idNumber?: string;
+      dateOfBirth?: string;
+      address?: string;
+      emergencyContactName?: string;
+      emergencyContactPhone?: string;
+      dependents?: DependentDraft[];
+      medicalAidName?: string;
+      medicalAidMembershipNumber?: string;
+      maritalStatus?: HrEmployeeSensitiveDetails['marital_status'];
+      partnerName?: string;
+      taxNumber?: string;
+      passportNumber?: string;
+      passportExpiryDate?: string;
+      permitNumber?: string;
+      permitExpiryDate?: string;
+      countryOfIssue?: string;
+      bankName?: string;
+      accountHolderName?: string;
+      branchCode?: string;
+      accountType?: string;
+      editAccountNumber?: boolean;
+      accountNumberDraft?: string;
     }>(draftKey);
     if (!restored) return;
     setFirstName(restored.firstName ?? firstName);
@@ -174,6 +283,45 @@ export function HrEmployeeEditModal(props: Props) {
     setEmail(restored.email ?? email);
     setPhone(restored.phone ?? phone);
     setJobTitle(restored.jobTitle ?? jobTitle);
+    if (restored.employmentStatus) setEmploymentStatus(restored.employmentStatus);
+    if (restored.employmentType !== undefined) setEmploymentType(restored.employmentType);
+    if (restored.startDate !== undefined) setStartDate(restored.startDate);
+    if (restored.contractExpiryDate !== undefined) setContractExpiryDate(restored.contractExpiryDate);
+    if (restored.departmentId !== undefined) setDepartmentId(restored.departmentId);
+    if (restored.siteId !== undefined) setSiteId(restored.siteId);
+    if (restored.supervisorUserId !== undefined) setSupervisorUserId((restored.supervisorUserId as any) ?? '');
+
+    if (props.canViewRestrictedFields) {
+      if (restored.idNumber !== undefined) setIdNumber(restored.idNumber);
+      if (restored.dateOfBirth !== undefined) setDateOfBirth(restored.dateOfBirth);
+      if (restored.address !== undefined) setAddress(restored.address);
+      if (restored.emergencyContactName !== undefined) setEmergencyContactName(restored.emergencyContactName);
+      if (restored.emergencyContactPhone !== undefined) setEmergencyContactPhone(restored.emergencyContactPhone);
+    }
+
+    if (props.canAccessSensitiveFields) {
+      if (Array.isArray(restored.dependents)) setDependents(restored.dependents);
+
+      if (restored.medicalAidName !== undefined) setMedicalAidName(restored.medicalAidName);
+      if (restored.medicalAidMembershipNumber !== undefined) setMedicalAidMembershipNumber(restored.medicalAidMembershipNumber);
+      if (restored.maritalStatus !== undefined) setMaritalStatus(restored.maritalStatus as any);
+      if (restored.partnerName !== undefined) setPartnerName(restored.partnerName);
+
+      if (restored.taxNumber !== undefined) setTaxNumber(restored.taxNumber);
+      if (restored.passportNumber !== undefined) setPassportNumber(restored.passportNumber);
+      if (restored.passportExpiryDate !== undefined) setPassportExpiryDate(restored.passportExpiryDate);
+      if (restored.permitNumber !== undefined) setPermitNumber(restored.permitNumber);
+      if (restored.permitExpiryDate !== undefined) setPermitExpiryDate(restored.permitExpiryDate);
+      if (restored.countryOfIssue !== undefined) setCountryOfIssue(restored.countryOfIssue);
+
+      if (restored.bankName !== undefined) setBankName(restored.bankName);
+      if (restored.accountHolderName !== undefined) setAccountHolderName(restored.accountHolderName);
+      if (restored.branchCode !== undefined) setBranchCode(restored.branchCode);
+      if (restored.accountType !== undefined) setAccountType(restored.accountType);
+
+      if (restored.editAccountNumber !== undefined) setEditAccountNumber(restored.editAccountNumber);
+      if (restored.accountNumberDraft !== undefined) setAccountNumberDraft(restored.accountNumberDraft);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey, props.open, restoreDraft]);
 

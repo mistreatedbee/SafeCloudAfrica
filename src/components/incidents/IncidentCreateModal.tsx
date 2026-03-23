@@ -63,8 +63,11 @@ type AffectedPersonEntry = {
 
 type UploadDraft = {
   id: string;
-  file: File;
+  // File objects cannot be reliably persisted across sessions.
+  // When restored from a draft, `file` will be null and the user must re-select.
+  file: File | null;
   displayName: string;
+  originalFileName: string;
   previewUrl: string | null;
   kind: 'image' | 'document';
 };
@@ -140,6 +143,7 @@ function buildUploadDraft(file: File): UploadDraft {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     file,
     displayName: file.name,
+    originalFileName: file.name,
     previewUrl: isImage ? URL.createObjectURL(file) : null,
     kind: isImage ? 'image' : 'document'
   };
@@ -300,8 +304,95 @@ export function IncidentCreateModal(props: {
         briefDescription.trim().length > 0 ||
         location.trim().length > 0 ||
         natureOfIncident.trim().length > 0 ||
-        causeOfIncident.trim().length > 0),
-    [briefDescription, causeOfIncident, loading, location, natureOfIncident, props.open, title]
+        causeOfIncident.trim().length > 0 ||
+        incidentTypeOther.trim().length > 0 ||
+        Object.values(incidentTypeSelections).some(Boolean) ||
+        category !== INCIDENT_CATEGORIES[0] ||
+        selectedCategories.length !== 1 ||
+        selectedCategories.some((c) => c !== INCIDENT_CATEGORIES[0]) ||
+        selectedSubcategories.length > 0 ||
+        (useManualSubcategory ? subcategoryManual.trim().length > 0 : subcategory.trim().length > 0) ||
+        reportedBy.trim().length > 0 ||
+        reportedTo.trim().length > 0 ||
+        copyTo.trim().length > 0 ||
+        affectedPersonId !== null ||
+        affectedEmployeeId !== null ||
+        affectedPersonName.trim().length > 0 ||
+        riskLikelihood !== 3 ||
+        riskSeverity !== 3 ||
+        investigationRequired ||
+        generateNcr ||
+        actualOutcome.trim().length > 0 ||
+        lossTypes.length > 0 ||
+        lossOther.trim().length > 0 ||
+        lossNotes.trim().length > 0 ||
+        Object.keys(unsafeActs).length > 0 ||
+        Object.keys(unsafeConditions).length > 0 ||
+        Object.keys(rootCauseHuman).length > 0 ||
+        Object.keys(rootCauseWorkplace).length > 0 ||
+        Object.keys(systemFailures).length > 0 ||
+        incidentTimelineEvents.length > 0 ||
+        potentialConsequence.trim().length > 0 ||
+        contributingFactors.trim().length > 0 ||
+        lessonsLearned.trim().length > 0 ||
+        investigationTeam.trim().length > 0 ||
+        conclusion.trim().length > 0 ||
+        preparedBy.trim().length > 0 ||
+        distributionList.trim().length > 0 ||
+        Object.values(investigationSections).some(Boolean) ||
+        correctiveActionDrafts.some((d) => Boolean(d.actionRequired.trim() || d.responsibleUserId || d.dueDate)) ||
+        evidenceUploads.length > 0 ||
+        investigationUploads.length > 0 ||
+        affectedPersons.some((p) => Boolean(p.personId || p.personName.trim() || p.role.trim() || p.department.trim() || p.injuryType.trim() || p.contactDetails.trim()))),
+    [
+      affectedPersons,
+      affectedEmployeeId,
+      affectedPersonId,
+      affectedPersonName,
+      category,
+      actualOutcome,
+      briefDescription,
+      causeOfIncident,
+      conclusion,
+      contributingFactors,
+      correctiveActionDrafts,
+      distributionList,
+      evidenceUploads.length,
+      investigationSections,
+      investigationTeam,
+      investigationRequired,
+      investigationUploads.length,
+      incidentTimelineEvents.length,
+      incidentTypeOther,
+      incidentTypeSelections,
+      lessonsLearned,
+      loading,
+      lossNotes,
+      lossOther,
+      lossTypes,
+      location,
+      natureOfIncident,
+      preparedBy,
+      potentialConsequence,
+      props.open,
+      reportedBy,
+      reportedTo,
+      riskLikelihood,
+      riskSeverity,
+      selectedSubcategories.length,
+      subcategory,
+      subcategoryManual,
+      systemFailures,
+      title,
+      selectedCategories,
+      unsafeActs,
+      unsafeConditions,
+      useManualSubcategory,
+      rootCauseHuman,
+      rootCauseWorkplace,
+      copyTo,
+      generateNcr
+    ]
   );
 
   useDraftRegistration({
@@ -309,14 +400,64 @@ export function IncidentCreateModal(props: {
     enabled: props.open && !isEditing,
     isDirty: () => hasDirtyDraft,
     serialize: () => ({
+      module,
+      incidentTypeSelections,
+      incidentTypeOther,
+      category,
+      selectedCategories,
+      subcategory,
+      selectedSubcategories,
+      subcategoryManual,
+      useManualSubcategory,
       title,
       briefDescription,
+      occurredAtInput,
       location,
       natureOfIncident,
       causeOfIncident,
+      affectedPersonId,
+      affectedEmployeeId,
+      affectedPersonName,
+      affectedPersons,
       reportedBy,
       reportedTo,
-      occurredAtInput
+      copyTo,
+      riskCategorySimple,
+      riskLikelihood,
+      riskSeverity,
+      investigationRequired,
+      generateNcr,
+      actualOutcome,
+      lossTypes,
+      lossOther,
+      lossNotes,
+      unsafeActs,
+      unsafeConditions,
+      rootCauseHuman,
+      rootCauseWorkplace,
+      systemFailures,
+      incidentTimelineEvents,
+      potentialConsequence,
+      contributingFactors,
+      lessonsLearned,
+      investigationTeam,
+      conclusion,
+      preparedBy,
+      distributionList,
+      investigationSections,
+      correctiveActionDrafts,
+      evidenceUploadsMeta: evidenceUploads.map((u) => ({
+        id: u.id,
+        displayName: u.displayName,
+        originalFileName: u.originalFileName,
+        kind: u.kind
+      })),
+      investigationUploadsMeta: investigationUploads.map((u) => ({
+        id: u.id,
+        displayName: u.displayName,
+        originalFileName: u.originalFileName,
+        kind: u.kind
+      }))
     })
   });
 
@@ -393,25 +534,151 @@ export function IncidentCreateModal(props: {
     if (!props.open) return;
     if (!editingIncident) {
       const restored = restoreDraft<{
+        module?: ModuleKey;
+        incidentTypeSelections?: Record<string, boolean>;
+        incidentTypeOther?: string;
+        category?: IncidentCategory;
+        selectedCategories?: IncidentCategory[];
+        subcategory?: string;
+        selectedSubcategories?: string[];
+        subcategoryManual?: string;
+        useManualSubcategory?: boolean;
         title?: string;
         briefDescription?: string;
+        occurredAtInput?: string;
         location?: string;
         natureOfIncident?: string;
         causeOfIncident?: string;
+        affectedPersonId?: UUID | null;
+        affectedEmployeeId?: UUID | null;
+        affectedPersonName?: string;
+        affectedPersons?: AffectedPersonEntry[];
         reportedBy?: string;
         reportedTo?: string;
-        occurredAtInput?: string;
+        copyTo?: string;
+        riskCategorySimple?: 'Low' | 'Medium' | 'High';
+        riskLikelihood?: 1 | 2 | 3 | 4 | 5;
+        riskSeverity?: 1 | 2 | 3 | 4 | 5;
+        investigationRequired?: boolean;
+        generateNcr?: boolean;
+        actualOutcome?: string;
+        lossTypes?: string[];
+        lossOther?: string;
+        lossNotes?: string;
+        unsafeActs?: Record<string, UnsafeCauseEntry>;
+        unsafeConditions?: Record<string, UnsafeCauseEntry>;
+        rootCauseHuman?: Record<string, CauseDetailEntry>;
+        rootCauseWorkplace?: Record<string, CauseDetailEntry>;
+        systemFailures?: Record<string, CauseDetailEntry>;
+        incidentTimelineEvents?: TimelineEvent[];
+        potentialConsequence?: string;
+        contributingFactors?: string;
+        lessonsLearned?: string;
+        investigationTeam?: string;
+        conclusion?: string;
+        preparedBy?: string;
+        distributionList?: string;
+        investigationSections?: Record<InvestigationSectionKey, boolean>;
+        correctiveActionDrafts?: CorrectiveActionDraft[];
+        evidenceUploadsMeta?: Array<{ id: string; displayName: string; originalFileName: string; kind: 'image' | 'document' }>;
+        investigationUploadsMeta?: Array<{ id: string; displayName: string; originalFileName: string; kind: 'image' | 'document' }>;
       }>(draftKey);
       resetForm();
       if (restored) {
+        setModule(restored.module ?? (props.defaultModule ?? 'safety'));
+
+        const nextTypeSelections =
+          restored.incidentTypeSelections && typeof restored.incidentTypeSelections === 'object'
+            ? (restored.incidentTypeSelections as Record<string, boolean>)
+            : Object.fromEntries(INCIDENT_TYPES.map((t) => [t, false]));
+        setIncidentTypeSelections(nextTypeSelections);
+        setIncidentTypeOther(restored.incidentTypeOther ?? '');
+
+        const nextSelectedCategories = Array.isArray(restored.selectedCategories) && restored.selectedCategories.length
+          ? restored.selectedCategories
+          : restored.category
+            ? [restored.category]
+            : [INCIDENT_CATEGORIES[0]];
+        setSelectedCategories(nextSelectedCategories);
+        setCategory(nextSelectedCategories[0] ?? INCIDENT_CATEGORIES[0]);
+
+        const nextSelectedSubcategories = Array.isArray(restored.selectedSubcategories)
+          ? restored.selectedSubcategories
+          : [];
+        setSelectedSubcategories(nextSelectedSubcategories);
+
+        setSubcategory(restored.subcategory ?? '');
+        setSubcategoryManual(restored.subcategoryManual ?? '');
+        setUseManualSubcategory(Boolean(restored.useManualSubcategory));
+
         setTitle(restored.title ?? '');
         setBriefDescription(restored.briefDescription ?? '');
+        if (restored.occurredAtInput) setOccurredAtInput(restored.occurredAtInput);
         setLocation(restored.location ?? '');
         setNatureOfIncident(restored.natureOfIncident ?? '');
         setCauseOfIncident(restored.causeOfIncident ?? '');
+
+        setAffectedPersonId(restored.affectedPersonId ?? null);
+        setAffectedEmployeeId(restored.affectedEmployeeId ?? null);
+        setAffectedPersonName(restored.affectedPersonName ?? '');
+        if (Array.isArray(restored.affectedPersons) && restored.affectedPersons.length > 0) {
+          setAffectedPersons(restored.affectedPersons);
+        }
+
         setReportedBy(restored.reportedBy ?? '');
         setReportedTo(restored.reportedTo ?? '');
-        if (restored.occurredAtInput) setOccurredAtInput(restored.occurredAtInput);
+        setCopyTo(restored.copyTo ?? '');
+
+        setRiskCategorySimple(restored.riskCategorySimple ?? 'Medium');
+        if (restored.riskLikelihood) setRiskLikelihood(restored.riskLikelihood);
+        if (restored.riskSeverity) setRiskSeverity(restored.riskSeverity);
+
+        setInvestigationRequired(Boolean(restored.investigationRequired));
+        setGenerateNcr(Boolean(restored.generateNcr));
+        setActualOutcome(restored.actualOutcome ?? '');
+
+        setLossTypes(Array.isArray(restored.lossTypes) ? restored.lossTypes : []);
+        setLossOther(restored.lossOther ?? '');
+        setLossNotes(restored.lossNotes ?? '');
+
+        setUnsafeActs(restored.unsafeActs ?? {});
+        setUnsafeConditions(restored.unsafeConditions ?? {});
+        setRootCauseHuman(restored.rootCauseHuman ?? {});
+        setRootCauseWorkplace(restored.rootCauseWorkplace ?? {});
+        setSystemFailures(restored.systemFailures ?? {});
+
+        setIncidentTimelineEvents(Array.isArray(restored.incidentTimelineEvents) ? restored.incidentTimelineEvents : []);
+        setPotentialConsequence(restored.potentialConsequence ?? '');
+        setContributingFactors(restored.contributingFactors ?? '');
+        setLessonsLearned(restored.lessonsLearned ?? '');
+        setInvestigationTeam(restored.investigationTeam ?? '');
+        setConclusion(restored.conclusion ?? '');
+        setPreparedBy(restored.preparedBy ?? '');
+        setDistributionList(restored.distributionList ?? '');
+
+        setInvestigationSections({
+          ...emptyInvestigationSectionSelection(),
+          ...(restored.investigationSections ?? {})
+        });
+
+        if (Array.isArray(restored.correctiveActionDrafts)) {
+          setCorrectiveActionDrafts(restored.correctiveActionDrafts);
+        }
+
+        const toUploadDraft = (meta: Array<{ id: string; displayName: string; originalFileName: string; kind: 'image' | 'document' }> | undefined): UploadDraft[] => {
+          if (!Array.isArray(meta)) return [];
+          return meta.map((m) => ({
+            id: m.id,
+            file: null,
+            displayName: m.displayName ?? m.originalFileName ?? '',
+            originalFileName: m.originalFileName ?? m.displayName ?? '',
+            previewUrl: null,
+            kind: m.kind ?? 'document'
+          }));
+        };
+
+        setEvidenceUploads(toUploadDraft(restored.evidenceUploadsMeta));
+        setInvestigationUploads(toUploadDraft(restored.investigationUploadsMeta));
       }
       return;
     }
@@ -767,7 +1034,9 @@ export function IncidentCreateModal(props: {
 
   async function uploadEvidenceForIncident(incidentId: UUID, entries: UploadDraft[], entityType: string) {
     for (const entry of entries) {
-      const safeName = entry.file.name.replace(/\s+/g, '_');
+      if (!entry.file) continue; // File cannot be restored; user must re-select to upload.
+
+      const safeName = (entry.originalFileName || entry.file.name).replace(/\s+/g, '_');
       const key = `${props.companyId}/${entityType}/${incidentId}/${Date.now()}-${safeName}`;
       const uploaded = await uploadFile(EVIDENCE_BUCKET, entry.file, { key });
       await createEvidence({
@@ -777,8 +1046,8 @@ export function IncidentCreateModal(props: {
         storageBucket: uploaded.bucket,
         storageKey: uploaded.key,
         createdByUserId: props.createdByUserId,
-        originalFilename: entry.file.name,
-        displayTitle: (entry.displayName || entry.file.name).trim(),
+        originalFilename: entry.originalFileName || entry.file.name,
+        displayTitle: (entry.displayName || entry.originalFileName || entry.file.name).trim(),
         fileKind: entry.kind
       });
     }
@@ -1059,13 +1328,26 @@ export function IncidentCreateModal(props: {
         {items.length > 0 && (
           <div className="space-y-2">
             {items.map((entry) => (
-              <div key={entry.id} className="rounded-lg border border-surface-200 p-3 bg-surface-50">
+              <div
+                key={entry.id}
+                className={`rounded-lg border p-3 bg-surface-50 ${
+                  !entry.file ? 'border-amber-300 bg-amber-50/60' : 'border-surface-200'
+                }`}
+              >
                 <div className="flex items-start gap-3">
                   <div className="shrink-0 mt-1">
                     {entry.kind === 'image' ? <ImageIcon className="w-4 h-4 text-teal" /> : <FileTextIcon className="w-4 h-4 text-charcoal-500" />}
                   </div>
                   <div className="flex-1 min-w-0 space-y-2">
-                    <p className="text-xs text-charcoal-500 truncate">Original: {entry.file.name}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs text-charcoal-500 truncate">Original: {entry.originalFileName}</p>
+                      {!entry.file && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-amber-200 bg-amber-50 text-[11px] text-amber-800">
+                          Restored (metadata only)
+                        </span>
+                      )}
+                    </div>
+                    {!entry.file && <p className="text-[11px] text-charcoal-400">File cannot be restored; reselect to upload.</p>}
                     <input
                       value={entry.displayName}
                       onChange={(e) => renameUpload(entry.id, e.target.value, section)}
@@ -1073,7 +1355,7 @@ export function IncidentCreateModal(props: {
                       className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal"
                     />
                     {entry.previewUrl && (
-                      <img src={entry.previewUrl} alt={entry.displayName || entry.file.name} className="w-24 h-24 object-cover rounded-lg border border-surface-200" />
+                      <img src={entry.previewUrl} alt={entry.displayName || entry.originalFileName} className="w-24 h-24 object-cover rounded-lg border border-surface-200" />
                     )}
                     <div className="flex items-center gap-3 text-xs">
                       <a
@@ -1087,7 +1369,7 @@ export function IncidentCreateModal(props: {
                       </a>
                       <a
                         href={entry.previewUrl ?? '#'}
-                        download={entry.displayName || entry.file.name}
+                        download={entry.displayName || entry.originalFileName}
                         className={`inline-flex items-center gap-1 ${entry.previewUrl ? 'text-charcoal-600 hover:text-charcoal' : 'text-charcoal-400 pointer-events-none'}`}
                       >
                         <DownloadIcon className="w-3.5 h-3.5" />
