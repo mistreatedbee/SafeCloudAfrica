@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BriefcaseIcon, BookOpenIcon, Building2Icon, Grid3X3Icon, PlusIcon, PencilIcon } from 'lucide-react';
 import { useAsync } from '../../api/hooks/useAsync';
 import type { JobDescription, TrainingCourse, TrainingProvider, JobTrainingRequirement, UUID } from '../../api/models/entities';
@@ -15,6 +15,8 @@ import { CourseEditModal } from './CourseEditModal';
 import { MatrixBuilderSection } from './MatrixBuilderSection';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function TrainingMatrixSetupTab(props: {
   companyId: UUID;
@@ -29,6 +31,44 @@ export function TrainingMatrixSetupTab(props: {
   const [newCourseLoading, setNewCourseLoading] = useState(false);
   const [newCourseError, setNewCourseError] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
+
+  type NewCourseDraftPayload = {
+    newCourseName: string;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const newCourseDraftKey = `training-matrix-new-course:${props.companyId}:${props.createdByUserId}`;
+
+  const newCoursePayload = useMemo<NewCourseDraftPayload>(
+    () => ({
+      newCourseName
+    }),
+    [newCourseName]
+  );
+
+  const newCoursePayloadJson = useMemo(() => JSON.stringify(newCoursePayload), [newCoursePayload]);
+  const [newCourseDraftBaselineJson, setNewCourseDraftBaselineJson] = useState<string | null>(null);
+
+  const hasDirtyNewCourseDraft = useMemo(() => {
+    if (newCourseDraftBaselineJson == null) return false;
+    return newCoursePayloadJson !== newCourseDraftBaselineJson;
+  }, [newCourseDraftBaselineJson, newCoursePayloadJson]);
+
+  useDraftRegistration({
+    key: newCourseDraftKey,
+    enabled: Boolean(props.companyId && props.createdByUserId),
+    isDirty: () => hasDirtyNewCourseDraft,
+    serialize: () => newCoursePayload
+  });
+
+  useEffect(() => {
+    const baseJson = JSON.stringify({ newCourseName });
+    setNewCourseDraftBaselineJson(baseJson);
+    const restored = restoreDraft<NewCourseDraftPayload>(newCourseDraftKey);
+    if (!restored) return;
+    setNewCourseName(restored.newCourseName ?? '');
+    setNewCourseDraftBaselineJson(JSON.stringify(restored));
+  }, [newCourseDraftKey, restoreDraft]);
 
   const refreshAll = () => setRefresh((r) => r + 1);
 
@@ -61,6 +101,8 @@ export function TrainingMatrixSetupTab(props: {
         createdByUserId: props.createdByUserId
       });
       setNewCourseName('');
+      clearDraft(newCourseDraftKey);
+      setNewCourseDraftBaselineJson(JSON.stringify({ newCourseName: '' }));
       refreshAll();
     } catch (err: unknown) {
       setNewCourseError(formatAuthError(err));
@@ -294,6 +336,7 @@ export function TrainingMatrixSetupTab(props: {
             jobs={jobs ?? []}
             courses={courses ?? []}
             requirements={requirements ?? []}
+              draftKey={`training-matrix-setup:${props.companyId}:${props.createdByUserId}`}
             onSaved={refreshAll}
           />
         </div>

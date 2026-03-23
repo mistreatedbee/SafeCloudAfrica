@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Link, useLocation } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
@@ -17,6 +17,8 @@ import {
   type HrEmployeeWellnessAssessment,
   type HrEmployeeWellnessAction
 } from '../../api/services/hrService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type YesNo = 'yes' | 'no' | null;
 
@@ -260,17 +262,119 @@ export function HrEmployeeWellnessPage() {
     return result;
   };
 
+  type EmployeeWellnessDraftPayload = {
+    assessmentDate: string;
+    wellnessRows: WellnessRow[];
+    healthRows: HealthRow[];
+    supportRows: SupportRow[];
+    activityRows: ActivityRow[];
+    actionPlanRows: ActionPlanRow[];
+    employeeSignature: string;
+    hrSignature: string;
+    approvalDate: string;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const employeeSelectionKey = selectedEmployeeId ? String(selectedEmployeeId) : selectedEmployeeUserId ? String(selectedEmployeeUserId) : '';
+  const draftKeyEmployeeWellness = `hr-employee-wellness:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}:${employeeSelectionKey || 'unselected'}:${
+    selectedAssessmentId ?? 'new'
+  }`;
+  const isDraftEnabled = Boolean(activeCompanyId && user?.id && employeeSelectionKey);
+
+  const draftPayload = useMemo<EmployeeWellnessDraftPayload>(
+    () => ({
+      assessmentDate,
+      wellnessRows,
+      healthRows,
+      supportRows,
+      activityRows,
+      actionPlanRows,
+      employeeSignature,
+      hrSignature,
+      approvalDate
+    }),
+    [actionPlanRows, activityRows, approvalDate, assessmentDate, employeeSignature, healthRows, hrSignature, supportRows, wellnessRows]
+  );
+
+  const [wellnessDraftBaseline, setWellnessDraftBaseline] = useState<EmployeeWellnessDraftPayload>(() => draftPayload);
+
+  const hasDirtyWellnessDraft = useMemo(() => {
+    return JSON.stringify(draftPayload) !== JSON.stringify(wellnessDraftBaseline);
+  }, [draftPayload, wellnessDraftBaseline]);
+
+  useDraftRegistration({
+    key: draftKeyEmployeeWellness,
+    enabled: isDraftEnabled,
+    isDirty: () => hasDirtyWellnessDraft,
+    serialize: () => draftPayload
+  });
+
+  useEffect(() => {
+    if (!isDraftEnabled) return;
+    const restored = restoreDraft<EmployeeWellnessDraftPayload>(draftKeyEmployeeWellness);
+    if (restored) {
+      const next: EmployeeWellnessDraftPayload = {
+        assessmentDate: typeof restored.assessmentDate === 'string' ? restored.assessmentDate : assessmentDate,
+        wellnessRows: Array.isArray(restored.wellnessRows) ? restored.wellnessRows : wellnessRows,
+        healthRows: Array.isArray(restored.healthRows) ? restored.healthRows : healthRows,
+        supportRows: Array.isArray(restored.supportRows) ? restored.supportRows : supportRows,
+        activityRows: Array.isArray(restored.activityRows) ? restored.activityRows : activityRows,
+        actionPlanRows: Array.isArray(restored.actionPlanRows) && restored.actionPlanRows.length > 0 ? restored.actionPlanRows : actionPlanRows,
+        employeeSignature: typeof restored.employeeSignature === 'string' ? restored.employeeSignature : employeeSignature,
+        hrSignature: typeof restored.hrSignature === 'string' ? restored.hrSignature : hrSignature,
+        approvalDate: typeof restored.approvalDate === 'string' ? restored.approvalDate : approvalDate
+      };
+
+      setAssessmentDate(next.assessmentDate);
+      setWellnessRows(next.wellnessRows);
+      setHealthRows(next.healthRows);
+      setSupportRows(next.supportRows);
+      setActivityRows(next.activityRows);
+      setActionPlanRows(next.actionPlanRows);
+      setEmployeeSignature(next.employeeSignature);
+      setHrSignature(next.hrSignature);
+      setApprovalDate(next.approvalDate);
+      setWellnessDraftBaseline(next);
+      return;
+    }
+
+    // No draft found for this context; treat current state as "clean" so we don't re-save immediately.
+    setWellnessDraftBaseline(draftPayload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKeyEmployeeWellness, isDraftEnabled, restoreDraft]);
+
   const resetForm = () => {
-    setAssessmentDate(new Date().toISOString().slice(0, 10));
-    setWellnessRows(WELLNESS_ROWS.map((row) => ({ ...row, answer: null, comments: '' })));
-    setHealthRows(HEALTH_ROWS.map((row) => ({ ...row, status: '', comments: '' })));
-    setSupportRows(SUPPORT_ROWS.map((row) => ({ ...row, answer: null, comments: '' })));
-    setActivityRows(ACTIVITY_ROWS.map((row) => ({ ...row, participation: '', comments: '' })));
-    setActionPlanRows([{ identifiedIssue: '', actionRequired: '', responsibleEmployeeId: null, targetDate: '' }]);
+    const keyToClear = draftKeyEmployeeWellness;
+    const nextAssessmentDate = new Date().toISOString().slice(0, 10);
+    const nextWellnessRows = WELLNESS_ROWS.map((row) => ({ ...row, answer: null, comments: '' }));
+    const nextHealthRows = HEALTH_ROWS.map((row) => ({ ...row, status: '', comments: '' }));
+    const nextSupportRows = SUPPORT_ROWS.map((row) => ({ ...row, answer: null, comments: '' }));
+    const nextActivityRows = ACTIVITY_ROWS.map((row) => ({ ...row, participation: '', comments: '' }));
+    const nextActionPlanRows: ActionPlanRow[] = [{ identifiedIssue: '', actionRequired: '', responsibleEmployeeId: null, targetDate: '' }];
+
+    setAssessmentDate(nextAssessmentDate);
+    setWellnessRows(nextWellnessRows);
+    setHealthRows(nextHealthRows);
+    setSupportRows(nextSupportRows);
+    setActivityRows(nextActivityRows);
+    setActionPlanRows(nextActionPlanRows);
     setEmployeeSignature('');
     setHrSignature('');
     setApprovalDate('');
     setSelectedAssessmentId(null);
+
+    clearDraft(keyToClear);
+    setWellnessDraftBaseline({
+      assessmentDate: nextAssessmentDate,
+      wellnessRows: nextWellnessRows,
+      healthRows: nextHealthRows,
+      supportRows: nextSupportRows,
+      activityRows: nextActivityRows,
+      actionPlanRows: nextActionPlanRows,
+      employeeSignature: '',
+      hrSignature: '',
+      approvalDate: ''
+    });
   };
 
   const loadAssessment = async (assessmentId: UUID) => {
@@ -343,6 +447,8 @@ export function HrEmployeeWellnessPage() {
     setError(null);
     setSaving(true);
     try {
+      const keyToClear = draftKeyEmployeeWellness;
+      let createdAssessmentId: UUID | null = null;
       const wellnessAssessmentAnswers = serializeWellnessAnswers();
       const healthLifestyleAssessment = serializeHealth();
       const workplaceWellnessNeeds = serializeSupport();
@@ -380,6 +486,7 @@ export function HrEmployeeWellnessPage() {
           actions,
           actorUserId: user.id as UUID
         });
+        createdAssessmentId = assessment.id;
         setSelectedAssessmentId(assessment.id);
       } else {
         await updateEmployeeWellnessAssessment({
@@ -407,6 +514,13 @@ export function HrEmployeeWellnessPage() {
         });
       }
       await refetchAssessments();
+
+      clearDraft(keyToClear);
+      if (createdAssessmentId) {
+        const keyAfterCreate = `hr-employee-wellness:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}:${employeeSelectionKey || 'unselected'}:${createdAssessmentId}`;
+        clearDraft(keyAfterCreate);
+      }
+      setWellnessDraftBaseline(draftPayload);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save wellness assessment.');
     } finally {

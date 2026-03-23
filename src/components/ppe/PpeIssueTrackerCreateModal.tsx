@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { Department, PpeIssueTrackerRiskLevel, Site, UUID } from '../../api/models/entities';
 import { createPpeIssueTracker } from '../../api/services/ppeIssueTrackerService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const PPE_TYPES = [
   { value: 'helmet', label: 'Helmet' },
@@ -69,6 +71,139 @@ export function PpeIssueTrackerCreateModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  type PpeIssueTrackerCreateDraftPayload = {
+    ppeType: string;
+    ppeTypeOther: string;
+    issueCategory: string;
+    riskLevel: PpeIssueTrackerRiskLevel;
+    siteId: string;
+    departmentId: string;
+    employeeName: string;
+    employeeNumber: string;
+    jobRole: string;
+    description: string;
+    immediateWorkStopped: boolean;
+    immediatePpeIssued: boolean;
+    immediateEmployeeRemoved: boolean;
+    immediateToolboxTalk: boolean;
+    immediateSupervisorNotified: boolean;
+    immediateNotes: string;
+    targetCompletionDate: string;
+    correctiveRequired: boolean;
+    responsibleName: string;
+    notes: string;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `ppe-issue-tracker-create:${props.companyId}:${props.actorUserId}`;
+
+  const hasDirtyDraft = useMemo(() => {
+    return (
+      ppeType.trim().length > 0 ||
+      ppeTypeOther.trim().length > 0 ||
+      issueCategory.trim().length > 0 ||
+      riskLevel !== 'medium' ||
+      siteId.trim().length > 0 ||
+      departmentId.trim().length > 0 ||
+      employeeName.trim().length > 0 ||
+      employeeNumber.trim().length > 0 ||
+      jobRole.trim().length > 0 ||
+      description.trim().length > 0 ||
+      immediateWorkStopped ||
+      immediatePpeIssued ||
+      immediateEmployeeRemoved ||
+      immediateToolboxTalk ||
+      immediateSupervisorNotified ||
+      immediateNotes.trim().length > 0 ||
+      targetCompletionDate.trim().length > 0 ||
+      correctiveRequired !== true ||
+      responsibleName.trim().length > 0 ||
+      notes.trim().length > 0
+    );
+  }, [
+    correctiveRequired,
+    departmentId,
+    description,
+    employeeName,
+    employeeNumber,
+    immediateEmployeeRemoved,
+    immediateNotes,
+    immediatePpeIssued,
+    immediateSupervisorNotified,
+    immediateToolboxTalk,
+    immediateWorkStopped,
+    issueCategory,
+    jobRole,
+    notes,
+    ppeType,
+    ppeTypeOther,
+    responsibleName,
+    riskLevel,
+    siteId,
+    targetCompletionDate
+  ]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () =>
+      ({
+        ppeType,
+        ppeTypeOther,
+        issueCategory,
+        riskLevel,
+        siteId,
+        departmentId,
+        employeeName,
+        employeeNumber,
+        jobRole,
+        description,
+        immediateWorkStopped,
+        immediatePpeIssued,
+        immediateEmployeeRemoved,
+        immediateToolboxTalk,
+        immediateSupervisorNotified,
+        immediateNotes,
+        targetCompletionDate,
+        correctiveRequired,
+        responsibleName,
+        notes
+      }) satisfies PpeIssueTrackerCreateDraftPayload
+  });
+
+  useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<PpeIssueTrackerCreateDraftPayload>(draftKey);
+    if (!restored) return;
+
+    setPpeType(restored.ppeType ?? '');
+    setPpeTypeOther(restored.ppeTypeOther ?? '');
+    setIssueCategory(restored.issueCategory ?? '');
+    setRiskLevel(restored.riskLevel ?? 'medium');
+    setSiteId(restored.siteId ?? '');
+    setDepartmentId(restored.departmentId ?? '');
+    setEmployeeName(restored.employeeName ?? '');
+    setEmployeeNumber(restored.employeeNumber ?? '');
+    setJobRole(restored.jobRole ?? '');
+    setDescription(restored.description ?? '');
+    setImmediateWorkStopped(restored.immediateWorkStopped ?? false);
+    setImmediatePpeIssued(restored.immediatePpeIssued ?? false);
+    setImmediateEmployeeRemoved(restored.immediateEmployeeRemoved ?? false);
+    setImmediateToolboxTalk(restored.immediateToolboxTalk ?? false);
+    setImmediateSupervisorNotified(restored.immediateSupervisorNotified ?? false);
+    setImmediateNotes(restored.immediateNotes ?? '');
+    setTargetCompletionDate(restored.targetCompletionDate ?? '');
+    setCorrectiveRequired(restored.correctiveRequired ?? true);
+    setResponsibleName(restored.responsibleName ?? '');
+    setNotes(restored.notes ?? '');
+  }, [draftKey, props.open, restoreDraft]);
+
+  const closeWithDraftClear = () => {
+    clearDraft(draftKey);
+    props.onClose();
+  };
+
   const canSubmit = useMemo(
     () => !!ppeType && !!issueCategory && description.trim().length > 5,
     [ppeType, issueCategory, description]
@@ -109,6 +244,7 @@ export function PpeIssueTrackerCreateModal(props: {
         disciplinaryAction: notes || null
       });
       props.onCreated?.();
+      clearDraft(draftKey);
       props.onClose();
       setPpeType('');
       setPpeTypeOther('');
@@ -141,7 +277,7 @@ export function PpeIssueTrackerCreateModal(props: {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-3xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
@@ -152,7 +288,7 @@ export function PpeIssueTrackerCreateModal(props: {
           </div>
           <button
             type="button"
-            onClick={props.onClose}
+            onClick={closeWithDraftClear}
             className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500"
           >
             <XIcon className="w-4 h-4" />
@@ -400,7 +536,7 @@ export function PpeIssueTrackerCreateModal(props: {
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={props.onClose}
+              onClick={closeWithDraftClear}
               className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
             >
               Cancel

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
@@ -17,22 +17,115 @@ import {
 import { SelectOrType } from '../../components/ui/SelectOrType';
 import { downloadTextFile, toCsv } from '../../utils/csv';
 import type { UUID } from '../../api/models/core';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function HrLeavePage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
+  const defaultLeaveDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [employeeId, setEmployeeId] = useState('');
   const [leaveTypeValue, setLeaveTypeValue] = useState('');
-  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(defaultLeaveDate);
+  const [endDate, setEndDate] = useState(defaultLeaveDate);
   const [reason, setReason] = useState('');
   const [declineReasonByRow, setDeclineReasonByRow] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+
+  const { restoreDraft, clearDraft } = useDraftManager();
 
   const isSupervisor = activeRole === 'manager' || activeRole === 'supervisor';
   const isHrApprover = activeRole === 'owner' || activeRole === 'admin';
   const canApprove = isSupervisor || isHrApprover;
   const isEmployee = activeRole === 'employee';
+
+  type HrLeaveCreateDraft = {
+    employeeId: string;
+    leaveTypeValue: string;
+    startDate: string;
+    endDate: string;
+    reason: string;
+  };
+
+  type HrLeaveDeclineDraft = Record<string, string>;
+
+  const draftKeyCreate = `hr-leave-create:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}`;
+  const draftKeyDecline = `hr-leave-decline:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}`;
+
+  const [createBaseline, setCreateBaseline] = useState<HrLeaveCreateDraft>(() => ({
+    employeeId: '',
+    leaveTypeValue: '',
+    startDate: defaultLeaveDate,
+    endDate: defaultLeaveDate,
+    reason: ''
+  }));
+
+  const [declineBaseline, setDeclineBaseline] = useState<HrLeaveDeclineDraft>({});
+
+  const hasDirtyCreateDraft = useMemo(() => {
+    return (
+      employeeId !== createBaseline.employeeId ||
+      leaveTypeValue !== createBaseline.leaveTypeValue ||
+      startDate !== createBaseline.startDate ||
+      endDate !== createBaseline.endDate ||
+      reason !== createBaseline.reason
+    );
+  }, [createBaseline, employeeId, endDate, leaveTypeValue, reason, startDate]);
+
+  const hasDirtyDeclineDraft = useMemo(() => {
+    return JSON.stringify(declineReasonByRow) !== JSON.stringify(declineBaseline);
+  }, [declineReasonByRow, declineBaseline]);
+
+  useDraftRegistration({
+    key: draftKeyCreate,
+    enabled: Boolean(activeCompanyId && user?.id),
+    isDirty: () => hasDirtyCreateDraft,
+    serialize: () =>
+      ({
+        employeeId,
+        leaveTypeValue,
+        startDate,
+        endDate,
+        reason
+      }) satisfies HrLeaveCreateDraft
+  });
+
+  useDraftRegistration({
+    key: draftKeyDecline,
+    enabled: Boolean(activeCompanyId && user?.id && canApprove),
+    isDirty: () => hasDirtyDeclineDraft,
+    serialize: () => declineReasonByRow satisfies HrLeaveDeclineDraft
+  });
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    const restored = restoreDraft<HrLeaveCreateDraft>(draftKeyCreate);
+    if (!restored) return;
+
+    const next: HrLeaveCreateDraft = {
+      employeeId: restored.employeeId ?? '',
+      leaveTypeValue: restored.leaveTypeValue ?? '',
+      startDate: restored.startDate ?? defaultLeaveDate,
+      endDate: restored.endDate ?? defaultLeaveDate,
+      reason: restored.reason ?? ''
+    };
+    setEmployeeId(next.employeeId);
+    setLeaveTypeValue(next.leaveTypeValue);
+    setStartDate(next.startDate);
+    setEndDate(next.endDate);
+    setReason(next.reason);
+    setCreateBaseline(next);
+  }, [activeCompanyId, defaultLeaveDate, draftKeyCreate, restoreDraft, user?.id]);
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id || !canApprove) return;
+    const restored = restoreDraft<HrLeaveDeclineDraft>(draftKeyDecline);
+    if (!restored) return;
+
+    const next: HrLeaveDeclineDraft = restored ?? {};
+    setDeclineReasonByRow(next);
+    setDeclineBaseline(next);
+  }, [activeCompanyId, canApprove, draftKeyDecline, restoreDraft, user?.id]);
 
   const { data: selfEmployee } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return null;
@@ -168,6 +261,11 @@ export function HrLeavePage() {
         created_by_user_id: user.id as UUID
       });
       await refetch();
+
+      // Mark the current values as "saved" so drafts don't immediately reappear.
+      const baseline: HrLeaveCreateDraft = { employeeId, leaveTypeValue, startDate, endDate, reason };
+      setCreateBaseline(baseline);
+      clearDraft(draftKeyCreate);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create leave request.');
     }
@@ -199,6 +297,10 @@ export function HrLeavePage() {
       declineReason: reasonForDecline
     });
     await refetch();
+
+    const baseline: HrLeaveDeclineDraft = { ...declineReasonByRow };
+    setDeclineBaseline(baseline);
+    clearDraft(draftKeyDecline);
   }
 
   const pending = useMemo(() => (requests ?? []).filter((row) => row.status === 'SUBMITTED'), [requests]);

@@ -8,6 +8,9 @@ import {
   updateInspectionChecklistTemplate
 } from '../../api/services/inspectionsService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { useUser } from '@insforge/react';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type Props = {
   companyId: UUID;
@@ -23,6 +26,7 @@ type TemplateFormState = {
 };
 
 export function InspectionChecklistLibrary(props: Props) {
+  const { user } = useUser();
   const [moduleFilter, setModuleFilter] = useState<ModuleKey | 'all'>('all');
   const [templates, setTemplates] = useState<InspectionChecklistTemplate[]>([]);
   const [loading, setLoading] = useState(false);
@@ -30,6 +34,28 @@ export function InspectionChecklistLibrary(props: Props) {
 
   const [editing, setEditing] = useState<TemplateFormState | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `inspection-checklist-library:${props.companyId}:${user?.id ?? 'anon'}`;
+
+  const hasDirtyDraft = useMemo(() => {
+    if (!editing) return false;
+    return editing.name.trim().length > 0 || editing.description.trim().length > 0;
+  }, [editing]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.canManage && editing !== null,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => editing
+  });
+
+  useEffect(() => {
+    if (!props.canManage) return;
+    const restored = restoreDraft<TemplateFormState>(draftKey);
+    if (!restored) return;
+    setEditing(restored);
+  }, [draftKey, props.canManage, restoreDraft]);
 
   async function refresh() {
     if (!props.companyId) return;
@@ -102,6 +128,7 @@ export function InspectionChecklistLibrary(props: Props) {
           createdByUserId: props.companyId as unknown as UUID
         });
       }
+      clearDraft(draftKey);
       setEditing(null);
       await refresh();
     } catch (err: any) {
@@ -298,7 +325,10 @@ export function InspectionChecklistLibrary(props: Props) {
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-surface-200">
               <button
                 type="button"
-                onClick={() => setEditing(null)}
+                onClick={() => {
+                  clearDraft(draftKey);
+                  setEditing(null);
+                }}
                 className="px-4 py-2 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"
               >
                 Cancel

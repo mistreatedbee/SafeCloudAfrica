@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { PpeSizeWithPrice, UUID } from '../../api/models/entities';
 import { PPE_CATEGORY_OPTIONS } from '../../api/models/entities';
 import { createPpeItem } from '../../api/services/ppeService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function PpeItemCreateModal(props: {
   open: boolean;
@@ -27,6 +29,58 @@ export function PpeItemCreateModal(props: {
     { id: 'm', size: 'Medium', price: '' },
     { id: 'l', size: 'Large', price: '' }
   ]);
+
+  type PpeItemCreateDraftPayload = {
+    name: string;
+    category: string;
+    description: string;
+    sizesText: string;
+    supplierName: string;
+    stockLocation: string;
+    unitCost: string;
+    sizeRows: Array<{ id: string; size: string; price: string }>;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `ppe-item-create:${props.companyId}`;
+
+  const payload = useMemo<PpeItemCreateDraftPayload>(
+    () => ({
+      name,
+      category,
+      description,
+      sizesText,
+      supplierName,
+      stockLocation,
+      unitCost,
+      sizeRows
+    }),
+    [
+      name,
+      category,
+      description,
+      sizesText,
+      supplierName,
+      stockLocation,
+      unitCost,
+      sizeRows
+    ]
+  );
+
+  const payloadJson = useMemo(() => JSON.stringify(payload), [payload]);
+  const [draftBaselineJson, setDraftBaselineJson] = useState<string | null>(null);
+
+  const hasDirtyDraft = useMemo(() => {
+    if (draftBaselineJson == null) return false;
+    return payloadJson !== draftBaselineJson;
+  }, [draftBaselineJson, payloadJson]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => payload
+  });
 
   const sizesAvailable = useMemo(() => {
     const manual = sizesText.trim();
@@ -52,6 +106,38 @@ export function PpeItemCreateModal(props: {
 
   const canSubmit = useMemo(() => name.trim().length > 2, [name]);
 
+  useEffect(() => {
+    if (!props.open) return;
+
+    // Mark the current state as baseline before attempting restore,
+    // so users don't immediately get "dirty" autosave loops.
+    setDraftBaselineJson(payloadJson);
+
+    const restored = restoreDraft<PpeItemCreateDraftPayload>(draftKey);
+    if (!restored) return;
+
+    setName(restored.name ?? '');
+    setCategory(restored.category ?? '');
+    setDescription(restored.description ?? '');
+    setSizesText(restored.sizesText ?? '');
+    setSupplierName(restored.supplierName ?? '');
+    setStockLocation(restored.stockLocation ?? '');
+    setUnitCost(restored.unitCost ?? '');
+    setSizeRows(restored.sizeRows ?? [
+      { id: 's', size: 'Small', price: '' },
+      { id: 'm', size: 'Medium', price: '' },
+      { id: 'l', size: 'Large', price: '' }
+    ]);
+
+    setDraftBaselineJson(JSON.stringify(restored));
+    // evidence-like fields are not in this payload (no File objects)
+  }, [draftKey, props.open, restoreDraft]);
+
+  const closeWithDraftClear = () => {
+    clearDraft(draftKey);
+    props.onClose();
+  };
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
@@ -70,6 +156,7 @@ export function PpeItemCreateModal(props: {
         stockLocation: stockLocation.trim() || null
       });
       props.onCreated?.();
+      clearDraft(draftKey);
       props.onClose();
       setName('');
       setCategory('');
@@ -83,6 +170,7 @@ export function PpeItemCreateModal(props: {
         { id: 'm', size: 'Medium', price: '' },
         { id: 'l', size: 'Large', price: '' }
       ]);
+      setDraftBaselineJson(null);
     } catch (err: unknown) {
       setError(formatAuthError(err as Error));
     } finally {
@@ -94,13 +182,13 @@ export function PpeItemCreateModal(props: {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="flex items-center justify-between px-4 py-4 sm:px-6 border-b border-surface-200">
           <p className="text-sm font-semibold text-charcoal">Add PPE item</p>
           <button
             type="button"
-            onClick={props.onClose}
+            onClick={closeWithDraftClear}
             className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 shrink-0"
             aria-label="Close"
           >
@@ -265,7 +353,7 @@ export function PpeItemCreateModal(props: {
           <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={props.onClose}
+              onClick={closeWithDraftClear}
               className="min-h-[44px] inline-flex items-center justify-center px-4 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
             >
               Cancel

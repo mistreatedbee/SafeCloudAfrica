@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
@@ -8,6 +8,8 @@ import { listEnvWasteDisposal, upsertEnvWasteDisposal } from '../../api/services
 import { toCsv, downloadTextFile } from '../../utils/csv';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import { Trash2Icon } from 'lucide-react';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const currentYear = new Date().getFullYear();
 const OTHER_WASTE_TYPE_VALUE = '__OTHER__';
@@ -59,6 +61,37 @@ export function EnvironmentWastePage() {
     disposalStatus: 'Open',
     customWasteType: ''
   });
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `env-waste:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}:${editing?.id ?? 'new'}`;
+  const [formBaseline, setFormBaseline] = useState<any>(() => form);
+  const [justSaved, setJustSaved] = useState(false);
+
+  const hasDirtyDraft = JSON.stringify(form) !== JSON.stringify(formBaseline);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: Boolean(activeCompanyId && user?.id),
+    isDirty: () => hasDirtyDraft,
+    serialize: () => form
+  });
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    const restored = restoreDraft<any>(draftKey);
+    if (restored) {
+      setForm(restored);
+      setFormBaseline(restored);
+    } else {
+      setFormBaseline(form);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey, activeCompanyId, restoreDraft, user?.id]);
+
+  useEffect(() => {
+    if (!justSaved) return;
+    setFormBaseline(form);
+    setJustSaved(false);
+  }, [form, justSaved]);
 
   const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
   const { data: rows, loading, error, refetch } = useAsync(async () => {
@@ -96,6 +129,7 @@ export function EnvironmentWastePage() {
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
+    const keyToClear = draftKey;
     let wasteTypeName = form.wasteTypeName;
     let customWasteType = form.customWasteType;
     if (wasteTypeName === OTHER_WASTE_TYPE_VALUE) {
@@ -150,13 +184,15 @@ export function EnvironmentWastePage() {
       disposalStatus: 'Open',
       customWasteType: ''
     });
+    clearDraft(keyToClear);
+    setJustSaved(true);
     setRefreshKey((k) => k + 1);
     await refetch();
   }
 
   function startEdit(row: any) {
     setEditing(row);
-    setForm({
+    const nextForm = {
       refNo: row.ref_no,
       date: row.date,
       siteDepartment: row.site_department,
@@ -182,7 +218,9 @@ export function EnvironmentWastePage() {
       status: row.status ?? 'Draft',
       disposalStatus: row.disposal_status ?? 'Open',
       customWasteType: row.custom_waste_type ?? ''
-    });
+    };
+    setForm(nextForm);
+    setFormBaseline(nextForm);
   }
 
   const ncOptions = ['Incorrect segregation', 'Missing manifests', 'Unauthorised disposal'];

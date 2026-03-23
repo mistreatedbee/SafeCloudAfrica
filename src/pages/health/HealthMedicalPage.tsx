@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
@@ -8,6 +8,8 @@ import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { MedicalDocumentsPanel } from '../../components/health/MedicalDocumentsPanel';
 import type { CompanyRole } from '../../api/models/core';
 import type { HealthMedical, HealthRestrictedDuty } from '../../api/models/entities';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const tabs = ['Medical Records', 'Restricted Tracker'] as const;
 type TabKey = (typeof tabs)[number];
@@ -27,6 +29,7 @@ function getRestrictedTrackerStatus(row: HealthRestrictedDuty): 'Open' | 'Closed
 export function HealthMedicalPage() {
   const { user } = useUser();
   const { activeCompanyId, activeRole, activeMembership } = useTenant();
+  const { restoreDraft, clearDraft } = useDraftManager();
   const [tab, setTab] = useState<TabKey>('Medical Records');
   const [refreshKey, setRefreshKey] = useState(0);
   const [restrictedFilter, setRestrictedFilter] = useState<RestrictedTrackerStatusFilter>('all');
@@ -44,6 +47,26 @@ export function HealthMedicalPage() {
     restrictedDutyRequired: false,
     restrictedDutyDetails: ''
   });
+  const [medicalBaseline, setMedicalBaseline] = useState(() => ({ ...form }));
+  const draftKeyMedicalCreate = `health-medical-create:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}`;
+  const hasDirtyMedicalDraft = useMemo(() => JSON.stringify(form) !== JSON.stringify(medicalBaseline), [form, medicalBaseline]);
+
+  useDraftRegistration({
+    key: draftKeyMedicalCreate,
+    enabled: Boolean(activeCompanyId && user?.id),
+    isDirty: () => hasDirtyMedicalDraft,
+    serialize: () => ({ ...form })
+  });
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    const restored = restoreDraft<typeof form>(draftKeyMedicalCreate);
+    if (!restored) return;
+    const next = { ...form, ...restored };
+    setForm(next);
+    setMedicalBaseline(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCompanyId, draftKeyMedicalCreate, restoreDraft, user?.id]);
 
   const { data: medicals } = useAsync<HealthMedical[]>(async () => {
     if (!activeCompanyId) return [];
@@ -83,7 +106,11 @@ export function HealthMedicalPage() {
       createdByUserId: user.id
     });
     setRefreshKey((k) => k + 1);
-    setForm({ ...form, medicalDate: '', expiryDate: '', conductedBy: '', restrictedDutyDetails: '' });
+
+    const nextForm = { ...form, medicalDate: '', expiryDate: '', conductedBy: '', restrictedDutyDetails: '' };
+    setForm(nextForm);
+    setMedicalBaseline(nextForm);
+    clearDraft(draftKeyMedicalCreate);
   }
 
   return (

@@ -29,6 +29,8 @@ import {
   listImprovementComments,
   updateImprovement
 } from '../api/services/improvementService';
+import { useDraftManager } from '../session/DraftManagerProvider';
+import { useDraftRegistration } from '../session/useDraftRegistration';
 
 type FormState = {
   dateRaised: string;
@@ -128,6 +130,20 @@ export function ImprovementDetailPage() {
   const quickComment = query.get('comment');
   const [form, setForm] = useState<FormState>(() => defaultForm(user?.id ?? '', sourceType, sourceId));
 
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const improvementIdPart = isCreate ? 'new' : improvementId ?? 'new';
+  const draftKey = `improvement-detail:${activeCompanyId ?? 'none'}:${improvementIdPart}:${user?.id ?? 'anon'}`;
+  const [draftBaseline, setDraftBaseline] = useState<FormState>(() => form);
+  const isDraftEnabled = Boolean(activeCompanyId && user?.id && (isCreate || editable));
+  const hasDirtyDraft = JSON.stringify(form) !== JSON.stringify(draftBaseline);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: isDraftEnabled,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => form
+  });
+
   const { data: profiles } = useAsync(async () => (activeCompanyId ? listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
   const { data: departments } = useAsync(async () => (activeCompanyId ? listDepartments(activeCompanyId) : []), [activeCompanyId]);
   const { data: sites } = useAsync(async () => (activeCompanyId ? listSites(activeCompanyId) : []), [activeCompanyId]);
@@ -137,7 +153,7 @@ export function ImprovementDetailPage() {
 
   useEffect(() => {
     if (!record) return;
-    setForm({
+    const next: FormState = {
       dateRaised: toDate(record.date_raised),
       raisedByUserId: record.raised_by_user_id,
       departmentSite: record.department_site || '',
@@ -166,8 +182,22 @@ export function ImprovementDetailPage() {
       sourceType: record.source_type,
       sourceId: record.source_id || '',
       sourceOtherText: record.source_other_text || ''
-    });
+    };
+    setForm(next);
+    setDraftBaseline(next);
   }, [record]);
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    if (!isCreate && !record) return;
+    if (!isDraftEnabled) return;
+
+    const restored = restoreDraft<FormState>(draftKey);
+    if (!restored) return;
+
+    setForm(restored);
+    setDraftBaseline(restored);
+  }, [activeCompanyId, draftKey, isCreate, isDraftEnabled, record, restoreDraft, user?.id]);
 
   useEffect(() => {
     if (!quickComment || !activeCompanyId || !improvementId || !user?.id || isCreate) return;
@@ -192,6 +222,7 @@ export function ImprovementDetailPage() {
     if (!activeCompanyId || !user?.id) return;
     setSaving(true);
     setError(null);
+    const keyToClear = draftKey;
     try {
       const hasSourceIdInput = !!form.sourceId.trim();
       const sourceId = asUuidOrNull(form.sourceId);
@@ -244,6 +275,8 @@ export function ImprovementDetailPage() {
           actorRole: activeRole ?? null,
           ...payload
         });
+        clearDraft(keyToClear);
+        setDraftBaseline(form);
         navigate(`/improvement/${created.id}`);
       } else if (improvementId) {
         await updateImprovement({
@@ -283,6 +316,8 @@ export function ImprovementDetailPage() {
             evidence_file_ids: (evidence ?? []).map((e) => e.id) as UUID[]
           }
         });
+        clearDraft(keyToClear);
+        setDraftBaseline(form);
         await refresh();
       }
     } catch (e: any) {

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
@@ -6,6 +6,8 @@ import type { TrainingCourse, UUID } from '../../api/models/entities';
 import { createTrainingCourse, createTrainingRecord } from '../../api/services/trainingService';
 import { insforge } from '../../api/insforge/client';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export const TRAINING_CERT_BUCKET = 'sca-training-certificates';
 
@@ -30,6 +32,65 @@ export function TrainingAddModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [employeeNameSnapshot, setEmployeeNameSnapshot] = useState<string>('');
+
+  type TrainingAddDraftPayload = {
+    mode: 'existing' | 'new';
+    courseId: string;
+    newCourseName: string;
+    newCourseValidMonths: string;
+    userId: string;
+    completedAt: string;
+    expiresAt: string;
+    employeeNameSnapshot: string;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `training-add:${props.companyId}:${props.createdByUserId}`;
+
+  const hasDirtyDraft = useMemo(() => {
+    const targetDirty = !props.defaultUserId ? userId.trim().length > 0 : false;
+    const courseDirty = mode === 'existing' ? courseId.trim().length > 0 : newCourseName.trim().length > 2;
+    const datesDirty = !!completedAt.trim() || !!expiresAt.trim();
+    return targetDirty || courseDirty || datesDirty;
+  }, [completedAt, courseId, expiresAt, mode, newCourseName, props.defaultUserId, userId]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () =>
+      ({
+        mode,
+        courseId,
+        newCourseName,
+        newCourseValidMonths,
+        userId,
+        completedAt,
+        expiresAt,
+        employeeNameSnapshot
+      }) satisfies TrainingAddDraftPayload
+  });
+
+  useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<TrainingAddDraftPayload>(draftKey);
+    if (!restored) return;
+
+    setMode(restored.mode ?? 'existing');
+    setCourseId(restored.courseId ?? '');
+    setNewCourseName(restored.newCourseName ?? '');
+    setNewCourseValidMonths(restored.newCourseValidMonths ?? '12');
+    setUserId(restored.userId ?? '');
+    setCompletedAt(restored.completedAt ?? '');
+    setExpiresAt(restored.expiresAt ?? '');
+    setEmployeeNameSnapshot(restored.employeeNameSnapshot ?? '');
+    // Note: we cannot restore the selected File certificate.
+  }, [draftKey, props.open, restoreDraft]);
+
+  const closeWithDraftClear = () => {
+    clearDraft(draftKey);
+    props.onClose();
+  };
 
   const canSubmit = useMemo(() => {
     if (!userId) return false;
@@ -86,6 +147,7 @@ export function TrainingAddModal(props: {
       });
 
       props.onAdded?.();
+      clearDraft(draftKey);
       props.onClose();
       setCourseId('');
       setNewCourseName('');
@@ -104,14 +166,14 @@ export function TrainingAddModal(props: {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-2xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
             <p className="text-sm font-semibold text-charcoal">Add training record</p>
             <p className="text-xs text-charcoal-500 mt-0.5">Creates a real training record in your company workspace.</p>
           </div>
-          <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
+          <button type="button" onClick={closeWithDraftClear} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
             <XIcon className="w-4 h-4" />
           </button>
         </div>
@@ -242,7 +304,7 @@ export function TrainingAddModal(props: {
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={props.onClose}
+              onClick={closeWithDraftClear}
               className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
             >
               Cancel

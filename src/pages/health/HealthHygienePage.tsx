@@ -9,6 +9,8 @@ import { listEvidenceForEntityType } from '../../api/services/evidenceService';
 import type { RiskAssessment } from '../../api/services/risksService';
 import type { EvidenceAttachment, HealthHygieneRecord, UUID } from '../../api/models/entities';
 import { EvidenceModal } from '../../components/evidence/EvidenceModal';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type HygieneComplianceChoice = 'YES' | 'NO';
 
@@ -84,6 +86,82 @@ export function HealthHygienePage() {
   const [editCompliance, setEditCompliance] = useState<HygieneComplianceChoice | ''>('');
   const [evidenceForId, setEvidenceForId] = useState<UUID | null>(null);
 
+  const { restoreDraft, clearDraft } = useDraftManager();
+
+  type HygieneCreateDraft = {
+    newRow: HygieneMonitoringDetails;
+    newCompliance: HygieneComplianceChoice | '';
+  };
+
+  type HygieneEditDraft = {
+    editRow: HygieneMonitoringDetails;
+    editCompliance: HygieneComplianceChoice | '';
+  };
+
+  const draftKeyCreate = `health-hygiene-create:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}`;
+  const draftKeyEdit = `health-hygiene-edit:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}:${editingId ?? 'none'}`;
+
+  const [createBaseline, setCreateBaseline] = useState<HygieneCreateDraft>(() => ({
+    newRow: { ...newRow },
+    newCompliance
+  }));
+
+  const [editBaseline, setEditBaseline] = useState<HygieneEditDraft | null>(null);
+
+  const hasDirtyCreateDraft = JSON.stringify({ newRow, newCompliance }) !== JSON.stringify(createBaseline);
+  const hasDirtyEditDraft =
+    !!editBaseline && !!editRow && JSON.stringify({ editRow, editCompliance }) !== JSON.stringify(editBaseline);
+
+  useDraftRegistration({
+    key: draftKeyCreate,
+    enabled: Boolean(activeCompanyId && user?.id && !editingId),
+    isDirty: () => hasDirtyCreateDraft,
+    serialize: () =>
+      ({
+        newRow,
+        newCompliance
+      }) satisfies HygieneCreateDraft
+  });
+
+  useDraftRegistration({
+    key: draftKeyEdit,
+    enabled: Boolean(activeCompanyId && user?.id && editingId && editRow),
+    isDirty: () => hasDirtyEditDraft,
+    serialize: () =>
+      ({
+        editRow: editRow!,
+        editCompliance
+      }) satisfies HygieneEditDraft
+  });
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    if (editingId) return;
+    const restored = restoreDraft<HygieneCreateDraft>(draftKeyCreate);
+    if (!restored) return;
+
+    setNewRow(restored.newRow);
+    setNewCompliance(restored.newCompliance);
+    setCreateBaseline(restored);
+  }, [activeCompanyId, draftKeyCreate, editingId, restoreDraft, user?.id]);
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    if (!editingId || !editRow) return;
+
+    const restored = restoreDraft<HygieneEditDraft>(draftKeyEdit);
+    if (restored) {
+      setEditRow(restored.editRow);
+      setEditCompliance(restored.editCompliance);
+      setEditBaseline(restored);
+      return;
+    }
+
+    // No draft found for this edit context; treat the loaded record as clean.
+    setEditBaseline({ editRow, editCompliance });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKeyEdit, editingId, restoreDraft, user?.id]);
+
   const { data: records } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listHealthHygieneRecords({ companyId: activeCompanyId, limit: 300 });
@@ -142,7 +220,7 @@ export function HealthHygienePage() {
       createdByUserId: user.id
     });
     setRefreshKey((k) => k + 1);
-    setNewRow({
+    const clearedRow: HygieneMonitoringDetails = {
       work_area: '',
       process_activity: '',
       hazard_identified: '',
@@ -151,7 +229,8 @@ export function HealthHygienePage() {
       exposure_limit: '',
       result_obtained: '',
       comments: ''
-    });
+    };
+    setNewRow(clearedRow);
     setNewCompliance('');
     setNewErrors({
       work_area: '',
@@ -164,17 +243,22 @@ export function HealthHygienePage() {
       comments: '',
       compliance: ''
     });
+    setCreateBaseline({ newRow: clearedRow, newCompliance: '' });
+    clearDraft(draftKeyCreate);
   }
 
   function beginEdit(record: HealthHygieneRecord) {
     const details = getDetailsFromRecord(record);
+    const nextCompliance = mapComplianceToChoice(record.compliance_status) ?? '';
     setEditingId(record.id);
     setEditRow(details);
-    setEditCompliance(mapComplianceToChoice(record.compliance_status) ?? '');
+    setEditCompliance(nextCompliance);
+    setEditBaseline({ editRow: details, editCompliance: nextCompliance });
   }
 
   async function saveEdit(record: HealthHygieneRecord) {
     if (!activeCompanyId || !editRow) return;
+    const keyToClear = draftKeyEdit;
     await updateHealthHygieneRecord(
       activeCompanyId,
       record.id,
@@ -196,6 +280,8 @@ export function HealthHygienePage() {
       },
       user?.id as UUID
     );
+    clearDraft(keyToClear);
+    setEditBaseline(null);
     setEditingId(null);
     setEditRow(null);
     setEditCompliance('');
@@ -490,6 +576,8 @@ export function HealthHygienePage() {
                             type="button"
                             className="px-2 py-1.5 rounded-lg bg-surface-200 text-xs text-charcoal hover:bg-surface-300"
                             onClick={() => {
+                              clearDraft(draftKeyEdit);
+                              setEditBaseline(null);
                               setEditingId(null);
                               setEditRow(null);
                               setEditCompliance('');

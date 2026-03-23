@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon, FileIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
@@ -6,6 +6,8 @@ import type { UUID, Severity } from '../../api/models/core';
 import { createQualityNcr, syncNcrEvidenceFromAttachments } from '../../api/services/qualityNcrsService';
 import { createEvidence } from '../../api/services/evidenceService';
 import { insforge } from '../../api/insforge/client';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type NcrSource = 'audit' | 'audit_finding' | 'incident' | 'complaint' | 'risk' | 'inspection' | 'pjo';
 type LinkedRequirementType = 'STANDARD' | 'POLICY' | 'PROCEDURE';
@@ -44,6 +46,124 @@ export function NcrCreateModal(props: {
   const [evidenceAfterFiles, setEvidenceAfterFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `ncr-create:${props.companyId}:${props.createdByUserId}`;
+
+  const hasDirtyDraft = useMemo(() => {
+    if (!props.open) return false;
+    return (
+      ncrNumber.trim().length > 0 ||
+      title.trim().length > 0 ||
+      location.trim().length > 0 ||
+      department.trim().length > 0 ||
+      process.trim().length > 0 ||
+      activity.trim().length > 0 ||
+      responsibleRole.trim().length > 0 ||
+      linkedRequirement.trim().length > 0 ||
+      linkedRequirementType.trim().length > 0 ||
+      riskClassification.trim().length > 0 ||
+      rootCause.trim().length > 0 ||
+      Object.keys(rootCauseSelections).length > 0 ||
+      correctiveActions.trim().length > 0 ||
+      responsiblePerson.trim().length > 0 ||
+      source.trim().length > 0 ||
+      severity.trim().length > 0 ||
+      ncrDate.trim().length > 0 ||
+      ncrTime.trim().length > 0
+    );
+  }, [
+    activity,
+    correctiveActions,
+    department,
+    linkedRequirement,
+    linkedRequirementType,
+    location,
+    ncrDate,
+    ncrNumber,
+    ncrTime,
+    process,
+    props.open,
+    responsiblePerson,
+    responsibleRole,
+    rootCause,
+    rootCauseSelections,
+    riskClassification,
+    source,
+    severity,
+    title
+  ]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      ncrNumber,
+      ncrDate,
+      ncrTime,
+      location,
+      department,
+      process,
+      activity,
+      responsibleRole,
+      linkedRequirementType,
+      linkedRequirement,
+      riskClassification,
+      rootCause,
+      rootCauseSelections,
+      correctiveActions,
+      responsiblePerson,
+      source,
+      title,
+      severity
+    })
+  });
+
+  useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      ncrNumber?: string;
+      ncrDate?: string;
+      ncrTime?: string;
+      location?: string;
+      department?: string;
+      process?: string;
+      activity?: string;
+      responsibleRole?: string;
+      linkedRequirementType?: 'STANDARD' | 'POLICY' | 'PROCEDURE';
+      linkedRequirement?: string;
+      riskClassification?: 'Low' | 'Medium' | 'High' | 'Critical';
+      rootCause?: string;
+      rootCauseSelections?: Record<string, string>;
+      correctiveActions?: string;
+      responsiblePerson?: string;
+      source?: NcrSource;
+      title?: string;
+      severity?: Severity;
+    }>(draftKey);
+
+    if (!restored) return;
+
+    setNcrNumber(restored.ncrNumber ?? '');
+    setNcrDate(restored.ncrDate ?? new Date().toISOString().slice(0, 10));
+    setNcrTime(restored.ncrTime ?? new Date().toTimeString().slice(0, 5));
+    setLocation(restored.location ?? '');
+    setDepartment(restored.department ?? '');
+    setProcess(restored.process ?? '');
+    setActivity(restored.activity ?? '');
+    setResponsibleRole(restored.responsibleRole ?? '');
+    setLinkedRequirementType((restored.linkedRequirementType as any) ?? 'STANDARD');
+    setLinkedRequirement(restored.linkedRequirement ?? '');
+    setRiskClassification((restored.riskClassification as any) ?? 'Medium');
+    setRootCause(restored.rootCause ?? '');
+    setRootCauseSelections(restored.rootCauseSelections ?? {});
+    setCorrectiveActions(restored.correctiveActions ?? '');
+    setResponsiblePerson(restored.responsiblePerson ?? '');
+    if (restored.source) setSource(restored.source);
+    setTitle(restored.title ?? '');
+    setSeverity((restored.severity as any) ?? 'medium');
+  }, [draftKey, props.open, restoreDraft]);
 
   const finalNcrNumber = useMemo(() => {
     if (ncrNumber.trim()) return ncrNumber.trim();
@@ -191,6 +311,7 @@ export function NcrCreateModal(props: {
       }
       await syncNcrEvidenceFromAttachments(props.companyId, created.id);
 
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
       resetForm();

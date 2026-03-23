@@ -24,6 +24,8 @@ import { listQualityNcrs } from '../../api/services/qualityNcrsService';
 import { listCorrectiveActions } from '../../api/services/correctiveActionsService';
 import { listUserProfiles } from '../../api/services/profilesService';
 import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function PpeIssueModal(props: {
   open: boolean;
@@ -69,6 +71,132 @@ export function PpeIssueModal(props: {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [employees, setEmployees] = useState<HrEmployee[]>([]);
   const [reasonOptions, setReasonOptions] = useState<OptionItem[]>([]);
+
+  type PpeIssueDraft = {
+    issueDate: string;
+    ppeItemId: string;
+    size: string;
+    sizeOther: string;
+    quantityIssued: number;
+    reasonForIssue: string;
+    reasonOther: string;
+    issuedToUserId: string;
+    issuedToEmployeeId: string;
+    issuedToEmployeeNumber: string;
+    jobRole: string;
+    nextIssueDate: string;
+    siteId: string;
+    departmentId: string;
+    notes: string;
+    unitCostOverride: string;
+    adminOverrideInsufficientStock: boolean;
+    selectedNcrIds: string[];
+    selectedCapaIds: string[];
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `ppe-issue:${props.companyId}:${props.issuedByUserId}`;
+
+  const hasDirtyDraft = useMemo(() => {
+    return (
+      ppeItemId.trim().length > 0 ||
+      size.trim().length > 0 ||
+      sizeOther.trim().length > 0 ||
+      quantityIssued !== 1 ||
+      reasonForIssue.trim().length > 0 ||
+      reasonOther.trim().length > 0 ||
+      issuedToUserId.trim().length > 0 ||
+      issuedToEmployeeId.trim().length > 0 ||
+      issuedToEmployeeNumber.trim().length > 0 ||
+      jobRole.trim().length > 0 ||
+      nextIssueDate.trim().length > 0 ||
+      siteId.trim().length > 0 ||
+      departmentId.trim().length > 0 ||
+      notes.trim().length > 0 ||
+      unitCostOverride.trim().length > 0 ||
+      adminOverrideInsufficientStock ||
+      selectedNcrIds.length > 0 ||
+      selectedCapaIds.length > 0
+    );
+  }, [
+    adminOverrideInsufficientStock,
+    departmentId,
+    issuedToEmployeeId,
+    issuedToEmployeeNumber,
+    issuedToUserId,
+    jobRole,
+    nextIssueDate,
+    notes,
+    ppeItemId,
+    quantityIssued,
+    reasonForIssue,
+    reasonOther,
+    selectedCapaIds.length,
+    selectedNcrIds.length,
+    size,
+    sizeOther,
+    siteId,
+    unitCostOverride
+  ]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () =>
+      ({
+        issueDate,
+        ppeItemId,
+        size,
+        sizeOther,
+        quantityIssued,
+        reasonForIssue,
+        reasonOther,
+        issuedToUserId,
+        issuedToEmployeeId,
+        issuedToEmployeeNumber,
+        jobRole,
+        nextIssueDate,
+        siteId,
+        departmentId,
+        notes,
+        unitCostOverride,
+        adminOverrideInsufficientStock,
+        selectedNcrIds,
+        selectedCapaIds
+      }) satisfies PpeIssueDraft
+  });
+
+  useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<PpeIssueDraft>(draftKey);
+    if (!restored) return;
+
+    setIssueDate(restored.issueDate ?? issueDate);
+    setPpeItemId(restored.ppeItemId ?? ppeItemId);
+    setSize(restored.size ?? '');
+    setSizeOther(restored.sizeOther ?? '');
+    setQuantityIssued(Number(restored.quantityIssued ?? 1));
+    setReasonForIssue(restored.reasonForIssue ?? '');
+    setReasonOther(restored.reasonOther ?? '');
+    setIssuedToUserId(restored.issuedToUserId ?? '');
+    setIssuedToEmployeeId(restored.issuedToEmployeeId ?? '');
+    setIssuedToEmployeeNumber(restored.issuedToEmployeeNumber ?? '');
+    setJobRole(restored.jobRole ?? '');
+    setNextIssueDate(restored.nextIssueDate ?? '');
+    setSiteId(restored.siteId ?? '');
+    setDepartmentId(restored.departmentId ?? '');
+    setNotes(restored.notes ?? '');
+    setUnitCostOverride(restored.unitCostOverride ?? '');
+    setAdminOverrideInsufficientStock(restored.adminOverrideInsufficientStock ?? false);
+    setSelectedNcrIds(Array.isArray(restored.selectedNcrIds) ? restored.selectedNcrIds : []);
+    setSelectedCapaIds(Array.isArray(restored.selectedCapaIds) ? restored.selectedCapaIds : []);
+  }, [draftKey, props.open, restoreDraft]);
+
+  const closeWithDraftClear = () => {
+    clearDraft(draftKey);
+    props.onClose();
+  };
 
   useEffect(() => {
     async function load() {
@@ -221,6 +349,7 @@ export function PpeIssueModal(props: {
         });
       }
       props.onIssued?.();
+      clearDraft(draftKey);
       props.onClose();
       resetForm();
     } catch (err: unknown) {
@@ -256,13 +385,13 @@ export function PpeIssueModal(props: {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-2xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <p className="text-sm font-semibold text-charcoal">Issue PPE</p>
           <button
             type="button"
-            onClick={props.onClose}
+            onClick={closeWithDraftClear}
             className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500"
           >
             <XIcon className="w-4 h-4" />
@@ -561,7 +690,7 @@ export function PpeIssueModal(props: {
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={props.onClose}
+              onClick={closeWithDraftClear}
               className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
             >
               Cancel

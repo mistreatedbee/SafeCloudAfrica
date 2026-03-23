@@ -51,6 +51,8 @@ import { useUser } from '@insforge/react';
 import { insforge } from '../api/insforge/client';
 import { EVIDENCE_BUCKET } from '../components/evidence/EvidenceModal';
 import { useIdentity } from '../hooks/useIdentity';
+import { useDraftManager } from '../session/DraftManagerProvider';
+import { useDraftRegistration } from '../session/useDraftRegistration';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -131,6 +133,9 @@ export function AuditDetailPage() {
   const [findingVerifyId, setFindingVerifyId] = useState<UUID | null>(null);
   const [reportGenerating, setReportGenerating] = useState(false);
   const [archiving, setArchiving] = useState(false);
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `audit-date-approval:${auditId ?? 'unknown'}:${user?.id ?? 'anon'}`;
 
   const {
     data: ncrs,
@@ -224,6 +229,36 @@ export function AuditDetailPage() {
   const dateDeclineReason = (audit as any)?.date_decline_reason as string | null | undefined;
   const awaitingDateApproval = audit?.status === 'draft' && dateApprovalStatus === 'pending';
   const dateDeclined = dateApprovalStatus === 'declined';
+
+  const hasDirtyDateApprovalDraft = useMemo(
+    () =>
+      Boolean(user?.id) &&
+      awaitingDateApproval &&
+      isAuditee &&
+      (chosenDate.trim().length > 0 || declineReason.trim().length > 0),
+    [awaitingDateApproval, chosenDate, declineReason, isAuditee, user?.id]
+  );
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: Boolean(user?.id) && awaitingDateApproval && isAuditee,
+    isDirty: () => hasDirtyDateApprovalDraft,
+    serialize: () => ({
+      chosenDate,
+      declineReason
+    })
+  });
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (!awaitingDateApproval || !isAuditee) return;
+
+    const restored = restoreDraft<{ chosenDate?: string; declineReason?: string }>(draftKey);
+    if (!restored) return;
+
+    setChosenDate(restored.chosenDate ?? '');
+    setDeclineReason(restored.declineReason ?? '');
+  }, [awaitingDateApproval, draftKey, isAuditee, restoreDraft, user?.id]);
 
   const requiredDocLabels = useMemo(() => {
     const list = (audit as any)?.required_document_list;
@@ -459,6 +494,7 @@ export function AuditDetailPage() {
                               try {
                                 await approveAuditDate(audit.id as UUID, activeCompanyId, chosenDate, user.id as UUID);
                                 await refreshAudit();
+                                clearDraft(draftKey);
                               } finally {
                                 setDateApprovalLoading(false);
                               }
@@ -484,6 +520,7 @@ export function AuditDetailPage() {
                               try {
                                 await declineAuditDate(audit.id as UUID, activeCompanyId, declineReason, user.id as UUID);
                                 await refreshAudit();
+                                clearDraft(draftKey);
                               } finally {
                                 setDateApprovalLoading(false);
                               }

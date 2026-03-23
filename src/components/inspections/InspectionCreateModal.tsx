@@ -6,6 +6,8 @@ import type { ModuleKey, UUID } from '../../api/models/core';
 import { createInspection, listInspectionChecklistTemplates } from '../../api/services/inspectionsService';
 import { listUserProfiles } from '../../api/services/profilesService';
 import type { UserProfile } from '../../api/models/entities';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type ChecklistTemplateOption = {
   id: string;
@@ -36,6 +38,72 @@ export function InspectionCreateModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `inspection-create:${props.companyId}:${props.createdByUserId}`;
+
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (templateId.trim().length > 0 ||
+        scheduledAt.trim().length > 0 ||
+        inspectionDate.trim().length > 0 ||
+        location.trim().length > 0 ||
+        sector.trim().length > 0 ||
+        department.trim().length > 0 ||
+        frequency !== 'daily' ||
+        inspectorUserId.trim().length > 0 ||
+        auditorUserId.trim().length > 0 ||
+        module !== 'safety'),
+    [auditorUserId, department, frequency, inspectorUserId, inspectionDate, location, module, props.open, props.companyId, props.createdByUserId, scheduledAt, sector, templateId]
+  );
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      module,
+      templateId,
+      scheduledAt,
+      inspectionDate,
+      location,
+      sector,
+      department,
+      frequency,
+      inspectorUserId,
+      auditorUserId
+    })
+  });
+
+  useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      module?: ModuleKey;
+      templateId?: string;
+      scheduledAt?: string;
+      inspectionDate?: string;
+      location?: string;
+      sector?: string;
+      department?: string;
+      frequency?: 'daily' | 'monthly' | 'audit-linked';
+      inspectorUserId?: string;
+      auditorUserId?: string;
+    }>(draftKey);
+
+    if (!restored) return;
+
+    setModule(restored.module ?? 'safety');
+    setTemplateId(restored.templateId ?? '');
+    setScheduledAt(restored.scheduledAt ?? '');
+    setInspectionDate(restored.inspectionDate ?? '');
+    setLocation(restored.location ?? '');
+    setSector(restored.sector ?? '');
+    setDepartment(restored.department ?? '');
+    setFrequency(restored.frequency ?? 'daily');
+    setInspectorUserId(restored.inspectorUserId ?? '');
+    setAuditorUserId(restored.auditorUserId ?? '');
+  }, [draftKey, props.open, restoreDraft]);
 
   useEffect(() => {
     async function loadTemplates() {
@@ -106,6 +174,7 @@ export function InspectionCreateModal(props: {
         templateId: templateId as UUID
       });
       
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
       resetForm();

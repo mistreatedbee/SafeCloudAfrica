@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
@@ -7,6 +7,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { createHrRecord, listHrEmployees, listHrRecords } from '../../api/services/hrService';
 import { createTask } from '../../api/services/tasksService';
 import type { UUID } from '../../api/models/core';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function HrPerformancePage() {
   const { activeCompanyId, activeRole } = useTenant();
@@ -24,6 +26,91 @@ export function HrPerformancePage() {
   const [responsibleUserId, setResponsibleUserId] = useState('');
   const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
+
+  type HrPerformanceDraftPayload = {
+    employeeId: string;
+    cycle: string;
+    overallRating: string;
+    strengths: string;
+    assistanceRequired: string;
+    weaknesses: string;
+    managerRating: string;
+    managerRemarks: string;
+    correctiveActionsRequired: string;
+    responsibleUserId: string;
+    dueDate: string;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `hr-performance:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}`;
+
+  const payload = useMemo<HrPerformanceDraftPayload>(
+    () => ({
+      employeeId,
+      cycle,
+      overallRating,
+      strengths,
+      assistanceRequired,
+      weaknesses,
+      managerRating,
+      managerRemarks,
+      correctiveActionsRequired,
+      responsibleUserId,
+      dueDate
+    }),
+    [
+      employeeId,
+      cycle,
+      overallRating,
+      strengths,
+      assistanceRequired,
+      weaknesses,
+      managerRating,
+      managerRemarks,
+      correctiveActionsRequired,
+      responsibleUserId,
+      dueDate
+    ]
+  );
+
+  const payloadJson = useMemo(() => JSON.stringify(payload), [payload]);
+  const [draftBaselineJson, setDraftBaselineJson] = useState<string | null>(null);
+
+  const hasDirtyDraft = useMemo(() => {
+    if (draftBaselineJson == null) return false;
+    return payloadJson !== draftBaselineJson;
+  }, [draftBaselineJson, payloadJson]);
+
+  const draftEnabled = Boolean(activeCompanyId && user?.id);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: draftEnabled,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => payload
+  });
+
+  useEffect(() => {
+    if (!draftEnabled) return;
+
+    setDraftBaselineJson(payloadJson);
+    const restored = restoreDraft<HrPerformanceDraftPayload>(draftKey);
+    if (!restored) return;
+
+    setEmployeeId(restored.employeeId ?? '');
+    setCycle(restored.cycle ?? 'Annual');
+    setOverallRating(restored.overallRating ?? '3');
+    setStrengths(restored.strengths ?? '');
+    setAssistanceRequired(restored.assistanceRequired ?? '');
+    setWeaknesses(restored.weaknesses ?? '');
+    setManagerRating(restored.managerRating ?? '3');
+    setManagerRemarks(restored.managerRemarks ?? '');
+    setCorrectiveActionsRequired(restored.correctiveActionsRequired ?? '');
+    setResponsibleUserId(restored.responsibleUserId ?? '');
+    setDueDate(restored.dueDate ?? new Date().toISOString().slice(0, 10));
+
+    setDraftBaselineJson(JSON.stringify(restored));
+  }, [draftEnabled, draftKey, restoreDraft]);
 
   const { data: employees } = useAsync(async () => {
     if (!activeCompanyId) return [];
@@ -97,6 +184,23 @@ export function HrPerformancePage() {
       setManagerRemarks('');
       setCorrectiveActionsRequired('');
       setResponsibleUserId('');
+      clearDraft(draftKey);
+      // Keep draft tracking consistent with the "post-submit" cleared state.
+      setDraftBaselineJson(
+        JSON.stringify({
+          employeeId,
+          cycle,
+          overallRating,
+          strengths: '',
+          assistanceRequired: '',
+          weaknesses: '',
+          managerRating,
+          managerRemarks: '',
+          correctiveActionsRequired: '',
+          responsibleUserId: '',
+          dueDate
+        })
+      );
       await refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save performance review.');

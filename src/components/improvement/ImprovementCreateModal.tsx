@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { ImprovementAction, ModuleKey, UUID } from '../../api/models/entities';
 import { createImprovementAction } from '../../api/services/improvementActionsService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 function asUuidOrNull(value: string): UUID | null {
   const trimmed = value.trim();
@@ -28,7 +30,65 @@ export function ImprovementCreateModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  type ImprovementCreateDraftPayload = {
+    module: ModuleKey;
+    title: string;
+    description: string;
+    ownerUserId: string;
+    status: ImprovementAction['status'];
+    targetDate: string;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `improvement-create:${props.companyId}:${props.createdByUserId}`;
+
+  const payload = useMemo<ImprovementCreateDraftPayload>(
+    () => ({
+      module,
+      title,
+      description,
+      ownerUserId,
+      status,
+      targetDate
+    }),
+    [description, module, ownerUserId, status, targetDate, title]
+  );
+
+  const payloadJson = useMemo(() => JSON.stringify(payload), [payload]);
+  const [draftBaselineJson, setDraftBaselineJson] = useState<string | null>(null);
+
+  const hasDirtyDraft = useMemo(() => {
+    if (draftBaselineJson == null) return false;
+    return payloadJson !== draftBaselineJson;
+  }, [draftBaselineJson, payloadJson]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => payload
+  });
+
   const canSubmit = useMemo(() => title.trim().length > 2, [title]);
+
+  useEffect(() => {
+    if (!props.open) return;
+
+    // Baseline matches current state first, then we restore if a draft exists.
+    setDraftBaselineJson(payloadJson);
+
+    const restored = restoreDraft<ImprovementCreateDraftPayload>(draftKey);
+    if (!restored) return;
+
+    setModule(restored.module ?? 'general');
+    setTitle(restored.title ?? '');
+    setDescription(restored.description ?? '');
+    setOwnerUserId(restored.ownerUserId ?? '');
+    setStatus(restored.status ?? 'planned');
+    setTargetDate(restored.targetDate ?? '');
+
+    setDraftBaselineJson(JSON.stringify(restored));
+  }, [draftKey, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,6 +113,7 @@ export function ImprovementCreateModal(props: {
         createdByUserId: props.createdByUserId
       });
       props.onCreated?.();
+      clearDraft(draftKey);
       props.onClose();
       setModule('general');
       setTitle('');
@@ -60,6 +121,7 @@ export function ImprovementCreateModal(props: {
       setOwnerUserId('');
       setStatus('planned');
       setTargetDate('');
+      setDraftBaselineJson(null);
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {
@@ -71,11 +133,24 @@ export function ImprovementCreateModal(props: {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={() => {
+          clearDraft(draftKey);
+          props.onClose();
+        }}
+      />
       <div className="relative w-full max-w-2xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <p className="text-sm font-semibold text-charcoal">Create improvement action</p>
-          <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
+          <button
+            type="button"
+            onClick={() => {
+              clearDraft(draftKey);
+              props.onClose();
+            }}
+            className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500"
+          >
             <XIcon className="w-4 h-4" />
           </button>
         </div>
@@ -163,7 +238,10 @@ export function ImprovementCreateModal(props: {
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={props.onClose}
+              onClick={() => {
+                clearDraft(draftKey);
+                props.onClose();
+              }}
               className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
             >
               Cancel

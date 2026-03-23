@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
@@ -6,6 +6,8 @@ import type { ModuleKey, UUID } from '../../api/models/core';
 import { createAudit } from '../../api/services/auditsService';
 import { listAuditChecklistTemplates } from '../../api/services/auditChecklistTemplatesService';
 import { useAsync } from '../../api/hooks/useAsync';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function AuditScheduleModal(props: {
   open: boolean;
@@ -32,10 +34,115 @@ export function AuditScheduleModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `audit-schedule:${props.companyId}:${props.createdByUserId}`;
+
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (title.trim().length > 0 ||
+        objectives.trim().length > 0 ||
+        auditCriteria.trim().length > 0 ||
+        scopeOfAudit.trim().length > 0 ||
+        location.trim().length > 0 ||
+        proposedDates.some((d) => d.trim().length > 0) ||
+        auditorIdsInput.trim().length > 0 ||
+        auditeeIdsInput.trim().length > 0 ||
+        companyRepIdsInput.trim().length > 0 ||
+        leadAuditorId.trim().length > 0 ||
+        documentDeadline.trim().length > 0 ||
+        requiredDocs.some((d) => d.trim().length > 0) ||
+        checklistTemplateId.trim().length > 0 ||
+        module !== 'safety' ||
+        auditType !== 'internal'),
+    [
+      auditCriteria,
+      auditType,
+      auditorIdsInput,
+      auditeeIdsInput,
+      checklistTemplateId,
+      companyRepIdsInput,
+      documentDeadline,
+      location,
+      leadAuditorId,
+      module,
+      objectives,
+      proposedDates,
+      props.companyId,
+      props.createdByUserId,
+      props.open,
+      requiredDocs,
+      scopeOfAudit,
+      title
+    ]
+  );
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      title,
+      module,
+      auditType,
+      objectives,
+      auditCriteria,
+      scopeOfAudit,
+      proposedDates,
+      location,
+      auditorIdsInput,
+      auditeeIdsInput,
+      companyRepIdsInput,
+      leadAuditorId,
+      documentDeadline,
+      requiredDocs,
+      checklistTemplateId
+    })
+  });
+
   const { data: templates } = useAsync(
     () => (props.companyId ? listAuditChecklistTemplates(props.companyId) : Promise.resolve([])),
     [props.companyId, props.open]
   );
+
+  useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      title?: string;
+      module?: ModuleKey;
+      auditType?: 'internal' | 'external' | 'client' | 'supplier' | 'certification';
+      objectives?: string;
+      auditCriteria?: string;
+      scopeOfAudit?: string;
+      proposedDates?: string[];
+      location?: string;
+      auditorIdsInput?: string;
+      auditeeIdsInput?: string;
+      companyRepIdsInput?: string;
+      leadAuditorId?: string;
+      documentDeadline?: string;
+      requiredDocs?: string[];
+      checklistTemplateId?: string;
+    }>(draftKey);
+
+    if (!restored) return;
+
+    setTitle(restored.title ?? '');
+    setModule(restored.module ?? 'safety');
+    setAuditType(restored.auditType ?? 'internal');
+    setObjectives(restored.objectives ?? '');
+    setAuditCriteria(restored.auditCriteria ?? '');
+    setScopeOfAudit(restored.scopeOfAudit ?? '');
+    setProposedDates(Array.isArray(restored.proposedDates) ? restored.proposedDates : ['', '', '']);
+    setLocation(restored.location ?? '');
+    setAuditorIdsInput(restored.auditorIdsInput ?? '');
+    setAuditeeIdsInput(restored.auditeeIdsInput ?? '');
+    setCompanyRepIdsInput(restored.companyRepIdsInput ?? '');
+    setLeadAuditorId(restored.leadAuditorId ?? '');
+    setDocumentDeadline(restored.documentDeadline ?? '');
+    setRequiredDocs(Array.isArray(restored.requiredDocs) ? restored.requiredDocs : ['']);
+    setChecklistTemplateId(restored.checklistTemplateId ?? '');
+  }, [draftKey, props.open, restoreDraft]);
 
   const proposedDatesParsed = useMemo(() => {
     return proposedDates
@@ -126,6 +233,7 @@ export function AuditScheduleModal(props: {
         checklistTemplateId: checklistTemplateId ? (checklistTemplateId as UUID) : undefined
       });
 
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
       setTitle('');

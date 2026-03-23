@@ -16,6 +16,8 @@ import {
 import { insforge } from '../../api/insforge/client';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/services/documentsStorageService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const EVIDENCE_BUCKET = 'sca-evidence';
 
@@ -60,6 +62,29 @@ export default function NCRDetailModal({
   const [linkedLegalRequirements, setLinkedLegalRequirements] = useState<
     Array<Pick<LegalRequirement, 'id' | 'requirement_standard' | 'compliance_status'>>
   >([]);
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `ncr-detail:${companyId}:${ncr.id}:${actorUserId}`;
+
+  const baseLinkedRequirementType = ((ncr.linked_requirement_type as any) ?? 'STANDARD') as 'STANDARD' | 'POLICY' | 'PROCEDURE';
+  const baseLinkedRequirement = String(ncr.linked_requirement ?? '');
+
+  const hasDirtyDraft = useMemo(
+    () =>
+      linkedRequirementTypeEdit !== baseLinkedRequirementType ||
+      linkedRequirementEdit.trim() !== baseLinkedRequirement.trim(),
+    [baseLinkedRequirement, baseLinkedRequirementType, linkedRequirementEdit, linkedRequirementTypeEdit]
+  );
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: true,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      linkedRequirementTypeEdit,
+      linkedRequirementEdit
+    })
+  });
 
   const evidenceBefore = useMemo(
     () => (loadedBefore ?? ((ncr.evidence_before ?? []) as NcrEvidenceReference[])),
@@ -152,6 +177,17 @@ export default function NCRDetailModal({
     setLinkedRequirementTypeEdit((ncr.linked_requirement_type as any) ?? 'STANDARD');
     setLinkedRequirementEdit(ncr.linked_requirement ?? '');
   }, [ncr.linked_requirement_type, ncr.linked_requirement]);
+
+  useEffect(() => {
+    const restored = restoreDraft<{
+      linkedRequirementTypeEdit?: 'STANDARD' | 'POLICY' | 'PROCEDURE';
+      linkedRequirementEdit?: string;
+    }>(draftKey);
+
+    if (!restored) return;
+    if (restored.linkedRequirementTypeEdit) setLinkedRequirementTypeEdit(restored.linkedRequirementTypeEdit);
+    if (restored.linkedRequirementEdit !== undefined) setLinkedRequirementEdit(restored.linkedRequirementEdit);
+  }, [draftKey, restoreDraft]);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -253,7 +289,10 @@ export default function NCRDetailModal({
         } as any,
         actorUserId
       );
-      if (updated) onNcrUpdated(updated);
+      if (updated) {
+        onNcrUpdated(updated);
+        clearDraft(draftKey);
+      }
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

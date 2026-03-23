@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
@@ -6,6 +6,8 @@ import type { TrainingRecord, TrainingCourse, UUID } from '../../api/models/enti
 import { updateTrainingRecord } from '../../api/services/trainingService';
 import { insforge } from '../../api/insforge/client';
 import { TRAINING_CERT_BUCKET } from './TrainingAddModal';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function TrainingCompleteModal(props: {
   open: boolean;
@@ -25,6 +27,53 @@ export function TrainingCompleteModal(props: {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  type TrainingCompleteDraftPayload = {
+    completedAt: string;
+    expiresAt: string;
+    cost: string;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `training-complete:${props.companyId}:${props.record.id}`;
+
+  const [completeBaseline, setCompleteBaseline] = useState<TrainingCompleteDraftPayload>(() => ({
+    completedAt: props.record.completed_at ? props.record.completed_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    expiresAt: props.record.expires_at ? props.record.expires_at.slice(0, 10) : '',
+    cost: props.record.cost != null ? String(props.record.cost) : ''
+  }));
+
+  const hasDirtyDraft = useMemo(() => {
+    return JSON.stringify({ completedAt, expiresAt, cost }) !== JSON.stringify(completeBaseline);
+  }, [completeBaseline, cost, completedAt, expiresAt]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () =>
+      ({
+        completedAt,
+        expiresAt,
+        cost
+      }) satisfies TrainingCompleteDraftPayload
+  });
+
+  useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<TrainingCompleteDraftPayload>(draftKey);
+    if (!restored) return;
+
+    setCompletedAt(restored.completedAt ?? '');
+    setExpiresAt(restored.expiresAt ?? '');
+    setCost(restored.cost ?? '');
+    setCompleteBaseline(restored);
+  }, [draftKey, props.open, restoreDraft]);
+
+  const closeWithDraftClear = () => {
+    clearDraft(draftKey);
+    props.onClose();
+  };
 
   const validityMonths = props.course?.default_validity_months ?? props.course?.valid_months;
 
@@ -68,6 +117,7 @@ export function TrainingCompleteModal(props: {
         cost: cost ? parseFloat(cost) || null : props.record.cost
       });
       props.onSaved?.();
+      clearDraft(draftKey);
       props.onClose();
     } catch (err: unknown) {
       setError(formatAuthError(err));
@@ -80,11 +130,11 @@ export function TrainingCompleteModal(props: {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl border border-surface-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <p className="text-sm font-semibold text-charcoal">Mark training completed</p>
-          <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
+          <button type="button" onClick={closeWithDraftClear} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
             <XIcon className="w-4 h-4" />
           </button>
         </div>
@@ -139,7 +189,7 @@ export function TrainingCompleteModal(props: {
             {file && <p className="text-xs text-charcoal-500 mt-1">Selected: {file.name}</p>}
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={props.onClose} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50">
+            <button type="button" onClick={closeWithDraftClear} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50">
               Cancel
             </button>
             <button

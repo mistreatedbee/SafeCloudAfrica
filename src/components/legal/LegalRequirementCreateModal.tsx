@@ -20,6 +20,8 @@ import { listQualityNcrs } from '../../api/services/qualityNcrsService';
 import { SelectOrType } from '../ui/SelectOrType';
 import { DocumentPicker } from '../documents/DocumentPicker';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const APPLICABILITY_DEFAULTS = [
   { id: 'all', value: 'All operations', label: 'All operations' },
@@ -73,6 +75,97 @@ export function LegalRequirementCreateModal(props: {
   const [documentSearch, setDocumentSearch] = useState('');
   const [riskSearch, setRiskSearch] = useState('');
   const [ncrSearch, setNcrSearch] = useState('');
+
+  type LegalRequirementDraftPayload = {
+    requirementStandard: string;
+    references: LegalRequirementReference[];
+    applicability: string;
+    actionsNeeded: string;
+    finding: string;
+    targetDate: string;
+    complianceStatus: LegalComplianceStatus;
+    responsibleEmployeeId: UUID | '';
+    responsibleExternalName: string;
+    evidenceLinks: LegalRequirementEvidenceLink[];
+    linkedDocumentId: string;
+    linkedRiskAssessmentId: string;
+    linkedNcrId: string;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const editingIdPart = editing?.id ?? 'new';
+  const draftKey = `legal-requirement:${props.companyId}:${editingIdPart}:${props.actorUserId}`;
+
+  const computeDraftPayload = (): LegalRequirementDraftPayload => ({
+    requirementStandard,
+    references,
+    applicability,
+    actionsNeeded,
+    finding,
+    targetDate,
+    complianceStatus,
+    responsibleEmployeeId,
+    responsibleExternalName,
+    evidenceLinks,
+    linkedDocumentId,
+    linkedRiskAssessmentId,
+    linkedNcrId
+  });
+
+  const [draftBaseline, setDraftBaseline] = useState<LegalRequirementDraftPayload>(() => computeDraftPayload());
+  const hasDirtyDraft = useMemo(() => JSON.stringify(computeDraftPayload()) !== JSON.stringify(draftBaseline), [
+    actionsNeeded,
+    applicability,
+    complianceStatus,
+    draftBaseline,
+    evidenceLinks,
+    finding,
+    linkedDocumentId,
+    linkedNcrId,
+    linkedRiskAssessmentId,
+    references,
+    requirementStandard,
+    responsibleEmployeeId,
+    responsibleExternalName,
+    targetDate
+  ]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => computeDraftPayload()
+  });
+
+  useEffect(() => {
+    if (!props.open) return;
+    // Always treat the current state as a baseline before attempting restore.
+    setDraftBaseline(computeDraftPayload());
+    const restored = restoreDraft<LegalRequirementDraftPayload>(draftKey);
+    if (!restored) return;
+
+    setRequirementStandard(restored.requirementStandard ?? '');
+    setReferences(restored.references ?? [{ referenceText: '' }]);
+    setApplicability(restored.applicability ?? '');
+    setActionsNeeded(restored.actionsNeeded ?? '');
+    setFinding(restored.finding ?? '');
+    setTargetDate(restored.targetDate ?? '');
+    setComplianceStatus(restored.complianceStatus ?? 'PARTIALLY_COMPLIANT');
+    setResponsibleEmployeeId(restored.responsibleEmployeeId ?? '');
+    setResponsibleExternalName(restored.responsibleExternalName ?? '');
+    setEvidenceLinks(restored.evidenceLinks ?? []);
+    setLinkedDocumentId(restored.linkedDocumentId ?? '');
+    setLinkedRiskAssessmentId(restored.linkedRiskAssessmentId ?? '');
+    setLinkedNcrId(restored.linkedNcrId ?? '');
+
+    setDraftBaseline(restored);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey, props.open]);
+
+  const closeWithDraftClear = () => {
+    clearDraft(draftKey);
+    props.onClose();
+  };
 
   const todayIso = useMemo(() => {
     const now = new Date();
@@ -231,6 +324,7 @@ export function LegalRequirementCreateModal(props: {
           })
         : await createLegalRequirement(payload);
 
+      clearDraft(draftKey);
       props.onSaved?.(saved);
       props.onClose();
     } catch (err: any) {
@@ -244,14 +338,14 @@ export function LegalRequirementCreateModal(props: {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-3xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
             <p className="text-sm font-semibold text-charcoal">{editing ? 'Edit legal requirement' : 'Add legal requirement'}</p>
             <p className="text-xs text-charcoal-500 mt-0.5">Legal Requirements Register</p>
           </div>
-          <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
+          <button type="button" onClick={closeWithDraftClear} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
             <XIcon className="w-4 h-4" />
           </button>
         </div>
@@ -444,7 +538,7 @@ export function LegalRequirementCreateModal(props: {
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">
-            <button type="button" onClick={props.onClose} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50">
+            <button type="button" onClick={closeWithDraftClear} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50">
               Cancel
             </button>
             <button type="submit" disabled={!canSubmit || loading} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-700 text-white text-sm font-semibold hover:bg-purple-800 disabled:opacity-60">

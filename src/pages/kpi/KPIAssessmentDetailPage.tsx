@@ -17,6 +17,8 @@ import { listActivityLogsByEntity } from '../../api/services/activityLogService'
 import type { KPIAssessment, KPIAssessmentLine, KPIFinding, KpiAssessmentStatus } from '../../api/models/entities';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { KPI_RATING_LEGEND } from '../../constants/kpiRatingLegend';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 function getAchievementLabel(line: KPIAssessmentLine): 'Not Achieved' | 'Partially Achieved' | 'Achieved' | '-' {
   const rating = line.manager_rating;
@@ -46,6 +48,56 @@ export function KPIAssessmentDetailPage() {
   const [managerRemarksDraft, setManagerRemarksDraft] = useState('');
   const [savingLineIds, setSavingLineIds] = useState<Record<string, boolean>>({});
   const [savingAssessmentComments, setSavingAssessmentComments] = useState(false);
+
+  type KPIAssessmentDetailDraftLinePatch = {
+    lineId: string;
+    employeeOwnRating: number | null;
+    managerRating: number | null;
+    notes: string;
+  };
+
+  type KPIAssessmentDetailDraftPayload = {
+    linePatches: KPIAssessmentDetailDraftLinePatch[];
+    employeeCommentsDraft: string;
+    managerRemarksDraft: string;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `kpi-assessment-detail:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}:${assessmentId ?? 'new'}`;
+  const draftEnabled = Boolean(activeCompanyId && assessmentId && user?.id);
+
+  const payload = useMemo<KPIAssessmentDetailDraftPayload>(() => {
+    const linePatches: KPIAssessmentDetailDraftLinePatch[] = lineDraft.map((line) => ({
+      lineId: String(line.line_id),
+      employeeOwnRating: line.employee_own_rating ?? null,
+      managerRating: line.manager_rating ?? null,
+      notes: line.notes ?? ''
+    }));
+
+    return {
+      linePatches,
+      employeeCommentsDraft,
+      managerRemarksDraft
+    };
+  }, [employeeCommentsDraft, lineDraft, managerRemarksDraft]);
+
+  const payloadJson = useMemo(() => JSON.stringify(payload), [payload]);
+  const [draftBaselineJson, setDraftBaselineJson] = useState<string | null>(null);
+
+  const hasDirtyDraft = useMemo(() => {
+    if (!draftEnabled) return false;
+    if (draftBaselineJson == null) return false;
+    return payloadJson !== draftBaselineJson;
+  }, [draftBaselineJson, draftEnabled, payloadJson]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: draftEnabled,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => payload
+  });
+
+  const restoredOnceRef = useRef(false);
 
   const lineTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const pendingLinePatchesRef = useRef<Map<string, LinePatch>>(new Map());
@@ -99,6 +151,50 @@ export function KPIAssessmentDetailPage() {
     setEmployeeCommentsDraft(assessment?.employee_comments ?? '');
     setManagerRemarksDraft(assessment?.manager_remarks ?? '');
   }, [assessment?.employee_comments, assessment?.manager_remarks]);
+
+  useEffect(() => {
+    if (!draftEnabled) return;
+    if (!lines || !assessment) return;
+    if (restoredOnceRef.current) return;
+    restoredOnceRef.current = true;
+
+    const defaultPayload: KPIAssessmentDetailDraftPayload = {
+      linePatches: (lines ?? []).map((line) => ({
+        lineId: String(line.line_id),
+        employeeOwnRating: line.employee_own_rating ?? null,
+        managerRating: line.manager_rating ?? null,
+        notes: line.notes ?? ''
+      })),
+      employeeCommentsDraft: assessment.employee_comments ?? '',
+      managerRemarksDraft: assessment.manager_remarks ?? ''
+    };
+
+    const restored = restoreDraft<KPIAssessmentDetailDraftPayload>(draftKey);
+    if (!restored) {
+      setDraftBaselineJson(JSON.stringify(defaultPayload));
+      return;
+    }
+
+    const patchByLineId = new Map<string, KPIAssessmentDetailDraftLinePatch>(
+      (restored.linePatches ?? []).map((p) => [String(p.lineId), p])
+    );
+
+    const mergedLines: KPIAssessmentLine[] = (lines ?? []).map((line) => {
+      const patch = patchByLineId.get(String(line.line_id));
+      if (!patch) return line;
+      return {
+        ...line,
+        employee_own_rating: patch.employeeOwnRating,
+        manager_rating: patch.managerRating,
+        notes: patch.notes
+      };
+    });
+
+    setLineDraft(mergedLines);
+    setEmployeeCommentsDraft(restored.employeeCommentsDraft ?? '');
+    setManagerRemarksDraft(restored.managerRemarksDraft ?? '');
+    setDraftBaselineJson(JSON.stringify(restored));
+  }, [assessment, draftEnabled, draftKey, lines, restoreDraft]);
 
   useEffect(() => {
     const lineTimers = lineTimeoutsRef.current;
@@ -212,6 +308,11 @@ export function KPIAssessmentDetailPage() {
     try {
       await updateKPIAssessment(assessmentId as any, activeCompanyId, { status }, user.id as any);
       setMessage('KPI Assessment status updated successfully.');
+      if (draftEnabled) {
+        clearDraft(draftKey);
+        setDraftBaselineJson(null);
+        restoredOnceRef.current = false;
+      }
       setRefresher((r) => r + 1);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to update KPI Assessment status.');

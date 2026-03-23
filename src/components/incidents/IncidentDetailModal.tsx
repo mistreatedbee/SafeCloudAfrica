@@ -12,6 +12,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { listIncidentCorrectiveActions } from '../../api/services/incidentCorrectiveActionsService';
 import { IncidentCorrectiveActionsList } from './IncidentCorrectiveActionsList';
 import { IncidentCorrectiveActionModal } from './IncidentCorrectiveActionModal';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type InvestigationSectionKey =
   | 'immediateCauses'
@@ -47,6 +49,27 @@ function emptyInvestigationSectionSelection(): Record<InvestigationSectionKey, b
     lessonsLearnt: false
   };
 }
+
+type IncidentInvestigationDraft = {
+  notes: string;
+  instructionBreakdown: string;
+  taskSequence: string;
+  eventTimeline: string;
+  risk: string;
+  riskProfile: string;
+  potentialConsequence: string;
+  immediateCauses: string;
+  rootHuman: string;
+  rootWorkplace: string;
+  systemFailures: string;
+  contributingFactors: string;
+  lessonsLearnt: string;
+  conclusion: string;
+  preparedBy: string;
+  investigationTeam: string;
+  distributions: string;
+  investigationSections: Record<InvestigationSectionKey, boolean>;
+};
 
 export function IncidentDetailModal(props: {
   open: boolean;
@@ -96,6 +119,82 @@ export function IncidentDetailModal(props: {
   const [distributions, setDistributions] = useState('');
   const [investigationSections, setInvestigationSections] = useState<Record<InvestigationSectionKey, boolean>>(emptyInvestigationSectionSelection);
   const { fullName, organisationName } = useIdentity();
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `incident-investigation:${props.companyId}:${incident?.id ?? 'unknown'}:${props.actorUserId}`;
+
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      props.canEditInvestigation &&
+      (notes.trim().length > 0 ||
+        instructionBreakdown.trim().length > 0 ||
+        taskSequence.trim().length > 0 ||
+        eventTimeline.trim().length > 0 ||
+        risk.trim().length > 0 ||
+        riskProfile.trim().length > 0 ||
+        potentialConsequence.trim().length > 0 ||
+        immediateCauses.trim().length > 0 ||
+        rootHuman.trim().length > 0 ||
+        rootWorkplace.trim().length > 0 ||
+        systemFailures.trim().length > 0 ||
+        contributingFactors.trim().length > 0 ||
+        lessonsLearnt.trim().length > 0 ||
+        conclusion.trim().length > 0 ||
+        preparedBy.trim().length > 0 ||
+        investigationTeam.trim().length > 0 ||
+        distributions.trim().length > 0 ||
+        Object.values(investigationSections).some(Boolean)),
+    [
+      contributingFactors,
+      conclusion,
+      distributions,
+      immediateCauses,
+      investigationSections,
+      investigationTeam,
+      instructionBreakdown,
+      lessonsLearnt,
+      potentialConsequence,
+      preparedBy,
+      notes,
+      props.canEditInvestigation,
+      props.open,
+      risk,
+      riskProfile,
+      rootHuman,
+      rootWorkplace,
+      systemFailures,
+      taskSequence,
+      eventTimeline
+    ]
+  );
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: Boolean(incident?.id) && props.open && props.canEditInvestigation,
+    isDirty: () => hasDirtyDraft,
+    serialize: () =>
+      ({
+        notes,
+        instructionBreakdown,
+        taskSequence,
+        eventTimeline,
+        risk,
+        riskProfile,
+        potentialConsequence,
+        immediateCauses,
+        rootHuman,
+        rootWorkplace,
+        systemFailures,
+        contributingFactors,
+        lessonsLearnt,
+        conclusion,
+        preparedBy,
+        investigationTeam,
+        distributions,
+        investigationSections
+      }) satisfies IncidentInvestigationDraft
+  });
 
   useEffect(() => {
     if (!props.open || !incident) return;
@@ -154,6 +253,31 @@ export function IncidentDetailModal(props: {
           setInvestigationTeam(Array.isArray(inv.investigation_team) ? inv.investigation_team.join(', ') : '');
           setDistributions(Array.isArray(inv.distributions) ? inv.distributions.join(', ') : '');
           setInvestigationSections(emptyInvestigationSectionSelection());
+        }
+
+        // Restore local, unsaved investigation edits (if any).
+        if (props.canEditInvestigation) {
+          const restored = restoreDraft<IncidentInvestigationDraft>(draftKey);
+          if (restored) {
+            setNotes(restored.notes ?? '');
+            setInstructionBreakdown(restored.instructionBreakdown ?? '');
+            setTaskSequence(restored.taskSequence ?? '');
+            setEventTimeline(restored.eventTimeline ?? '');
+            setRisk(restored.risk ?? '');
+            setRiskProfile(restored.riskProfile ?? '');
+            setPotentialConsequence(restored.potentialConsequence ?? '');
+            setImmediateCauses(restored.immediateCauses ?? '');
+            setRootHuman(restored.rootHuman ?? '');
+            setRootWorkplace(restored.rootWorkplace ?? '');
+            setSystemFailures(restored.systemFailures ?? '');
+            setContributingFactors(restored.contributingFactors ?? '');
+            setLessonsLearnt(restored.lessonsLearnt ?? '');
+            setConclusion(restored.conclusion ?? '');
+            setPreparedBy(restored.preparedBy ?? '');
+            setInvestigationTeam(restored.investigationTeam ?? '');
+            setDistributions(restored.distributions ?? '');
+            setInvestigationSections(restored.investigationSections ?? emptyInvestigationSectionSelection());
+          }
         }
       } catch (e: any) {
         setError(formatAuthError(e));
@@ -276,6 +400,7 @@ export function IncidentDetailModal(props: {
         } as any
       });
       setInvestigation(saved);
+      clearDraft(draftKey);
       setSaveSuccess('Investigation saved successfully.');
     } catch (e: any) {
       setError(formatAuthError(e));

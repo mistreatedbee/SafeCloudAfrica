@@ -11,6 +11,12 @@ const CHECK_INTERVAL_MS = 15 * 1000;
 const REFRESH_LEEWAY_MS = 3 * 60 * 1000;
 const REFRESH_RETRY_MS = 12 * 1000;
 const MAX_REFRESH_RETRIES = 2;
+const SESSION_DEBUG = (import.meta as any)?.env?.VITE_SESSION_DEBUG === '1';
+function debugSession(...args: unknown[]) {
+  if (!SESSION_DEBUG) return;
+  // Using console.debug so devtools can filter these separately from warnings/errors.
+  console.debug('[session-debug]', ...args);
+}
 
 type SessionManagerContextValue = {
   continueSession: () => Promise<void>;
@@ -49,8 +55,12 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     if (showWarning) setShowWarning(false);
   }, [showWarning]);
 
-  const markSessionExpiredAndLogout = useCallback(async () => {
-    console.warn('[session] inactivity logout triggered');
+  const markSessionExpiredAndLogout = useCallback(async (reason: 'inactivity' | 'refresh_failure') => {
+    console.warn('[session] session expired; reason:', reason);
+    debugSession('markSessionExpiredAndLogout', {
+      reason,
+      refreshRetryCount: refreshRetryCountRef.current
+    });
     try {
       sessionStorage.setItem(SESSION_EXPIRED_KEY, '1');
       sessionStorage.setItem(SESSION_EXPIRED_MESSAGE_KEY, 'Your session expired due to inactivity. Please log in again.');
@@ -71,34 +81,62 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   const refreshSessionIfNeeded = useCallback(async () => {
     if (refreshInFlightRef.current) return true;
     refreshInFlightRef.current = true;
+    let lastKnownToken: string | null = null;
+    let lastKnownExpiresAtMs: number | null = null;
     try {
       const current = await insforge.auth.getCurrentSession();
       const token = current.data?.session?.accessToken ?? null;
-      const expiresAtMs = decodeTokenExpiryMs(token);
+      lastKnownToken = token;
+      lastKnownExpiresAtMs = decodeTokenExpiryMs(token);
       const now = Date.now();
-      if (!expiresAtMs || expiresAtMs - now > REFRESH_LEEWAY_MS) {
+      if (!lastKnownExpiresAtMs || lastKnownExpiresAtMs - now > REFRESH_LEEWAY_MS) {
         refreshRetryCountRef.current = 0;
         return true;
       }
       const authApi = insforge.auth as any;
       if (typeof authApi.refreshSession === 'function') {
-        const refreshed = await authApi.refreshSession();
-        const refreshedToken = refreshed?.data?.session?.accessToken ?? null;
-        if (refreshedToken) {
-          insforge.getHttpClient().setAuthToken(refreshedToken);
-          refreshRetryCountRef.current = 0;
-          console.info('[session] refresh success');
-          return true;
+        try {
+          const refreshed = await authApi.refreshSession();
+          const refreshedToken = refreshed?.data?.session?.accessToken ?? null;
+          if (refreshedToken) {
+            insforge.getHttpClient().setAuthToken(refreshedToken);
+            refreshRetryCountRef.current = 0;
+            console.info('[session] refresh success');
+            return true;
+          }
+        } catch (error) {
+          // If refresh fails but the existing token is still valid, don't force a logout.
+          // Network hiccups should not interrupt the user session while the JWT is alive.
+          const tokenStillValid = !!lastKnownExpiresAtMs && lastKnownExpiresAtMs > Date.now();
+          if (tokenStillValid && lastKnownToken) {
+            insforge.getHttpClient().setAuthToken(lastKnownToken);
+            refreshRetryCountRef.current = 0;
+            return true;
+          }
+          refreshRetryCountRef.current += 1;
+          console.warn('[session] refresh failed', error);
+          return false;
         }
       }
+
       // Fallback path if SDK only supports getCurrentSession auto-refresh internally.
       if (token) {
+        const tokenStillValid = !lastKnownExpiresAtMs || lastKnownExpiresAtMs > Date.now();
         insforge.getHttpClient().setAuthToken(token);
+        refreshRetryCountRef.current = tokenStillValid ? 0 : (refreshRetryCountRef.current + 1);
+        return tokenStillValid;
+      }
+
+      throw new Error('No session token available after refresh attempt.');
+    } catch (error) {
+      // If we have enough info to tell the token hasn't expired yet, treat refresh errors as non-fatal.
+      const tokenStillValid = !!lastKnownExpiresAtMs && lastKnownExpiresAtMs > Date.now();
+      if (lastKnownToken && tokenStillValid) {
+        insforge.getHttpClient().setAuthToken(lastKnownToken);
         refreshRetryCountRef.current = 0;
         return true;
       }
-      throw new Error('No session token available after refresh attempt.');
-    } catch (error) {
+
       refreshRetryCountRef.current += 1;
       console.warn('[session] refresh failed', error);
       return false;
@@ -111,7 +149,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     registerActivity();
     const ok = await refreshSessionIfNeeded();
     if (!ok && refreshRetryCountRef.current > MAX_REFRESH_RETRIES) {
-      await markSessionExpiredAndLogout();
+      await markSessionExpiredAndLogout('refresh_failure');
       return;
     }
     setShowWarning(false);
@@ -162,7 +200,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       }
 
       if (idleMs >= LOGOUT_TIMEOUT_MS) {
-        void markSessionExpiredAndLogout();
+        void markSessionExpiredAndLogout('inactivity');
         return;
       }
 
@@ -174,7 +212,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
               void refreshSessionIfNeeded();
             }, REFRESH_RETRY_MS);
           } else if (!ok) {
-            await markSessionExpiredAndLogout();
+            await markSessionExpiredAndLogout('refresh_failure');
           }
         })();
       }
@@ -197,7 +235,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         <SessionInactivityModal
           remainingMs={remainingMs}
           onContinue={() => void continueSession()}
-          onLogout={() => void markSessionExpiredAndLogout()}
+          onLogout={() => void markSessionExpiredAndLogout('inactivity')}
         />
       )}
     </SessionManagerContext.Provider>

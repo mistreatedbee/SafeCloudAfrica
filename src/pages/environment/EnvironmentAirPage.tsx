@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
@@ -10,6 +10,8 @@ import { toCsv, downloadTextFile } from '../../utils/csv';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import { WindIcon } from 'lucide-react';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const currentYear = new Date().getFullYear();
 
@@ -60,6 +62,37 @@ export function EnvironmentAirPage() {
     approvedByUserId: '',
     approvedAt: ''
   });
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `env-air:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}:${editing?.id ?? 'new'}`;
+  const [formBaseline, setFormBaseline] = useState<any>(() => form);
+  const [justSaved, setJustSaved] = useState(false);
+
+  const hasDirtyDraft = JSON.stringify(form) !== JSON.stringify(formBaseline);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: Boolean(activeCompanyId && user?.id),
+    isDirty: () => hasDirtyDraft,
+    serialize: () => form
+  });
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    const restored = restoreDraft<any>(draftKey);
+    if (restored) {
+      setForm(restored);
+      setFormBaseline(restored);
+    } else {
+      setFormBaseline(form);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey, activeCompanyId, restoreDraft, user?.id]);
+
+  useEffect(() => {
+    if (!justSaved) return;
+    setFormBaseline(form);
+    setJustSaved(false);
+  }, [form, justSaved]);
 
   const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
   const { data: legalOptions } = useAsync(async () => (activeCompanyId ? await listLegalRequirementOptions(activeCompanyId) : []), [activeCompanyId]);
@@ -73,6 +106,7 @@ export function EnvironmentAirPage() {
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
+    const keyToClear = draftKey;
     await upsertEnvAirQuality({
       companyId: activeCompanyId,
       actorUserId: user.id,
@@ -119,13 +153,15 @@ export function EnvironmentAirPage() {
       approvedByUserId: '',
       approvedAt: ''
     });
+    clearDraft(keyToClear);
+    setJustSaved(true);
     setRefreshKey((k) => k + 1);
     await refetch();
   }
 
   function startEdit(row: any) {
     setEditing(row);
-    setForm({
+    const nextForm = {
       referenceNumber: row.reference_number,
       emissionSourceCategories: row.emission_source_categories ?? [],
       legalRequirementIds: row.legal_requirement_ids ?? [],
@@ -152,7 +188,9 @@ export function EnvironmentAirPage() {
       reviewedByUserId: row.reviewed_by_user_id ?? '',
       approvedByUserId: row.approved_by_user_id ?? '',
       approvedAt: row.approved_at?.slice(0, 16) ?? ''
-    });
+    };
+    setForm(nextForm);
+    setFormBaseline(nextForm);
   }
 
   const trendData = useMemo(() => {

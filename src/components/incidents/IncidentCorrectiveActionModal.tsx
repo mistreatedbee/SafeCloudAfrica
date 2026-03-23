@@ -13,6 +13,8 @@ import {
 import { UserMultiSelect } from '../ui/UserMultiSelect';
 import { createEvidence } from '../../api/services/evidenceService';
 import { insforge } from '../../api/insforge/client';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const EVIDENCE_BUCKET = 'evidence';
 
@@ -22,6 +24,23 @@ type CauseOption = {
   type: CauseLinkType;
   text: string;
   label: string;
+};
+
+type IncidentCorrectiveActionStatus =
+  | 'Open'
+  | 'In Progress'
+  | 'Awaiting Evidence'
+  | 'Under Review'
+  | 'Closed';
+
+type IncidentCorrectiveActionDraftPayload = {
+  actionRequired: string;
+  actionDescription: string;
+  responsibleUserId: UUID | null;
+  dueDate: string;
+  status: IncidentCorrectiveActionStatus;
+  closureNotes: string;
+  selectedLinks: CauseOption[];
 };
 
 export type IncidentCorrectiveActionModalProps = {
@@ -90,12 +109,68 @@ export function IncidentCorrectiveActionModal({
   const [actionDescription, setActionDescription] = useState('');
   const [responsibleUserId, setResponsibleUserId] = useState<UUID | null>(null);
   const [dueDate, setDueDate] = useState('');
-  const [status, setStatus] = useState<'Open' | 'In Progress' | 'Awaiting Evidence' | 'Under Review' | 'Closed'>('Open');
+  const [status, setStatus] = useState<IncidentCorrectiveActionStatus>('Open');
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [closureNotes, setClosureNotes] = useState('');
   const [selectedLinks, setSelectedLinks] = useState<CauseOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `incident-corrective-action:${companyId}:${createdByUserId}:${incidentId}:${actionId ?? 'new'}`;
+
+  const draftPayload = useMemo<IncidentCorrectiveActionDraftPayload>(
+    () => ({
+      actionRequired,
+      actionDescription,
+      responsibleUserId,
+      dueDate,
+      status,
+      closureNotes,
+      selectedLinks
+    }),
+    [
+      actionDescription,
+      actionRequired,
+      closureNotes,
+      dueDate,
+      responsibleUserId,
+      selectedLinks,
+      status
+    ]
+  );
+
+  const draftPayloadJson = useMemo(() => JSON.stringify(draftPayload), [draftPayload]);
+  const [draftBaselineJson, setDraftBaselineJson] = useState<string | null>(null);
+
+  const hasDirtyDraft = useMemo(() => {
+    if (draftBaselineJson == null) return false;
+    return draftPayloadJson !== draftBaselineJson;
+  }, [draftBaselineJson, draftPayloadJson]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => draftPayload
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const restored = restoreDraft<IncidentCorrectiveActionDraftPayload>(draftKey);
+    if (!restored) return;
+
+    setActionRequired(restored.actionRequired ?? '');
+    setActionDescription(restored.actionDescription ?? '');
+    setResponsibleUserId(restored.responsibleUserId ?? null);
+    setDueDate(restored.dueDate ?? '');
+    setStatus(restored.status ?? 'Open');
+    setClosureNotes(restored.closureNotes ?? '');
+    setSelectedLinks(restored.selectedLinks ?? []);
+    setEvidenceFiles([]); // evidence files are intentionally not persisted
+
+    setDraftBaselineJson(JSON.stringify(restored));
+  }, [draftKey, open, restoreDraft]);
 
   const availableCauseOptions = useMemo(() => {
     const mapped = causeOptions
@@ -109,15 +184,42 @@ export function IncidentCorrectiveActionModal({
   useEffect(() => {
     if (!open) return;
     if (initial) {
+      const nextSelectedLinks = parseCauseLinks(
+        initial.source_cause_type ?? null,
+        initial.source_cause_text ?? null
+      );
+
       setActionRequired(initial.action_title);
       setActionDescription(initial.action_description || '');
       setResponsibleUserId(initial.owner_user_id);
       setDueDate(initial.due_date ? new Date(initial.due_date).toISOString().slice(0, 10) : '');
       setStatus(initial.status);
       setClosureNotes(initial.closure_notes || '');
-      setSelectedLinks(parseCauseLinks(initial.source_cause_type ?? null, initial.source_cause_text ?? null));
+      setSelectedLinks(nextSelectedLinks);
+
+      setDraftBaselineJson(
+        JSON.stringify({
+          actionRequired: initial.action_title,
+          actionDescription: initial.action_description || '',
+          responsibleUserId: initial.owner_user_id,
+          dueDate: initial.due_date ? new Date(initial.due_date).toISOString().slice(0, 10) : '',
+          status: initial.status as IncidentCorrectiveActionStatus,
+          closureNotes: initial.closure_notes || '',
+          selectedLinks: nextSelectedLinks
+        } satisfies IncidentCorrectiveActionDraftPayload)
+      );
       return;
     }
+
+    const nextSelectedLinks: CauseOption[] = initialSourceCauseText
+      ? [
+          {
+            type: (initialSourceCauseType ?? 'root_cause') as CauseLinkType,
+            text: initialSourceCauseText,
+            label: `${String(initialSourceCauseType ?? 'root_cause').replace('_', ' ')}: ${initialSourceCauseText}`
+          }
+        ]
+      : [];
 
     setActionRequired(initialSourceCauseText?.slice(0, 200) || '');
     setActionDescription(initialSourceCauseText ? `Linked finding: ${initialSourceCauseText}` : '');
@@ -127,13 +229,19 @@ export function IncidentCorrectiveActionModal({
     setEvidenceFiles([]);
     setClosureNotes('');
     setError(null);
-    setSelectedLinks(initialSourceCauseText
-      ? [{
-          type: (initialSourceCauseType ?? 'root_cause') as CauseLinkType,
-          text: initialSourceCauseText,
-          label: `${String(initialSourceCauseType ?? 'root_cause').replace('_', ' ')}: ${initialSourceCauseText}`
-        }]
-      : []);
+    setSelectedLinks(nextSelectedLinks);
+
+    setDraftBaselineJson(
+      JSON.stringify({
+        actionRequired: initialSourceCauseText?.slice(0, 200) || '',
+        actionDescription: initialSourceCauseText ? `Linked finding: ${initialSourceCauseText}` : '',
+        responsibleUserId: null,
+        dueDate: '',
+        status: 'Open',
+        closureNotes: '',
+        selectedLinks: nextSelectedLinks
+      } satisfies IncidentCorrectiveActionDraftPayload)
+    );
   }, [initial, open, initialSourceCauseType, initialSourceCauseText]);
 
   function handleFileUpload(files: FileList | null) {
@@ -254,6 +362,7 @@ export function IncidentCorrectiveActionModal({
       }
 
       onSaved?.();
+      clearDraft(draftKey);
       onClose();
     } catch (err: any) {
       setError(formatAuthError(err));
@@ -266,11 +375,24 @@ export function IncidentCorrectiveActionModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={() => {
+          clearDraft(draftKey);
+          onClose();
+        }}
+      />
       <div className="relative w-full max-w-2xl mx-4 my-8 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[95vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-surface-200 px-5 py-4 flex items-center justify-between z-10">
           <p className="text-sm font-semibold text-charcoal">{actionId ? 'Edit Corrective Action' : 'Create Corrective Action'}</p>
-          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
+          <button
+            type="button"
+            onClick={() => {
+              clearDraft(draftKey);
+              onClose();
+            }}
+            className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500"
+          >
             <XIcon className="w-4 h-4" />
           </button>
         </div>
@@ -399,7 +521,14 @@ export function IncidentCorrectiveActionModal({
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-surface-200">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50">
+            <button
+              type="button"
+              onClick={() => {
+                clearDraft(draftKey);
+                onClose();
+              }}
+              className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+            >
               Cancel
             </button>
             <button

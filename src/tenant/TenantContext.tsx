@@ -30,6 +30,11 @@ type TenantContextValue = {
 
 /** localStorage key for active org; shared with client error reporting. */
 export const ACTIVE_COMPANY_STORAGE_KEY = 'sca_active_company_id_v3';
+const TENANT_DEBUG = (import.meta as any)?.env?.VITE_TENANT_DEBUG === '1';
+function debugTenant(...args: unknown[]) {
+  if (!TENANT_DEBUG) return;
+  console.debug('[tenant-debug]', ...args);
+}
 const TenantContext = createContext<TenantContextValue | null>(null);
 
 function getStoredActiveCompanyId(): UUID | null {
@@ -74,22 +79,40 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [activeCompanyId, setActiveCompanyIdState] = useState<UUID | null>(getStoredActiveCompanyId());
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [isTenantLoaded, setIsTenantLoaded] = useState(false);
+  const didInitialTenantLoadRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
+  const lastTenantRefreshAtRef = useRef(0);
   /** Avoid duplicate session.workspace.active rows on periodic refresh; key = userId:companyId. */
   const workspaceSessionLoggedRef = useRef<string | null>(null);
 
   const refreshTenant = useCallback(async () => {
     if (!isLoaded) return;
+    // Prevent overlapping refreshes from focus/visibility + the 60s interval.
+    if (refreshInFlightRef.current) return;
+    const now = Date.now();
+    // After initial load, throttle rapid focus/visibility triggers.
+    if (didInitialTenantLoadRef.current && now - lastTenantRefreshAtRef.current < 5000) return;
+    refreshInFlightRef.current = true;
+    lastTenantRefreshAtRef.current = now;
     if (!user?.id) {
       setMemberships([]);
       setActiveCompanyIdState(null);
       storeActiveCompanyId(null);
       setIsPlatformAdmin(false);
       workspaceSessionLoggedRef.current = null;
+      debugTenant('setIsTenantLoaded(true) (no user)');
       setIsTenantLoaded(true);
+      didInitialTenantLoadRef.current = true;
+      refreshInFlightRef.current = false;
       return;
     }
 
-    setIsTenantLoaded(false);
+    // Only toggle the "loaded" flag during the initial boot. Background refreshes
+    // should be silent so RequireWorkspace doesn't unmount protected routes.
+    if (!didInitialTenantLoadRef.current) {
+      debugTenant('setIsTenantLoaded(false) (initial boot)');
+      setIsTenantLoaded(false);
+    }
     try {
       await ensureMeAsSuperAdmin();
       const rows = await fetchMemberships(user.id as UUID);
@@ -138,7 +161,10 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         setIsPlatformAdmin(false);
       }
     } finally {
+      debugTenant('setIsTenantLoaded(true) (tenant refreshed)');
       setIsTenantLoaded(true);
+      didInitialTenantLoadRef.current = true;
+      refreshInFlightRef.current = false;
     }
   }, [isLoaded, user?.id]);
 

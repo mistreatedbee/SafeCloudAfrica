@@ -15,6 +15,8 @@ import {
   getCorrectiveAction,
   updateCorrectiveAction
 } from '../api/services/correctiveActionsService';
+import { useDraftManager } from '../session/DraftManagerProvider';
+import { useDraftRegistration } from '../session/useDraftRegistration';
 
 type CapaSourceType = 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation' | 'complaint' | 'pjo' | 'kpi' | 'audit_finding';
 
@@ -65,6 +67,9 @@ export function CapaDetailPage() {
   const { activeCompanyId, activeRole } = useTenant();
   const editable = canManage(activeRole ?? null);
 
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `capa-form:${activeCompanyId ?? 'company'}:${capaId ?? 'new'}:${user?.id ?? 'anon'}`;
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -83,6 +88,25 @@ export function CapaDetailPage() {
     proposedSolution: '',
     evidenceUrl: '',
     managerSignoffUserId: ''
+  });
+
+  const hasDirtyDraft =
+    editable &&
+    Boolean(user?.id) &&
+    (form.title.trim().length > 0 ||
+      form.description.trim().length > 0 ||
+      form.sourceId.trim().length > 0 ||
+      form.assignedToUserId.trim().length > 0 ||
+      form.rootCause.trim().length > 0 ||
+      form.proposedSolution.trim().length > 0 ||
+      form.evidenceUrl.trim().length > 0 ||
+      form.managerSignoffUserId.trim().length > 0);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: Boolean(user?.id) && editable,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => form
   });
 
   const { data: users } = useAsync(
@@ -125,6 +149,14 @@ export function CapaDetailPage() {
     });
   }, [record]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    if (!isCreate && !record) return;
+    const restored = restoreDraft<FormState>(draftKey);
+    if (!restored) return;
+    setForm((prev) => ({ ...prev, ...restored }));
+  }, [draftKey, isCreate, record, restoreDraft, user?.id]);
+
   const canClose = Boolean(record && record.status !== 'closed' && editable && activeCompanyId && user?.id);
   const evidenceCount = evidence?.length ?? 0;
 
@@ -166,6 +198,7 @@ export function CapaDetailPage() {
           proposedSolution: form.proposedSolution.trim() || undefined,
           createdByUserId: user.id as UUID
         });
+        clearDraft(draftKey);
         navigate(`/dashboard/management/capa/${created.id}`, { replace: true });
         return;
       }
@@ -187,6 +220,7 @@ export function CapaDetailPage() {
       });
       await refresh();
       setSuccess('CAPA saved successfully.');
+      clearDraft(draftKey);
     } catch (e: any) {
       setError(e?.message ?? 'Failed to save CAPA.');
     } finally {
@@ -201,6 +235,7 @@ export function CapaDetailPage() {
     try {
       await closeCorrectiveAction(capaId as UUID, activeCompanyId, user.id as UUID);
       await refresh();
+      clearDraft(draftKey);
       setSuccess('CAPA closed successfully.');
     } catch (e: any) {
       setError(e?.message ?? 'Failed to close CAPA.');

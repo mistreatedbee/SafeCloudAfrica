@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
@@ -7,6 +7,8 @@ import { createPpeStock } from '../../api/services/ppeService';
 import { getMyProfile } from '../../api/services/profilesService';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function PpeStockCreateModal(props: {
   open: boolean;
@@ -30,6 +32,78 @@ export function PpeStockCreateModal(props: {
   const [capturedEmployeeId, setCapturedEmployeeId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  type PpeStockCreateDraft = {
+    ppeItemId: string;
+    siteId: string;
+    departmentId: string;
+    dateOrdered: string;
+    dateStockReceived: string;
+    onHandQty: string;
+    reorderLevel: string;
+    reorderQty: string;
+    expiryDate: string;
+    capturedEmployeeId: string;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `ppe-stock-create:${props.companyId}:${props.createdByUserId}`;
+
+  const hasDirtyDraft = useMemo(() => {
+    return (
+      ppeItemId.trim().length > 0 ||
+      siteId.trim().length > 0 ||
+      departmentId.trim().length > 0 ||
+      dateOrdered.trim().length > 0 ||
+      dateStockReceived.trim().length > 0 ||
+      onHandQty.trim().length > 0 ||
+      reorderLevel.trim().length > 0 ||
+      reorderQty.trim().length > 0 ||
+      expiryDate.trim().length > 0 ||
+      capturedEmployeeId.trim().length > 0
+    );
+  }, [capturedEmployeeId, dateOrdered, dateStockReceived, departmentId, expiryDate, onHandQty, ppeItemId, reorderLevel, reorderQty, siteId]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () =>
+      ({
+        ppeItemId,
+        siteId,
+        departmentId,
+        dateOrdered,
+        dateStockReceived,
+        onHandQty,
+        reorderLevel,
+        reorderQty,
+        expiryDate,
+        capturedEmployeeId
+      }) satisfies PpeStockCreateDraft
+  });
+
+  useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<PpeStockCreateDraft>(draftKey);
+    if (!restored) return;
+
+    setPpeItemId(restored.ppeItemId ?? '');
+    setSiteId(restored.siteId ?? '');
+    setDepartmentId(restored.departmentId ?? '');
+    setDateOrdered(restored.dateOrdered ?? '');
+    setDateStockReceived(restored.dateStockReceived ?? '');
+    setOnHandQty(restored.onHandQty ?? '');
+    setReorderLevel(restored.reorderLevel ?? '');
+    setReorderQty(restored.reorderQty ?? '');
+    setExpiryDate(restored.expiryDate ?? '');
+    setCapturedEmployeeId(restored.capturedEmployeeId ?? '');
+  }, [draftKey, props.open, restoreDraft]);
+
+  const closeWithDraftClear = () => {
+    clearDraft(draftKey);
+    props.onClose();
+  };
 
   const { data: myProfile } = useAsync(
     async () => {
@@ -81,6 +155,7 @@ export function PpeStockCreateModal(props: {
         expiryDate: expiryDate || null
       });
       props.onCreated?.();
+      clearDraft(draftKey);
       props.onClose();
       setPpeItemId('');
       setSiteId('');
@@ -103,11 +178,11 @@ export function PpeStockCreateModal(props: {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-3xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <p className="text-sm font-semibold text-charcoal">Add PPE Stock</p>
-          <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
+          <button type="button" onClick={closeWithDraftClear} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
             <XIcon className="w-4 h-4" />
           </button>
         </div>
@@ -269,7 +344,7 @@ export function PpeStockCreateModal(props: {
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={props.onClose}
+              onClick={closeWithDraftClear}
               className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
             >
               Cancel

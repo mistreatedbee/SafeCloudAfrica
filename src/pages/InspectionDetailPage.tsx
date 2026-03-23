@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeftIcon, CalendarIcon, ClipboardCheckIcon, CheckCircleIcon } from 'lucide-react';
 import { useUser } from '@insforge/react';
@@ -25,6 +25,8 @@ import {
   InspectionChecklistItemCard,
   InspectionChecklistItemTableRow
 } from '../components/inspections/InspectionChecklistItemViews';
+import { useDraftManager } from '../session/DraftManagerProvider';
+import { useDraftRegistration } from '../session/useDraftRegistration';
 
 type RunWithItems = { run: InspectionRun; items: InspectionRunItem[] };
 
@@ -109,12 +111,40 @@ export function InspectionDetailPage() {
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [evidenceItemId, setEvidenceItemId] = useState<string | null>(null);
 
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `inspection-detail:${activeCompanyId ?? 'company'}:${inspectionId ?? 'unknown'}:${user?.id ?? 'anon'}`;
+
   const checklistStats = useMemo(() => {
     if (!latestRun) return { total: 0, nc: 0 };
     const total = latestRun.items.length;
     const nc = latestRun.items.filter((i) => i.inspection_rating === 'NC').length;
     return { total, nc };
   }, [latestRun]);
+
+  const hasDirtyDraft = useMemo(() => {
+    if (!user?.id || !activeCompanyId || !inspectionId) return false;
+    return activeTab !== 'checklist' || evidenceOpen || evidenceItemId !== null;
+  }, [activeCompanyId, activeTab, evidenceItemId, evidenceOpen, inspectionId, user?.id]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: Boolean(user?.id) && Boolean(activeCompanyId) && Boolean(inspectionId),
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      activeTab,
+      evidenceOpen,
+      evidenceItemId
+    })
+  });
+
+  useEffect(() => {
+    if (!user?.id || !activeCompanyId || !inspectionId) return;
+    const restored = restoreDraft<{ activeTab?: 'checklist' | 'ncrs' | 'capa'; evidenceOpen?: boolean; evidenceItemId?: string | null }>(draftKey);
+    if (!restored) return;
+    setActiveTab(restored.activeTab ?? 'checklist');
+    setEvidenceOpen(Boolean(restored.evidenceOpen));
+    setEvidenceItemId(restored.evidenceItemId ?? null);
+  }, [activeCompanyId, draftKey, inspectionId, restoreDraft, user?.id]);
 
   async function handleUpdateItem(item: InspectionRunItem, patch: Record<string, unknown>) {
     if (!activeCompanyId) return;
@@ -133,6 +163,7 @@ export function InspectionDetailPage() {
     try {
       await completeInspectionRun({ companyId: activeCompanyId as UUID, runId: latestRun.run.id as UUID, actorUserId: user.id as UUID });
       await refreshRun();
+      clearDraft(draftKey);
     } finally {
       setCompletingRun(false);
     }
@@ -142,6 +173,7 @@ export function InspectionDetailPage() {
     if (!activeCompanyId || !latestRun || !user?.id) return;
     await submitAuditeeSelfAssessment({ companyId: activeCompanyId as UUID, runId: latestRun.run.id as UUID, actorUserId: user.id as UUID });
     await refreshRun();
+    clearDraft(draftKey);
   }
 
   const loading = inspectionLoading || runLoading;
@@ -350,6 +382,7 @@ export function InspectionDetailPage() {
                 onClose={() => {
                   setEvidenceOpen(false);
                   setEvidenceItemId(null);
+                  clearDraft(draftKey);
                 }}
                 companyId={activeCompanyId as UUID}
                 actorUserId={user.id as UUID}

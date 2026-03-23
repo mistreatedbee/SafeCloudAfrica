@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { JobDescription, TrainingCourse, JobTrainingRequirement, UUID } from '../../api/models/entities';
 import { listJobTrainingRequirements, setJobTrainingRequirements } from '../../api/services/trainingService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function MatrixBuilderSection(props: {
   companyId: UUID;
@@ -10,6 +12,7 @@ export function MatrixBuilderSection(props: {
   courses: TrainingCourse[];
   requirements: JobTrainingRequirement[];
   onSaved?: () => void;
+  draftKey?: string;
 }) {
   const [selectedJobId, setSelectedJobId] = useState<string>('');
   const [selectedCourseIds, setSelectedCourseIds] = useState<Set<string>>(new Set());
@@ -17,6 +20,65 @@ export function MatrixBuilderSection(props: {
   const [mandatoryByCourse, setMandatoryByCourse] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  type TrainingMatrixDraftPayload = {
+    selectedJobId: string;
+    selectedCourseIds: string[];
+    frequencyMonths: Record<string, string>;
+    mandatoryByCourse: Record<string, boolean>;
+  };
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const restoringFromDraftRef = useRef(false);
+  const draftRestoreAppliedRef = useRef(false);
+
+  const draftPayload = useMemo<TrainingMatrixDraftPayload>(
+    () => ({
+      selectedJobId,
+      selectedCourseIds: Array.from(selectedCourseIds).sort(),
+      frequencyMonths,
+      mandatoryByCourse
+    }),
+    [selectedCourseIds, selectedJobId, frequencyMonths, mandatoryByCourse]
+  );
+
+  const draftPayloadJson = useMemo(() => JSON.stringify(draftPayload), [draftPayload]);
+  const [draftBaselineJson, setDraftBaselineJson] = useState<string | null>(null);
+
+  const hasDirtyDraft = useMemo(() => {
+    if (!props.draftKey) return false;
+    if (draftBaselineJson == null) return false;
+    return draftPayloadJson !== draftBaselineJson;
+  }, [draftBaselineJson, draftPayloadJson, props.draftKey]);
+
+  useDraftRegistration({
+    key: props.draftKey ?? 'training-matrix-noop',
+    enabled: Boolean(props.draftKey),
+    isDirty: () => hasDirtyDraft,
+    serialize: () => draftPayload
+  });
+
+  useEffect(() => {
+    if (!props.draftKey) return;
+
+    // Keep baseline in sync with restored/default state so we don't overwrite on restore.
+    setDraftBaselineJson(draftPayloadJson);
+
+    const restored = restoreDraft<TrainingMatrixDraftPayload>(props.draftKey);
+    if (!restored) {
+      setDraftBaselineJson(draftPayloadJson);
+      draftRestoreAppliedRef.current = false;
+      return;
+    }
+
+    restoringFromDraftRef.current = true;
+    setSelectedJobId(restored.selectedJobId ?? '');
+    setSelectedCourseIds(new Set(restored.selectedCourseIds ?? []));
+    setFrequencyMonths(restored.frequencyMonths ?? {});
+    setMandatoryByCourse(restored.mandatoryByCourse ?? {});
+    setDraftBaselineJson(JSON.stringify(restored));
+    draftRestoreAppliedRef.current = true;
+  }, [props.draftKey, restoreDraft]);
 
   const requirementsByJob = useMemo(() => {
     const m = new Map<string, JobTrainingRequirement[]>();
@@ -31,7 +93,8 @@ export function MatrixBuilderSection(props: {
 
   const selectedJob = useMemo(() => props.jobs.find((j) => String(j.id) === selectedJobId), [props.jobs, selectedJobId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
+    if (draftRestoreAppliedRef.current) return;
     if (!selectedJobId) {
       setSelectedCourseIds(new Set());
       setFrequencyMonths({});
@@ -80,6 +143,11 @@ export function MatrixBuilderSection(props: {
           isMandatory: mandatoryByCourse[courseId] !== false
         }))
       });
+      if (props.draftKey) {
+        clearDraft(props.draftKey);
+        setDraftBaselineJson(draftPayloadJson);
+        draftRestoreAppliedRef.current = false;
+      }
       props.onSaved?.();
     } catch (err: unknown) {
       setError(formatAuthError(err));
@@ -105,7 +173,10 @@ export function MatrixBuilderSection(props: {
           <label className="block text-xs font-medium text-charcoal-500 mb-1">Job description</label>
           <select
             value={selectedJobId}
-            onChange={(e) => setSelectedJobId(e.target.value)}
+            onChange={(e) => {
+              draftRestoreAppliedRef.current = false;
+              setSelectedJobId(e.target.value);
+            }}
             className="px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal min-w-[200px]"
           >
             <option value="">Select a job</option>

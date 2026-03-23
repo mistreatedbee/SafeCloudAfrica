@@ -26,6 +26,8 @@ import { listLinkedImprovements } from '../api/services/improvementService';
 import { createEvidence } from '../api/services/evidenceService';
 import { uploadDocumentFile, downloadBlob, openBlobInNewTab } from '../api/services/documentsStorageService';
 import { listDocuments } from '../api/services/documentsService';
+import { useDraftManager } from '../session/DraftManagerProvider';
+import { useDraftRegistration } from '../session/useDraftRegistration';
 
 const ITEM_STATUS_OPTIONS: ReviewMeetingItemStatus[] = ['OUTSTANDING', 'IN_PROGRESS', 'COMPLETED'];
 
@@ -95,6 +97,9 @@ export function ReviewMeetingDetailPage() {
   const [itemSavingIndex, setItemSavingIndex] = useState<number | null>(null);
   const [signing, setSigning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `review-meeting:${activeCompanyId ?? 'company'}:${meetingId ?? 'new'}:${user?.id ?? 'anon'}`;
 
   const { data: meetingData, loading: meetingLoading } = useAsync(
     async () => {
@@ -209,6 +214,100 @@ export function ReviewMeetingDetailPage() {
         : [createEmptyItem()]
     );
   }, [meetingData]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (!isCreate && !meetingData) return;
+    const restored = restoreDraft<{
+      title?: string;
+      date?: string;
+      time?: string;
+      place?: string;
+      attendeeUserIds?: UUID[];
+      externalAttendeesText?: string;
+      emailUserIds?: UUID[];
+      emailList?: string[];
+      nextMeetingDate?: string;
+      chairpersonUserId?: UUID | '';
+      ceoApprovalRequired?: boolean;
+      autoEmailOnCreate?: boolean;
+      autoEmailOnUpdate?: boolean;
+      autoCreateTasksFromItems?: boolean;
+      items?: FormItem[];
+      statusLabel?: 'DRAFT' | 'ACTIVE' | 'SIGNED' | 'ARCHIVED';
+      meetingStatus?: 'DRAFT' | 'ACTIVE' | 'SIGNED' | 'ARCHIVED';
+      signatureStatus?: 'SIGNED' | 'NOT_SIGNED';
+      isLocked?: boolean;
+    }>(draftKey);
+
+    if (!restored) return;
+    if (typeof restored.title === 'string') setTitle(restored.title);
+    if (typeof restored.date === 'string') setDate(restored.date);
+    if (typeof restored.time === 'string') setTime(restored.time);
+    if (typeof restored.place === 'string') setPlace(restored.place);
+    if (Array.isArray(restored.attendeeUserIds)) setAttendeeUserIds(restored.attendeeUserIds);
+    if (typeof restored.externalAttendeesText === 'string') setExternalAttendeesText(restored.externalAttendeesText);
+    if (Array.isArray(restored.emailList)) setEmailList(restored.emailList);
+    if (Array.isArray(restored.emailUserIds)) setEmailUserIds(restored.emailUserIds);
+    if (typeof restored.nextMeetingDate === 'string') setNextMeetingDate(restored.nextMeetingDate);
+    if (restored.chairpersonUserId !== undefined) setChairpersonUserId(restored.chairpersonUserId);
+    if (typeof restored.ceoApprovalRequired === 'boolean') setCeoApprovalRequired(restored.ceoApprovalRequired);
+    if (typeof restored.autoEmailOnCreate === 'boolean') setAutoEmailOnCreate(restored.autoEmailOnCreate);
+    if (typeof restored.autoEmailOnUpdate === 'boolean') setAutoEmailOnUpdate(restored.autoEmailOnUpdate);
+    if (typeof restored.autoCreateTasksFromItems === 'boolean') setAutoCreateTasksFromItems(restored.autoCreateTasksFromItems);
+    if (Array.isArray(restored.items) && restored.items.length > 0) setItems(restored.items);
+    if (restored.statusLabel) setStatusLabel(restored.statusLabel);
+    if (restored.meetingStatus) setMeetingStatus(restored.meetingStatus);
+    if (restored.signatureStatus) setSignatureStatus(restored.signatureStatus);
+    if (typeof restored.isLocked === 'boolean') setIsLocked(restored.isLocked);
+  }, [
+    draftKey,
+    isCreate,
+    meetingData,
+    restoreDraft,
+    user?.id
+  ]);
+
+  const hasDirtyDraft =
+    Boolean(user?.id) &&
+    !isLocked &&
+    (date.trim().length > 0 ||
+      time.trim().length > 0 ||
+      place.trim().length > 0 ||
+      attendeeUserIds.length > 0 ||
+      externalAttendeesText.trim().length > 0 ||
+      emailList.length > 0 ||
+      nextMeetingDate.trim().length > 0 ||
+      String(chairpersonUserId).trim().length > 0 ||
+      ceoApprovalRequired ||
+      items.some((it) => it.reviewItem.trim().length > 0 || it.actionRequired.trim().length > 0 || it.discussionNotes.trim().length > 0 || it.draftUpdateNote.trim().length > 0));
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: Boolean(user?.id) && !isLocked,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      title,
+      date,
+      time,
+      place,
+      attendeeUserIds,
+      externalAttendeesText,
+      emailUserIds,
+      emailList,
+      nextMeetingDate,
+      chairpersonUserId,
+      ceoApprovalRequired,
+      autoEmailOnCreate,
+      autoEmailOnUpdate,
+      autoCreateTasksFromItems,
+      items,
+      statusLabel,
+      meetingStatus,
+      signatureStatus,
+      isLocked
+    })
+  });
 
   const viewer = useMemo(() => {
     if (!user?.id || !activeRole || !activeCompanyId) return null;
@@ -332,6 +431,7 @@ export function ReviewMeetingDetailPage() {
       };
       if (isCreate || !meetingId) {
         const created = await createReviewMeeting(payload);
+        clearDraft(draftKey);
         navigate(`/document-reviews/${created.meeting.id}`);
       } else {
         const updated = await updateReviewMeeting({ ...payload, meetingId: meetingId as UUID });
@@ -363,6 +463,7 @@ export function ReviewMeetingDetailPage() {
           }))
         );
         alert('Review meeting updated.');
+        clearDraft(draftKey);
         await refreshLinkedImprovements();
       }
     } catch (err: any) {

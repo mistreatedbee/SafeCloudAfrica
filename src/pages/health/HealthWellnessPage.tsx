@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
@@ -15,6 +15,8 @@ import { SelectOrType } from '../../components/ui/SelectOrType';
 import { getMergedOptions } from '../../api/services/dynamicOptionsService';
 import type { CompanyRole } from '../../api/models/core';
 import type { OptionItem } from '../../api/services/dynamicOptionsService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const tabs = ['Programmes/Campaigns', 'Substance Abuse Tracking', 'Vaccination Records'] as const;
 type TabKey = (typeof tabs)[number];
@@ -50,6 +52,101 @@ export function HealthWellnessPage() {
     nextDueDate: '',
     validity: ''
   });
+  const { restoreDraft, clearDraft } = useDraftManager();
+
+  type SubstanceDraft = {
+    substanceForm: typeof substanceForm;
+    substanceManual: string;
+  };
+
+  type VaccinationDraft = {
+    vaccineName: string;
+    vaccinationForm: typeof vaccinationForm;
+  };
+
+  const draftKeySubstance = `health-wellness-substance:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}`;
+  const draftKeyVaccination = `health-wellness-vaccination:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}`;
+
+  const [substanceBaseline, setSubstanceBaseline] = useState<SubstanceDraft>(() => ({
+    substanceForm: {
+      ...substanceForm,
+      substanceSuspected: [...substanceForm.substanceSuspected]
+    },
+    substanceManual
+  }));
+
+  const [vaccinationBaseline, setVaccinationBaseline] = useState<VaccinationDraft>(() => ({
+    vaccineName,
+    vaccinationForm: { ...vaccinationForm }
+  }));
+
+  const hasDirtySubstanceDraft = useMemo(() => {
+    return JSON.stringify({ substanceForm, substanceManual }) !== JSON.stringify(substanceBaseline);
+  }, [substanceBaseline, substanceForm, substanceManual]);
+
+  const hasDirtyVaccinationDraft = useMemo(() => {
+    return JSON.stringify({ vaccineName, vaccinationForm }) !== JSON.stringify(vaccinationBaseline);
+  }, [vaccinationBaseline, vaccineName, vaccinationForm]);
+
+  useDraftRegistration({
+    key: draftKeySubstance,
+    enabled: tab === 'Substance Abuse Tracking' && Boolean(activeCompanyId && user?.id),
+    isDirty: () => hasDirtySubstanceDraft,
+    serialize: () =>
+      ({
+        substanceForm,
+        substanceManual
+      }) satisfies SubstanceDraft
+  });
+
+  useDraftRegistration({
+    key: draftKeyVaccination,
+    enabled: tab === 'Vaccination Records' && Boolean(activeCompanyId && user?.id),
+    isDirty: () => hasDirtyVaccinationDraft,
+    serialize: () =>
+      ({
+        vaccineName,
+        vaccinationForm
+      }) satisfies VaccinationDraft
+  });
+
+  useEffect(() => {
+    if (tab !== 'Substance Abuse Tracking') return;
+    if (!activeCompanyId || !user?.id) return;
+    const restored = restoreDraft<SubstanceDraft>(draftKeySubstance);
+    if (!restored) return;
+
+    setSubstanceForm((s) => ({
+      ...s,
+      ...(restored.substanceForm ?? {}),
+      substanceSuspected: Array.isArray(restored.substanceForm?.substanceSuspected)
+        ? restored.substanceForm.substanceSuspected
+        : s.substanceSuspected
+    }));
+    setSubstanceManual(restored.substanceManual ?? '');
+    setSubstanceBaseline({
+      substanceForm: {
+        ...substanceForm,
+        ...(restored.substanceForm ?? {}),
+        substanceSuspected: Array.isArray(restored.substanceForm?.substanceSuspected) ? restored.substanceForm.substanceSuspected : []
+      },
+      substanceManual: restored.substanceManual ?? ''
+    });
+  }, [activeCompanyId, draftKeySubstance, restoreDraft, tab, user?.id]);
+
+  useEffect(() => {
+    if (tab !== 'Vaccination Records') return;
+    if (!activeCompanyId || !user?.id) return;
+    const restored = restoreDraft<VaccinationDraft>(draftKeyVaccination);
+    if (!restored) return;
+
+    setVaccineName(restored.vaccineName ?? '');
+    setVaccinationForm((s) => ({ ...s, ...(restored.vaccinationForm ?? {}) }));
+    setVaccinationBaseline({
+      vaccineName: restored.vaccineName ?? '',
+      vaccinationForm: { ...(restored.vaccinationForm ?? {}) }
+    });
+  }, [activeCompanyId, draftKeyVaccination, restoreDraft, tab, user?.id]);
 
   useEffect(() => {
     async function loadOptions() {
@@ -103,6 +200,14 @@ export function HealthWellnessPage() {
       actorIsHrManager: activeMembership?.is_hr_manager === true
     });
     setRefreshKey((k) => k + 1);
+    setSubstanceBaseline({
+      substanceForm: {
+        ...substanceForm,
+        substanceSuspected: [...substanceForm.substanceSuspected]
+      },
+      substanceManual
+    });
+    clearDraft(draftKeySubstance);
   }
 
   async function submitVaccination(e: React.FormEvent) {
@@ -121,6 +226,11 @@ export function HealthWellnessPage() {
       createdByUserId: user.id
     });
     setRefreshKey((k) => k + 1);
+    setVaccinationBaseline({
+      vaccineName,
+      vaccinationForm: { ...vaccinationForm }
+    });
+    clearDraft(draftKeyVaccination);
   }
 
   return (
