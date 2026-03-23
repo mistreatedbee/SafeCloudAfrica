@@ -27,7 +27,15 @@ export function AuthSessionListener() {
         sessionStorage.removeItem(USER_SIGNED_OUT_KEY);
       } else {
         sessionStorage.setItem(SESSION_EXPIRED_KEY, '1');
-        sessionStorage.setItem(SESSION_EXPIRED_MESSAGE_KEY, 'Your session expired due to inactivity. Please log in again.');
+        // Preserve any more specific message already set by SessionManagerProvider.
+        // This prevents refresh-failure from being shown as an inactivity expiration.
+        const existingMessage = sessionStorage.getItem(SESSION_EXPIRED_MESSAGE_KEY);
+        if (!existingMessage) {
+          sessionStorage.setItem(
+            SESSION_EXPIRED_MESSAGE_KEY,
+            'Your session expired due to inactivity. Please log in again.'
+          );
+        }
       }
     }
   }, [isLoaded, isSignedIn]);

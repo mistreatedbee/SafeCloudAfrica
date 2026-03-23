@@ -8,9 +8,10 @@ import { useDraftManager } from './DraftManagerProvider';
 const WARNING_TIMEOUT_MS = 45 * 60 * 1000;
 const LOGOUT_TIMEOUT_MS = 60 * 60 * 1000;
 const CHECK_INTERVAL_MS = 15 * 1000;
-const REFRESH_LEEWAY_MS = 3 * 60 * 1000;
+const REFRESH_LEEWAY_MS = 5 * 60 * 1000;
 const REFRESH_RETRY_MS = 12 * 1000;
 const MAX_REFRESH_RETRIES = 2;
+const EXPIRES_PARSE_THROTTLE_MS = 5 * 60 * 1000;
 const SESSION_DEBUG = (import.meta as any)?.env?.VITE_SESSION_DEBUG === '1';
 function debugSession(...args: unknown[]) {
   if (!SESSION_DEBUG) return;
@@ -30,7 +31,10 @@ function decodeTokenExpiryMs(token: string | null | undefined): number | null {
   try {
     const [, payload] = token.split('.');
     if (!payload) return null;
-    const parsed = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number };
+    // JWT uses base64url encoding, which may omit '=' padding; `atob` expects padded base64.
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
+    const parsed = JSON.parse(atob(padded)) as { exp?: number };
     if (!parsed.exp) return null;
     return parsed.exp * 1000;
   } catch {
@@ -48,6 +52,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   const lastActivityRef = useRef<number>(Date.now());
   const refreshInFlightRef = useRef(false);
   const refreshRetryCountRef = useRef(0);
+  const lastExpiresParseFallbackAttemptRef = useRef<number>(0);
 
   const registerActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -63,7 +68,11 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     });
     try {
       sessionStorage.setItem(SESSION_EXPIRED_KEY, '1');
-      sessionStorage.setItem(SESSION_EXPIRED_MESSAGE_KEY, 'Your session expired due to inactivity. Please log in again.');
+      const message =
+        reason === 'inactivity'
+          ? 'Your session expired due to inactivity. Please log in again.'
+          : 'Your session expired. Please log in again.';
+      sessionStorage.setItem(SESSION_EXPIRED_MESSAGE_KEY, message);
       sessionStorage.removeItem(USER_SIGNED_OUT_KEY);
     } catch {
       // ignore storage access errors
@@ -89,12 +98,22 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       lastKnownToken = token;
       lastKnownExpiresAtMs = decodeTokenExpiryMs(token);
       const now = Date.now();
-      if (!lastKnownExpiresAtMs || lastKnownExpiresAtMs - now > REFRESH_LEEWAY_MS) {
+      if (lastKnownExpiresAtMs && lastKnownExpiresAtMs - now > REFRESH_LEEWAY_MS) {
         refreshRetryCountRef.current = 0;
         return true;
       }
       const authApi = insforge.auth as any;
       if (typeof authApi.refreshSession === 'function') {
+        // If we cannot parse the JWT expiry, we can't reliably know if it's safe to wait.
+        // Use a conservative throttle to keep refreshes silent and not overly frequent.
+        if (!lastKnownExpiresAtMs) {
+          const sinceLast = now - lastExpiresParseFallbackAttemptRef.current;
+          if (sinceLast < EXPIRES_PARSE_THROTTLE_MS) {
+            refreshRetryCountRef.current = 0;
+            return true;
+          }
+          lastExpiresParseFallbackAttemptRef.current = now;
+        }
         try {
           const refreshed = await authApi.refreshSession();
           const refreshedToken = refreshed?.data?.session?.accessToken ?? null;
@@ -121,6 +140,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
 
       // Fallback path if SDK only supports getCurrentSession auto-refresh internally.
       if (token) {
+        // If we can't decode expiry, prefer to rely on SDK behavior rather than forcing logout.
         const tokenStillValid = !lastKnownExpiresAtMs || lastKnownExpiresAtMs > Date.now();
         insforge.getHttpClient().setAuthToken(token);
         refreshRetryCountRef.current = tokenStillValid ? 0 : (refreshRetryCountRef.current + 1);
