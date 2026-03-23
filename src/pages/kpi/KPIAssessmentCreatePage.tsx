@@ -11,6 +11,8 @@ import { mapKpiTemplateItemToFormRow } from '../../api/services/kpiTemplateMappe
 import type { Department, KPIItem, KpiAssessmentType, KpiImportance, KpiPeriodType } from '../../api/models/entities';
 import type { UUID } from '../../api/models/core';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type QuestionnaireInput = {
   kpiItemId: UUID | null;
@@ -40,6 +42,8 @@ export function KPIAssessmentCreatePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `kpi-assessment-create:${user?.id ?? 'anon'}:${activeCompanyId ?? 'company'}`;
 
   const canCreate = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
 
@@ -81,6 +85,58 @@ export function KPIAssessmentCreatePage() {
       return next;
     });
   };
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: true,
+    isDirty: () => assessmentName.trim().length > 0 || questionnaires.some((q) => q.kpiQuestionnaire.trim().length > 0),
+    serialize: () => ({
+      assessmentName,
+      assessmentType,
+      employeeId,
+      employeeNameSnapshot,
+      managerId,
+      managerNameSnapshot,
+      departmentId,
+      projectName,
+      periodType,
+      periodStartDate,
+      periodEndDate,
+      questionnaires
+    })
+  });
+
+  React.useEffect(() => {
+    const restored = restoreDraft<{
+      assessmentName?: string;
+      assessmentType?: KpiAssessmentType;
+      employeeId?: UUID | '';
+      employeeNameSnapshot?: string;
+      managerId?: UUID | '';
+      managerNameSnapshot?: string;
+      departmentId?: UUID | '';
+      projectName?: string;
+      periodType?: KpiPeriodType;
+      periodStartDate?: string;
+      periodEndDate?: string;
+      questionnaires?: QuestionnaireInput[];
+    }>(draftKey);
+    if (!restored) return;
+    if (restored.assessmentName) setAssessmentName(restored.assessmentName);
+    if (restored.assessmentType) setAssessmentType(restored.assessmentType);
+    if (restored.employeeId !== undefined) setEmployeeId(restored.employeeId);
+    if (restored.employeeNameSnapshot) setEmployeeNameSnapshot(restored.employeeNameSnapshot);
+    if (restored.managerId !== undefined) setManagerId(restored.managerId);
+    if (restored.managerNameSnapshot) setManagerNameSnapshot(restored.managerNameSnapshot);
+    if (restored.departmentId !== undefined) setDepartmentId(restored.departmentId);
+    if (restored.projectName) setProjectName(restored.projectName);
+    if (restored.periodType) setPeriodType(restored.periodType);
+    if (restored.periodStartDate) setPeriodStartDate(restored.periodStartDate);
+    if (restored.periodEndDate) setPeriodEndDate(restored.periodEndDate);
+    if (Array.isArray(restored.questionnaires) && restored.questionnaires.length > 0) {
+      setQuestionnaires(restored.questionnaires);
+    }
+  }, [draftKey, restoreDraft]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,6 +197,7 @@ export function KPIAssessmentCreatePage() {
         questionnaires: questionnairePayload
       });
       setSuccessMessage('KPI Assessment saved successfully. Redirecting...');
+      clearDraft(draftKey);
       setTimeout(() => navigate(`/modules/hr/kpis/assessments/${created.assessment_id}`), 300);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to create KPI Assessment.');

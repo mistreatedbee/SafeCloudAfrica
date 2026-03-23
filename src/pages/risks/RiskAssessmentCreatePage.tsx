@@ -16,6 +16,8 @@ import {
 import { uploadFile } from '../../api/services/storageService';
 import { columnsForType, defaultHeaderForType, typeLabel } from './riskTemplates';
 import { RiskAssessmentRowsEditor } from '../../components/risks/RiskAssessmentRowsEditor';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type DraftRow = {
   localId: string;
@@ -97,6 +99,8 @@ export function RiskAssessmentCreatePage() {
   const [baselineFile, setBaselineFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `risk-assessment-create:${user?.id ?? 'anon'}:${type}`;
 
   useEffect(() => {
     const t = normalizeType(searchParams.get('type'));
@@ -109,7 +113,28 @@ export function RiskAssessmentCreatePage() {
     setRows((prev) => prev.map((r) => recalc(r)));
   }, [type]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    const restored = restoreDraft<{ header: Record<string, string>; rows: DraftRow[]; docUrl: string }>(draftKey);
+    if (!restored) return;
+    if (Object.keys(restored.header ?? {}).length > 0) setHeader(restored.header);
+    if (Array.isArray(restored.rows) && restored.rows.length > 0) setRows(restored.rows);
+    if (typeof restored.docUrl === 'string') setDocUrl(restored.docUrl);
+  }, [draftKey, restoreDraft, user?.id]);
+
   const columns = useMemo(() => columnsForType(type), [type]);
+  const hasDirtyDraft = useMemo(() => {
+    if ((header.title ?? '').trim()) return true;
+    if ((docUrl ?? '').trim()) return true;
+    return rows.some((r) => Object.keys(r.json_data ?? {}).length > 0);
+  }, [docUrl, header.title, rows]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: Boolean(user?.id),
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({ header, rows, docUrl })
+  });
 
   function recalc(row: DraftRow): DraftRow {
     let severity = row.severity;
@@ -237,6 +262,7 @@ export function RiskAssessmentCreatePage() {
       }
 
       navigate(`/risk-assessments/${created.id}`);
+      clearDraft(draftKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create assessment');
     } finally {

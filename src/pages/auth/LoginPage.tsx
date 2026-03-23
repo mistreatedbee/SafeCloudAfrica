@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SignIn, useAuth, useUser } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
-import { SESSION_EXPIRED_KEY } from '../../auth/AuthSessionListener';
+import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY } from '../../auth/AuthSessionListener';
 import { formatAuthError } from '../../auth/authMessages';
 import { recoverAuthState } from '../../auth/recoverAuthState';
 import { useTenant } from '../../tenant/TenantContext';
@@ -34,23 +34,26 @@ export function LoginPage() {
   const [redirecting, setRedirecting] = useState(false);
   const [redirectError, setRedirectError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [sessionExpired] = useState(() => {
+  const [sessionExpiredMessage] = useState(() => {
     try {
-      return typeof sessionStorage !== 'undefined' && sessionStorage.getItem(SESSION_EXPIRED_KEY) === '1';
+      if (typeof sessionStorage === 'undefined') return null;
+      if (sessionStorage.getItem(SESSION_EXPIRED_KEY) !== '1') return null;
+      return sessionStorage.getItem(SESSION_EXPIRED_MESSAGE_KEY) || 'Your session expired due to inactivity. Please log in again.';
     } catch {
-      return false;
+      return null;
     }
   });
 
   useEffect(() => {
-    if (sessionExpired) {
+    if (sessionExpiredMessage) {
       try {
         sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+        sessionStorage.removeItem(SESSION_EXPIRED_MESSAGE_KEY);
       } catch {
         // ignore
       }
     }
-  }, [sessionExpired]);
+  }, [sessionExpiredMessage]);
 
   const redirectParam = searchParams.get('redirect');
 
@@ -118,9 +121,9 @@ export function LoginPage() {
       subtitle="Enter your email and password below to access your company workspace."
       sideTitle="Safe Cloud Africa"
     >
-      {sessionExpired && (
+      {sessionExpiredMessage && (
         <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
-          Your session expired. Please sign in again.
+          {sessionExpiredMessage}
         </div>
       )}
       {activated && (

@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useAuth } from '@insforge/react';
 
 const SESSION_EXPIRED_KEY = 'sca_session_expired';
+const SESSION_EXPIRED_MESSAGE_KEY = 'sca_session_expired_message';
 const USER_SIGNED_OUT_KEY = 'sca_user_signed_out';
 
 /**
@@ -26,6 +27,7 @@ export function AuthSessionListener() {
         sessionStorage.removeItem(USER_SIGNED_OUT_KEY);
       } else {
         sessionStorage.setItem(SESSION_EXPIRED_KEY, '1');
+        sessionStorage.setItem(SESSION_EXPIRED_MESSAGE_KEY, 'Your session expired due to inactivity. Please log in again.');
       }
     }
   }, [isLoaded, isSignedIn]);
@@ -33,4 +35,4 @@ export function AuthSessionListener() {
   return null;
 }
 
-export { SESSION_EXPIRED_KEY, USER_SIGNED_OUT_KEY };
+export { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY, USER_SIGNED_OUT_KEY };

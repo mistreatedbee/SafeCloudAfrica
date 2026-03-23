@@ -6,7 +6,7 @@ import { USER_SIGNED_OUT_KEY } from './AuthSessionListener';
 type SignOutFn = ReturnType<typeof useAuth>['signOut'];
 
 const LOCAL_KEYS_TO_CLEAR = ['sca_session_v1', 'sca_active_company_id_v3'];
-const SESSION_KEYS_TO_CLEAR = ['sca_session_expired', USER_SIGNED_OUT_KEY];
+const SESSION_KEYS_TO_CLEAR = ['sca_session_expired', 'sca_session_expired_message', USER_SIGNED_OUT_KEY];
 
 function clearStorage(): void {
   try {

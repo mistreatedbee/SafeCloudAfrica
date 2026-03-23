@@ -17,6 +17,8 @@ import {
 import { uploadFile } from '../../api/services/storageService';
 import { columnsForType, typeLabel } from './riskTemplates';
 import { RiskAssessmentRowsEditor } from '../../components/risks/RiskAssessmentRowsEditor';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type DraftRow = {
   localId: string;
@@ -109,6 +111,8 @@ export function RiskAssessmentEditPage() {
   const [docUrl, setDocUrl] = useState('');
   const [baselineFile, setBaselineFile] = useState<File | null>(null);
   const [rows, setRows] = useState<DraftRow[]>([]);
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `risk-assessment-edit:${id ?? 'unknown'}:${user?.id ?? 'anon'}`;
 
   const columns = useMemo(() => columnsForType(type), [type]);
 
@@ -181,6 +185,16 @@ export function RiskAssessmentEditPage() {
       }
     })();
   }, [activeCompanyId, activeRole, id, user?.id]);
+
+  useEffect(() => {
+    if (!loaded || !user?.id) return;
+    const restored = restoreDraft<{ header: Record<string, string>; rows: DraftRow[]; docUrl: string; status: RiskAssessmentStatus }>(draftKey);
+    if (!restored) return;
+    if (Object.keys(restored.header ?? {}).length > 0) setHeader(restored.header);
+    if (Array.isArray(restored.rows) && restored.rows.length > 0) setRows(restored.rows);
+    if (typeof restored.docUrl === 'string') setDocUrl(restored.docUrl);
+    if (restored.status) setStatus(restored.status);
+  }, [draftKey, loaded, restoreDraft, user?.id]);
 
   function updateRow(rowId: string, patch: Partial<DraftRow>) {
     setRows((prev) => prev.map((r) => (r.localId !== rowId ? r : recalcForType({ ...r, ...patch }, type))));
@@ -308,6 +322,7 @@ export function RiskAssessmentEditPage() {
         });
       }
 
+      clearDraft(draftKey);
       navigate(`/risk-assessments/${id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save assessment');
@@ -317,6 +332,18 @@ export function RiskAssessmentEditPage() {
   }
 
   const readOnly = status === 'closed';
+  const hasDirtyDraft = useMemo(() => {
+    if ((header.title ?? '').trim()) return true;
+    if ((docUrl ?? '').trim()) return true;
+    return rows.some((r) => Object.keys(r.json_data ?? {}).length > 0);
+  }, [docUrl, header.title, rows]);
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: Boolean(user?.id) && !readOnly,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({ header, rows, docUrl, status })
+  });
 
   if (!loaded) {
     return (

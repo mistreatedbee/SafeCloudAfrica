@@ -25,6 +25,8 @@ import { uploadFile } from '../../api/services/storageService';
 import { AffectedPersonSelector } from './AffectedPersonSelector';
 import type { TimelineEvent } from './IncidentTimelineBuilder';
 import { UserMultiSelect } from '../ui/UserMultiSelect';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const EVIDENCE_BUCKET = 'sca-evidence';
 
@@ -159,6 +161,8 @@ export function IncidentCreateModal(props: {
 }) {
   const editingIncident = props.incident ?? null;
   const isEditing = Boolean(editingIncident);
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `incident-modal:${props.companyId}:${editingIncident?.id ?? 'new'}`;
   const [module, setModule] = useState<ModuleKey>(props.defaultModule ?? 'safety');
   const [incidentTypeSelections, setIncidentTypeSelections] = useState<Record<string, boolean>>(
     Object.fromEntries(INCIDENT_TYPES.map((t) => [t, false]))
@@ -288,6 +292,33 @@ export function IncidentCreateModal(props: {
       reportedTo.trim().length > 0
     );
   }, [title, briefDescription, finalIncidentType, allSelectedSubcategories, natureOfIncident, causeOfIncident, reportedBy, reportedTo]);
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      !loading &&
+      (title.trim().length > 0 ||
+        briefDescription.trim().length > 0 ||
+        location.trim().length > 0 ||
+        natureOfIncident.trim().length > 0 ||
+        causeOfIncident.trim().length > 0),
+    [briefDescription, causeOfIncident, loading, location, natureOfIncident, props.open, title]
+  );
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open && !isEditing,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      title,
+      briefDescription,
+      location,
+      natureOfIncident,
+      causeOfIncident,
+      reportedBy,
+      reportedTo,
+      occurredAtInput
+    })
+  });
 
   function releasePreviews(items: UploadDraft[]) {
     for (const item of items) {
@@ -361,7 +392,27 @@ export function IncidentCreateModal(props: {
   useEffect(() => {
     if (!props.open) return;
     if (!editingIncident) {
+      const restored = restoreDraft<{
+        title?: string;
+        briefDescription?: string;
+        location?: string;
+        natureOfIncident?: string;
+        causeOfIncident?: string;
+        reportedBy?: string;
+        reportedTo?: string;
+        occurredAtInput?: string;
+      }>(draftKey);
       resetForm();
+      if (restored) {
+        setTitle(restored.title ?? '');
+        setBriefDescription(restored.briefDescription ?? '');
+        setLocation(restored.location ?? '');
+        setNatureOfIncident(restored.natureOfIncident ?? '');
+        setCauseOfIncident(restored.causeOfIncident ?? '');
+        setReportedBy(restored.reportedBy ?? '');
+        setReportedTo(restored.reportedTo ?? '');
+        if (restored.occurredAtInput) setOccurredAtInput(restored.occurredAtInput);
+      }
       return;
     }
     releasePreviews(evidenceUploads);
@@ -508,7 +559,7 @@ export function IncidentCreateModal(props: {
     setInvestigationUploads([]);
     setError(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.open, editingIncident?.id]);
+  }, [draftKey, props.open, editingIncident?.id, restoreDraft]);
 
   useEffect(() => {
     if (!props.open || !editingIncident?.id) return;
@@ -889,6 +940,7 @@ export function IncidentCreateModal(props: {
           });
         }
         props.onUpdated?.(updated);
+        clearDraft(draftKey);
       } else {
         const incident = await createIncident({
           companyId: props.companyId,
@@ -979,6 +1031,7 @@ export function IncidentCreateModal(props: {
           });
         }
         props.onCreated?.();
+        clearDraft(draftKey);
       }
       props.onClose();
       resetForm();

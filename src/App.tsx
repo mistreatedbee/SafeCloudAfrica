@@ -13,6 +13,8 @@ import { RequireHealthMedicalAccess } from './auth/RequireHealthMedicalAccess';
 import { OwnerOnboardingGate } from './auth/OwnerOnboardingGate';
 import { AuthSessionListener } from './auth/AuthSessionListener';
 import { TenantProvider } from './tenant/TenantContext';
+import { DraftManagerProvider } from './session/DraftManagerProvider';
+import { SessionManagerProvider } from './session/SessionManagerProvider';
 import { AppDashboardRedirect } from './components/AppDashboardRedirect';
 import { RouteSuspenseFallback } from './components/ui/RouteSuspenseFallback';
 import {
@@ -133,9 +135,11 @@ import { SELLABLE_FEATURE_ROUTE_PATHS } from './api/services/sellableFeaturesSer
 export function App() {
   return (
     <BrowserRouter>
-      <TenantProvider>
-        <AuthSessionListener />
-        <Suspense fallback={<RouteSuspenseFallback />}>
+      <DraftManagerProvider>
+        <SessionManagerProvider>
+          <TenantProvider>
+            <AuthSessionListener />
+            <Suspense fallback={<RouteSuspenseFallback />}>
         <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
@@ -1804,9 +1808,11 @@ export function App() {
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        </Suspense>
-      </TenantProvider>
+            </Routes>
+            </Suspense>
+          </TenantProvider>
+        </SessionManagerProvider>
+      </DraftManagerProvider>
     </BrowserRouter>);
 
 }

@@ -130,8 +130,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch {
-      // Ensure we don't stay in loading state forever (e.g. network/RLS errors)
-      setMemberships([]);
+      // Preserve existing memberships on transient failures to avoid redirect churn.
       try {
         const dbIsAdmin = await checkPlatformAdmin(user.id as UUID);
         setIsPlatformAdmin(dbIsAdmin);
@@ -147,14 +146,13 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     void refreshTenant();
   }, [refreshTenant]);
 
-  // Lightweight periodic refresh so Super Admin toggles reflect quickly on org dashboards
-  // without requiring a full page reload.
+  // Periodic refresh keeps tenant state current without route disruption.
   useEffect(() => {
     if (!user?.id) return;
     const interval = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       void refreshTenant();
-    }, 15000);
+    }, 60000);
     const onVisibility = () => {
       if (document.visibilityState === 'visible') void refreshTenant();
     };

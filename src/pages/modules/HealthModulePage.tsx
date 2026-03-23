@@ -5,6 +5,7 @@ import { Layout } from '../../components/layout/Layout';
 import { ComplianceScore } from '../../components/ui/ComplianceScore';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
+import { useNavigate } from 'react-router-dom';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listModuleTargets } from '../../api/services/moduleTargetsService';
 import { countIncidentsByStatusForModule } from '../../api/services/incidentsService';
@@ -21,6 +22,7 @@ const containerVariants = {
 const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
 
 export function HealthModulePage() {
+  const navigate = useNavigate();
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -173,7 +175,7 @@ export function HealthModulePage() {
             </p>
             <button
               type="button"
-              onClick={() => (window.location.href = '/training')}
+              onClick={() => navigate('/training')}
               className="mt-4 text-sm font-medium text-teal hover:text-teal-700 transition-colors"
             >
               Manage training →
@@ -189,7 +191,7 @@ export function HealthModulePage() {
             </p>
             <button
               type="button"
-              onClick={() => (window.location.href = '/incidents')}
+              onClick={() => navigate('/incidents')}
               className="mt-4 text-sm font-medium text-teal hover:text-teal-700 transition-colors"
             >
               View incidents →

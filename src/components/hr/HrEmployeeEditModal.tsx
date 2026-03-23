@@ -9,6 +9,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { listDepartments } from '../../api/services/departmentsService';
 import { listSites } from '../../api/services/sitesService';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type Props = {
   open: boolean;
@@ -49,6 +51,8 @@ function maskAccountNumber(value: string | null | undefined): string {
 export function HrEmployeeEditModal(props: Props) {
   const { employee } = props;
   const sd = props.initialSensitiveDetails ?? null;
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `hr-employee-edit:${props.employee.id}:${props.actorUserId}`;
 
   const [firstName, setFirstName] = useState(employee.first_name ?? '');
   const [lastName, setLastName] = useState(employee.last_name ?? '');
@@ -128,6 +132,51 @@ export function HrEmployeeEditModal(props: Props) {
     return null;
   }, [dependents, props.canAccessSensitiveFields]);
 
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (firstName.trim().length > 0 ||
+        lastName.trim().length > 0 ||
+        employeeNo.trim().length > 0 ||
+        email.trim().length > 0 ||
+        phone.trim().length > 0),
+    [email, employeeNo, firstName, lastName, phone, props.open]
+  );
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      firstName,
+      lastName,
+      employeeNo,
+      email,
+      phone,
+      jobTitle
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      firstName?: string;
+      lastName?: string;
+      employeeNo?: string;
+      email?: string;
+      phone?: string;
+      jobTitle?: string;
+    }>(draftKey);
+    if (!restored) return;
+    setFirstName(restored.firstName ?? firstName);
+    setLastName(restored.lastName ?? lastName);
+    setEmployeeNo(restored.employeeNo ?? employeeNo);
+    setEmail(restored.email ?? email);
+    setPhone(restored.phone ?? phone);
+    setJobTitle(restored.jobTitle ?? jobTitle);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey, props.open, restoreDraft]);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || loading) return;
@@ -203,6 +252,7 @@ export function HrEmployeeEditModal(props: Props) {
       }
 
       props.onSaved?.();
+      clearDraft(draftKey);
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

@@ -14,6 +14,8 @@ import {
   LEGAL_UPDATE_COMPLETION_OPTIONS,
   updateLegalUpdate
 } from '../api/services/legalRequirementsService';
+import { useDraftManager } from '../session/DraftManagerProvider';
+import { useDraftRegistration } from '../session/useDraftRegistration';
 
 function canWrite(role: CompanyRole | null): boolean {
   return role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor' || role === 'consultant';
@@ -55,6 +57,8 @@ export function LegalRequirementDetailPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [updateForm, setUpdateForm] = useState<UpdateForm>(DEFAULT_UPDATE_FORM);
   const [closingUpdateId, setClosingUpdateId] = useState<string | null>(null);
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `legal-update-form:${requirementId ?? 'unknown'}:${user?.id ?? 'anon'}`;
 
   const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
   const { data, loading, error, refresh } = useAsync(
@@ -72,6 +76,19 @@ export function LegalRequirementDetailPage() {
   }, [profiles]);
 
   const userOptions = (profiles ?? []).map((p) => ({ id: p.user_id, label: p.full_name || p.email || p.user_id }));
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: writable,
+    isDirty: () => Object.values(updateForm).some((value) => String(value ?? '').trim().length > 0),
+    serialize: () => updateForm
+  });
+
+  React.useEffect(() => {
+    const restored = restoreDraft<UpdateForm>(draftKey);
+    if (!restored) return;
+    setUpdateForm((prev) => ({ ...prev, ...restored }));
+  }, [draftKey, restoreDraft]);
 
   if (!requirementId) {
     return (
@@ -370,6 +387,7 @@ export function LegalRequirementDetailPage() {
                             closureNote: updateForm.closureNote || null
                           });
                           setUpdateForm(DEFAULT_UPDATE_FORM);
+                          clearDraft(draftKey);
                           setRefreshKey((k) => k + 1);
                           await refresh();
                         }}
