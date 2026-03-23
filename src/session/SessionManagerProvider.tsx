@@ -178,18 +178,26 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     const onActivity = () => registerActivity();
-    const events: Array<keyof WindowEventMap> = [
+    // Activity signals: track meaningful user interaction to reset inactivity timers.
+    // Keep listeners at the document/window level so they work across all routes.
+    const windowEvents = [
       'mousemove',
       'mousedown',
       'click',
       'keydown',
       'scroll',
+      'wheel',
       'touchstart',
       'touchmove',
-      'focus'
+      'touchend'
     ];
-    for (const eventName of events) {
+    const documentEvents = ['input', 'change', 'submit', 'focusin'];
+
+    for (const eventName of windowEvents) {
       window.addEventListener(eventName, onActivity, { passive: true });
+    }
+    for (const eventName of documentEvents) {
+      document.addEventListener(eventName, onActivity);
     }
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -198,8 +206,11 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
-      for (const eventName of events) {
+      for (const eventName of windowEvents) {
         window.removeEventListener(eventName, onActivity);
+      }
+      for (const eventName of documentEvents) {
+        document.removeEventListener(eventName, onActivity);
       }
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
@@ -270,36 +281,93 @@ export function useSessionManager(): SessionManagerContextValue {
 
 function SessionInactivityModal(props: { remainingMs: number | null; onContinue: () => void; onLogout: () => void }) {
   const minutes = Math.max(0, Math.ceil((props.remainingMs ?? 0) / 60000));
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const continueButtonRef = useRef<HTMLButtonElement | null>(null);
+  const logoutButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+
+    // Focus the primary action for immediate keyboard users.
+    const raf = window.requestAnimationFrame(() => {
+      continueButtonRef.current?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      const el = previouslyFocusedRef.current;
+      if (el && typeof el.focus === 'function') el.focus();
+    };
+  }, []);
+
+  function onDialogKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'Tab') return;
+
+    const continueBtn = continueButtonRef.current;
+    const logoutBtn = logoutButtonRef.current;
+    if (!continueBtn || !logoutBtn) return;
+
+    const focusables = [continueBtn, logoutBtn];
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+
+    const isActiveInside = !!(active && modalRef.current?.contains(active));
+
+    if (e.shiftKey) {
+      // Shift+Tab cycles backward from the first button.
+      if (!isActiveInside || active === first) {
+        e.preventDefault();
+        last.focus();
+      }
+      return;
+    }
+
+    // Tab cycles forward from the last button.
+    if (!isActiveInside || active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" />
       <div
+        ref={modalRef}
         className="relative w-full max-w-md rounded-2xl border border-surface-300 bg-white p-5 shadow-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="session-expiring-title"
+        aria-describedby="session-expiring-description session-expiring-time"
+        onKeyDown={onDialogKeyDown}
       >
         <h2 id="session-expiring-title" className="text-lg font-semibold text-charcoal">
           Session Expiring Soon
         </h2>
-        <p className="mt-2 text-sm text-charcoal-600">
+        <p id="session-expiring-description" className="mt-2 text-sm text-charcoal-600">
           Your session is about to expire due to inactivity. Would you like to continue working?
         </p>
-        <p className="mt-1 text-xs text-charcoal-500">Time remaining: about {minutes} minute(s).</p>
-        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <p id="session-expiring-time" className="mt-1 text-xs text-charcoal-500">
+          Time remaining: about {minutes} minute(s).
+        </p>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
           <button
-            type="button"
-            onClick={props.onLogout}
-            className="min-h-[44px] rounded-lg border border-surface-300 px-4 py-2 text-sm font-medium text-charcoal hover:bg-surface-50"
-          >
-            Log Out
-          </button>
-          <button
+            ref={continueButtonRef}
             type="button"
             onClick={props.onContinue}
             className="min-h-[44px] rounded-lg bg-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-600"
           >
             Continue Session
+          </button>
+          <button
+            type="button"
+            onClick={props.onLogout}
+            className="min-h-[44px] rounded-lg border border-surface-300 px-4 py-2 text-sm font-medium text-charcoal hover:bg-surface-50"
+            ref={logoutButtonRef}
+          >
+            Log Out
           </button>
         </div>
       </div>
