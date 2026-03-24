@@ -9,6 +9,11 @@ const anonKey = ((import.meta as any)?.env?.VITE_INSFORGE_ANON_KEY as string | u
 
 function resolveBaseUrl(rawBaseUrl: string): string {
   if (typeof window === 'undefined') return rawBaseUrl;
+  if (!rawBaseUrl) {
+    // Prevent SDK fallback to localhost:7130 when env is missing in production.
+    // We have Vercel rewrites for /api/*, so same-origin works safely.
+    return window.location.origin;
+  }
   try {
     const targetOrigin = new URL(rawBaseUrl).origin;
     // Use same-origin proxy in browser when target origin differs.
