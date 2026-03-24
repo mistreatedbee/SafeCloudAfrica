@@ -51,17 +51,33 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   const [showWarning, setShowWarning] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
+  const showWarningRef = useRef(false);
   const refreshInFlightRef = useRef(false);
   const refreshRetryCountRef = useRef(0);
   const lastExpiresParseFallbackAttemptRef = useRef<number>(0);
+  const isLoggingOutRef = useRef(false);
+  const hasNavigatedToLoginRef = useRef(false);
 
-  const registerActivity = useCallback(() => {
-    lastActivityRef.current = Date.now();
-    setRemainingMs(LOGOUT_TIMEOUT_MS);
-    if (showWarning) setShowWarning(false);
+  useEffect(() => {
+    showWarningRef.current = showWarning;
   }, [showWarning]);
 
+  useEffect(() => {
+    if (!isSignedIn) return;
+    isLoggingOutRef.current = false;
+    hasNavigatedToLoginRef.current = false;
+  }, [isSignedIn]);
+
+  const registerActivity = useCallback(() => {
+    if (isLoggingOutRef.current) return;
+    lastActivityRef.current = Date.now();
+    setRemainingMs(LOGOUT_TIMEOUT_MS);
+    if (showWarningRef.current) setShowWarning(false);
+  }, []);
+
   const markSessionExpiredAndLogout = useCallback(async (reason: 'inactivity' | 'refresh_failure') => {
+    if (isLoggingOutRef.current) return;
+    isLoggingOutRef.current = true;
     console.warn('[session] session expired; reason:', reason);
     debugSession('markSessionExpiredAndLogout', {
       reason,
@@ -83,12 +99,20 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     } catch {
       // best effort
     }
-    await signOut();
-    const redirect = encodeURIComponent(location.pathname + location.search);
-    navigate(`/login?redirect=${redirect}`, { replace: true });
+    try {
+      await signOut();
+    } catch {
+      // continue to login redirect even if signOut throws
+    }
+    if (!hasNavigatedToLoginRef.current) {
+      hasNavigatedToLoginRef.current = true;
+      const redirect = encodeURIComponent(location.pathname + location.search);
+      navigate(`/login?redirect=${redirect}`, { replace: true });
+    }
   }, [flushAllDrafts, location.pathname, location.search, navigate, signOut]);
 
   const refreshSessionIfNeeded = useCallback(async () => {
+    if (isLoggingOutRef.current) return false;
     if (refreshInFlightRef.current) return true;
     refreshInFlightRef.current = true;
     let lastKnownToken: string | null = null;
@@ -167,6 +191,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   }, []);
 
   const continueSession = useCallback(async () => {
+    if (isLoggingOutRef.current) return;
     registerActivity();
     const ok = await refreshSessionIfNeeded();
     if (!ok && refreshRetryCountRef.current > MAX_REFRESH_RETRIES) {
@@ -178,6 +203,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
+    if (isLoggingOutRef.current) return;
     const onActivity = () => registerActivity();
     // Activity signals: track meaningful user interaction to reset inactivity timers.
     // Keep listeners at the document/window level so they work across all routes.
@@ -220,6 +246,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     const interval = window.setInterval(() => {
+      if (isLoggingOutRef.current) return;
       const idleMs = Date.now() - lastActivityRef.current;
       const formEditing = hasDirtyDrafts();
       const { shouldShowWarning, shouldLogout } = computeInactivityDecision({
@@ -237,11 +264,11 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       }
 
       if (shouldShowWarning) {
-        if (!showWarning) {
+        if (!showWarningRef.current) {
           console.info('[session] inactivity warning shown');
         }
         setShowWarning(true);
-      } else if (showWarning) {
+      } else if (showWarningRef.current) {
         setShowWarning(false);
       }
 
@@ -259,7 +286,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       }
     }, CHECK_INTERVAL_MS);
     return () => window.clearInterval(interval);
-  }, [isLoaded, isSignedIn, markSessionExpiredAndLogout, refreshSessionIfNeeded, showWarning, hasDirtyDrafts]);
+  }, [isLoaded, isSignedIn, markSessionExpiredAndLogout, refreshSessionIfNeeded, hasDirtyDrafts]);
 
   const value = useMemo<SessionManagerContextValue>(
     () => ({
