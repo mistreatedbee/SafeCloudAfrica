@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
-import { resolveRequestActor } from '../_insforge';
-import { logStructuredLine, recordOperationalEvent, sendAlertWebhook } from '../_observability';
+import { resolveRequestActor } from '../_insforge.js';
+import { logStructuredLine, recordOperationalEvent, sendAlertWebhook } from '../_observability.js';
+import { applyNoStoreHeaders } from '../_response.js';
 
 type EmailRequest = {
   to: string | string[];
@@ -17,6 +18,7 @@ function asArray(value: string | string[]): string[] {
 }
 
 export default async function handler(req: any, res: any) {
+  applyNoStoreHeaders(res);
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }

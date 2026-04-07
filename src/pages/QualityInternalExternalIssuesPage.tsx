@@ -9,6 +9,7 @@ import {
   approveInternalExternalIssueRegister,
   createInternalExternalIssue,
   createInternalExternalIssueRegister,
+  deleteInternalExternalIssue,
   getInternalExternalIssuesSummary,
   IE_DOC_NO_DEFAULT,
   IE_RISK_OR_OPP_OPTIONS,
@@ -389,6 +390,23 @@ export default function QualityInternalExternalIssuesPage() {
     }
   }
 
+  async function handleDeleteIssue(issueId: UUID) {
+    if (!activeCompanyId || !user?.id) return;
+    const confirmed = window.confirm('Delete this issue row? This cannot be undone.');
+    if (!confirmed) return;
+    try {
+      await deleteInternalExternalIssue({
+        companyId: activeCompanyId,
+        issueId,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole ?? null
+      });
+      await refreshAll();
+    } catch (err) {
+      setIssueError(err instanceof Error ? err.message : 'Failed to delete issue.');
+    }
+  }
+
   function exportRows(rowsToExport: QualityInternalExternalIssue[], filePrefix = 'internal-external-issues') {
     if (!selectedRegister) return;
     const csvRows = rowsToExport.map((row) => ({
@@ -508,7 +526,7 @@ export default function QualityInternalExternalIssuesPage() {
                 {(rows ?? []).map((row) => (
                   <tr key={row.id} className="align-top">
                     <td className="px-3 py-2 font-semibold text-teal">{row.ref_no}</td><td className="px-3 py-2">{row.scope}</td><td className="px-3 py-2">{row.issue_identification}</td><td className="px-3 py-2">{row.risk_or_opp}</td><td className="px-3 py-2">{row.likelihood}</td><td className="px-3 py-2">{row.severity}</td><td className="px-3 py-2 font-semibold">{row.risk_rating}</td><td className="px-3 py-2"><span className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${natureClass(String(row.nature))}`}>{row.nature}</span></td><td className="px-3 py-2">{row.control_measure || '-'}</td><td className="px-3 py-2">{row.responsible_name_snapshot}</td><td className="px-3 py-2">{formatDate(row.target_date)}</td><td className="px-3 py-2">{row.linked_risk_assessment_id ? (riskAssessmentOptions ?? []).find((x) => x.id === row.linked_risk_assessment_id)?.label ?? row.linked_risk_assessment_id : '-'}</td><td className="px-3 py-2">{row.linked_ncr_id ? (ncrOptions ?? []).find((x) => x.id === row.linked_ncr_id)?.label ?? row.linked_ncr_id : '-'}</td><td className="px-3 py-2">{row.status}</td>
-                    <td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => openViewIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">View</button>{canWrite && <button type="button" onClick={() => openEditIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Edit</button>}{canApprove && <button type="button" onClick={() => void handleApproveRegister()} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Approve</button>}{canExport && <button type="button" onClick={() => exportRows([row], `internal-external-issue-${row.ref_no}`)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Export</button>}</div></td>
+                    <td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => openViewIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">View</button>{canWrite && <button type="button" onClick={() => openEditIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Edit</button>}{canWrite && <button type="button" onClick={() => void handleDeleteIssue(row.id)} className="px-2 py-1 rounded border border-critical/30 text-xs text-critical hover:bg-critical/5">Delete</button>}{canApprove && <button type="button" onClick={() => void handleApproveRegister()} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Approve</button>}{canExport && <button type="button" onClick={() => exportRows([row], `internal-external-issue-${row.ref_no}`)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Export</button>}</div></td>
                   </tr>
                 ))}
                 {(rows ?? []).length === 0 && (

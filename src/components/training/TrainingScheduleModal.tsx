@@ -58,13 +58,26 @@ export function TrainingScheduleModal(props: {
   useEffect(() => {
     if (!props.open) return;
     const restored = restoreDraft<TrainingScheduleDraftPayload>(draftKey);
-    if (!restored) return;
+    if (!restored) {
+      const nextBaseline = {
+        arrangedAt: props.record.arranged_at ? props.record.arranged_at.slice(0, 16) : '',
+        providerId: props.record.provider_id ?? '',
+        cost: props.record.cost != null ? String(props.record.cost) : ''
+      };
+      setArrangedAt(nextBaseline.arrangedAt);
+      setProviderId(nextBaseline.providerId);
+      setCost(nextBaseline.cost);
+      setScheduleBaseline(nextBaseline);
+      setError(null);
+      return;
+    }
 
     setArrangedAt(restored.arrangedAt ?? '');
     setProviderId(restored.providerId ?? '');
     setCost(restored.cost ?? '');
     setScheduleBaseline(restored);
-  }, [draftKey, props.open, restoreDraft]);
+    setError(null);
+  }, [draftKey, props.open, props.record.arranged_at, props.record.cost, props.record.provider_id, restoreDraft]);
 
   const closeWithDraftClear = () => {
     clearDraft(draftKey);

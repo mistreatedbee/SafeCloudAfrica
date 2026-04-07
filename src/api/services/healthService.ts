@@ -178,6 +178,48 @@ export async function createHealthMedical(input: {
   return row;
 }
 
+export async function updateHealthMedical(
+  companyId: UUID,
+  medicalId: UUID,
+  patch: Partial<HealthMedical>,
+  actorUserId?: UUID
+): Promise<HealthMedical> {
+  const { data, error } = await insforge.database
+    .from('health_medicals')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('company_id', companyId)
+    .eq('id', medicalId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update health medical record.');
+  if (actorUserId) {
+    await createActivityLog({
+      companyId,
+      actorUserId,
+      action: 'health.medicals.update',
+      entityType: 'health_medical',
+      entityId: medicalId,
+      metadata: { fields: Object.keys(patch) }
+    }).catch(() => undefined);
+  }
+  return data as HealthMedical;
+}
+
+export async function deleteHealthMedical(companyId: UUID, medicalId: UUID, actorUserId?: UUID): Promise<void> {
+  const { error } = await insforge.database.from('health_medicals').delete().eq('company_id', companyId).eq('id', medicalId);
+  if (error) throw new Error(getErrorMessage(error));
+  if (actorUserId) {
+    await createActivityLog({
+      companyId,
+      actorUserId,
+      action: 'health.medicals.delete',
+      entityType: 'health_medical',
+      entityId: medicalId
+    }).catch(() => undefined);
+  }
+}
+
 export async function listHealthRestrictedDuty(input: {
   companyId: UUID;
   employee?: string;

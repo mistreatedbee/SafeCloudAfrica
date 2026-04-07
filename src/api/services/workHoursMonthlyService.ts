@@ -147,14 +147,17 @@ export async function upsertWorkHoursMonthly(input: UpsertWorkHoursMonthlyInput)
     updated_at: new Date().toISOString()
   };
 
-  const existing = await getWorkHoursMonthlyForMonth({
-    companyId: input.companyId,
-    year: input.year,
-    month: input.month,
-    siteId: input.siteId,
-    departmentId: input.departmentId,
-    projectId: input.projectId
-  });
+  const existing =
+    input.id != null
+      ? await getWorkHoursMonthlyById(input.companyId, input.id)
+      : await getWorkHoursMonthlyForMonth({
+          companyId: input.companyId,
+          year: input.year,
+          month: input.month,
+          siteId: input.siteId,
+          departmentId: input.departmentId,
+          projectId: input.projectId
+        });
 
   if (existing) {
     const { data, error } = await insforge.database

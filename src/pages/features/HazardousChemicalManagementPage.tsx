@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { FlaskConicalIcon, ShieldCheckIcon, FileTextIcon, AlertTriangleIcon, PlusIcon, SearchIcon } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -9,22 +10,10 @@ const containerVariants = {
 };
 const itemVariants = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } };
 
-const seedRows = [
-  { id: 'CHEM-0001', chemical: 'Sulfuric Acid', sds: 'Pending', storage: 'Store A', approval: 'Pending' },
-  { id: 'CHEM-0002', chemical: 'Acetone', sds: 'Available', storage: 'Store B', approval: 'Approved' },
-  { id: 'CHEM-0003', chemical: 'Diesel', sds: 'Available', storage: 'Tank Yard', approval: 'Approved' }
-];
-
 export function HazardousChemicalManagementPage() {
   const [q, setQ] = useState('');
 
-  const rows = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return seedRows;
-    return seedRows.filter((row) =>
-      [row.id, row.chemical, row.sds, row.storage, row.approval].join(' ').toLowerCase().includes(qq)
-    );
-  }, [q]);
+  const hasSearch = useMemo(() => q.trim().length > 0, [q]);
 
   return (
     <Layout title="Hazardous Chemical Management">
@@ -41,7 +30,7 @@ export function HazardousChemicalManagementPage() {
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors"
           >
             <PlusIcon className="w-4 h-4" />
-            Add Chemical
+            Live Sync Pending
           </button>
         </motion.div>
 
@@ -79,28 +68,19 @@ export function HazardousChemicalManagementPage() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px]">
-              <thead className="bg-surface-50">
-                <tr>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Chemical ID</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Chemical</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">SDS</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Storage</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Approval</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-100">
-                {rows.map((row) => (
-                  <tr key={row.id} className="hover:bg-surface-50">
-                    <td className="px-5 py-3 text-sm text-charcoal-600">{row.id}</td>
-                    <td className="px-5 py-3 text-sm text-charcoal">{row.chemical}</td>
-                    <td className="px-5 py-3 text-sm text-charcoal-600">{row.sds}</td>
-                    <td className="px-5 py-3 text-sm text-charcoal-600">{row.storage}</td>
-                    <td className="px-5 py-3 text-sm text-charcoal-600">{row.approval}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="p-4">
+              <ListEmptyState
+                embedded
+                icon={FlaskConicalIcon}
+                title={hasSearch ? 'No matching live chemicals' : 'No live chemical records yet'}
+                description="This screen no longer uses sample rows. Live chemical registers, SDS status, storage, and approval records will appear here once the backend register is connected."
+                primaryAction={{
+                  kind: 'button',
+                  label: hasSearch ? 'Clear Search' : 'Refresh View',
+                  onClick: () => setQ('')
+                }}
+              />
+            </div>
           </div>
         </motion.div>
       </motion.div>

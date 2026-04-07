@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { subscribeToLiveDataMutations } from '../liveData';
 
 export type AsyncState<T> = {
   data: T | null;
@@ -10,6 +11,19 @@ export type AsyncState<T> = {
   refresh: () => void;
   isBackendUnavailable: boolean;
 };
+
+export type UseAsyncOptions = {
+  /** Refetch when the window regains focus. Defaults to true. */
+  refreshOnFocus?: boolean;
+  /** Refetch when the tab becomes visible again. Defaults to true. */
+  refreshOnVisibility?: boolean;
+  /** Optional polling interval in milliseconds while the tab is visible. */
+  refreshIntervalMs?: number;
+  /** Refetch after any successful local data mutation. Defaults to true. */
+  refreshOnMutation?: boolean;
+};
+
+const noop = () => undefined;
 
 function isBackendUnavailableError(error: unknown): boolean {
   if (!error) return false;
@@ -24,20 +38,27 @@ function isBackendUnavailableError(error: unknown): boolean {
   );
 }
 
-export function useAsync<T>(fn: () => Promise<T>, deps: any[]): AsyncState<T> {
+export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsyncOptions = {}): AsyncState<T> {
   const [reloadToken, setReloadToken] = useState(0);
+  const lastRefreshAtRef = useRef(0);
   const [state, setState] = useState<AsyncState<T>>({
     data: null,
     error: null,
     loading: true,
-    retry: () => {},
-    refetch: () => {},
-    refresh: () => {},
+    retry: noop,
+    refetch: noop,
+    refresh: noop,
     isBackendUnavailable: false
   });
   const retry = useCallback(() => {
+    lastRefreshAtRef.current = Date.now();
     setReloadToken((n) => n + 1);
   }, []);
+
+  const refreshOnFocus = options.refreshOnFocus ?? true;
+  const refreshOnVisibility = options.refreshOnVisibility ?? true;
+  const refreshIntervalMs = options.refreshIntervalMs ?? 0;
+  const refreshOnMutation = options.refreshOnMutation ?? true;
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +86,61 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[]): AsyncState<T> {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, reloadToken, retry]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const maybeRefresh = () => {
+      const now = Date.now();
+      if (now - lastRefreshAtRef.current < 1500) return;
+      retry();
+    };
+
+    const onFocus = () => {
+      if (!refreshOnFocus) return;
+      maybeRefresh();
+    };
+
+    const onVisibilityChange = () => {
+      if (!refreshOnVisibility) return;
+      if (document.visibilityState !== 'visible') return;
+      maybeRefresh();
+    };
+
+    const onPageShow = () => {
+      maybeRefresh();
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', onPageShow);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [refreshOnFocus, refreshOnVisibility, retry]);
+
+  useEffect(() => {
+    if (!refreshOnMutation) return;
+    return subscribeToLiveDataMutations(() => {
+      const now = Date.now();
+      if (now - lastRefreshAtRef.current < 250) return;
+      retry();
+    });
+  }, [refreshOnMutation, retry]);
+
+  useEffect(() => {
+    if (!refreshIntervalMs || refreshIntervalMs <= 0) return;
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      retry();
+    }, refreshIntervalMs);
+
+    return () => window.clearInterval(interval);
+  }, [refreshIntervalMs, retry]);
+
   return {
     ...state,
     retry,
@@ -73,4 +149,3 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[]): AsyncState<T> {
     isBackendUnavailable: isBackendUnavailableError(state.error)
   };
 }
-

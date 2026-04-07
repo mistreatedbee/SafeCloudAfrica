@@ -9,6 +9,7 @@ import type { CustomerComplaintStatus, QualityCustomerComplaint } from '../api/m
 import {
   CUSTOMER_COMPLAINT_STATUS_LABELS,
   createCustomerComplaint,
+  deleteCustomerComplaint,
   getCustomerComplaintSummary,
   listComplaintHandlers,
   listCustomerComplaints,
@@ -254,6 +255,23 @@ export default function QualityCustomerComplaintsPage() {
     }
   }
 
+  async function handleDelete(row: QualityCustomerComplaint) {
+    if (!activeCompanyId || !user?.id) return;
+    const confirmed = window.confirm(`Delete complaint ${row.complaint_ref_no}? This cannot be undone.`);
+    if (!confirmed) return;
+    try {
+      await deleteCustomerComplaint({
+        companyId: activeCompanyId,
+        complaintId: row.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole ?? null
+      });
+      await reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete complaint.');
+    }
+  }
+
   function exportRows(rows: QualityCustomerComplaint[], filenamePrefix = 'customer-complaints') {
     const csvRows = rows.map((row) => ({
       'Complaint Ref. No#': row.complaint_ref_no,
@@ -414,6 +432,15 @@ export default function QualityCustomerComplaintsPage() {
                             className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50"
                           >
                             View NCR
+                          </button>
+                        )}
+                        {(canEdit || (activeRole === 'employee' && row.created_by_user_id === (user?.id as UUID))) && (
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(row)}
+                            className="px-2 py-1 rounded border border-critical/30 text-xs text-critical hover:bg-critical/5"
+                          >
+                            Delete
                           </button>
                         )}
                       </div>
@@ -678,4 +705,3 @@ export default function QualityCustomerComplaintsPage() {
     </Layout>
   );
 }
-

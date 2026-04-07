@@ -1,4 +1,4 @@
-import { getServiceInsforge } from './_insforge';
+import { getServiceInsforge } from './_insforge.js';
 
 export type LogLevel = 'info' | 'warn' | 'error';
 
@@ -56,8 +56,7 @@ export function recordOperationalEvent(input: RecordOperationalEventInput): void
       organization_id: input.organization_id ?? null,
       details: input.details ?? null
     })
-    .then(() => undefined)
-    .catch(() => undefined);
+    .then(() => undefined, () => undefined);
 }
 
 const WEBHOOK_TIMEOUT_MS = 5000;

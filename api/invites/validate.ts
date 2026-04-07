@@ -1,10 +1,12 @@
-import { getServerInsforge } from '../_insforge';
-import { logStructuredLine, sendAlertWebhook } from '../_observability';
-import { hashInviteToken, mapInvalidReason, normalizeInviteStatus } from './_shared';
+import { getServerInsforge } from '../_insforge.js';
+import { logStructuredLine, sendAlertWebhook } from '../_observability.js';
+import { applyNoStoreHeaders } from '../_response.js';
+import { hashInviteToken, mapInvalidReason, normalizeInviteStatus } from './_shared.js';
 
 const MODULE = 'api.invites.validate';
 
 export default async function handler(req: any, res: any) {
+  applyNoStoreHeaders(res);
   if (req.method !== 'GET') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }

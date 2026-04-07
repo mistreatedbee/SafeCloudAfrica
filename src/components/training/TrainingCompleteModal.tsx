@@ -62,13 +62,28 @@ export function TrainingCompleteModal(props: {
   useEffect(() => {
     if (!props.open) return;
     const restored = restoreDraft<TrainingCompleteDraftPayload>(draftKey);
-    if (!restored) return;
+    if (!restored) {
+      const nextBaseline = {
+        completedAt: props.record.completed_at ? props.record.completed_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        expiresAt: props.record.expires_at ? props.record.expires_at.slice(0, 10) : '',
+        cost: props.record.cost != null ? String(props.record.cost) : ''
+      };
+      setCompletedAt(nextBaseline.completedAt);
+      setExpiresAt(nextBaseline.expiresAt);
+      setCost(nextBaseline.cost);
+      setCompleteBaseline(nextBaseline);
+      setFile(null);
+      setError(null);
+      return;
+    }
 
     setCompletedAt(restored.completedAt ?? '');
     setExpiresAt(restored.expiresAt ?? '');
     setCost(restored.cost ?? '');
     setCompleteBaseline(restored);
-  }, [draftKey, props.open, restoreDraft]);
+    setFile(null);
+    setError(null);
+  }, [draftKey, props.open, props.record.completed_at, props.record.cost, props.record.expires_at, restoreDraft]);
 
   const closeWithDraftClear = () => {
     clearDraft(draftKey);
@@ -87,24 +102,29 @@ export function TrainingCompleteModal(props: {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file) {
+    if (!file && !(props.record.certificate_bucket && props.record.certificate_key)) {
       setError('Certificate upload is required to mark training as completed.');
       return;
     }
     setError(null);
     try {
       setLoading(true);
-      const allowedExtensions = ['pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg'];
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-      if (!allowedExtensions.includes(ext)) {
-        setError('Unsupported certificate file type. Please upload PDF, DOCX, or image formats.');
-        setLoading(false);
-        return;
+      let certificateBucket = props.record.certificate_bucket ?? null;
+      let certificateKey = props.record.certificate_key ?? null;
+      if (file) {
+        const allowedExtensions = ['pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg'];
+        const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+        if (!allowedExtensions.includes(ext)) {
+          setError('Unsupported certificate file type. Please upload PDF, DOCX, or image formats.');
+          setLoading(false);
+          return;
+        }
+        const key = `${props.companyId}/${props.record.user_id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
+        const { data: uploadData, error: upErr } = await insforge.storage.from(TRAINING_CERT_BUCKET).upload(key, file);
+        if (upErr) throw upErr;
+        certificateBucket = TRAINING_CERT_BUCKET;
+        certificateKey = uploadData?.path ?? key;
       }
-      const key = `${props.companyId}/${props.record.user_id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-      const { data: uploadData, error: upErr } = await insforge.storage.from(TRAINING_CERT_BUCKET).upload(key, file);
-      if (upErr) throw upErr;
-      const certificateKey = uploadData?.path ?? key;
 
       await updateTrainingRecord({
         companyId: props.companyId,
@@ -112,7 +132,7 @@ export function TrainingCompleteModal(props: {
         status: 'COMPLETED',
         completedAt: new Date(completedAt).toISOString(),
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : suggestedExpiry ? new Date(suggestedExpiry).toISOString() : null,
-        certificateBucket: TRAINING_CERT_BUCKET,
+        certificateBucket,
         certificateKey,
         cost: cost ? parseFloat(cost) || null : props.record.cost
       });
@@ -183,9 +203,13 @@ export function TrainingCompleteModal(props: {
               type="file"
               accept=".pdf,.doc,.docx,image/*"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              required
               className="w-full text-sm"
             />
+            {!file && props.record.certificate_bucket && props.record.certificate_key && (
+              <p className="text-xs text-charcoal-500 mt-1">
+                Existing certificate will be kept unless you upload a replacement.
+              </p>
+            )}
             {file && <p className="text-xs text-charcoal-500 mt-1">Selected: {file.name}</p>}
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -194,7 +218,7 @@ export function TrainingCompleteModal(props: {
             </button>
             <button
               type="submit"
-              disabled={!file || loading}
+              disabled={loading}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60"
             >
               {loading && <LoadingSpinner size={16} />}

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { PackageIcon, WrenchIcon, ClipboardCheckIcon, UserCheckIcon, PlusIcon, SearchIcon } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -9,22 +10,10 @@ const containerVariants = {
 };
 const itemVariants = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } };
 
-const seedRows = [
-  { id: 'AST-0001', asset: 'Forklift', status: 'In service', location: 'Main warehouse', assignedTo: 'N/A' },
-  { id: 'AST-0002', asset: 'Compressor', status: 'Inspection due', location: 'Plant room', assignedTo: 'N/A' },
-  { id: 'AST-0003', asset: 'Generator', status: 'Maintenance due', location: 'Yard', assignedTo: 'N/A' }
-];
-
 export function AssetManagementPage() {
   const [q, setQ] = useState('');
 
-  const rows = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return seedRows;
-    return seedRows.filter((row) =>
-      [row.id, row.asset, row.status, row.location, row.assignedTo].join(' ').toLowerCase().includes(qq)
-    );
-  }, [q]);
+  const hasSearch = useMemo(() => q.trim().length > 0, [q]);
 
   return (
     <Layout title="Asset Management">
@@ -39,7 +28,7 @@ export function AssetManagementPage() {
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors"
           >
             <PlusIcon className="w-4 h-4" />
-            Add Asset
+            Live Sync Pending
           </button>
         </motion.div>
 
@@ -77,28 +66,19 @@ export function AssetManagementPage() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px]">
-              <thead className="bg-surface-50">
-                <tr>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Asset ID</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Asset</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Status</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Location</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Assigned To</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-100">
-                {rows.map((row) => (
-                  <tr key={row.id} className="hover:bg-surface-50">
-                    <td className="px-5 py-3 text-sm text-charcoal-600">{row.id}</td>
-                    <td className="px-5 py-3 text-sm text-charcoal">{row.asset}</td>
-                    <td className="px-5 py-3 text-sm text-charcoal-600">{row.status}</td>
-                    <td className="px-5 py-3 text-sm text-charcoal-600">{row.location}</td>
-                    <td className="px-5 py-3 text-sm text-charcoal-600">{row.assignedTo}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="p-4">
+              <ListEmptyState
+                embedded
+                icon={PackageIcon}
+                title={hasSearch ? 'No matching live assets' : 'No live asset records yet'}
+                description="This page no longer shows seed data. Live asset, maintenance, and assignment records will appear here once the backend asset register is connected."
+                primaryAction={{
+                  kind: 'button',
+                  label: hasSearch ? 'Clear Search' : 'Refresh View',
+                  onClick: () => setQ('')
+                }}
+              />
+            </div>
           </div>
         </motion.div>
       </motion.div>

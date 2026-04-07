@@ -1,12 +1,13 @@
-import { addDaysIso, getServerInsforge, nowIso, readBearerToken } from '../_insforge';
-import { logStructuredLine, sendAlertWebhook } from '../_observability';
+import { addDaysIso, getServerInsforge, nowIso, readBearerToken } from '../_insforge.js';
+import { logStructuredLine, sendAlertWebhook } from '../_observability.js';
+import { applyNoStoreHeaders } from '../_response.js';
 import {
   buildInviteLink,
   generateRawInviteToken,
   hashInviteToken,
   resolvePublicOrigin,
   toInviteEmailHtml
-} from './_shared';
+} from './_shared.js';
 
 const MODULE = 'api.invites.create';
 
@@ -19,6 +20,7 @@ function normalizeStatus(status: unknown): string {
 }
 
 export default async function handler(req: any, res: any) {
+  applyNoStoreHeaders(res);
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
@@ -154,9 +156,16 @@ export default async function handler(req: any, res: any) {
 
     let emailSent = false;
     try {
-      const emailRes = await fetch(`${getOrigin(req)}/api/email/send`, {
+      const emailRes = await fetch(`${resolvePublicOrigin(req)}/api/email/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          Pragma: 'no-cache',
+          Expires: '0'
+        },
         body: JSON.stringify({
           to: email,
           subject: emailContent.subject,

@@ -48,6 +48,7 @@ export interface CreateFormTemplateInput {
 }
 
 export interface UpdateFormTemplateInput {
+  companyId: UUID;
   templateId: UUID;
   name?: string;
   description?: string;
@@ -118,7 +119,7 @@ export async function updateFormTemplate(input: UpdateFormTemplateInput): Promis
 
   // Handle PDF update
   if (input.pdfFile) {
-    const template = await getFormTemplateById(input.templateId);
+    const template = await getFormTemplateById(input.companyId, input.templateId);
     if (template.original_pdf_key) {
       // Delete old file
       await deleteFile(template.original_pdf_bucket!, template.original_pdf_key);
@@ -140,6 +141,7 @@ export async function updateFormTemplate(input: UpdateFormTemplateInput): Promis
   const { data, error } = await insforge.database
     .from('form_templates')
     .update(updates)
+    .eq('company_id', input.companyId)
     .eq('id', input.templateId)
     .select('*')
     .single();
@@ -153,16 +155,17 @@ export async function updateFormTemplate(input: UpdateFormTemplateInput): Promis
 /**
  * Delete a form template
  */
-export async function deleteFormTemplate(templateId: UUID): Promise<void> {
+export async function deleteFormTemplate(companyId: UUID, templateId: UUID): Promise<void> {
   await ensureInsforgeSession();
 
   // Get template to delete associated files
-  const template = await getFormTemplateById(templateId);
+  const template = await getFormTemplateById(companyId, templateId);
 
   // Delete from database
   const { error } = await insforge.database
     .from('form_templates')
     .delete()
+    .eq('company_id', companyId)
     .eq('id', templateId);
 
   if (error) throw new Error(`Failed to delete form template: ${error.message}`);
@@ -176,10 +179,11 @@ export async function deleteFormTemplate(templateId: UUID): Promise<void> {
 /**
  * Get form template by ID
  */
-export async function getFormTemplateById(templateId: UUID): Promise<FormTemplate> {
+export async function getFormTemplateById(companyId: UUID, templateId: UUID): Promise<FormTemplate> {
   const { data, error } = await insforge.database
     .from('form_templates')
     .select('*')
+    .eq('company_id', companyId)
     .eq('id', templateId)
     .single();
 

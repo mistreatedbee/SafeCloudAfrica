@@ -337,6 +337,7 @@ export function HrEmployeeEditModal(props: Props) {
       setLoading(true);
 
       await upsertHrEmployee({
+        id: employee.id,
         company_id: props.companyId,
         created_by_user_id: props.actorUserId,
         employee_no: employeeNo.trim(),
@@ -940,4 +941,3 @@ function SectionTitle(props: { title: string }) {
     </div>
   );
 }
-

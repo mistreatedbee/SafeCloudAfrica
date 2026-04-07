@@ -238,43 +238,41 @@ function getMissingColumnFromSchemaError(error: unknown): string | null {
 }
 
 async function insertIncidentWithSchemaFallback(payload: Record<string, unknown>): Promise<Incident> {
-  let workingPayload: Record<string, unknown> = { ...payload };
-  for (let attempts = 0; attempts < 5; attempts += 1) {
-    const { data, error } = await insforge.database
-      .from('incidents')
-      .insert(workingPayload)
-      .select('*')
-      .single();
-    if (!error && data) return data as Incident;
-    const missingColumn = getMissingColumnFromSchemaError(error);
-    if (!missingColumn || !Object.prototype.hasOwnProperty.call(workingPayload, missingColumn)) {
-      throw new Error(getErrorMessage(error));
-    }
-    const { [missingColumn]: _ignored, ...rest } = workingPayload;
-    workingPayload = rest;
+  const { data, error } = await insforge.database
+    .from('incidents')
+    .insert(payload)
+    .select('*')
+    .single();
+  if (!error && data) return data as Incident;
+
+  const missingColumn = getMissingColumnFromSchemaError(error);
+  if (missingColumn && Object.prototype.hasOwnProperty.call(payload, missingColumn)) {
+    throw new Error(
+      `The incidents table is missing the "${missingColumn}" column required by the latest application build. Apply the latest database migrations before creating incidents.`
+    );
   }
-  throw new Error('Failed to create incident after schema compatibility retries.');
+
+  throw new Error(getErrorMessage(error));
 }
 
 async function updateIncidentWithSchemaFallback(companyId: UUID, incidentId: UUID, payload: Record<string, unknown>): Promise<Incident> {
-  let workingPayload: Record<string, unknown> = { ...payload };
-  for (let attempts = 0; attempts < 5; attempts += 1) {
-    const { data, error } = await insforge.database
-      .from('incidents')
-      .update(workingPayload)
-      .eq('company_id', companyId)
-      .eq('id', incidentId)
-      .select('*')
-      .single();
-    if (!error && data) return data as Incident;
-    const missingColumn = getMissingColumnFromSchemaError(error);
-    if (!missingColumn || !Object.prototype.hasOwnProperty.call(workingPayload, missingColumn)) {
-      throw new Error(getErrorMessage(error));
-    }
-    const { [missingColumn]: _ignored, ...rest } = workingPayload;
-    workingPayload = rest;
+  const { data, error } = await insforge.database
+    .from('incidents')
+    .update(payload)
+    .eq('company_id', companyId)
+    .eq('id', incidentId)
+    .select('*')
+    .single();
+  if (!error && data) return data as Incident;
+
+  const missingColumn = getMissingColumnFromSchemaError(error);
+  if (missingColumn && Object.prototype.hasOwnProperty.call(payload, missingColumn)) {
+    throw new Error(
+      `The incidents table is missing the "${missingColumn}" column required by the latest application build. Apply the latest database migrations before updating incidents.`
+    );
   }
-  throw new Error('Failed to update incident after schema compatibility retries.');
+
+  throw new Error(getErrorMessage(error));
 }
 
 export async function createIncident(input: CreateIncidentInput): Promise<Incident> {
@@ -418,6 +416,14 @@ export type UpdateIncidentPatch = Partial<{
 }>;
 
 export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatch): Promise<Incident> {
+  const { data: current, error: currentError } = await insforge.database
+    .from('incidents')
+    .select('id,company_id')
+    .eq('id', incidentId)
+    .maybeSingle();
+  if (currentError) throw new Error(getErrorMessage(currentError));
+  if (!current) throw new Error('Incident not found.');
+
   const updateData: Record<string, unknown> = {
     updated_at: new Date().toISOString()
   };

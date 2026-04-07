@@ -1,5 +1,6 @@
-import { readBearerToken } from '../_insforge';
-import { logStructuredLine, recordOperationalEvent, sendAlertWebhook } from '../_observability';
+import { readBearerToken } from '../_insforge.js';
+import { logStructuredLine, recordOperationalEvent, sendAlertWebhook } from '../_observability.js';
+import { applyNoStoreHeaders } from '../_response.js';
 
 const MODULE = 'api.cron.heartbeat';
 
@@ -14,6 +15,7 @@ function authorizeCron(req: any): boolean {
 }
 
 export default async function handler(req: any, res: any) {
+  applyNoStoreHeaders(res);
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }

@@ -271,7 +271,29 @@ export async function cancelTrainingRecord(input: {
   });
 }
 
+export async function deleteTrainingRecord(input: {
+  companyId: UUID;
+  recordId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('training_records')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.recordId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'training_records.delete',
+    entityType: 'training_record',
+    entityId: input.recordId
+  });
+}
+
 export async function countExpiringTraining(companyId: UUID, withinDays = 30): Promise<number> {
+  const nowIso = new Date().toISOString();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + withinDays);
   const { count, error } = await insforge.database
@@ -279,12 +301,14 @@ export async function countExpiringTraining(companyId: UUID, withinDays = 30): P
     .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .not('expires_at', 'is', null)
+    .gte('expires_at', nowIso)
     .lte('expires_at', cutoff.toISOString());
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
 }
 
 export async function countExpiringTrainingForUser(companyId: UUID, userId: UUID, withinDays = 30): Promise<number> {
+  const nowIso = new Date().toISOString();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + withinDays);
   const { count, error } = await insforge.database
@@ -293,6 +317,7 @@ export async function countExpiringTrainingForUser(companyId: UUID, userId: UUID
     .eq('company_id', companyId)
     .eq('user_id', userId)
     .not('expires_at', 'is', null)
+    .gte('expires_at', nowIso)
     .lte('expires_at', cutoff.toISOString());
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;

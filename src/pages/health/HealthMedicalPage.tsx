@@ -3,7 +3,7 @@ import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { createHealthMedical, listHealthMedicals, listHealthRestrictedDuty } from '../../api/services/healthService';
+import { createHealthMedical, deleteHealthMedical, listHealthMedicals, listHealthRestrictedDuty, updateHealthMedical } from '../../api/services/healthService';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { MedicalDocumentsPanel } from '../../components/health/MedicalDocumentsPanel';
 import type { CompanyRole } from '../../api/models/core';
@@ -32,6 +32,7 @@ export function HealthMedicalPage() {
   const { restoreDraft, clearDraft } = useDraftManager();
   const [tab, setTab] = useState<TabKey>('Medical Records');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [editingMedicalId, setEditingMedicalId] = useState<string | null>(null);
   const [restrictedFilter, setRestrictedFilter] = useState<RestrictedTrackerStatusFilter>('all');
   const [form, setForm] = useState({
     employeeId: '' as string,
@@ -47,6 +48,7 @@ export function HealthMedicalPage() {
     restrictedDutyRequired: false,
     restrictedDutyDetails: ''
   });
+  const canManageMedical = activeMembership?.is_hr_manager === true || ['owner', 'admin', 'manager', 'supervisor'].includes(activeRole ?? '');
   const [medicalBaseline, setMedicalBaseline] = useState(() => ({ ...form }));
   const draftKeyMedicalCreate = `health-medical-create:${activeCompanyId ?? 'none'}:${user?.id ?? 'anon'}`;
   const hasDirtyMedicalDraft = useMemo(() => JSON.stringify(form) !== JSON.stringify(medicalBaseline), [form, medicalBaseline]);
@@ -89,25 +91,102 @@ export function HealthMedicalPage() {
   async function submitMedical(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
-    await createHealthMedical({
-      companyId: activeCompanyId,
-      employeeId: (form.employeeId || undefined) as any,
-      employeeUserId: form.employeeUserId || undefined,
-      employeeName: form.employeeName || undefined,
-      employeeNumber: form.employeeNumber || undefined,
-      medicalType: form.medicalType,
-      medicalDate: form.medicalDate,
-      expiryDate: form.expiryDate || null,
-      conductedBy: form.conductedBy || null,
-      fitnessStatus: form.fitnessStatus,
-      medicalCost: form.medicalCost ? Number(form.medicalCost) : null,
-      restrictedDutyRequired: form.restrictedDutyRequired,
-      restrictedDutyDetails: form.restrictedDutyDetails || null,
-      createdByUserId: user.id
-    });
+    if (editingMedicalId) {
+      await updateHealthMedical(
+        activeCompanyId,
+        editingMedicalId as any,
+        {
+          employee_id: (form.employeeId || null) as any,
+          employee_user_id: (form.employeeUserId || null) as any,
+          employee_name: form.employeeName || null,
+          employee_number: form.employeeNumber || null,
+          medical_type: form.medicalType,
+          medical_date: form.medicalDate,
+          expiry_date: form.expiryDate || null,
+          conducted_by: form.conductedBy || null,
+          fitness_status: form.fitnessStatus,
+          medical_cost: form.medicalCost ? Number(form.medicalCost) : null,
+          restricted_duty_required: form.restrictedDutyRequired,
+          restricted_duty_details: form.restrictedDutyDetails || null
+        },
+        user.id
+      );
+    } else {
+      await createHealthMedical({
+        companyId: activeCompanyId,
+        employeeId: (form.employeeId || undefined) as any,
+        employeeUserId: form.employeeUserId || undefined,
+        employeeName: form.employeeName || undefined,
+        employeeNumber: form.employeeNumber || undefined,
+        medicalType: form.medicalType,
+        medicalDate: form.medicalDate,
+        expiryDate: form.expiryDate || null,
+        conductedBy: form.conductedBy || null,
+        fitnessStatus: form.fitnessStatus,
+        medicalCost: form.medicalCost ? Number(form.medicalCost) : null,
+        restrictedDutyRequired: form.restrictedDutyRequired,
+        restrictedDutyDetails: form.restrictedDutyDetails || null,
+        createdByUserId: user.id
+      });
+    }
     setRefreshKey((k) => k + 1);
 
-    const nextForm = { ...form, medicalDate: '', expiryDate: '', conductedBy: '', restrictedDutyDetails: '' };
+    const nextForm = {
+      employeeId: '',
+      employeeUserId: '',
+      employeeName: '',
+      employeeNumber: '',
+      medicalType: 'PERIODIC' as HealthMedical['medical_type'],
+      medicalDate: '',
+      expiryDate: '',
+      medicalCost: '',
+      conductedBy: '',
+      fitnessStatus: 'FIT' as HealthMedical['fitness_status'],
+      restrictedDutyRequired: false,
+      restrictedDutyDetails: ''
+    };
+    setEditingMedicalId(null);
+    setForm(nextForm);
+    setMedicalBaseline(nextForm);
+    clearDraft(draftKeyMedicalCreate);
+  }
+
+  function startEditMedical(medical: HealthMedical) {
+    const nextForm = {
+      employeeId: (medical.employee_id ?? '') as string,
+      employeeUserId: (medical.employee_user_id ?? '') as string,
+      employeeName: medical.employee_name ?? '',
+      employeeNumber: medical.employee_number ?? '',
+      medicalType: medical.medical_type,
+      medicalDate: medical.medical_date?.slice(0, 10) ?? '',
+      expiryDate: medical.expiry_date?.slice(0, 10) ?? '',
+      medicalCost: medical.medical_cost != null ? String(medical.medical_cost) : '',
+      conductedBy: medical.conducted_by ?? '',
+      fitnessStatus: medical.fitness_status,
+      restrictedDutyRequired: medical.restricted_duty_required,
+      restrictedDutyDetails: medical.restricted_duty_details ?? ''
+    };
+    setEditingMedicalId(medical.id);
+    setForm(nextForm);
+    setMedicalBaseline(nextForm);
+  }
+
+  function cancelMedicalEdit() {
+    const nextForm = {
+      employeeId: '',
+      employeeUserId: '',
+      employeeName: '',
+      employeeNumber: '',
+      medicalType: 'PERIODIC' as HealthMedical['medical_type'],
+      medicalDate: '',
+      expiryDate: '',
+      medicalCost: '',
+      conductedBy: '',
+      fitnessStatus: 'FIT' as HealthMedical['fitness_status'],
+      restrictedDutyRequired: false,
+      restrictedDutyDetails: ''
+    };
+    setEditingMedicalId(null);
     setForm(nextForm);
     setMedicalBaseline(nextForm);
     clearDraft(draftKeyMedicalCreate);
@@ -117,7 +196,18 @@ export function HealthMedicalPage() {
     <Layout title="Medical Surveillance">
       <div className="space-y-5">
         <div className="bg-white border border-surface-300 rounded-xl p-4">
-          <h3 className="font-semibold text-charcoal mb-3">Create medical record</h3>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h3 className="font-semibold text-charcoal">{editingMedicalId ? 'Edit medical record' : 'Create medical record'}</h3>
+            {editingMedicalId && (
+              <button
+                type="button"
+                onClick={cancelMedicalEdit}
+                className="px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-charcoal hover:bg-surface-50"
+              >
+                Cancel edit
+              </button>
+            )}
+          </div>
           <form className="grid grid-cols-1 md:grid-cols-3 gap-3" onSubmit={submitMedical}>
             <HrEmployeeSelect
               companyId={activeCompanyId ?? null}
@@ -169,7 +259,9 @@ export function HealthMedicalPage() {
             {form.restrictedDutyRequired && (
               <input value={form.restrictedDutyDetails} onChange={(e) => setForm((s) => ({ ...s, restrictedDutyDetails: e.target.value }))} placeholder="Restricted duty details" className="px-3 py-2 border border-surface-300 rounded-lg text-sm md:col-span-2" />
             )}
-            <button className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">Save medical</button>
+            <button className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">
+              {editingMedicalId ? 'Update medical' : 'Save medical'}
+            </button>
           </form>
         </div>
 
@@ -202,6 +294,7 @@ export function HealthMedicalPage() {
                     <th className="px-3 py-2 text-left">Expiry</th>
                     <th className="px-3 py-2 text-left">Expiry status</th>
                     <th className="px-3 py-2 text-left">Status</th>
+                    {canManageMedical && <th className="px-3 py-2 text-left">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-100">
@@ -244,6 +337,32 @@ export function HealthMedicalPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2">{m.fitness_status}</td>
+                        {canManageMedical && (
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => startEditMedical(m)}
+                                className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!activeCompanyId || !user?.id) return;
+                                  if (!window.confirm('Delete this medical record?')) return;
+                                  await deleteHealthMedical(activeCompanyId, m.id, user.id);
+                                  if (editingMedicalId === m.id) cancelMedicalEdit();
+                                  setRefreshKey((k) => k + 1);
+                                }}
+                                className="px-2 py-1 rounded border border-critical/30 text-xs text-critical hover:bg-critical/5"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -310,4 +429,3 @@ export function HealthMedicalPage() {
     </Layout>
   );
 }
-

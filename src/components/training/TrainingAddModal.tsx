@@ -74,7 +74,19 @@ export function TrainingAddModal(props: {
   useEffect(() => {
     if (!props.open) return;
     const restored = restoreDraft<TrainingAddDraftPayload>(draftKey);
-    if (!restored) return;
+    if (!restored) {
+      setMode('existing');
+      setCourseId('');
+      setNewCourseName('');
+      setNewCourseValidMonths('12');
+      setUserId(props.defaultUserId ?? '');
+      setCompletedAt('');
+      setExpiresAt('');
+      setEmployeeNameSnapshot('');
+      setFile(null);
+      setError(null);
+      return;
+    }
 
     setMode(restored.mode ?? 'existing');
     setCourseId(restored.courseId ?? '');
@@ -84,8 +96,10 @@ export function TrainingAddModal(props: {
     setCompletedAt(restored.completedAt ?? '');
     setExpiresAt(restored.expiresAt ?? '');
     setEmployeeNameSnapshot(restored.employeeNameSnapshot ?? '');
+    setFile(null);
+    setError(null);
     // Note: we cannot restore the selected File certificate.
-  }, [draftKey, props.open, restoreDraft]);
+  }, [draftKey, props.defaultUserId, props.open, restoreDraft]);
 
   const closeWithDraftClear = () => {
     clearDraft(draftKey);
@@ -323,4 +337,3 @@ export function TrainingAddModal(props: {
     </div>
   );
 }
-

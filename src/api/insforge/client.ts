@@ -1,4 +1,5 @@
 import { createClient } from '@insforge/sdk';
+import { createFreshFetch, getNoStoreHeaders } from '../liveData';
 
 // IMPORTANT:
 // - Vite injects env at build time; set VITE_INSFORGE_BASE_URL in .env / Vercel (no default tenant URL).
@@ -30,6 +31,8 @@ function resolveBaseUrl(rawBaseUrl: string): string {
 export const insforge = createClient({
   baseUrl: resolveBaseUrl(configuredBaseUrl),
   anonKey,
+  fetch: createFreshFetch(globalThis.fetch.bind(globalThis)),
+  headers: Object.fromEntries(getNoStoreHeaders().entries()),
   // Use SDK-managed session persistence + refresh.
   persistSession: true,
   // Disable SDK auto-refresh so we can control refresh timing via `SessionManagerProvider`.
@@ -37,4 +40,3 @@ export const insforge = createClient({
   // a modal-only flow for the inactivity window (45 min warning / 60 min logout).
   autoRefreshToken: false
 });
-

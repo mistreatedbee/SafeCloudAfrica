@@ -29,6 +29,7 @@ export function reportClientError(payload: ReportClientErrorInput): void {
     try {
       await fetch('/api/client-log', {
         method: 'POST',
+        cache: 'no-store',
         headers,
         credentials: 'include',
         body: JSON.stringify({

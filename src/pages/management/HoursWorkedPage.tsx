@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ClockIcon, PlusIcon, DownloadIcon, PencilIcon, TrashIcon } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
@@ -28,8 +28,8 @@ function WorkHoursFormModal(props: {
   defaultDaysWorked: number;
   defaultStandardHours: number;
 }) {
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [month, setMonth] = useState(() => new Date().getMonth() + 1);
+  const [year, setYear] = useState(() => props.existing?.year ?? new Date().getFullYear());
+  const [month, setMonth] = useState(() => props.existing?.month ?? new Date().getMonth() + 1);
   const [totalEmployees, setTotalEmployees] = useState(props.existing?.total_employees ?? 0);
   const [salariedEmployees, setSalariedEmployees] = useState(props.existing?.salaried_employees ?? 0);
   const [wageEmployees, setWageEmployees] = useState(props.existing?.wage_employees ?? 0);
@@ -41,6 +41,23 @@ function WorkHoursFormModal(props: {
   const [transportHours, setTransportHours] = useState(props.existing?.employee_transport_hours ?? 0);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!props.open) return;
+    setYear(props.existing?.year ?? new Date().getFullYear());
+    setMonth(props.existing?.month ?? new Date().getMonth() + 1);
+    setTotalEmployees(props.existing?.total_employees ?? 0);
+    setSalariedEmployees(props.existing?.salaried_employees ?? 0);
+    setWageEmployees(props.existing?.wage_employees ?? 0);
+    setDaysWorked(props.existing?.days_worked ?? props.defaultDaysWorked);
+    setStandardHoursPerDay(props.existing?.standard_hours_per_day ?? props.defaultStandardHours);
+    setOvertimeWeekSat(props.existing?.overtime_hours_week_or_sat ?? 0);
+    setOvertimeSunday(props.existing?.overtime_hours_sunday ?? 0);
+    setAbsentDays(props.existing?.employee_absent_days ?? 0);
+    setTransportHours(props.existing?.employee_transport_hours ?? 0);
+    setError('');
+    setSaving(false);
+  }, [props.defaultDaysWorked, props.defaultStandardHours, props.existing, props.open]);
 
   const totalCalc = useMemo(() => {
     const salaried = salariedEmployees * standardHoursPerDay * daysWorked;
@@ -68,6 +85,7 @@ function WorkHoursFormModal(props: {
     try {
       await upsertWorkHoursMonthly({
         companyId: props.companyId,
+        id: props.existing?.id ?? null,
         year,
         month,
         totalEmployees,
@@ -360,7 +378,7 @@ export function HoursWorkedPage() {
                             onClick={async () => {
                               if (!activeCompanyId || !confirm('Delete this entry?')) return;
                               await deleteWorkHoursMonthly(activeCompanyId, r.id);
-                              refetch();
+                              await refetch();
                             }}
                             className="p-1.5 rounded hover:bg-critical/10 text-critical"
                             title="Delete"

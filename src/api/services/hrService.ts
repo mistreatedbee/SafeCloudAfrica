@@ -292,11 +292,24 @@ export async function upsertHrEmployee(input: Partial<HrEmployee> & {
   employment_type: string;
   start_date: string;
 }): Promise<HrEmployee> {
-  const employee = await upsertTable<HrEmployee>(
-    'hr_employees',
-    { ...input, updated_at: new Date().toISOString() },
-    'company_id,employee_no'
-  );
+  const payload = { ...input, updated_at: new Date().toISOString() };
+  let employee: HrEmployee;
+
+  if (input.id) {
+    const { data, error } = await insforge.database
+      .from('hr_employees')
+      .update(payload)
+      .eq('company_id', input.company_id)
+      .eq('id', input.id)
+      .select('*')
+      .single();
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to update hr employee row');
+    employee = data as HrEmployee;
+  } else {
+    employee = await upsertTable<HrEmployee>('hr_employees', payload, 'company_id,employee_no');
+  }
+
   await createActivityLog({
     companyId: input.company_id,
     actorUserId: input.created_by_user_id,
@@ -406,8 +419,27 @@ export async function listHrLeaveRequests(companyId: UUID, employeeId?: UUID): P
 export async function createHrLeaveRequest(input: Omit<HrLeaveRequest, 'id' | 'created_at' | 'updated_at' | 'approved_by_user_id' | 'approved_at' | 'decline_reason'> & {
   approverUserId?: UUID | null;
 }): Promise<HrLeaveRequest> {
+  const computedTotalDays = (() => {
+    const start = new Date(input.start_date);
+    const end = new Date(input.end_date);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() < start.getTime()) return 0;
+
+    const cursor = new Date(start);
+    cursor.setHours(0, 0, 0, 0);
+    const endDay = new Date(end);
+    endDay.setHours(0, 0, 0, 0);
+
+    let days = 0;
+    while (cursor.getTime() <= endDay.getTime()) {
+      if (cursor.getDay() !== 0) days += 1;
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return days;
+  })();
+
   const row = await insertTable<HrLeaveRequest>('hr_leave_requests', {
     ...input,
+    total_days: computedTotalDays,
     status: input.status ?? 'SUBMITTED',
     submitted_at: input.submitted_at ?? new Date().toISOString()
   });

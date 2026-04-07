@@ -1,40 +1,23 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { FileTextIcon, PlusIcon, SearchIcon, EditIcon, TrashIcon, XIcon } from 'lucide-react';
+import { AlertTriangleIcon, FileTextIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
+import { ListEmptyState } from '../components/ui/ListEmptyState';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { listFormTemplates, deleteFormTemplate, createFormTemplate, type FormTemplate, type FormField } from '../api/services/formsService';
+import {
+  createFormTemplate,
+  deleteFormTemplate,
+  listFormSubmissions,
+  listFormTemplates,
+  type FormTemplate
+} from '../api/services/formsService';
 
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
 };
 const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
-
-const mockTemplates = [
-  {
-    id: '1',
-    name: 'Safety Inspection Checklist',
-    module: 'Safety',
-    type: 'Checklist',
-    submissions: 12
-  },
-  {
-    id: '2',
-    name: 'Incident Report Form',
-    module: 'Safety',
-    type: 'Report',
-    submissions: 8
-  },
-  {
-    id: '3',
-    name: 'Training Attendance Sheet',
-    module: 'HR',
-    type: 'Attendance',
-    submissions: 5
-  }
-];
 
 export function FormsPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -49,18 +32,40 @@ export function FormsPage() {
     [activeCompanyId]
   );
 
-  const filtered = (templates || []).filter(
-    (t) =>
-      t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.module.toLowerCase().includes(searchQuery.toLowerCase())
+  const {
+    data: submissionCounts,
+    loading: submissionCountsLoading
+  } = useAsync<Record<string, number>>(
+    async () => {
+      if (!templates?.length) return {};
+      const entries = await Promise.all(
+        templates.map(async (template) => {
+          const submissions = await listFormSubmissions(template.id);
+          return [template.id, submissions.length] as const;
+        })
+      );
+      return Object.fromEntries(entries);
+    },
+    [templates]
+  );
+
+  const filtered = useMemo(
+    () =>
+      (templates || []).filter(
+        (t) =>
+          t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.module.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    [searchQuery, templates]
   );
 
   const handleDelete = async (templateId: string) => {
+    if (!activeCompanyId) return;
     if (!confirm('Are you sure you want to delete this template?')) return;
     try {
-      await deleteFormTemplate(templateId);
+      await deleteFormTemplate(activeCompanyId, templateId);
       refetch();
-    } catch (err) {
+    } catch {
       alert('Failed to delete template');
     }
   };
@@ -130,28 +135,52 @@ export function FormsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-200">
-                {filtered.map((template) => (
-                  <tr key={template.id} className="hover:bg-surface-50">
-                    <td className="px-5 py-4 text-sm font-medium text-charcoal">{template.name}</td>
-                    <td className="px-5 py-4 text-sm text-charcoal-600">{template.module}</td>
-                    <td className="px-5 py-4 text-sm text-charcoal-600">
-                      {template.original_pdf_key ? 'PDF Upload' : 'Manual Builder'}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-charcoal-600">0</td>
-                    <td className="px-5 py-4 text-sm">
-                      <div className="flex gap-2">
-                        <button className="text-blue hover:text-blue-600 text-sm">Edit</button>
-                        <button className="text-blue hover:text-blue-600 text-sm">View Submissions</button>
-                        <button
-                          onClick={() => handleDelete(template.id)}
-                          className="text-critical hover:text-critical-600 text-sm"
-                        >
-                          Delete
-                        </button>
-                      </div>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-10 text-center text-sm text-charcoal-500">
+                      Loading live form templates...
                     </td>
                   </tr>
-                ))}
+                ) : error ? (
+                  <ListEmptyState
+                    tableColSpan={5}
+                    icon={AlertTriangleIcon}
+                    title="Could not load form templates"
+                    description={error.message || 'The latest form templates could not be loaded right now.'}
+                    primaryAction={{ kind: 'button', label: 'Refresh', onClick: refetch }}
+                  />
+                ) : filtered.length === 0 ? (
+                  <ListEmptyState
+                    tableColSpan={5}
+                    icon={FileTextIcon}
+                    title="No live form templates yet"
+                    description="Templates will appear here as soon as they are created in the current organisation."
+                    primaryAction={{ kind: 'button', label: 'Refresh', onClick: refetch }}
+                  />
+                ) : (
+                  filtered.map((template) => (
+                    <tr key={template.id} className="hover:bg-surface-50">
+                      <td className="px-5 py-4 text-sm font-medium text-charcoal">{template.name}</td>
+                      <td className="px-5 py-4 text-sm text-charcoal-600">{template.module}</td>
+                      <td className="px-5 py-4 text-sm text-charcoal-600">
+                        {template.original_pdf_key ? 'PDF Upload' : 'Manual Builder'}
+                      </td>
+                      <td className="px-5 py-4 text-sm text-charcoal-600">
+                        {submissionCountsLoading ? '...' : String(submissionCounts?.[template.id] ?? 0)}
+                      </td>
+                      <td className="px-5 py-4 text-sm">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleDelete(template.id)}
+                            className="text-critical hover:text-critical-600 text-sm"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

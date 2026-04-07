@@ -16,6 +16,7 @@ import { useAsync } from '../api/hooks/useAsync';
 import {
   cancelTrainingRecord,
   countExpiringTraining,
+  deleteTrainingRecord,
   listTrainingCourses,
   listTrainingRecords,
   listTrainingProviders
@@ -405,6 +406,7 @@ export function TrainingPage() {
                 canManage && (r.status === 'REQUIRED' || r.status === 'SCHEDULED' || r.status === 'OVERDUE');
               const canCancel =
                 canManage && (r.status === 'REQUIRED' || r.status === 'SCHEDULED' || r.status === 'OVERDUE');
+              const canDelete = canManage;
               const userName = profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email || String(r.user_id).slice(0, 8);
               const uploaderProfile = profileByUserId.get(r.created_by_user_id);
               const uploaderName =
@@ -515,6 +517,30 @@ export function TrainingPage() {
                         className="px-3 py-2 rounded-lg border border-critical/40 text-critical text-sm font-medium hover:bg-critical/5"
                       >
                         Cancel record
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const confirmed = window.confirm(
+                            'Delete this training record permanently? This cannot be undone.'
+                          );
+                          if (!confirmed || !activeCompanyId || !user?.id) return;
+                          try {
+                            await deleteTrainingRecord({
+                              companyId: activeCompanyId,
+                              recordId: r.id,
+                              actorUserId: user.id
+                            });
+                            setRecordsRefresh((prev) => prev + 1);
+                          } catch (err) {
+                            alert('Could not delete training record. Please try again or contact support.');
+                          }
+                        }}
+                        className="px-3 py-2 rounded-lg border border-critical/40 text-critical text-sm font-medium hover:bg-critical/5"
+                      >
+                        Delete record
                       </button>
                     )}
                   </div>
