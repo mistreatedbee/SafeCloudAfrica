@@ -11,12 +11,13 @@ export type DraftRegistration = {
   key: string;
   isDirty: () => boolean;
   serialize: () => unknown;
-  flush?: () => Promise<void>;
+  flush?: (snapshot: DraftSnapshot) => Promise<void>;
 };
 
 type DraftManagerContextValue = {
   registerDraft: (registration: DraftRegistration) => () => void;
   flushAllDrafts: () => Promise<void>;
+  persistDraftSnapshotLocally: (key: string, payload: unknown) => DraftSnapshot;
   restoreDraft: <T>(key: string) => T | null;
   hasDirtyDrafts: () => boolean;
   restoreLatestDraftByPrefix: <T>(keyPrefix: string) => { key: string; updatedAt: number; payload: T } | null;
@@ -74,26 +75,31 @@ export function DraftManagerProvider({ children }: { children: React.ReactNode }
     };
   }, []);
 
+  const persistDraftSnapshotLocally = useCallback((key: string, payload: unknown): DraftSnapshot => {
+    const snapshot: DraftSnapshot = {
+      key,
+      updatedAt: Date.now(),
+      route: typeof window !== 'undefined' ? window.location.pathname + window.location.search : undefined,
+      payload
+    };
+    persistDraftSnapshot(snapshot);
+    return snapshot;
+  }, []);
+
   const flushAllDrafts = useCallback(async () => {
     const registrations = Array.from(registrationsRef.current.values());
     for (const registration of registrations) {
       if (!registration.isDirty()) continue;
-      const snapshot: DraftSnapshot = {
-        key: registration.key,
-        updatedAt: Date.now(),
-        route: typeof window !== 'undefined' ? window.location.pathname + window.location.search : undefined,
-        payload: registration.serialize()
-      };
-      persistDraftSnapshot(snapshot);
+      const snapshot = persistDraftSnapshotLocally(registration.key, registration.serialize());
       if (registration.flush) {
         try {
-          await registration.flush();
+          await registration.flush(snapshot);
         } catch {
           // Keep local snapshot available for post-login restore.
         }
       }
     }
-  }, []);
+  }, [persistDraftSnapshotLocally]);
 
   const hasDirtyDrafts = useCallback(() => {
     const registrations = registrationsRef.current.values();
@@ -150,12 +156,21 @@ export function DraftManagerProvider({ children }: { children: React.ReactNode }
     () => ({
       registerDraft,
       flushAllDrafts,
+      persistDraftSnapshotLocally,
       restoreDraft,
       hasDirtyDrafts,
       restoreLatestDraftByPrefix,
       clearDraft
     }),
-    [registerDraft, flushAllDrafts, restoreDraft, hasDirtyDrafts, restoreLatestDraftByPrefix, clearDraft]
+    [
+      registerDraft,
+      flushAllDrafts,
+      persistDraftSnapshotLocally,
+      restoreDraft,
+      hasDirtyDrafts,
+      restoreLatestDraftByPrefix,
+      clearDraft
+    ]
   );
 
   return <DraftManagerContext.Provider value={value}>{children}</DraftManagerContext.Provider>;
