@@ -5,7 +5,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listUserProfiles } from '../../api/services/profilesService';
-import { listEnvWaterMonitoring, upsertEnvWaterMonitoring, listLegalRequirementOptions } from '../../api/services/environmentService';
+import { deleteEnvWaterMonitoring, listEnvWaterMonitoring, upsertEnvWaterMonitoring, listLegalRequirementOptions } from '../../api/services/environmentService';
 import { toCsv, downloadTextFile } from '../../utils/csv';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import { DropletsIcon } from 'lucide-react';
@@ -418,7 +418,28 @@ export function EnvironmentWaterPage() {
                       </button>
                     </td>
                     <td className="px-3 py-2">
-                      <button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!activeCompanyId || !user?.id) return;
+                            if (!window.confirm('Delete this water monitoring record?')) return;
+                            await deleteEnvWaterMonitoring({
+                              companyId: activeCompanyId,
+                              recordId: r.id,
+                              actorUserId: user.id,
+                              actorRole: activeRole
+                            });
+                            if (String(editing?.id ?? '') === String(r.id)) setEditing(null);
+                            setRefreshKey((k) => k + 1);
+                            await refetch();
+                          }}
+                          className="px-2 py-1 border border-critical/30 text-critical rounded text-xs"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -454,5 +475,4 @@ export function EnvironmentWaterPage() {
     </Layout>
   );
 }
-
 

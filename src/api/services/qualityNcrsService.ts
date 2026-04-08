@@ -269,6 +269,37 @@ export async function updateQualityNcr(
   return ncr;
 }
 
+export async function deleteQualityNcr(
+  ncrId: UUID,
+  companyId: UUID,
+  actorUserId: UUID
+): Promise<void> {
+  const existing = await getQualityNcr(ncrId, companyId);
+  if (!existing) throw new Error('NCR not found.');
+
+  const { error } = await insforge.database
+    .from('quality_ncrs')
+    .delete()
+    .eq('id', ncrId)
+    .eq('company_id', companyId);
+
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId,
+    actorUserId,
+    action: 'quality_ncrs.delete',
+    entityType: 'quality_ncr',
+    entityId: ncrId,
+    metadata: {
+      nc_number: existing.nc_number,
+      status: existing.status,
+      sourceEntityType: existing.source_entity_type ?? null,
+      sourceEntityId: existing.source_entity_id ?? null
+    }
+  });
+}
+
 export async function closeQualityNcr(
   ncrId: UUID,
   companyId: UUID,

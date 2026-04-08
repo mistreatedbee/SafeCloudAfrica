@@ -115,7 +115,7 @@ export function SettingsPage() {
   const [mfaPlanned, setMfaPlanned] = useState(Boolean(initialSettings.mfaPlanned ?? false));
 
   // Appearance
-  const [theme, setTheme] = useState<String>(initialSettings.theme ?? 'system');
+  const [theme, setTheme] = useState<string>(initialSettings.theme ?? 'system');
 
   // Integrations
   const [webhookUrl, setWebhookUrl] = useState(initialSettings.webhookUrl ?? '');

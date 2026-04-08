@@ -7,11 +7,13 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { listDepartments } from '../../api/services/departmentsService';
 import {
   approveHrTimesheet,
+  deleteHrTimesheet,
   getHrEmployeeByUserId,
   listHrEmployees,
   listHrRecords,
   listHrTimesheets,
   recalculateHrMonthlyHours,
+  updateHrTimesheet,
   upsertHrTimesheet
 } from '../../api/services/hrService';
 import { downloadTextFile, toCsv } from '../../utils/csv';
@@ -28,6 +30,7 @@ export function HrHoursPage() {
   const [overtimeHours, setOvertimeHours] = useState('0');
   const [projectOrClient, setProjectOrClient] = useState('');
   const [comments, setComments] = useState('');
+  const [editingRowId, setEditingRowId] = useState<UUID | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -74,6 +77,7 @@ export function HrHoursPage() {
   );
 
   const dailyTotal = Number(hoursWorked || 0) + Number(overtimeHours || 0);
+  const canManageRows = ['owner', 'admin', 'manager', 'supervisor'].includes(activeRole ?? '');
 
   const byMonth = useMemo(() => {
     const map = new Map<string, number>();
@@ -83,6 +87,28 @@ export function HrHoursPage() {
     }
     return Array.from(map.entries()).sort(([a], [b]) => (a < b ? -1 : 1));
   }, [rows]);
+
+  function resetForm() {
+    setEditingRowId(null);
+    setEmployeeId('');
+    setDate(new Date().toISOString().slice(0, 10));
+    setHoursWorked('8');
+    setOvertimeHours('0');
+    setProjectOrClient('');
+    setComments('');
+  }
+
+  function beginEdit(row: any) {
+    setEditingRowId(row.id as UUID);
+    if (!isEmployee) setEmployeeId(String(row.employee_id ?? ''));
+    setDate(String(row.date ?? '').slice(0, 10));
+    setHoursWorked(String(row.hours_worked ?? 0));
+    setOvertimeHours(String(row.overtime_hours ?? 0));
+    setProjectOrClient(String(row.project_or_client ?? ''));
+    setComments(String(row.notes ?? ''));
+    setError(null);
+    setSuccess(null);
+  }
 
   async function onSave() {
     setError(null);
@@ -102,21 +128,38 @@ export function HrHoursPage() {
     }
 
     try {
-      const row = await upsertHrTimesheet({
-        company_id: activeCompanyId,
-        employee_id: activeEmployeeId as UUID,
-        date,
-        hours_worked: parsedHours,
-        overtime_hours: parsedOvertime,
-        project_or_client: projectOrClient || null,
-        notes: comments || null,
-        status: 'SUBMITTED',
-        created_by_user_id: user.id as UUID
-      });
-      const d = new Date(row.date);
-      await recalculateHrMonthlyHours(activeCompanyId, row.employee_id as UUID, d.getUTCFullYear(), d.getUTCMonth() + 1, user.id as UUID);
+      if (editingRowId) {
+        await updateHrTimesheet({
+          companyId: activeCompanyId,
+          timesheetId: editingRowId,
+          actorUserId: user.id as UUID,
+          patch: {
+            employee_id: activeEmployeeId as UUID,
+            date,
+            hours_worked: parsedHours,
+            overtime_hours: parsedOvertime,
+            project_or_client: projectOrClient || null,
+            notes: comments || null
+          }
+        });
+      } else {
+        const row = await upsertHrTimesheet({
+          company_id: activeCompanyId,
+          employee_id: activeEmployeeId as UUID,
+          date,
+          hours_worked: parsedHours,
+          overtime_hours: parsedOvertime,
+          project_or_client: projectOrClient || null,
+          notes: comments || null,
+          status: 'SUBMITTED',
+          created_by_user_id: user.id as UUID
+        });
+        const d = new Date(row.date);
+        await recalculateHrMonthlyHours(activeCompanyId, row.employee_id as UUID, d.getUTCFullYear(), d.getUTCMonth() + 1, user.id as UUID);
+      }
       await Promise.all([refetch(), refetchMonthly()]);
-      setSuccess('Hours worked record saved successfully.');
+      setSuccess(editingRowId ? 'Hours worked record updated successfully.' : 'Hours worked record saved successfully.');
+      resetForm();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to save hours worked record. Please try again.';
       setError(message);
@@ -138,6 +181,26 @@ export function HrHoursPage() {
     }
     await approveHrTimesheet({ companyId: activeCompanyId, timesheetId: rowId, actorUserId: user.id as UUID, decision: 'DECLINED', declineReason: reason.trim() });
     await Promise.all([refetch(), refetchMonthly()]);
+  }
+
+  async function onDelete(row: any) {
+    if (!activeCompanyId || !user?.id) return;
+    const canDeleteRow =
+      canManageRows || (isEmployee && String(row.employee_id) === String(selfEmployee?.id) && String(row.status) !== 'APPROVED');
+    if (!canDeleteRow) return;
+    if (!window.confirm('Delete this timesheet entry? This cannot be undone.')) return;
+    try {
+      await deleteHrTimesheet({
+        companyId: activeCompanyId,
+        timesheetId: row.id as UUID,
+        actorUserId: user.id as UUID
+      });
+      await Promise.all([refetch(), refetchMonthly()]);
+      if (String(editingRowId ?? '') === String(row.id)) resetForm();
+      setSuccess('Timesheet entry deleted successfully.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to delete timesheet entry.');
+    }
   }
 
   return (
@@ -206,9 +269,16 @@ export function HrHoursPage() {
             </label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Daily total</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2 bg-surface-50 font-semibold" readOnly value={dailyTotal.toFixed(2)} /></label>
           </div>
-          <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onSave()} disabled={!activeEmployeeId}>
-            Save timesheet
-          </button>
+          <div className="flex gap-2">
+            <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onSave()} disabled={!activeEmployeeId}>
+              {editingRowId ? 'Update timesheet' : 'Save timesheet'}
+            </button>
+            {editingRowId && (
+              <button className="px-4 py-2 rounded-lg border border-surface-300 text-sm" onClick={resetForm}>
+                Cancel edit
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex justify-end">
@@ -240,12 +310,20 @@ export function HrHoursPage() {
                   <td className="px-3 py-2 font-semibold">{(Number(row.hours_worked ?? 0) + Number(row.overtime_hours ?? 0)).toFixed(2)}</td>
                   <td className="px-3 py-2">{row.status}</td>
                   <td className="px-3 py-2">
-                    {canApprove && row.status === 'SUBMITTED' && (
-                      <div className="space-x-2">
+                    <div className="space-x-2">
+                      {(canManageRows || (isEmployee && String(row.employee_id) === String(selfEmployee?.id) && String(row.status) !== 'APPROVED')) && (
+                        <>
+                          <button className="text-charcoal-700" onClick={() => beginEdit(row)}>Edit</button>
+                          <button className="text-critical" onClick={() => void onDelete(row)}>Delete</button>
+                        </>
+                      )}
+                      {canApprove && row.status === 'SUBMITTED' && (
+                        <>
                         <button className="text-teal" onClick={() => void onApprove(row.id as UUID)}>Approve</button>
                         <button className="text-critical" onClick={() => void onDecline(row.id as UUID)}>Decline</button>
-                      </div>
-                    )}
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -280,4 +358,3 @@ export function HrHoursPage() {
     </Layout>
   );
 }
-

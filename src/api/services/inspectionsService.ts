@@ -665,7 +665,7 @@ export async function completeInspectionRun(input: {
           responsible_person_id: item.responsible_person_id ?? null
         },
         input.actorUserId
-      ).catch(() => {});
+      ).catch(() => undefined);
     }
 
     // Auto-create a linked PPE issue when checklist item clearly relates to PPE
@@ -871,4 +871,3 @@ export async function syncInspectionItemsFromNcrStatus(companyId: UUID, runId: U
       .eq('id', item.id);
   }
 }
-

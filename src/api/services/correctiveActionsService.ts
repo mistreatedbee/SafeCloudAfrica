@@ -388,7 +388,7 @@ export async function getOverdueActions(companyId: UUID): Promise<CorrectiveActi
   return (data ?? []) as CorrectiveAction[];
 }
 
-export async function getDueSoonActions(companyId: UUID, daysAhead: number = 7): Promise<CorrectiveAction[]> {
+export async function getDueSoonActions(companyId: UUID, daysAhead = 7): Promise<CorrectiveAction[]> {
   const today = new Date();
   const soon = new Date(today.getTime() + daysAhead * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const todayStr = today.toISOString().split('T')[0];

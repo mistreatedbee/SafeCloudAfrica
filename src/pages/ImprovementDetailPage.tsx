@@ -21,6 +21,7 @@ import type {
 import {
   addImprovementComment,
   createImprovement,
+  deleteImprovement,
   getImprovement,
   IMPROVEMENT_SOURCE_LABELS,
   IMPROVEMENT_STATUS_LABELS,
@@ -334,6 +335,22 @@ export function ImprovementDetailPage() {
     await refreshComments();
   }
 
+  async function onDelete() {
+    if (!activeCompanyId || !improvementId || !user?.id || !editable) return;
+    const confirmed = window.confirm(`Delete improvement ${record?.reference_number ?? improvementId}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setError(null);
+    await deleteImprovement({
+      companyId: activeCompanyId,
+      improvementId: improvementId as UUID,
+      actorUserId: user.id as UUID,
+      actorRole: activeRole ?? null
+    });
+    clearDraft(draftKey);
+    navigate('/improvement');
+  }
+
   return (
     <Layout title={isCreate ? 'Create Improvement' : 'Improvement Detail'}>
       <div className="space-y-4">
@@ -342,7 +359,18 @@ export function ImprovementDetailPage() {
             <Link to="/improvement" className="text-sm text-teal hover:underline">Back to register</Link>
             <p className="text-lg font-semibold">{record?.reference_number || 'New Improvement'}</p>
           </div>
-          <button type="button" onClick={() => void save()} disabled={saving || (!isCreate && !editable)} className="px-4 py-2 rounded-lg bg-success text-white text-sm font-semibold disabled:opacity-60">{saving ? 'Saving...' : isCreate ? 'Create' : 'Save'}</button>
+          <div className="flex items-center gap-2">
+            {!isCreate && editable && (
+              <button
+                type="button"
+                onClick={() => void onDelete()}
+                className="px-4 py-2 rounded-lg border border-critical/30 text-critical text-sm font-semibold hover:bg-critical/5"
+              >
+                Delete
+              </button>
+            )}
+            <button type="button" onClick={() => void save()} disabled={saving || (!isCreate && !editable)} className="px-4 py-2 rounded-lg bg-success text-white text-sm font-semibold disabled:opacity-60">{saving ? 'Saving...' : isCreate ? 'Create' : 'Save'}</button>
+          </div>
         </div>
         {error && <div className="bg-critical/5 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
 

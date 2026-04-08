@@ -177,6 +177,51 @@ export async function updatePpeItem(input: {
   return data as PPEItem;
 }
 
+export async function deletePpeItem(input: {
+  companyId: UUID;
+  itemId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { data: stockRefs, error: stockRefsError } = await insforge.database
+    .from('ppe_stock')
+    .select('id')
+    .eq('company_id', input.companyId)
+    .eq('ppe_item_id', input.itemId)
+    .limit(1);
+  if (stockRefsError) throw new Error(getErrorMessage(stockRefsError));
+
+  if ((stockRefs ?? []).length > 0) {
+    throw new Error('This PPE item is linked to stock records and cannot be deleted.');
+  }
+
+  const { data: issueRefs, error: issueRefsError } = await insforge.database
+    .from('ppe_issues')
+    .select('id')
+    .eq('company_id', input.companyId)
+    .eq('ppe_item_id', input.itemId)
+    .limit(1);
+  if (issueRefsError) throw new Error(getErrorMessage(issueRefsError));
+
+  if ((issueRefs ?? []).length > 0) {
+    throw new Error('This PPE item has issue history and cannot be deleted.');
+  }
+
+  const { error } = await insforge.database
+    .from('ppe_items')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.itemId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'ppe_items.delete',
+    entityType: 'ppe_item',
+    entityId: input.itemId
+  });
+}
+
 export type CreatePpeIssueInput = {
   companyId: UUID;
   ppeItemId: UUID;
@@ -221,7 +266,7 @@ export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIss
   const totalCostAtIssue = unitCost != null && quantity > 0 ? unitCost * quantity : null;
 
   let issuedByName: string | null = null;
-  let issuedByRole: string | null = input.issuedByRole ?? null;
+  const issuedByRole: string | null = input.issuedByRole ?? null;
   try {
     const profile = await getMyProfile(input.companyId, input.issuedByUserId);
     if (profile?.full_name) issuedByName = profile.full_name;
@@ -446,6 +491,7 @@ export async function updatePpeStock(input: {
       | 'opening_stock_qty'
       | 'qty_ordered'
       | 'qty_received'
+      | 'expiry_date'
     >
   >;
   actorUserId: UUID;
@@ -473,6 +519,38 @@ export async function updatePpeStock(input: {
     entityType: 'ppe_stock',
     entityId: input.stockId,
     metadata: input.patch as any
+  });
+
+  return data as PpeStock;
+}
+
+export async function deletePpeStock(input: {
+  companyId: UUID;
+  stockId: UUID;
+  actorUserId: UUID;
+}): Promise<PpeStock> {
+  const nowIso = new Date().toISOString();
+  const { data, error } = await insforge.database
+    .from('ppe_stock')
+    .update({
+      is_active: false,
+      updated_at: nowIso,
+      updated_by_user_id: input.actorUserId
+    })
+    .eq('company_id', input.companyId)
+    .eq('id', input.stockId)
+    .select('*')
+    .single();
+
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to archive PPE stock.');
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'ppe_stock.delete',
+    entityType: 'ppe_stock',
+    entityId: input.stockId
   });
 
   return data as PpeStock;
@@ -892,4 +970,3 @@ export async function setPpeIssueLinks(input: {
     }
   });
 }
-

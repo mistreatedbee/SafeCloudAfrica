@@ -504,6 +504,42 @@ export async function updateImprovementStatus(input: {
   });
 }
 
+export async function deleteImprovement(input: {
+  companyId: UUID;
+  improvementId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+}): Promise<void> {
+  if (!canEditRole(input.actorRole)) {
+    throw new Error('You do not have permission to delete improvements.');
+  }
+
+  const existing = await getImprovement(input.companyId, input.improvementId);
+
+  const { error: commentsError } = await insforge.database
+    .from('improvement_comments')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('improvement_id', input.improvementId);
+  if (commentsError) throw new Error(getErrorMessage(commentsError));
+
+  const { error } = await insforge.database
+    .from('improvements')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.improvementId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'improvements.delete',
+    entityType: 'improvement',
+    entityId: input.improvementId,
+    metadata: { referenceNumber: existing.reference_number, status: existing.status }
+  });
+}
+
 export async function listImprovementComments(companyId: UUID, improvementId: UUID): Promise<ImprovementComment[]> {
   const { data, error } = await insforge.database
     .from('improvement_comments')

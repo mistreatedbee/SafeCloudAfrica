@@ -10,6 +10,7 @@ import {
   createInternalExternalIssue,
   createInternalExternalIssueRegister,
   deleteInternalExternalIssue,
+  deleteInternalExternalIssueRegister,
   getInternalExternalIssuesSummary,
   IE_DOC_NO_DEFAULT,
   IE_RISK_OR_OPP_OPTIONS,
@@ -164,6 +165,7 @@ export default function QualityInternalExternalIssuesPage() {
   const [approvalSignature, setApprovalSignature] = useState('');
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [registerSaving, setRegisterSaving] = useState(false);
+  const [registerDeleting, setRegisterDeleting] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [formMode, setFormMode] = useState<FormMode>('create');
@@ -303,6 +305,27 @@ export default function QualityInternalExternalIssuesPage() {
       await refreshAll();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to approve register.');
+    }
+  }
+
+  async function handleDeleteRegister() {
+    if (!activeCompanyId || !selectedRegister || !user?.id || !canApprove) return;
+    const label = selectedRegister.issue_no || selectedRegister.id;
+    if (!window.confirm(`Delete register ${label} and all its issues? This cannot be undone.`)) return;
+    setRegisterDeleting(true);
+    try {
+      await deleteInternalExternalIssueRegister({
+        companyId: activeCompanyId,
+        registerId: selectedRegister.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole ?? null
+      });
+      setSelectedRegisterId('');
+      await refreshAll();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete register.');
+    } finally {
+      setRegisterDeleting(false);
     }
   }
 
@@ -486,6 +509,16 @@ export default function QualityInternalExternalIssuesPage() {
             <div className="flex items-end gap-2">
               {canWrite && <button type="button" onClick={() => void handleSaveRegister()} disabled={registerSaving} className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-70">{registerSaving ? 'Saving...' : selectedRegister ? 'Save Register' : 'Create Register'}</button>}
               {canApprove && selectedRegister && <button type="button" onClick={() => void handleApproveRegister()} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium hover:bg-surface-50">Approve Register</button>}
+              {canApprove && selectedRegister && (
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteRegister()}
+                  disabled={registerDeleting}
+                  className="px-4 py-2 rounded-lg border border-critical/30 text-critical text-sm font-medium hover:bg-critical/5 disabled:opacity-60"
+                >
+                  {registerDeleting ? 'Deleting…' : 'Delete Register'}
+                </button>
+              )}
             </div>
           </div>
           {registerError && <p className="text-sm text-critical">{registerError}</p>}

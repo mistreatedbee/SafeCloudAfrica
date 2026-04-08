@@ -100,7 +100,7 @@ export async function calculateComplianceScore(
 
   // Gather items based on module
   switch (module) {
-    case 'safety':
+    case 'safety': {
       const incidents = await listIncidents({ companyId, limit: 500 });
       const risks = await listRiskAssessments({ companyId, limit: 500 });
       items = [
@@ -108,8 +108,9 @@ export async function calculateComplianceScore(
         ...risks.map(r => ({ status: r.status, due_date: r.assessment_date }))
       ];
       break;
+    }
 
-    case 'quality':
+    case 'quality': {
       const ncrs = await insforge.database
         .from('quality_ncrs')
         .select('*')
@@ -122,11 +123,12 @@ export async function calculateComplianceScore(
         completed_date: n.closed_date
       }));
       break;
+    }
 
     case 'environment':
     case 'health':
     case 'legal':
-    case 'hr':
+    case 'hr': {
       // Gather from audits and compliance items for these modules
       const audits = await listAudits({ companyId, module, limit: 500 });
       items = audits.map(a => ({
@@ -134,6 +136,10 @@ export async function calculateComplianceScore(
         due_date: a.audit_date,
         priority: 'medium'
       }));
+      break;
+    }
+    default:
+      items = [];
       break;
   }
 

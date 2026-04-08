@@ -6,6 +6,7 @@ import { useUser } from '@insforge/react';
 import { useAsync } from '../api/hooks/useAsync';
 import type { ImprovementRecord, ImprovementSourceType, ImprovementType, ImprovementWorkflowStatus, UUID } from '../api/models/entities';
 import {
+  deleteImprovement,
   getImprovementSummary,
   IMPROVEMENT_SOURCE_LABELS,
   IMPROVEMENT_STATUS_LABELS,
@@ -192,6 +193,22 @@ export function ImprovementPage() {
     const text = prompt('Add comment');
     if (!text?.trim()) return;
     navigate(`/improvement/${rec.id}?comment=${encodeURIComponent(text.trim())}`);
+  }
+
+  async function onDelete(rec: ImprovementRecord) {
+    if (!activeCompanyId || !user?.id || !canEdit) return;
+    const confirmed = window.confirm(`Delete improvement ${rec.reference_number}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    await deleteImprovement({
+      companyId: activeCompanyId,
+      improvementId: rec.id,
+      actorUserId: user.id as UUID,
+      actorRole: activeRole ?? null
+    });
+    setRefreshKey((v) => v + 1);
+    await refresh();
+    await refreshSummary();
   }
 
   const hasImprovementFilters =
@@ -462,6 +479,15 @@ export function ImprovementPage() {
                           <button type="button" onClick={() => onAddComment(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">
                             Add Comment
                           </button>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => void onDelete(row)}
+                              className="px-2 py-1 rounded border border-critical/30 text-critical text-xs hover:bg-critical/5"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -3,10 +3,8 @@ import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { createHealthHygieneRecord, listHealthHygieneRecords, updateHealthHygieneRecord } from '../../api/services/healthService';
-import { listRiskAssessments } from '../../api/services/risksService';
+import { createHealthHygieneRecord, deleteHealthHygieneRecord, listHealthHygieneRecords, updateHealthHygieneRecord } from '../../api/services/healthService';
 import { listEvidenceForEntityType } from '../../api/services/evidenceService';
-import type { RiskAssessment } from '../../api/services/risksService';
 import type { EvidenceAttachment, HealthHygieneRecord, UUID } from '../../api/models/entities';
 import { EvidenceModal } from '../../components/evidence/EvidenceModal';
 import { useDraftManager } from '../../session/DraftManagerProvider';
@@ -167,11 +165,6 @@ export function HealthHygienePage() {
     return await listHealthHygieneRecords({ companyId: activeCompanyId, limit: 300 });
   }, [activeCompanyId, refreshKey]);
 
-  const { data: risks } = useAsync<RiskAssessment[]>(async () => {
-    if (!activeCompanyId) return [];
-    return await listRiskAssessments({ companyId: activeCompanyId, limit: 200 });
-  }, [activeCompanyId]);
-
   const { data: hygieneEvidence } = useAsync<EvidenceAttachment[]>(async () => {
     if (!activeCompanyId) return [];
     return await listEvidenceForEntityType(activeCompanyId, 'health_hygiene_record', 2000);
@@ -285,6 +278,21 @@ export function HealthHygienePage() {
     setEditingId(null);
     setEditRow(null);
     setEditCompliance('');
+    setRefreshKey((k) => k + 1);
+  }
+
+  async function removeRecord(recordId: UUID) {
+    if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm('Delete this hygiene monitoring record?')) return;
+    await deleteHealthHygieneRecord(activeCompanyId, recordId, user.id);
+    if (editingId === recordId) {
+      clearDraft(draftKeyEdit);
+      setEditBaseline(null);
+      setEditingId(null);
+      setEditRow(null);
+      setEditCompliance('');
+    }
+    if (evidenceForId === recordId) setEvidenceForId(null);
     setRefreshKey((k) => k + 1);
   }
 
@@ -587,13 +595,22 @@ export function HealthHygienePage() {
                           </button>
                         </>
                       ) : (
-                        <button
-                          type="button"
-                          className="px-2 py-1.5 rounded-lg bg-surface-200 text-xs text-charcoal hover:bg-surface-300"
-                          onClick={() => beginEdit(r)}
-                        >
-                          Edit
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className="px-2 py-1.5 rounded-lg bg-surface-200 text-xs text-charcoal hover:bg-surface-300"
+                            onClick={() => beginEdit(r)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-1.5 rounded-lg border border-critical/30 text-critical text-xs hover:bg-critical/5"
+                            onClick={() => void removeRecord(r.id)}
+                          >
+                            Delete
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -618,4 +635,3 @@ export function HealthHygienePage() {
     </Layout>
   );
 }
-

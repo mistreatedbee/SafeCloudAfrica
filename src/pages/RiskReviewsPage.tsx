@@ -1,22 +1,42 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { CalendarIcon, AlertTriangle } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
 import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import type { UUID } from '../api/models/entities';
-import type { RiskAssessment } from '../api/services/risksService';
-import { listRiskAssessments } from '../api/services/risksService';
+import type { MembershipScope, RiskAssessment } from '../api/services/riskAssessmentsService';
+import { listRiskAssessments } from '../api/services/riskAssessmentsService';
 
 type ReviewFilter = 'all' | 'due-today' | 'overdue' | 'next-30';
 
+function getScopeForActiveMembership(
+  memberships: Array<{ company_id: UUID; site_id?: UUID | null; department_id?: UUID | null; consultant_scope?: any }> | undefined,
+  companyId: UUID | null
+): MembershipScope | null {
+  if (!memberships || !companyId) return null;
+  const active = memberships.find((m) => m.company_id === companyId);
+  if (!active) return null;
+  return {
+    siteId: active.site_id ?? null,
+    departmentId: active.department_id ?? null,
+    consultantScope: active.consultant_scope ?? null
+  };
+}
+
 export function RiskReviewsPage() {
-  const { activeCompanyId } = useTenant();
+  const navigate = useNavigate();
+  const { activeCompanyId, activeRole, memberships } = useTenant();
   const { user } = useUser();
   const [assessments, setAssessments] = useState<RiskAssessment[]>([]);
   const [filter, setFilter] = useState<ReviewFilter>('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scope = useMemo(
+    () => getScopeForActiveMembership(memberships as any, activeCompanyId as UUID | null),
+    [activeCompanyId, memberships]
+  );
 
   useEffect(() => {
     if (!activeCompanyId || !user?.id) return;
@@ -24,20 +44,27 @@ export function RiskReviewsPage() {
       try {
         setLoading(true);
         setError(null);
-        const data = await listRiskAssessments({ companyId: activeCompanyId, limit: 500 });
-        setAssessments((data ?? []).filter((a) => !!a.review_due_at));
+        const data = await listRiskAssessments({
+          companyId: activeCompanyId,
+          actorUserId: user.id as UUID,
+          actorRole: activeRole ?? null,
+          scope,
+          limit: 500
+        });
+        setAssessments((data ?? []).filter((a) => !!a.next_review_date));
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load risk assessments for review');
       } finally {
         setLoading(false);
       }
     })();
-  }, [activeCompanyId, user?.id]);
+  }, [activeCompanyId, activeRole, scope, user?.id]);
 
   const filtered = assessments.filter((a) => {
-    if (!a.review_due_at) return false;
+    if (!a.next_review_date) return false;
+    if (a.status === 'closed') return false;
     if (filter === 'all') return true;
-    const due = new Date(a.review_due_at);
+    const due = new Date(a.next_review_date);
     const today = new Date();
     const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
@@ -60,7 +87,7 @@ export function RiskReviewsPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Risk Assessment Reviews</h1>
             <p className="text-sm text-gray-600 mt-1">
-              Track baseline and task-based assessments that require periodic review.
+              Track active baseline, task, critical-task, and pre-work assessments that require periodic review.
             </p>
           </div>
           <div className="flex gap-2">
@@ -141,26 +168,31 @@ export function RiskReviewsPage() {
           <div className="bg-white rounded-lg border border-gray-200 divide-y">
             {filtered
               .slice()
-              .sort((a, b) => (a.review_due_at! > b.review_due_at! ? 1 : -1))
+              .sort((a, b) => (a.next_review_date! > b.next_review_date! ? 1 : -1))
               .map((a) => (
-                <div key={a.id} className="p-4 flex items-start justify-between gap-4">
+                <button
+                  type="button"
+                  key={a.id}
+                  onClick={() => navigate(`/risk-assessments/${a.id}`)}
+                  className="w-full p-4 flex items-start justify-between gap-4 text-left hover:bg-surface-50"
+                >
                   <div>
                     <p className="text-sm font-semibold text-gray-900">{a.title}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{a.assessment_number}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{a.reference || 'No reference'}</p>
                     <p className="text-xs text-gray-500 mt-1 capitalize">
-                      {a.assessment_type === 'baseline' ? 'Baseline' : 'Task-based'}
-                      {a.is_critical && ' • Critical'}
-                      {!a.is_critical && a.is_prework && ' • Prework'}
+                      {a.type === 'baseline' ? 'Baseline' : a.type === 'critical' ? 'Critical Tasks' : a.type === 'prework' ? 'Pre-Work' : 'Task'}
+                      {a.area && ` • ${a.area}`}
+                      {a.activity && ` • ${a.activity}`}
                     </p>
                   </div>
                   <div className="text-right text-sm">
                     <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-50 text-indigo-700">
                       <CalendarIcon className="w-4 h-4" />
-                      <span>{a.review_due_at ? new Date(a.review_due_at).toLocaleDateString('en-ZA') : '—'}</span>
+                      <span>{a.next_review_date ? new Date(a.next_review_date).toLocaleDateString('en-ZA') : '—'}</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-1 capitalize">{a.status}</p>
                   </div>
-                </div>
+                </button>
               ))}
           </div>
         )}
@@ -168,4 +200,3 @@ export function RiskReviewsPage() {
     </Layout>
   );
 }
-

@@ -284,7 +284,7 @@ export async function createPpeIssueTracker(
       responsible_user_id: created.responsible_user_id ?? null,
       target_completion_date: created.target_completion_date ?? null,
       created_by_user_id: created.created_by_user_id
-    }).catch(() => {});
+    }).catch(() => undefined);
   }
 
   // Auto-escalation for high/critical risk
@@ -666,4 +666,3 @@ export async function addPpeIssueEvidenceFromUpload(input: {
     createdByUserId: input.actorUserId
   });
 }
-

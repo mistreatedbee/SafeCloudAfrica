@@ -24,7 +24,7 @@ function SeatsRemainingBadge() {
     let cancelled = false;
     Promise.all([countActiveMembers(activeCompanyId), getSeatLimitForCompany(activeCompanyId)])
       .then(([used, limit]) => { if (!cancelled) setSeats({ used, limit }); })
-      .catch(() => {});
+      .catch(() => undefined);
     return () => { cancelled = true; };
   }, [activeCompanyId, activeRole]);
   if (!seats || seats.limit <= 0) return null;

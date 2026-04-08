@@ -6,6 +6,7 @@ import type { UUID } from '../../api/models/core';
 import type { IncidentCorrectiveAction } from '../../api/models/entities';
 import {
   createIncidentCorrectiveAction,
+  deleteIncidentCorrectiveAction,
   updateIncidentCorrectiveAction,
   type CreateIncidentCorrectiveActionInput,
   type UpdateIncidentCorrectiveActionInput
@@ -55,6 +56,7 @@ export type IncidentCorrectiveActionModalProps = {
   initialSourceCauseType?: CauseLinkType;
   initialSourceCauseText?: string;
   causeOptions?: CauseOption[];
+  onDeleted?: () => void;
 };
 
 function parseCauseLinks(rawType?: CauseLinkType | null, rawText?: string | null): CauseOption[] {
@@ -103,7 +105,8 @@ export function IncidentCorrectiveActionModal({
   onSaved,
   initialSourceCauseType,
   initialSourceCauseText,
-  causeOptions = []
+  causeOptions = [],
+  onDeleted
 }: IncidentCorrectiveActionModalProps) {
   const [actionRequired, setActionRequired] = useState('');
   const [actionDescription, setActionDescription] = useState('');
@@ -371,6 +374,25 @@ export function IncidentCorrectiveActionModal({
     }
   }
 
+  async function onDelete() {
+    if (!actionId) return;
+    const confirmed = window.confirm('Delete this corrective action? This cannot be undone.');
+    if (!confirmed) return;
+
+    setError(null);
+    try {
+      setLoading(true);
+      await deleteIncidentCorrectiveAction(companyId, actionId);
+      clearDraft(draftKey);
+      onDeleted?.();
+      onClose();
+    } catch (err: any) {
+      setError(formatAuthError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   if (!open) return null;
 
   return (
@@ -521,6 +543,16 @@ export function IncidentCorrectiveActionModal({
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-surface-200">
+            {actionId && (
+              <button
+                type="button"
+                onClick={() => void onDelete()}
+                disabled={loading}
+                className="px-4 py-2 rounded-lg border border-critical/30 text-sm font-medium text-critical hover:bg-critical/5 disabled:opacity-60 mr-auto"
+              >
+                Delete
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {

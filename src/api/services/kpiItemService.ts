@@ -106,3 +106,40 @@ export async function getKpiItem(itemId: UUID, organizationId: UUID | null): Pro
   if (error) throw new Error(getErrorMessage(error));
   return data as KPIItem | null;
 }
+
+export async function deleteKpiItem(input: {
+  itemId: UUID;
+  organizationId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { data: existing, error: existingError } = await insforge.database
+    .from('kpi_items')
+    .select('kpi_item_id,organization_id')
+    .eq('kpi_item_id', input.itemId)
+    .maybeSingle();
+  if (existingError) throw new Error(getErrorMessage(existingError));
+  if (!existing) throw new Error('KPI item not found.');
+
+  // Never hard-delete global templates. Deactivate instead.
+  if ((existing as any).organization_id == null) {
+    throw new Error('This is a global KPI template and cannot be deleted. Deactivate it instead.');
+  }
+  if (String((existing as any).organization_id) !== String(input.organizationId)) {
+    throw new Error('KPI item does not belong to this organization.');
+  }
+
+  const { error } = await insforge.database
+    .from('kpi_items')
+    .delete()
+    .eq('kpi_item_id', input.itemId)
+    .eq('organization_id', input.organizationId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.organizationId,
+    actorUserId: input.actorUserId,
+    action: 'kpi_items.delete',
+    entityType: 'kpi_item',
+    entityId: input.itemId
+  }).catch(() => undefined);
+}

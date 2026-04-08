@@ -6,6 +6,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import {
   createHrRecord,
+  deleteHrRecord,
   getHrSettings,
   listHrEmployees,
   listHrManagersAndAdmins,
@@ -58,8 +59,11 @@ export function HrLabourPage() {
   const [repeatOffenceAction, setRepeatOffenceAction] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editingCaseId, setEditingCaseId] = useState<UUID | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState<UUID | null>(null);
   const [selectedCaseStatus, setSelectedCaseStatus] = useState('OPEN');
+  const [selectedCaseDisciplinaryAction, setSelectedCaseDisciplinaryAction] = useState('');
+  const [selectedCaseRepeatAction, setSelectedCaseRepeatAction] = useState('');
 
   const { data: settings } = useAsync(async () => {
     if (!activeCompanyId) return null;
@@ -102,9 +106,32 @@ export function HrLabourPage() {
   React.useEffect(() => {
     if (!selectedCase) return;
     setSelectedCaseStatus(String(selectedCase.status ?? 'OPEN'));
+    setSelectedCaseDisciplinaryAction(String(selectedCase.disciplinary_action_taken ?? ''));
+    setSelectedCaseRepeatAction(String(selectedCase.repeat_offence_action ?? ''));
   }, [selectedCase?.id, selectedCase?.status]);
 
-  async function onCreate() {
+  function resetForm() {
+    setEditingCaseId(null);
+    setEmployeeId('');
+    setCaseType('Written Warning');
+    setOffenceType('Absenteeism');
+    setDescription('');
+    setDisciplinaryActionTaken('');
+    setRepeatOffenceAction('');
+  }
+
+  function beginEdit(row: Record<string, unknown>) {
+    setEditingCaseId(row.id as UUID);
+    setEmployeeId(String(row.employee_id ?? ''));
+    setCaseType(String(row.case_type ?? row.warning_level ?? 'Written Warning'));
+    setOffenceType(String(row.offence_type ?? row.offence_category ?? 'Absenteeism'));
+    setDescription(String(row.description ?? ''));
+    setDisciplinaryActionTaken(String(row.disciplinary_action_taken ?? ''));
+    setRepeatOffenceAction(String(row.repeat_offence_action ?? ''));
+    setSelectedCaseId(row.id as UUID);
+  }
+
+  async function onSaveCase() {
     if (!activeCompanyId || !user?.id || !employeeId || !description.trim() || !offenceType.trim()) {
       setError('Employee, offence type, and offence description are required.');
       return;
@@ -112,43 +139,62 @@ export function HrLabourPage() {
     setError(null);
     setSaving(true);
     try {
-      const created = await createHrRecord('hr_disciplinary_cases', {
-        company_id: activeCompanyId,
-        employee_id: employeeId,
-        case_type: caseType,
-        offence_type: offenceType.trim(),
-        offence_category: offenceType.trim(),
-        description: description.trim(),
-        disciplinary_action_taken: disciplinaryActionTaken.trim() || null,
-        repeat_offence_action: repeatOffenceAction.trim() || null,
-        recommended_action: recommended,
-        offence_severity: severity,
-        warning_level: caseType,
-        date_issued: new Date().toISOString().slice(0, 10),
-        evidence_file_ids: [],
-        repeat_offence_flag: severity === 'repeat',
-        status: 'OPEN',
-        created_by_user_id: user.id
-      });
-      if (severity === 'repeat') {
-        const recipients = await listHrManagersAndAdmins(activeCompanyId).catch(() => []);
-        for (const recipientId of recipients) {
-          await createNotification(
-            activeCompanyId,
-            recipientId,
-            'warning',
-            'Repeat offence flagged',
-            `Employee ${employeeLabel.get(employeeId as UUID) ?? employeeId} has a repeat offence case logged.`,
-            { module: 'hr', route: '/dashboard/hr/labour', caseId: created.id }
-          ).catch(() => {});
+      if (editingCaseId) {
+        await updateHrRecord('hr_disciplinary_cases', {
+          companyId: activeCompanyId,
+          rowId: editingCaseId,
+          actorUserId: user.id as UUID,
+          patch: {
+            employee_id: employeeId,
+            case_type: caseType,
+            offence_type: offenceType.trim(),
+            offence_category: offenceType.trim(),
+            description: description.trim(),
+            disciplinary_action_taken: disciplinaryActionTaken.trim() || null,
+            repeat_offence_action: repeatOffenceAction.trim() || null,
+            recommended_action: recommended,
+            offence_severity: severity,
+            warning_level: caseType,
+            repeat_offence_flag: severity === 'repeat'
+          }
+        });
+      } else {
+        const created = await createHrRecord('hr_disciplinary_cases', {
+          company_id: activeCompanyId,
+          employee_id: employeeId,
+          case_type: caseType,
+          offence_type: offenceType.trim(),
+          offence_category: offenceType.trim(),
+          description: description.trim(),
+          disciplinary_action_taken: disciplinaryActionTaken.trim() || null,
+          repeat_offence_action: repeatOffenceAction.trim() || null,
+          recommended_action: recommended,
+          offence_severity: severity,
+          warning_level: caseType,
+          date_issued: new Date().toISOString().slice(0, 10),
+          evidence_file_ids: [],
+          repeat_offence_flag: severity === 'repeat',
+          status: 'OPEN',
+          created_by_user_id: user.id
+        });
+        if (severity === 'repeat') {
+          const recipients = await listHrManagersAndAdmins(activeCompanyId).catch(() => []);
+          for (const recipientId of recipients) {
+            await createNotification(
+              activeCompanyId,
+              recipientId,
+              'warning',
+              'Repeat offence flagged',
+              `Employee ${employeeLabel.get(employeeId as UUID) ?? employeeId} has a repeat offence case logged.`,
+              { module: 'hr', route: '/dashboard/hr/labour', caseId: created.id }
+            ).catch(() => undefined);
+          }
         }
       }
-      setDescription('');
-      setDisciplinaryActionTaken('');
-      setRepeatOffenceAction('');
+      resetForm();
       await refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to log offence case.');
+      setError(err instanceof Error ? err.message : `Failed to ${editingCaseId ? 'update' : 'log'} offence case.`);
     } finally {
       setSaving(false);
     }
@@ -163,8 +209,8 @@ export function HrLabourPage() {
         actorUserId: user.id as UUID,
         patch: {
           status: selectedCaseStatus,
-          disciplinary_action_taken: selectedCase.disciplinary_action_taken ?? null,
-          repeat_offence_action: selectedCase.repeat_offence_action ?? null,
+          disciplinary_action_taken: selectedCaseDisciplinaryAction.trim() || null,
+          repeat_offence_action: selectedCaseRepeatAction.trim() || null,
           recommended_action: selectedCase.recommended_action ?? null,
           offence_severity: selectedCase.offence_severity ?? null
         }
@@ -172,6 +218,23 @@ export function HrLabourPage() {
       await refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update offence case.');
+    }
+  }
+
+  async function onDelete(rowId: UUID) {
+    if (!activeCompanyId || !user?.id || !canManage) return;
+    if (!window.confirm('Delete this offence case? This cannot be undone.')) return;
+    try {
+      await deleteHrRecord('hr_disciplinary_cases', {
+        companyId: activeCompanyId,
+        rowId,
+        actorUserId: user.id as UUID
+      });
+      if (editingCaseId === rowId) resetForm();
+      if (selectedCaseId === rowId) setSelectedCaseId(null);
+      await refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete offence case.');
     }
   }
 
@@ -253,9 +316,14 @@ export function HrLabourPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-60" onClick={() => void onCreate()} disabled={!canManage || saving}>
-              {saving ? 'Saving...' : 'Report Offence / Log Case'}
+            <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-60" onClick={() => void onSaveCase()} disabled={!canManage || saving}>
+              {saving ? 'Saving...' : editingCaseId ? 'Update Offence Case' : 'Report Offence / Log Case'}
             </button>
+            {editingCaseId && (
+              <button className="px-3 py-2 rounded-lg border border-surface-300 text-sm" onClick={resetForm}>
+                Cancel edit
+              </button>
+            )}
             <button className="px-3 py-2 rounded-lg border border-surface-300 text-sm" onClick={onExport}>Export CSV</button>
           </div>
         </div>
@@ -281,7 +349,15 @@ export function HrLabourPage() {
                   <td className="px-3 py-2">{String(row.repeat_offence_flag ?? false)}</td>
                   <td className="px-3 py-2">{String(row.status ?? '')}</td>
                   <td className="px-3 py-2">
-                    <button className="text-teal" onClick={() => setSelectedCaseId(row.id as UUID)}>View details</button>
+                    <div className="flex flex-wrap gap-2">
+                      <button className="text-teal" onClick={() => setSelectedCaseId(row.id as UUID)}>View details</button>
+                      {canManage && (
+                        <button className="text-charcoal-700" onClick={() => beginEdit(row)}>Edit</button>
+                      )}
+                      {canManage && (
+                        <button className="text-critical" onClick={() => void onDelete(row.id as UUID)}>Delete</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -299,6 +375,24 @@ export function HrLabourPage() {
               <p><span className="text-charcoal-500">Employee:</span> {employeeLabel.get(selectedCase.employee_id as UUID) ?? String(selectedCase.employee_id)}</p>
               <p><span className="text-charcoal-500">Offence:</span> {String(selectedCase.offence_type ?? selectedCase.offence_category ?? '')}</p>
               <p><span className="text-charcoal-500">Description:</span> {String(selectedCase.description ?? '')}</p>
+              <label>
+                <span className="block text-xs text-charcoal-500 mb-1">Disciplinary action taken</span>
+                <input
+                  className="w-full border border-surface-300 rounded-lg px-3 py-2"
+                  value={selectedCaseDisciplinaryAction}
+                  onChange={(e) => setSelectedCaseDisciplinaryAction(e.target.value)}
+                  disabled={!canManage}
+                />
+              </label>
+              <label>
+                <span className="block text-xs text-charcoal-500 mb-1">Action for repeat offence</span>
+                <input
+                  className="w-full border border-surface-300 rounded-lg px-3 py-2"
+                  value={selectedCaseRepeatAction}
+                  onChange={(e) => setSelectedCaseRepeatAction(e.target.value)}
+                  disabled={!canManage}
+                />
+              </label>
               <label>
                 <span className="block text-xs text-charcoal-500 mb-1">Status</span>
                 <select

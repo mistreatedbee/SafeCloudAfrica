@@ -7,6 +7,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import {
   createHrAcknowledgementDocument,
   createHrPersonalDocument,
+  deleteHrAcknowledgementDocument,
+  deleteHrPersonalDocument,
   getDocumentExpiryStatus,
   listHrAcknowledgementDocuments,
   listHrEmployees,
@@ -51,6 +53,7 @@ export function HrDocumentsPage() {
   const [docTypeFilter, setDocTypeFilter] = useState('');
   const [expiryFilter, setExpiryFilter] = useState<'all' | 'active' | 'expiring_30' | 'expiring_7' | 'expired' | 'archived'>('all');
   const [departmentFilter, setDepartmentFilter] = useState('');
+  const [deletingPersonalId, setDeletingPersonalId] = useState<UUID | null>(null);
 
   const [ackTitle, setAckTitle] = useState('');
   const [ackCategory, setAckCategory] = useState('Policy');
@@ -62,6 +65,7 @@ export function HrDocumentsPage() {
   const [ackRequired, setAckRequired] = useState(true);
   const [signatureRequired, setSignatureRequired] = useState(false);
   const [ackFile, setAckFile] = useState<File | null>(null);
+  const [deletingAckId, setDeletingAckId] = useState<UUID | null>(null);
 
   const canEdit = isFullAccess(activeRole ?? null);
   const ownerSummaryOnly = isOwnerSummary(activeRole ?? null);
@@ -255,6 +259,62 @@ export function HrDocumentsPage() {
     await refetchPersonal();
   }
 
+  async function onArchivePersonal(docId: UUID) {
+    if (!activeCompanyId || !user?.id || !canEdit) return;
+    if (!window.confirm('Archive this document? You can still export and report on it, but it will be treated as archived.')) return;
+    setError(null);
+    try {
+      await updateHrPersonalDocument({
+        companyId: activeCompanyId,
+        documentId: docId,
+        actorUserId: user.id as UUID,
+        patch: { status: 'ARCHIVED' }
+      });
+      await refetchPersonal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to archive document.');
+    }
+  }
+
+  async function onDeletePersonal(docId: UUID) {
+    if (!activeCompanyId || !user?.id || !canEdit) return;
+    if (!window.confirm('Delete this document record? This cannot be undone.')) return;
+    setError(null);
+    setDeletingPersonalId(docId);
+    try {
+      await deleteHrPersonalDocument({
+        companyId: activeCompanyId,
+        documentId: docId,
+        actorUserId: user.id as UUID
+      });
+      await refetchPersonal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete personal document.');
+    } finally {
+      setDeletingPersonalId(null);
+    }
+  }
+
+  async function onDeleteAckDoc(docId: UUID) {
+    if (!activeCompanyId || !user?.id) return;
+    if (!(canEdit || isSupervisor(activeRole ?? null))) return;
+    if (!window.confirm('Delete this acknowledgement/policy document and all receipts? This cannot be undone.')) return;
+    setError(null);
+    setDeletingAckId(docId);
+    try {
+      await deleteHrAcknowledgementDocument({
+        companyId: activeCompanyId,
+        documentId: docId,
+        actorUserId: user.id as UUID
+      });
+      await refetchAck();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete acknowledgement document.');
+    } finally {
+      setDeletingAckId(null);
+    }
+  }
+
   async function firstEvidenceUrl(entityType: string, entityId: UUID): Promise<string | null> {
     if (!activeCompanyId) return null;
     const evidence = await listEvidence(activeCompanyId, { entityType, entityId, limit: 1 }).catch(() => []);
@@ -380,16 +440,32 @@ export function HrDocumentsPage() {
                           <span className={`px-2 py-1 rounded text-xs ${exp === 'expired' ? 'bg-critical/20 text-critical' : exp === 'expiring_7' ? 'bg-warning/20 text-warning' : exp === 'expiring_30' ? 'bg-yellow-100 text-yellow-700' : 'bg-surface-100 text-charcoal-600'}`}>{exp}</span>
                         </td>
                         <td className="px-3 py-2">
-                          <button
-                            className="text-teal underline"
-                            onClick={async () => {
-                              const url = await firstEvidenceUrl('hr_employee_document', row.id as UUID);
-                              if (url) window.open(url, '_blank', 'noopener,noreferrer');
-                              else alert('No file uploaded for this document.');
-                            }}
-                          >
-                            Preview
-                          </button>
+                          <div className="flex flex-wrap gap-3">
+                            <button
+                              className="text-teal underline"
+                              onClick={async () => {
+                                const url = await firstEvidenceUrl('hr_employee_document', row.id as UUID);
+                                if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                                else alert('No file uploaded for this document.');
+                              }}
+                            >
+                              Preview
+                            </button>
+                            {canEdit && exp !== 'archived' && (
+                              <button className="text-charcoal-700 underline" onClick={() => void onArchivePersonal(row.id as UUID)}>
+                                Archive
+                              </button>
+                            )}
+                            {canEdit && (
+                              <button
+                                className="text-critical underline disabled:opacity-50"
+                                onClick={() => void onDeletePersonal(row.id as UUID)}
+                                disabled={deletingPersonalId === (row.id as UUID)}
+                              >
+                                {deletingPersonalId === (row.id as UUID) ? 'Deleting...' : 'Delete'}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -448,6 +524,15 @@ export function HrDocumentsPage() {
                               <button className="text-teal underline" onClick={() => void onAcknowledge(row.id as UUID, false)} disabled={myReceipt?.status === 'ACKNOWLEDGED' || myReceipt?.status === 'SIGNED'}>Acknowledge</button>
                               <button className="text-teal underline" onClick={() => void onAcknowledge(row.id as UUID, true)} disabled={myReceipt?.status === 'SIGNED'}>Sign</button>
                             </>
+                          )}
+                          {(canEdit || isSupervisor(activeRole ?? null)) && (
+                            <button
+                              className="text-critical underline disabled:opacity-50"
+                              onClick={() => void onDeleteAckDoc(row.id as UUID)}
+                              disabled={deletingAckId === (row.id as UUID)}
+                            >
+                              {deletingAckId === (row.id as UUID) ? 'Deleting...' : 'Delete'}
+                            </button>
                           )}
                         </td>
                       </tr>

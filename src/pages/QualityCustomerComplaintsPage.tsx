@@ -434,6 +434,15 @@ export default function QualityCustomerComplaintsPage() {
                             View NCR
                           </button>
                         )}
+                        {row.linked_task_id && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/tasks/${row.linked_task_id}`)}
+                            className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50"
+                          >
+                            View Task
+                          </button>
+                        )}
                         {(canEdit || (activeRole === 'employee' && row.created_by_user_id === (user?.id as UUID))) && (
                           <button
                             type="button"
@@ -667,6 +676,15 @@ export default function QualityCustomerComplaintsPage() {
                       className="px-3 py-2 rounded-lg border border-surface-300 text-sm"
                     >
                       View NCR
+                    </button>
+                  )}
+                  {(complaints ?? []).find((x) => x.id === form.id)?.linked_task_id && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/tasks/${(complaints ?? []).find((x) => x.id === form.id)?.linked_task_id}`)}
+                      className="px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                    >
+                      View Task
                     </button>
                   )}
                 </div>

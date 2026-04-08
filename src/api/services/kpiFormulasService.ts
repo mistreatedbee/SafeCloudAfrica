@@ -150,7 +150,7 @@ export async function getLtiFreeHours(
   }
 
   const sorted = [...hoursRows].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month);
-  let q = insforge.database
+  const q = insforge.database
     .from('incidents')
     .select('id, occurred_at, is_lost_time_injury, is_fatality, site_id, department_id')
     .eq('company_id', companyId)

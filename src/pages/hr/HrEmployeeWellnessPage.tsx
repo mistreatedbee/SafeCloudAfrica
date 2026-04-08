@@ -8,6 +8,7 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import type { UUID } from '../../api/models/entities';
 import {
+  deleteHrRecord,
   listHrEmployees,
   listEmployeeWellnessAssessments,
   createEmployeeWellnessAssessment,
@@ -122,6 +123,7 @@ export function HrEmployeeWellnessPage() {
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<UUID | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingAssessmentId, setDeletingAssessmentId] = useState<UUID | null>(null);
 
   const { data: employees } = useAsync<HrEmployee[]>(
     async () => {
@@ -528,6 +530,26 @@ export function HrEmployeeWellnessPage() {
     }
   };
 
+  const handleDeleteAssessment = async (assessmentId: UUID) => {
+    if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm('Delete this wellness assessment and its action plan rows? This cannot be undone.')) return;
+    setError(null);
+    setDeletingAssessmentId(assessmentId);
+    try {
+      await deleteHrRecord('hr_employee_wellness_assessments', {
+        companyId: activeCompanyId,
+        rowId: assessmentId,
+        actorUserId: user.id as UUID
+      });
+      if (selectedAssessmentId === assessmentId) resetForm();
+      await refetchAssessments();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete wellness assessment.');
+    } finally {
+      setDeletingAssessmentId(null);
+    }
+  };
+
   const employeeNameById = useMemo(
     () =>
       new Map(
@@ -601,6 +623,16 @@ export function HrEmployeeWellnessPage() {
               >
                 {saving ? 'Saving...' : 'Save wellness record'}
               </button>
+              {selectedAssessmentId && (
+                <button
+                  type="button"
+                  className="px-4 py-1.5 rounded-lg border border-critical/30 text-critical text-sm"
+                  onClick={() => void handleDeleteAssessment(selectedAssessmentId)}
+                  disabled={deletingAssessmentId === selectedAssessmentId}
+                >
+                  {deletingAssessmentId === selectedAssessmentId ? 'Deleting...' : 'Delete record'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -1051,13 +1083,23 @@ export function HrEmployeeWellnessPage() {
                       <td className="px-3 py-2">{stressLevel || '-'}</td>
                       <td className="px-3 py-2">{supportNeeded ? 'Yes' : 'No'}</td>
                       <td className="px-3 py-2">
-                        <button
-                          type="button"
-                          className="text-teal text-xs underline"
-                          onClick={() => void loadAssessment(row.id as UUID)}
-                        >
-                          View / edit
-                        </button>
+                        <div className="flex flex-wrap gap-3 text-xs">
+                          <button
+                            type="button"
+                            className="text-teal underline"
+                            onClick={() => void loadAssessment(row.id as UUID)}
+                          >
+                            View / edit
+                          </button>
+                          <button
+                            type="button"
+                            className="text-critical underline"
+                            onClick={() => void handleDeleteAssessment(row.id as UUID)}
+                            disabled={deletingAssessmentId === row.id}
+                          >
+                            {deletingAssessmentId === row.id ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1077,4 +1119,3 @@ export function HrEmployeeWellnessPage() {
     </Layout>
   );
 }
-

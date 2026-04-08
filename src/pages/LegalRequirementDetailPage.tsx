@@ -10,6 +10,7 @@ import type { LegalUpdateCompletionStatus, UUID } from '../api/models/entities';
 import {
   closeLegalUpdate,
   createLegalUpdate,
+  deleteLegalUpdate,
   getLegalRequirementById,
   LEGAL_UPDATE_COMPLETION_OPTIONS,
   updateLegalUpdate
@@ -54,6 +55,7 @@ export function LegalRequirementDetailPage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
   const writable = canWrite(activeRole ?? null);
+  const canDeleteUpdates = activeRole === 'owner' || activeRole === 'admin';
   const [refreshKey, setRefreshKey] = useState(0);
   const [updateForm, setUpdateForm] = useState<UpdateForm>(DEFAULT_UPDATE_FORM);
   const [closingUpdateId, setClosingUpdateId] = useState<string | null>(null);
@@ -318,6 +320,26 @@ export function LegalRequirementDetailPage() {
                                       className="px-2 py-1 rounded border border-surface-300 text-xs disabled:opacity-60"
                                     >
                                       Close
+                                    </button>
+                                  )}
+                                  {canDeleteUpdates && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (!activeCompanyId || !user?.id) return;
+                                        if (!window.confirm('Delete this legal update? This cannot be undone.')) return;
+                                        await deleteLegalUpdate({
+                                          companyId: activeCompanyId,
+                                          updateId: u.id,
+                                          actorUserId: user.id as UUID,
+                                          actorRole: activeRole ?? null
+                                        });
+                                        setRefreshKey((k) => k + 1);
+                                        await refresh();
+                                      }}
+                                      className="px-2 py-1 rounded border border-critical/30 text-critical text-xs"
+                                    >
+                                      Delete
                                     </button>
                                   )}
                                 </div>

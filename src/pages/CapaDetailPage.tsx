@@ -12,6 +12,7 @@ import type { UUID } from '../api/models/entities';
 import {
   closeCorrectiveAction,
   createCorrectiveAction,
+  deleteCorrectiveAction,
   getCorrectiveAction,
   updateCorrectiveAction
 } from '../api/services/correctiveActionsService';
@@ -242,6 +243,22 @@ export function CapaDetailPage() {
     }
   }
 
+  async function onDeleteCapa() {
+    if (!activeCompanyId || !user?.id || !capaId || !editable) return;
+    const confirmed = window.confirm(`Delete CAPA ${record?.action_number ?? capaId}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setError(null);
+    setSuccess(null);
+    try {
+      await deleteCorrectiveAction(capaId as UUID, activeCompanyId, user.id as UUID);
+      clearDraft(draftKey);
+      navigate('/dashboard/management/tasks?view=capa');
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to delete CAPA.');
+    }
+  }
+
   return (
     <Layout title={isCreate ? 'Create CAPA' : 'CAPA Detail'}>
       <div className="space-y-4">
@@ -259,6 +276,16 @@ export function CapaDetailPage() {
             <button type="button" onClick={() => void onSave()} disabled={!editable || saving} className="px-4 py-2 rounded-lg bg-success text-white text-sm font-semibold disabled:opacity-60">
               {saving ? 'Saving...' : isCreate ? 'Create' : 'Save'}
             </button>
+            {!isCreate && (
+              <button
+                type="button"
+                onClick={() => void onDeleteCapa()}
+                disabled={!editable}
+                className="px-4 py-2 rounded-lg border border-critical/30 text-critical text-sm font-semibold hover:bg-critical/5 disabled:opacity-60"
+              >
+                Delete
+              </button>
+            )}
             {!isCreate && (
               <button type="button" onClick={() => void onCloseCapa()} disabled={!canClose} className="px-4 py-2 rounded-lg bg-navy text-white text-sm font-semibold disabled:opacity-60">
                 Close

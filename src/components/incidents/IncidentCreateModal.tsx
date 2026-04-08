@@ -180,6 +180,7 @@ export function IncidentCreateModal(props: {
   const [useManualSubcategory, setUseManualSubcategory] = useState(false);
 
   const [title, setTitle] = useState('');
+  const [projectClient, setProjectClient] = useState('');
   const [briefDescription, setBriefDescription] = useState('');
   const [occurredAtInput, setOccurredAtInput] = useState(new Date().toISOString().slice(0, 16));
   const [location, setLocation] = useState('');
@@ -287,6 +288,7 @@ export function IncidentCreateModal(props: {
   const canSubmit = useMemo(() => {
     return (
       title.trim().length > 0 &&
+      projectClient.trim().length > 0 &&
       briefDescription.trim().length > 0 &&
       finalIncidentType.length > 0 &&
       allSelectedSubcategories.length > 0 &&
@@ -295,12 +297,13 @@ export function IncidentCreateModal(props: {
       reportedBy.trim().length > 0 &&
       reportedTo.trim().length > 0
     );
-  }, [title, briefDescription, finalIncidentType, allSelectedSubcategories, natureOfIncident, causeOfIncident, reportedBy, reportedTo]);
+  }, [title, projectClient, briefDescription, finalIncidentType, allSelectedSubcategories, natureOfIncident, causeOfIncident, reportedBy, reportedTo]);
   const hasDirtyDraft = useMemo(
     () =>
       props.open &&
       !loading &&
       (title.trim().length > 0 ||
+        projectClient.trim().length > 0 ||
         briefDescription.trim().length > 0 ||
         location.trim().length > 0 ||
         natureOfIncident.trim().length > 0 ||
@@ -373,6 +376,7 @@ export function IncidentCreateModal(props: {
       location,
       natureOfIncident,
       preparedBy,
+      projectClient,
       potentialConsequence,
       props.open,
       reportedBy,
@@ -410,6 +414,7 @@ export function IncidentCreateModal(props: {
       subcategoryManual,
       useManualSubcategory,
       title,
+      projectClient,
       briefDescription,
       occurredAtInput,
       location,
@@ -480,6 +485,7 @@ export function IncidentCreateModal(props: {
     setSubcategoryManual('');
     setUseManualSubcategory(false);
     setTitle('');
+    setProjectClient('');
     setBriefDescription('');
     setOccurredAtInput(new Date().toISOString().slice(0, 16));
     setLocation('');
@@ -544,6 +550,7 @@ export function IncidentCreateModal(props: {
         subcategoryManual?: string;
         useManualSubcategory?: boolean;
         title?: string;
+        projectClient?: string;
         briefDescription?: string;
         occurredAtInput?: string;
         location?: string;
@@ -612,6 +619,7 @@ export function IncidentCreateModal(props: {
         setUseManualSubcategory(Boolean(restored.useManualSubcategory));
 
         setTitle(restored.title ?? '');
+        setProjectClient(restored.projectClient ?? '');
         setBriefDescription(restored.briefDescription ?? '');
         if (restored.occurredAtInput) setOccurredAtInput(restored.occurredAtInput);
         setLocation(restored.location ?? '');
@@ -739,6 +747,7 @@ export function IncidentCreateModal(props: {
       setUseManualSubcategory(Boolean(existingSubcategory));
     }
     setTitle(editingIncident.title ?? '');
+    setProjectClient((editingIncident as any).project_client ?? '');
     setBriefDescription(String(editingIncident.description ?? ''));
     setOccurredAtInput(occurredAtValue);
     setLocation(editingIncident.location ?? '');
@@ -1132,7 +1141,7 @@ export function IncidentCreateModal(props: {
           title: incidentTitle,
           description: briefDescription.trim() || null,
           incidentType: incidentTypeValue || null,
-          projectClient: incidentTitle || null,
+          projectClient: projectClient.trim() || null,
           natureOfIncident: natureOfIncident.trim() || null,
           causeOfIncident: causeOfIncident.trim() || null,
           affectedPerson: affectedPersonValue || null,
@@ -1219,7 +1228,7 @@ export function IncidentCreateModal(props: {
           title: incidentTitle,
           description: briefDescription.trim() || undefined,
           incidentType: incidentTypeValue || undefined,
-          projectClient: incidentTitle || undefined,
+          projectClient: projectClient.trim() || undefined,
           natureOfIncident: natureOfIncident.trim(),
           causeOfIncident: causeOfIncident.trim(),
           affectedPerson: affectedPersonValue || undefined,
@@ -1534,10 +1543,19 @@ export function IncidentCreateModal(props: {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Project / Client *</label>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Incident Title *</label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Project / Client *</label>
+              <input
+                value={projectClient}
+                onChange={(e) => setProjectClient(e.target.value)}
                 className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
                 required
               />

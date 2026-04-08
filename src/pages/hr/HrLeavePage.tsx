@@ -141,7 +141,7 @@ export function HrLeavePage() {
 
   const { data: leaveTypes, refetch: refetchLeaveTypes } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return [];
-    await ensureDefaultHrLeaveTypes(activeCompanyId, user.id as UUID).catch(() => {});
+    await ensureDefaultHrLeaveTypes(activeCompanyId, user.id as UUID).catch(() => undefined);
     return listHrRecords(activeCompanyId, 'hr_leave_types');
   }, [activeCompanyId, user?.id]);
 
@@ -277,8 +277,10 @@ export function HrLeavePage() {
       companyId: activeCompanyId,
       leaveRequestId: row.id as UUID,
       actorUserId: user.id as UUID,
-      decision: isSupervisor ? 'SUPERVISOR_APPROVE' : 'HR_APPROVE'
+      decision: isSupervisor ? 'SUPERVISOR_APPROVE' : 'HR_APPROVE',
+      employeeUserId: (row.employee_user_id as UUID | null | undefined) ?? null
     });
+    setDeclineReasonByRow((prev) => ({ ...prev, [String(row.id)]: '' }));
     await refetch();
   }
 
@@ -294,8 +296,10 @@ export function HrLeavePage() {
       leaveRequestId: row.id as UUID,
       actorUserId: user.id as UUID,
       decision: isSupervisor ? 'SUPERVISOR_DECLINE' : 'HR_DECLINE',
-      declineReason: reasonForDecline
+      declineReason: reasonForDecline,
+      employeeUserId: (row.employee_user_id as UUID | null | undefined) ?? null
     });
+    setDeclineReasonByRow((prev) => ({ ...prev, [String(row.id)]: '' }));
     await refetch();
 
     const baseline: HrLeaveDeclineDraft = { ...declineReasonByRow };
@@ -304,6 +308,31 @@ export function HrLeavePage() {
   }
 
   const pending = useMemo(() => (requests ?? []).filter((row) => row.status === 'SUBMITTED'), [requests]);
+
+  function canActionRow(row: Record<string, unknown>): boolean {
+    if (!canApprove) return false;
+    if (String(row.status ?? '') !== 'SUBMITTED') return false;
+
+    const supervisorStatus = String(row.supervisor_approval_status ?? 'PENDING');
+    const hrStatus = String(row.hr_approval_status ?? 'PENDING');
+
+    if (isSupervisor) return supervisorStatus === 'PENDING';
+    if (isHrApprover) return supervisorStatus !== 'DECLINED' && hrStatus === 'PENDING';
+    return false;
+  }
+
+  function actionLabel(row: Record<string, unknown>): string {
+    const supervisorStatus = String(row.supervisor_approval_status ?? 'PENDING');
+    const hrStatus = String(row.hr_approval_status ?? 'PENDING');
+
+    if (supervisorStatus === 'DECLINED' || hrStatus === 'DECLINED') return 'Declined';
+    if (supervisorStatus === 'APPROVED' && hrStatus === 'APPROVED') return 'Fully approved';
+    if (isSupervisor && supervisorStatus !== 'PENDING') return 'Supervisor review complete';
+    if (isHrApprover && hrStatus !== 'PENDING') return 'HR review complete';
+    if (supervisorStatus === 'APPROVED' && hrStatus === 'PENDING') return 'Waiting for HR review';
+    if (supervisorStatus === 'PENDING') return 'Waiting for supervisor review';
+    return 'No action required';
+  }
 
   return (
     <Layout title="Leave Management">
@@ -432,9 +461,15 @@ export function HrLeavePage() {
                       placeholder="Required if declining"
                     />
                   </td>
-                  <td className="px-3 py-2 space-x-2">
-                    {canApprove && row.status === 'SUBMITTED' && <button className="text-teal" onClick={() => void onApprove(row)}>Approve</button>}
-                    {canApprove && row.status === 'SUBMITTED' && <button className="text-critical" onClick={() => void onDecline(row)}>Decline</button>}
+                  <td className="px-3 py-2">
+                    {canActionRow(row) ? (
+                      <div className="space-x-2">
+                        <button className="text-teal" onClick={() => void onApprove(row)}>Approve</button>
+                        <button className="text-critical" onClick={() => void onDecline(row)}>Decline</button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-charcoal-500">{actionLabel(row)}</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -445,4 +480,3 @@ export function HrLeavePage() {
     </Layout>
   );
 }
-

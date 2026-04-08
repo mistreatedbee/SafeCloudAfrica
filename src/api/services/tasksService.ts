@@ -346,13 +346,13 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
       created.assignee_user_id as UUID,
       created.title,
       created.priority as Severity
-    ).catch(() => {});
+    ).catch(() => undefined);
   }
 
   const risk = (created.risk_level ?? created.priority) as string;
   if (risk === 'high' || risk === 'critical') {
     const { notifyHighRiskTaskEscalation } = await import('./notificationsService');
-    await notifyHighRiskTaskEscalation(input.companyId, created).catch(() => {});
+    await notifyHighRiskTaskEscalation(input.companyId, created).catch(() => undefined);
   }
 
   return created;
@@ -1273,4 +1273,3 @@ export async function getTaskMetricsSummary(input: GetTaskMetricsSummaryInput): 
     kpiScore: kpiScoreBounded
   };
 }
-

@@ -1,24 +1,52 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
-import { listRiskAssessments, type RiskAssessment } from '../../api/services/risksService';
+import {
+  listRiskAssessments,
+  type MembershipScope,
+  type RiskAssessment
+} from '../../api/services/riskAssessmentsService';
 import { AlertOctagonIcon, BarChart3Icon, AlertTriangleIcon, ClipboardListIcon } from 'lucide-react';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
+import type { UUID } from '../../api/models/core';
+
+function getScopeForActiveMembership(
+  memberships: Array<{ company_id: UUID; site_id?: UUID | null; department_id?: UUID | null; consultant_scope?: any }> | undefined,
+  companyId: UUID | null
+): MembershipScope | null {
+  if (!memberships || !companyId) return null;
+  const active = memberships.find((m) => m.company_id === companyId);
+  if (!active) return null;
+  return {
+    siteId: active.site_id ?? null,
+    departmentId: active.department_id ?? null,
+    consultantScope: active.consultant_scope ?? null
+  };
+}
 
 export function RiskAssessmentDashboardPage() {
-  const { activeCompanyId } = useTenant();
+  const { activeCompanyId, activeRole, memberships } = useTenant();
+  const { user } = useUser();
   const [assessments, setAssessments] = useState<RiskAssessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const scope = useMemo(() => getScopeForActiveMembership(memberships as any, activeCompanyId as UUID | null), [activeCompanyId, memberships]);
 
   useEffect(() => {
-    if (!activeCompanyId) return;
+    if (!activeCompanyId || !user?.id) return;
     (async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await listRiskAssessments({ companyId: activeCompanyId, limit: 500 });
+        const data = await listRiskAssessments({
+          companyId: activeCompanyId,
+          actorUserId: user.id as UUID,
+          actorRole: activeRole,
+          scope,
+          limit: 500
+        });
         setAssessments(data ?? []);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load risk assessments');
@@ -26,28 +54,40 @@ export function RiskAssessmentDashboardPage() {
         setLoading(false);
       }
     })();
-  }, [activeCompanyId]);
+  }, [activeCompanyId, activeRole, scope, user?.id]);
 
-  const statusKey = (a: RiskAssessment) =>
-    (a.status === 'review_required' && 'review_required') ||
-    (a.status === 'under_review' && 'under_review') ||
-    (a.status === 'approved' && 'approved') ||
-    'active';
+  const today = new Date();
+  const todayKey = today.toISOString().slice(0, 10);
+  const in30Days = new Date(today);
+  in30Days.setDate(in30Days.getDate() + 30);
+  const in30DaysKey = in30Days.toISOString().slice(0, 10);
+
   const byStatus = {
-    active: assessments.filter((a) => !['approved', 'archived', 'review_required', 'under_review'].includes(a.status)),
-    review_required: assessments.filter((a) => a.status === 'review_required'),
-    under_review: assessments.filter((a) => a.status === 'under_review'),
-    approved: assessments.filter((a) => a.status === 'approved')
+    draft: assessments.filter((a) => a.status === 'draft'),
+    submitted: assessments.filter((a) => a.status === 'submitted'),
+    closed: assessments.filter((a) => a.status === 'closed')
   };
   const byType = assessments.reduce(
     (acc, a) => {
-      const t = a.assessment_type || 'baseline';
+      const t = a.type || 'baseline';
       acc[t] = (acc[t] || 0) + 1;
       return acc;
     },
     {} as Record<string, number>
   );
-  const needsReview = [...byStatus.review_required, ...byStatus.under_review].slice(0, 10);
+  const reviewDue = assessments
+    .filter((a) => a.status !== 'closed' && a.next_review_date && a.next_review_date <= in30DaysKey)
+    .sort((left, right) => String(left.next_review_date ?? '').localeCompare(String(right.next_review_date ?? '')));
+  const overdueReview = reviewDue.filter((a) => (a.next_review_date ?? '') < todayKey);
+  const dueWithin7Days = reviewDue.filter((a) => {
+    const date = a.next_review_date ?? '';
+    return date >= todayKey && date <= new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  });
+  const dueWithin30Days = reviewDue.filter((a) => {
+    const date = a.next_review_date ?? '';
+    return date > new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) && date <= in30DaysKey;
+  });
+  const needsReview = reviewDue.slice(0, 10);
 
   if (loading) {
     return (
@@ -90,32 +130,32 @@ export function RiskAssessmentDashboardPage() {
         {/* Status cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link
-            to="/risk-assessments?status=active"
+            to="/risk-assessments"
             className="bg-white rounded-lg shadow border border-gray-200 p-4 hover:border-blue-300 transition"
           >
-            <div className="flex items-center gap-2 text-gray-600 text-sm font-medium mb-1">Active</div>
-            <div className="text-2xl font-bold text-gray-900">{byStatus.active.length}</div>
+            <div className="flex items-center gap-2 text-gray-600 text-sm font-medium mb-1">Draft</div>
+            <div className="text-2xl font-bold text-gray-900">{byStatus.draft.length}</div>
           </Link>
           <Link
-            to="/risk-assessments?status=review_required"
+            to="/risk-assessments"
             className="bg-white rounded-lg shadow border border-amber-200 p-4 hover:border-amber-400 transition"
           >
-            <div className="flex items-center gap-2 text-amber-700 text-sm font-medium mb-1">Review Required</div>
-            <div className="text-2xl font-bold text-amber-800">{byStatus.review_required.length}</div>
+            <div className="flex items-center gap-2 text-amber-700 text-sm font-medium mb-1">Submitted</div>
+            <div className="text-2xl font-bold text-amber-800">{byStatus.submitted.length}</div>
           </Link>
           <Link
-            to="/risk-assessments?status=under_review"
+            to="/risk-assessments"
             className="bg-white rounded-lg shadow border border-blue-200 p-4 hover:border-blue-400 transition"
           >
-            <div className="flex items-center gap-2 text-blue-700 text-sm font-medium mb-1">Under Review</div>
-            <div className="text-2xl font-bold text-blue-800">{byStatus.under_review.length}</div>
+            <div className="flex items-center gap-2 text-blue-700 text-sm font-medium mb-1">Closed</div>
+            <div className="text-2xl font-bold text-blue-800">{byStatus.closed.length}</div>
           </Link>
           <Link
-            to="/risk-assessments?status=approved"
+            to="/risk-assessments"
             className="bg-white rounded-lg shadow border border-green-200 p-4 hover:border-green-400 transition"
           >
-            <div className="flex items-center gap-2 text-green-700 text-sm font-medium mb-1">Approved</div>
-            <div className="text-2xl font-bold text-green-800">{byStatus.approved.length}</div>
+            <div className="flex items-center gap-2 text-green-700 text-sm font-medium mb-1">Review Due</div>
+            <div className="text-2xl font-bold text-green-800">{reviewDue.length}</div>
           </Link>
         </div>
 
@@ -151,12 +191,12 @@ export function RiskAssessmentDashboardPage() {
           {/* Risk index summary (from assessment item counts) */}
           <div className="bg-white rounded-lg shadow border border-gray-200 p-4">
             <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-              <ClipboardListIcon className="w-5 h-5" /> Risk index summary
+              <ClipboardListIcon className="w-5 h-5" /> Review outlook
             </h3>
-            <div className="flex gap-4">
-              <span className="text-green-600 font-medium">High: {assessments.reduce((s, a) => s + (a.high_risks ?? 0), 0)}</span>
-              <span className="text-amber-600 font-medium">Medium: {assessments.reduce((s, a) => s + (a.medium_risks ?? 0), 0)}</span>
-              <span className="text-gray-600 font-medium">Low: {assessments.reduce((s, a) => s + (a.low_risks ?? 0), 0)}</span>
+            <div className="flex flex-wrap gap-4">
+              <span className="text-red-600 font-medium">Overdue: {overdueReview.length}</span>
+              <span className="text-amber-600 font-medium">Due in 7 days: {dueWithin7Days.length}</span>
+              <span className="text-gray-600 font-medium">Due in 30 days: {dueWithin30Days.length}</span>
             </div>
           </div>
         </div>
@@ -182,9 +222,9 @@ export function RiskAssessmentDashboardPage() {
                     to={`/risk-assessments/${a.id}`}
                     className="text-blue-600 hover:underline font-medium"
                   >
-                    {a.title || a.assessment_number} — {a.status}
+                    {a.title} — {a.status}
                   </Link>
-                  <span className="text-gray-500 text-sm ml-2">{a.assessment_number}</span>
+                  <span className="text-gray-500 text-sm ml-2">{a.next_review_date ?? 'No review date'}</span>
                 </li>
               ))}
             </ul>

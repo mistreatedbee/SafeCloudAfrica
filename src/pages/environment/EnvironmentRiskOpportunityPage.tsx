@@ -4,7 +4,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listUserProfiles } from '../../api/services/profilesService';
-import { listEnvRiskOpportunity, upsertEnvRiskOpportunity, listEnvImpactAssessments, listLegalRequirementOptions, listRiskAssessmentOptions } from '../../api/services/environmentService';
+import { deleteEnvRiskOpportunity, listEnvRiskOpportunity, upsertEnvRiskOpportunity, listEnvImpactAssessments, listLegalRequirementOptions, listRiskAssessmentOptions } from '../../api/services/environmentService';
 import { toCsv, downloadTextFile } from '../../utils/csv';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import { GitBranchIcon } from 'lucide-react';
@@ -52,6 +52,42 @@ export function EnvironmentRiskOpportunityPage() {
     setForm({ referenceNumber: row.reference_number, category: row.category, type: row.type, riskOrOpportunity: row.risk_or_opportunity, description: row.description ?? '', cause: row.cause ?? '', potentialImpact: row.potential_impact ?? '', likelihood: row.likelihood, severityOrBenefit: row.severity_or_benefit, existingControls: row.existing_controls ?? '', actionRequired: row.action_required ?? '', responsibleUserId: row.responsible_user_id ?? '', responsibleExternalName: row.responsible_external_name ?? '', targetDate: row.target_date ?? '', status: row.status ?? 'Open', linkedLegalRequirementId: row.linked_legal_requirement_id ?? '', linkedEiaId: row.linked_eia_id ?? '', linkedRiskAssessmentIds: row.linked_risk_assessment_ids ?? [] });
   }
 
+  async function handleDelete(row: any) {
+    if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm(`Delete risk/opportunity ${row.reference_number}?`)) return;
+    await deleteEnvRiskOpportunity({
+      companyId: activeCompanyId,
+      recordId: row.id,
+      actorUserId: user.id,
+      actorRole: activeRole
+    });
+    if (editing?.id === row.id) {
+      setEditing(null);
+      setForm({
+        referenceNumber: '',
+        category: 'Operational',
+        type: 'Risk',
+        riskOrOpportunity: '',
+        description: '',
+        cause: '',
+        potentialImpact: '',
+        likelihood: 3,
+        severityOrBenefit: 3,
+        existingControls: '',
+        actionRequired: '',
+        responsibleUserId: '',
+        responsibleExternalName: '',
+        targetDate: '',
+        status: 'Open',
+        linkedLegalRequirementId: '',
+        linkedEiaId: '',
+        linkedRiskAssessmentIds: []
+      });
+    }
+    setRefreshKey((k) => k + 1);
+    await refetch();
+  }
+
   return (
     <Layout title="Environmental Risk & Opportunity Register">
       <div className="space-y-4">
@@ -93,12 +129,12 @@ export function EnvironmentRiskOpportunityPage() {
               return <label key={r.id} className="text-sm flex items-center gap-2"><input type="checkbox" checked={checked} onChange={(e) => setForm({ ...form, linkedRiskAssessmentIds: e.target.checked ? [...form.linkedRiskAssessmentIds, r.id] : form.linkedRiskAssessmentIds.filter((x: string) => x !== r.id) })} />{r.label}</label>;
             })}
           </div>
-          <div className="flex gap-2"><button type="submit" className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold">{editing ? 'Update' : 'Create'}</button>{editing && <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 rounded-lg border text-sm">Cancel</button>}</div>
+          <div className="flex gap-2"><button type="submit" className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold">{editing ? 'Update' : 'Create'}</button>{editing && <button type="button" onClick={() => { setEditing(null); setForm({ referenceNumber: '', category: 'Operational', type: 'Risk', riskOrOpportunity: '', description: '', cause: '', potentialImpact: '', likelihood: 3, severityOrBenefit: 3, existingControls: '', actionRequired: '', responsibleUserId: '', responsibleExternalName: '', targetDate: '', status: 'Open', linkedLegalRequirementId: '', linkedEiaId: '', linkedRiskAssessmentIds: [] }); }} className="px-4 py-2 rounded-lg border text-sm">Cancel</button>}</div>
         </form>
 
         {error && <div className="text-sm text-critical">{String(error.message)}</div>}
         {loading ? <p className="text-sm text-charcoal-500">Loading...</p> : (
-          <div className="bg-white border rounded-xl overflow-auto"><table className="w-full min-w-[980px] text-sm"><thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Ref</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Title</th><th className="px-3 py-2 text-left">Rating</th><th className="px-3 py-2 text-left">Level</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Responsible</th><th className="px-3 py-2 text-left">Target</th><th className="px-3 py-2 text-left">Actions</th></tr></thead><tbody className="divide-y divide-surface-100">{(rows ?? []).map((r: any) => <tr key={r.id}><td className="px-3 py-2">{r.reference_number}</td><td className="px-3 py-2">{r.type}</td><td className="px-3 py-2">{r.risk_or_opportunity}</td><td className="px-3 py-2">{r.rating}</td><td className="px-3 py-2">{r.level}</td><td className="px-3 py-2">{r.status}</td><td className="px-3 py-2">{r.responsible_user_id ? (userLabel.get(r.responsible_user_id) ?? r.responsible_user_id) : (r.responsible_external_name || '-')}</td><td className="px-3 py-2">{r.target_date || '-'}</td><td className="px-3 py-2"><button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button></td></tr>)}{(rows ?? []).length === 0 && (
+          <div className="bg-white border rounded-xl overflow-auto"><table className="w-full min-w-[980px] text-sm"><thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Ref</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Title</th><th className="px-3 py-2 text-left">Rating</th><th className="px-3 py-2 text-left">Level</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Responsible</th><th className="px-3 py-2 text-left">Target</th><th className="px-3 py-2 text-left">Actions</th></tr></thead><tbody className="divide-y divide-surface-100">{(rows ?? []).map((r: any) => <tr key={r.id}><td className="px-3 py-2">{r.reference_number}</td><td className="px-3 py-2">{r.type}</td><td className="px-3 py-2">{r.risk_or_opportunity}</td><td className="px-3 py-2">{r.rating}</td><td className="px-3 py-2">{r.level}</td><td className="px-3 py-2">{r.status}</td><td className="px-3 py-2">{r.responsible_user_id ? (userLabel.get(r.responsible_user_id) ?? r.responsible_user_id) : (r.responsible_external_name || '-')}</td><td className="px-3 py-2">{r.target_date || '-'}</td><td className="px-3 py-2"><div className="flex items-center gap-2"><button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button><button type="button" onClick={() => void handleDelete(r)} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}{(rows ?? []).length === 0 && (
                     <ListEmptyState
                       tableColSpan={9}
                       icon={GitBranchIcon}

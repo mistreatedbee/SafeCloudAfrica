@@ -14,6 +14,7 @@ import {
   getAudit,
   listAuditQuestions,
   listAuditResponses,
+  deleteAuditQuestion,
   startAudit,
   completeAudit,
   updateAuditFindingsCounts,
@@ -133,6 +134,7 @@ export function AuditDetailPage() {
   const [findingVerifyId, setFindingVerifyId] = useState<UUID | null>(null);
   const [reportGenerating, setReportGenerating] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [deletingQuestionId, setDeletingQuestionId] = useState<UUID | null>(null);
 
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `audit-date-approval:${auditId ?? 'unknown'}:${user?.id ?? 'anon'}`;
@@ -335,6 +337,27 @@ export function AuditDetailPage() {
       await refreshLinkedImprovements();
     } finally {
       setSavingResponseId(null);
+    }
+  }
+
+  async function handleDeleteQuestion(question: AuditQuestion) {
+    if (!audit || !activeCompanyId || !user?.id) return;
+    if (!window.confirm('Delete this audit checklist question? This will also remove its captured responses.')) return;
+    setDeletingQuestionId(question.id);
+    try {
+      await deleteAuditQuestion(question.id);
+      await Promise.all([
+        refreshQuestions(),
+        refreshResponses(),
+        updateAuditFindingsCounts(audit.id as UUID, activeCompanyId, user.id as UUID),
+        refreshAudit(),
+        refreshFindings(),
+        refreshNcrs(),
+        refreshCapas(),
+        refreshLinkedImprovements()
+      ]);
+    } finally {
+      setDeletingQuestionId(null);
     }
   }
 
@@ -879,6 +902,19 @@ export function AuditDetailPage() {
                                 >
                                   {raisingFindingForQuestionId === q.id ? 'Saving…' : 'Raise finding'}
                                 </button>
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    disabled={disabled || deletingQuestionId === q.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleDeleteQuestion(q);
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-critical/30 text-xs font-semibold text-critical hover:bg-critical/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {deletingQuestionId === q.id ? 'Deleting…' : 'Delete question'}
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>

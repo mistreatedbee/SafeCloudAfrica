@@ -28,9 +28,11 @@ interface NCRDetailModalProps {
   companyId: UUID;
   actorUserId: UUID;
   canCloseNcr: boolean;
+  canDeleteNcr: boolean;
   canUploadEvidence: boolean;
   onClose: () => void;
   onCloseNCR: (ncrId: UUID) => Promise<void>;
+  onDeleteNCR: (ncrId: UUID) => Promise<void>;
   onNcrUpdated: (ncr: QualityNcr) => void;
 }
 
@@ -39,9 +41,11 @@ export default function NCRDetailModal({
   companyId,
   actorUserId,
   canCloseNcr,
+  canDeleteNcr,
   canUploadEvidence,
   onClose,
   onCloseNCR,
+  onDeleteNCR,
   onNcrUpdated
 }: NCRDetailModalProps) {
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +53,7 @@ export default function NCRDetailModal({
   const [filesBefore, setFilesBefore] = useState<File[]>([]);
   const [filesAfter, setFilesAfter] = useState<File[]>([]);
   const [closing, setClosing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [loadedBefore, setLoadedBefore] = useState<NcrEvidenceReference[] | null>(null);
   const [loadedAfter, setLoadedAfter] = useState<NcrEvidenceReference[] | null>(null);
   const [linkedRequirementTypeEdit, setLinkedRequirementTypeEdit] = useState<'STANDARD' | 'POLICY' | 'PROCEDURE'>(
@@ -276,6 +281,24 @@ export default function NCRDetailModal({
     }
   }
 
+  async function handleDeleteClick() {
+    if (!canDeleteNcr) {
+      setError('You do not have permission to delete this NCR.');
+      return;
+    }
+    if (!window.confirm(`Delete NCR ${ncr.nc_number}? This cannot be undone.`)) return;
+
+    setError(null);
+    setDeleting(true);
+    try {
+      await onDeleteNCR(ncr.id);
+    } catch (err: any) {
+      setError(formatAuthError(err));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function handleSaveDetails() {
     setError(null);
     setSavingDetails(true);
@@ -454,6 +477,15 @@ export default function NCRDetailModal({
           />
 
           <div className="border-t pt-4 flex gap-3">
+            {canDeleteNcr && (
+              <button
+                onClick={() => void handleDeleteClick()}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 bg-critical text-white rounded-lg hover:bg-critical/90 transition-colors font-medium disabled:opacity-60"
+              >
+                {deleting ? 'Deleting...' : 'Delete NCR'}
+              </button>
+            )}
             {ncr.status !== 'closed' && !ncr.manager_signoff_user_id && (
               <button
                 onClick={async () => {

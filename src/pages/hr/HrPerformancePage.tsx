@@ -4,7 +4,7 @@ import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
-import { createHrRecord, listHrEmployees, listHrRecords } from '../../api/services/hrService';
+import { createHrRecord, deleteHrRecord, listHrEmployees, listHrRecords, updateHrRecord } from '../../api/services/hrService';
 import { createTask } from '../../api/services/tasksService';
 import type { UUID } from '../../api/models/core';
 import { useDraftManager } from '../../session/DraftManagerProvider';
@@ -25,7 +25,9 @@ export function HrPerformancePage() {
   const [correctiveActionsRequired, setCorrectiveActionsRequired] = useState('');
   const [responsibleUserId, setResponsibleUserId] = useState('');
   const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [editingReviewId, setEditingReviewId] = useState<UUID | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   type HrPerformanceDraftPayload = {
     employeeId: string;
@@ -132,12 +134,49 @@ export function HrPerformancePage() {
     return (reviews ?? []).filter((row) => row.corrective_due_date && String(row.corrective_due_date) < today && String(row.status ?? '') !== 'CLOSED').length;
   }, [reviews]);
 
+  function resetForm() {
+    setEditingReviewId(null);
+    setEmployeeId('');
+    setCycle('Annual');
+    setOverallRating('3');
+    setStrengths('');
+    setAssistanceRequired('');
+    setWeaknesses('');
+    setManagerRating('3');
+    setManagerRemarks('');
+    setCorrectiveActionsRequired('');
+    setResponsibleUserId('');
+    setDueDate(new Date().toISOString().slice(0, 10));
+  }
+
+  function beginEdit(row: any) {
+    setEditingReviewId(row.id as UUID);
+    setEmployeeId(String(row.employee_id ?? ''));
+    setCycle(String(row.cycle ?? 'Annual'));
+    setOverallRating(String(row.overall_rating ?? '3'));
+    setStrengths(String(row.strengths ?? ''));
+    setAssistanceRequired(String(row.assistance_required ?? ''));
+    setWeaknesses(String(row.weaknesses ?? ''));
+    setManagerRating(String(row.manager_rating ?? '3'));
+    setManagerRemarks(String(row.manager_remarks ?? ''));
+    setCorrectiveActionsRequired(String(row.corrective_actions_required ?? ''));
+    setResponsibleUserId(String(row.corrective_responsible_user_id ?? ''));
+    setDueDate(String(row.corrective_due_date ?? new Date().toISOString().slice(0, 10)));
+    setError(null);
+    setSuccess(null);
+  }
+
   async function onCreate() {
     if (!activeCompanyId || !user?.id || !employeeId) return;
     setError(null);
+    setSuccess(null);
     try {
       let linkedTaskId: UUID | null = null;
-      if (correctiveActionsRequired.trim()) {
+      const currentReview = (reviews ?? []).find((row) => String(row.id) === String(editingReviewId));
+      if (editingReviewId) {
+        linkedTaskId = (currentReview?.linked_task_id as UUID | null) ?? null;
+      }
+      if (!linkedTaskId && correctiveActionsRequired.trim()) {
         const task = await createTask({
           companyId: activeCompanyId,
           module: 'hr',
@@ -154,51 +193,68 @@ export function HrPerformancePage() {
         linkedTaskId = task.id;
       }
 
-      await createHrRecord('hr_performance_reviews', {
-        company_id: activeCompanyId,
-        employee_id: employeeId,
-        cycle,
-        review_date: new Date().toISOString().slice(0, 10),
-        reviewer_user_id: user.id,
-        overall_rating: Math.max(1, Math.min(5, Number(overallRating || 3))),
-        strengths,
-        assistance_required: assistanceRequired || null,
-        weaknesses: weaknesses || null,
-        manager_rating: Math.max(1, Math.min(5, Number(managerRating || 3))),
-        manager_remarks: managerRemarks || null,
-        corrective_actions_required: correctiveActionsRequired || null,
-        corrective_responsible_user_id: responsibleUserId || null,
-        corrective_due_date: dueDate || null,
-        improvements: null,
-        goals_next_period: null,
-        attachments: [],
-        employee_acknowledged: false,
-        hr_final_approved: false,
-        status: 'IN_REVIEW',
-        linked_task_id: linkedTaskId,
-        created_by_user_id: user.id
-      });
-      setStrengths('');
-      setAssistanceRequired('');
-      setWeaknesses('');
-      setManagerRemarks('');
-      setCorrectiveActionsRequired('');
-      setResponsibleUserId('');
+      if (editingReviewId) {
+        await updateHrRecord('hr_performance_reviews', {
+          companyId: activeCompanyId,
+          rowId: editingReviewId,
+          actorUserId: user.id as UUID,
+          patch: {
+            employee_id: employeeId,
+            cycle,
+            overall_rating: Math.max(1, Math.min(5, Number(overallRating || 3))),
+            strengths,
+            assistance_required: assistanceRequired || null,
+            weaknesses: weaknesses || null,
+            manager_rating: Math.max(1, Math.min(5, Number(managerRating || 3))),
+            manager_remarks: managerRemarks || null,
+            corrective_actions_required: correctiveActionsRequired || null,
+            corrective_responsible_user_id: responsibleUserId || null,
+            corrective_due_date: dueDate || null,
+            linked_task_id: linkedTaskId
+          }
+        });
+      } else {
+        await createHrRecord('hr_performance_reviews', {
+          company_id: activeCompanyId,
+          employee_id: employeeId,
+          cycle,
+          review_date: new Date().toISOString().slice(0, 10),
+          reviewer_user_id: user.id,
+          overall_rating: Math.max(1, Math.min(5, Number(overallRating || 3))),
+          strengths,
+          assistance_required: assistanceRequired || null,
+          weaknesses: weaknesses || null,
+          manager_rating: Math.max(1, Math.min(5, Number(managerRating || 3))),
+          manager_remarks: managerRemarks || null,
+          corrective_actions_required: correctiveActionsRequired || null,
+          corrective_responsible_user_id: responsibleUserId || null,
+          corrective_due_date: dueDate || null,
+          improvements: null,
+          goals_next_period: null,
+          attachments: [],
+          employee_acknowledged: false,
+          hr_final_approved: false,
+          status: 'IN_REVIEW',
+          linked_task_id: linkedTaskId,
+          created_by_user_id: user.id
+        });
+      }
+      resetForm();
       clearDraft(draftKey);
-      // Keep draft tracking consistent with the "post-submit" cleared state.
+      setSuccess(editingReviewId ? 'Performance review updated successfully.' : 'Performance review saved successfully.');
       setDraftBaselineJson(
         JSON.stringify({
-          employeeId,
-          cycle,
-          overallRating,
+          employeeId: '',
+          cycle: 'Annual',
+          overallRating: '3',
           strengths: '',
           assistanceRequired: '',
           weaknesses: '',
-          managerRating,
+          managerRating: '3',
           managerRemarks: '',
           correctiveActionsRequired: '',
           responsibleUserId: '',
-          dueDate
+          dueDate: new Date().toISOString().slice(0, 10)
         })
       );
       await refetch();
@@ -207,11 +263,30 @@ export function HrPerformancePage() {
     }
   }
 
+  async function onDelete(rowId: UUID) {
+    if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm('Delete this performance review? This cannot be undone.')) return;
+    try {
+      await deleteHrRecord('hr_performance_reviews', {
+        companyId: activeCompanyId,
+        rowId,
+        actorUserId: user.id as UUID
+      });
+      if (String(editingReviewId ?? '') === String(rowId)) resetForm();
+      setSuccess('Performance review deleted successfully.');
+      setError(null);
+      await refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete performance review.');
+    }
+  }
+
   return (
     <Layout title="Performance Management">
       <div className="space-y-4">
         <HrSectionNav />
         {error && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
+        {success && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700">{success}</div>}
 
         <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
           <h3 className="font-semibold">Performance review entry</h3>
@@ -239,9 +314,16 @@ export function HrPerformancePage() {
             </label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Due date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></label>
           </div>
-          <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onCreate()} disabled={!canManage}>
-            Save review
-          </button>
+          <div className="flex gap-2">
+            <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onCreate()} disabled={!canManage}>
+              {editingReviewId ? 'Update review' : 'Save review'}
+            </button>
+            {editingReviewId && (
+              <button className="px-4 py-2 rounded-lg border border-surface-300 text-sm" onClick={resetForm}>
+                Cancel edit
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="bg-white border border-surface-300 rounded-xl p-4">
@@ -250,7 +332,7 @@ export function HrPerformancePage() {
 
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
           <table className="w-full text-sm">
-            <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Cycle</th><th className="text-left px-3 py-2">Ratings</th><th className="text-left px-3 py-2">Corrective action</th><th className="text-left px-3 py-2">Task</th><th className="text-left px-3 py-2">Status</th></tr></thead>
+            <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Cycle</th><th className="text-left px-3 py-2">Ratings</th><th className="text-left px-3 py-2">Corrective action</th><th className="text-left px-3 py-2">Task</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
             <tbody>
               {(reviews ?? []).map((row) => (
                 <tr key={row.id} className="border-t border-surface-100">
@@ -258,8 +340,20 @@ export function HrPerformancePage() {
                   <td className="px-3 py-2">{String(row.cycle ?? '')}</td>
                   <td className="px-3 py-2">{String(row.overall_rating ?? '')} / {String(row.manager_rating ?? '')}</td>
                   <td className="px-3 py-2">{String(row.corrective_actions_required ?? '-')}<br /><span className="text-xs text-charcoal-500">Due: {String(row.corrective_due_date ?? '-')}</span></td>
-                  <td className="px-3 py-2">{row.linked_task_id ? <a className="text-teal underline" href={`/dashboard/management/tasks?view=all`}>Open tasks</a> : '-'}</td>
+                  <td className="px-3 py-2">{row.linked_task_id ? <a className="text-teal underline" href={`/tasks/${row.linked_task_id}`}>Open task</a> : '-'}</td>
                   <td className="px-3 py-2">{String(row.status ?? '')}</td>
+                  <td className="px-3 py-2">
+                    {canManage && (
+                      <div className="flex gap-2">
+                        <button type="button" className="text-charcoal-700 hover:underline" onClick={() => beginEdit(row)}>
+                          Edit
+                        </button>
+                        <button type="button" className="text-critical hover:underline" onClick={() => void onDelete(row.id as UUID)}>
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

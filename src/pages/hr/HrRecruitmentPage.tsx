@@ -4,7 +4,7 @@ import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
-import { createHrRecord, listHrRecords, updateHrRecord, upsertHrEmployee } from '../../api/services/hrService';
+import { createHrRecord, deleteHrRecord, listHrRecords, updateHrRecord, upsertHrEmployee } from '../../api/services/hrService';
 import { SelectOrType } from '../../components/ui/SelectOrType';
 import type { UUID } from '../../api/models/core';
 
@@ -24,6 +24,7 @@ export function HrRecruitmentPage() {
   const [experienceRequired, setExperienceRequired] = useState('');
   const [referenceChecksDone, setReferenceChecksDone] = useState(false);
   const [vacancyIdForApplicant, setVacancyIdForApplicant] = useState('');
+  const [editingVacancyId, setEditingVacancyId] = useState<UUID | null>(null);
 
   const [applicantName, setApplicantName] = useState('');
   const [applicantEmail, setApplicantEmail] = useState('');
@@ -31,6 +32,7 @@ export function HrRecruitmentPage() {
   const [offerAccepted, setOfferAccepted] = useState<boolean | null>(null);
   const [leavingReason, setLeavingReason] = useState('');
   const [criminalRecord, setCriminalRecord] = useState<boolean | null>(null);
+  const [editingApplicantId, setEditingApplicantId] = useState<UUID | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const { data: vacancies, refetch: refetchVacancies } = useAsync(async () => {
@@ -45,60 +47,123 @@ export function HrRecruitmentPage() {
 
   const vacancyMap = useMemo(() => new Map((vacancies ?? []).map((row) => [row.id as UUID, String(row.title ?? '')])), [vacancies]);
 
-  async function onCreateVacancy() {
+  function resetVacancyForm() {
+    setEditingVacancyId(null);
+    setVacancyTitle('');
+    setJobDescription('');
+    setCompetencyRequired('');
+    setExperienceRequired('');
+    setReferenceChecksDone(false);
+  }
+
+  function resetApplicantForm() {
+    setEditingApplicantId(null);
+    setVacancyIdForApplicant('');
+    setApplicantName('');
+    setApplicantEmail('');
+    setInterviewedMetRequirements(null);
+    setOfferAccepted(null);
+    setLeavingReason('');
+    setCriminalRecord(null);
+  }
+
+  function beginEditVacancy(row: Record<string, unknown>) {
+    setEditingVacancyId(row.id as UUID);
+    setVacancyTitle(String(row.title ?? ''));
+    setJobDescription(String(row.job_description ?? ''));
+    setCompetencyRequired(String(row.competency_required ?? ''));
+    setExperienceRequired(String(row.experience_required ?? ''));
+    setReferenceChecksDone(Boolean(row.reference_checks_done));
+  }
+
+  function beginEditApplicant(row: Record<string, unknown>) {
+    setEditingApplicantId(row.id as UUID);
+    setVacancyIdForApplicant(String(row.vacancy_id ?? ''));
+    setApplicantName(String(row.full_name ?? ''));
+    setApplicantEmail(String(row.email ?? ''));
+    setInterviewedMetRequirements(typeof row.interviewed_met_requirements === 'boolean' ? Boolean(row.interviewed_met_requirements) : null);
+    setOfferAccepted(typeof row.offer_accepted === 'boolean' ? Boolean(row.offer_accepted) : null);
+    setLeavingReason(String(row.previous_employer_leaving_reason ?? ''));
+    setCriminalRecord(typeof row.criminal_record === 'boolean' ? Boolean(row.criminal_record) : null);
+  }
+
+  async function onSaveVacancy() {
     if (!activeCompanyId || !user?.id || !vacancyTitle.trim()) return;
     setError(null);
     try {
-      await createHrRecord('hr_vacancies', {
-        company_id: activeCompanyId,
-        title: vacancyTitle.trim(),
-        status: 'OPEN',
-        job_description: jobDescription.trim() || null,
-        competency_required: competencyRequired.trim() || null,
-        experience_required: experienceRequired.trim() || null,
-        reference_checks_done: referenceChecksDone,
-        department_manager_approved: false,
-        created_by_user_id: user.id
-      });
-      setVacancyTitle('');
-      setJobDescription('');
-      setCompetencyRequired('');
-      setExperienceRequired('');
-      setReferenceChecksDone(false);
+      if (editingVacancyId) {
+        await updateHrRecord('hr_vacancies', {
+          companyId: activeCompanyId,
+          rowId: editingVacancyId,
+          actorUserId: user.id as UUID,
+          patch: {
+            title: vacancyTitle.trim(),
+            job_description: jobDescription.trim() || null,
+            competency_required: competencyRequired.trim() || null,
+            experience_required: experienceRequired.trim() || null,
+            reference_checks_done: referenceChecksDone
+          }
+        });
+      } else {
+        await createHrRecord('hr_vacancies', {
+          company_id: activeCompanyId,
+          title: vacancyTitle.trim(),
+          status: 'OPEN',
+          job_description: jobDescription.trim() || null,
+          competency_required: competencyRequired.trim() || null,
+          experience_required: experienceRequired.trim() || null,
+          reference_checks_done: referenceChecksDone,
+          department_manager_approved: false,
+          created_by_user_id: user.id
+        });
+      }
+      resetVacancyForm();
       await refetchVacancies();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create vacancy.');
+      setError(err instanceof Error ? err.message : `Failed to ${editingVacancyId ? 'update' : 'create'} vacancy.`);
     }
   }
 
-  async function onCreateApplicant() {
+  async function onSaveApplicant() {
     if (!activeCompanyId || !user?.id || !applicantName.trim()) return;
     setError(null);
     try {
-      await createHrRecord('hr_applicants', {
-        company_id: activeCompanyId,
-        vacancy_id: vacancyIdForApplicant || null,
-        full_name: applicantName.trim(),
-        email: applicantEmail.trim() || null,
-        status: 'NEW',
-        cv_file_ids: [],
-        interviewed_met_requirements: interviewedMetRequirements,
-        offer_accepted: offerAccepted,
-        previous_employer_leaving_reason: leavingReason.trim() || null,
-        criminal_record: criminalRecord,
-        hr_manager_approved: false,
-        department_manager_approved: false,
-        created_by_user_id: user.id
-      });
-      setApplicantName('');
-      setApplicantEmail('');
-      setInterviewedMetRequirements(null);
-      setOfferAccepted(null);
-      setLeavingReason('');
-      setCriminalRecord(null);
+      if (editingApplicantId) {
+        await updateHrRecord('hr_applicants', {
+          companyId: activeCompanyId,
+          rowId: editingApplicantId,
+          actorUserId: user.id as UUID,
+          patch: {
+            vacancy_id: vacancyIdForApplicant || null,
+            full_name: applicantName.trim(),
+            email: applicantEmail.trim() || null,
+            interviewed_met_requirements: interviewedMetRequirements,
+            offer_accepted: offerAccepted,
+            previous_employer_leaving_reason: leavingReason.trim() || null,
+            criminal_record: criminalRecord
+          }
+        });
+      } else {
+        await createHrRecord('hr_applicants', {
+          company_id: activeCompanyId,
+          vacancy_id: vacancyIdForApplicant || null,
+          full_name: applicantName.trim(),
+          email: applicantEmail.trim() || null,
+          status: 'NEW',
+          cv_file_ids: [],
+          interviewed_met_requirements: interviewedMetRequirements,
+          offer_accepted: offerAccepted,
+          previous_employer_leaving_reason: leavingReason.trim() || null,
+          criminal_record: criminalRecord,
+          hr_manager_approved: false,
+          department_manager_approved: false,
+          created_by_user_id: user.id
+        });
+      }
+      resetApplicantForm();
       await refetchApplicants();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create applicant.');
+      setError(err instanceof Error ? err.message : `Failed to ${editingApplicantId ? 'update' : 'create'} applicant.`);
     }
   }
 
@@ -186,6 +251,40 @@ export function HrRecruitmentPage() {
     await refetchApplicants();
   }
 
+  async function onDeleteVacancy(rowId: UUID) {
+    if (!activeCompanyId || !user?.id || !canWrite) return;
+    if (!window.confirm('Delete this vacancy? This cannot be undone.')) return;
+    setError(null);
+    try {
+      await deleteHrRecord('hr_vacancies', {
+        companyId: activeCompanyId,
+        rowId,
+        actorUserId: user.id as UUID
+      });
+      if (editingVacancyId === rowId) resetVacancyForm();
+      await refetchVacancies();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete vacancy.');
+    }
+  }
+
+  async function onDeleteApplicant(rowId: UUID) {
+    if (!activeCompanyId || !user?.id || !canWrite) return;
+    if (!window.confirm('Delete this applicant? This cannot be undone.')) return;
+    setError(null);
+    try {
+      await deleteHrRecord('hr_applicants', {
+        companyId: activeCompanyId,
+        rowId,
+        actorUserId: user.id as UUID
+      });
+      if (editingApplicantId === rowId) resetApplicantForm();
+      await refetchApplicants();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete applicant.');
+    }
+  }
+
   return (
     <Layout title="Recruitment & Selection">
       <div className="space-y-4">
@@ -226,23 +325,43 @@ export function HrRecruitmentPage() {
                 <input type="checkbox" checked={referenceChecksDone} onChange={(e) => setReferenceChecksDone(e.target.checked)} />
                 Reference checks done
               </label>
-              <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onCreateVacancy()} disabled={!canWrite}>
-                Create Vacancy
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onSaveVacancy()} disabled={!canWrite}>
+                  {editingVacancyId ? 'Update Vacancy' : 'Create Vacancy'}
+                </button>
+                {editingVacancyId && (
+                  <button className="px-4 py-2 rounded-lg border border-surface-300 text-sm" onClick={resetVacancyForm}>
+                    Cancel
+                  </button>
+                )}
+              </div>
             </div>
             <div className="space-y-2 text-sm">
               {(vacancies ?? []).map((row) => (
                 <div key={String(row.id)} className="border border-surface-200 rounded-lg p-3">
                   <p className="font-medium">{String(row.title ?? '')}</p>
+                  {row.job_description && <p className="text-charcoal-500 whitespace-pre-wrap">{String(row.job_description)}</p>}
                   <p className="text-charcoal-500">{String(row.competency_required ?? '-')} | {String(row.experience_required ?? '-')}</p>
-                  <p className="text-charcoal-500">Dept approval: {String(Boolean(row.department_manager_approved))} | Ref checks: {String(Boolean(row.reference_checks_done))}</p>
+                  <p className="text-charcoal-500">
+                    Dept approval: {row.department_manager_approved ? 'Yes' : 'No'} | Ref checks: {row.reference_checks_done ? 'Yes' : 'No'}
+                  </p>
                   <div className="mt-2 flex flex-wrap gap-2">
+                    {canWrite && (
+                      <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => beginEditVacancy(row)}>
+                        Edit
+                      </button>
+                    )}
                     {canDepartmentManagerApprove && !row.department_manager_approved && (
                       <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void approveVacancyAsDepartmentManager(row.id as UUID)}>Approve (Department Manager)</button>
                     )}
                     {canWrite && (
-                      <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void setReferenceChecked(row.id as UUID, !Boolean(row.reference_checks_done))}>
-                        Reference checks: {Boolean(row.reference_checks_done) ? 'Yes' : 'No'}
+                      <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void setReferenceChecked(row.id as UUID, !row.reference_checks_done)}>
+                        Reference checks: {row.reference_checks_done ? 'Yes' : 'No'}
+                      </button>
+                    )}
+                    {canWrite && (
+                      <button className="text-xs px-2 py-1 rounded border border-critical/30 text-critical" onClick={() => void onDeleteVacancy(row.id as UUID)}>
+                        Delete
                       </button>
                     )}
                   </div>
@@ -284,19 +403,32 @@ export function HrRecruitmentPage() {
                   <option value="no">No</option>
                 </select>
               </label>
-              <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onCreateApplicant()} disabled={!canWrite}>
-                Add Applicant
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onSaveApplicant()} disabled={!canWrite}>
+                  {editingApplicantId ? 'Update Applicant' : 'Add Applicant'}
+                </button>
+                {editingApplicantId && (
+                  <button className="px-4 py-2 rounded-lg border border-surface-300 text-sm" onClick={resetApplicantForm}>
+                    Cancel
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2 text-sm">
               {(applicants ?? []).map((row) => (
                 <div key={String(row.id)} className="border border-surface-200 rounded-lg p-3">
                   <p className="font-medium">{String(row.full_name ?? '')}</p>
+                  <p className="text-charcoal-500">{String(row.email ?? '-')}</p>
                   <p className="text-charcoal-500">Vacancy: {row.vacancy_id ? (vacancyMap.get(row.vacancy_id as UUID) ?? row.vacancy_id) : '-'}</p>
                   <p className="text-charcoal-500">Interviewed+Met: {String(row.interviewed_met_requirements ?? '-')} | Offer accepted: {String(row.offer_accepted ?? '-')}</p>
                   <p className="text-charcoal-500">HR approval: {String(Boolean(row.hr_manager_approved))} | Department approval: {String(Boolean(row.department_manager_approved))}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
+                    {canWrite && (
+                      <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => beginEditApplicant(row)}>
+                        Edit
+                      </button>
+                    )}
                     {canHrManagerApprove && !row.hr_manager_approved && (
                       <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void approveApplicant(row.id as UUID, 'hr')}>Approve (HR Manager)</button>
                     )}
@@ -306,6 +438,11 @@ export function HrRecruitmentPage() {
                     <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void convertApplicantToEmployee(row)}>
                       Convert to Employee
                     </button>
+                    {canWrite && (
+                      <button className="text-xs px-2 py-1 rounded border border-critical/30 text-critical" onClick={() => void onDeleteApplicant(row.id as UUID)}>
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -316,4 +453,3 @@ export function HrRecruitmentPage() {
     </Layout>
   );
 }
-

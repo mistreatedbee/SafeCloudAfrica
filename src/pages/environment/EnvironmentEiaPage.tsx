@@ -4,7 +4,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listUserProfiles } from '../../api/services/profilesService';
-import { listEnvImpactAssessments, listLegalRequirementOptions, listRiskAssessmentOptions, upsertEnvImpactAssessment } from '../../api/services/environmentService';
+import { deleteEnvImpactAssessment, listEnvImpactAssessments, listLegalRequirementOptions, listRiskAssessmentOptions, upsertEnvImpactAssessment } from '../../api/services/environmentService';
 import { toCsv, downloadTextFile } from '../../utils/csv';
 
 const currentYear = new Date().getFullYear();
@@ -65,6 +65,38 @@ export function EnvironmentEiaPage() {
       severity: row.severity, likelihood: row.likelihood, additionalControls: row.additional_controls ?? '', responsibleUserId: row.responsible_user_id ?? '',
       responsibleExternalName: row.responsible_external_name ?? '', reviewDate: row.review_date ?? '', linkedRiskAssessmentIds: row.linked_risk_assessment_ids ?? []
     });
+  }
+
+  async function handleDelete(row: any) {
+    if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm(`Delete EIA record ${row.ref_number}?`)) return;
+    await deleteEnvImpactAssessment({
+      companyId: activeCompanyId,
+      recordId: row.id,
+      actorUserId: user.id,
+      actorRole: activeRole
+    });
+    if (editing?.id === row.id) {
+      setEditing(null);
+      setForm({
+        refNumber: '',
+        activityOrProcess: '',
+        environmentalAspectCause: '',
+        potentialImpactEffect: '',
+        legalRequirementId: '',
+        legalRequirementLabelSnapshot: '',
+        existingControls: '',
+        severity: 3,
+        likelihood: 3,
+        additionalControls: '',
+        responsibleUserId: '',
+        responsibleExternalName: '',
+        reviewDate: '',
+        linkedRiskAssessmentIds: []
+      });
+    }
+    setRefreshKey((k) => k + 1);
+    await refresh();
   }
 
   return (
@@ -133,7 +165,7 @@ export function EnvironmentEiaPage() {
             <table className="w-full text-sm min-w-[900px]">
               <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Ref</th><th className="px-3 py-2 text-left">Activity</th><th className="px-3 py-2 text-left">Risk</th><th className="px-3 py-2 text-left">Level</th><th className="px-3 py-2 text-left">Responsible</th><th className="px-3 py-2 text-left">Review date</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
               <tbody className="divide-y divide-surface-100">
-                {(rows ?? []).map((row: any) => <tr key={row.id}><td className="px-3 py-2">{row.ref_number}</td><td className="px-3 py-2">{row.activity_or_process}</td><td className="px-3 py-2">{row.risk_rating}</td><td className="px-3 py-2">{row.risk_level}</td><td className="px-3 py-2">{row.responsible_user_id ? (userLabel.get(row.responsible_user_id) ?? row.responsible_user_id) : (row.responsible_external_name || '-')}</td><td className="px-3 py-2">{row.review_date || '-'}</td><td className="px-3 py-2"><button type="button" onClick={() => startEdit(row)} className="px-2 py-1 border rounded text-xs">View/Edit</button></td></tr>)}
+                {(rows ?? []).map((row: any) => <tr key={row.id}><td className="px-3 py-2">{row.ref_number}</td><td className="px-3 py-2">{row.activity_or_process}</td><td className="px-3 py-2">{row.risk_rating}</td><td className="px-3 py-2">{row.risk_level}</td><td className="px-3 py-2">{row.responsible_user_id ? (userLabel.get(row.responsible_user_id) ?? row.responsible_user_id) : (row.responsible_external_name || '-')}</td><td className="px-3 py-2">{row.review_date || '-'}</td><td className="px-3 py-2"><div className="flex items-center gap-2"><button type="button" onClick={() => startEdit(row)} className="px-2 py-1 border rounded text-xs">View/Edit</button><button type="button" onClick={() => void handleDelete(row)} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}
                 {(rows ?? []).length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-charcoal-500">No EIA records.</td></tr>}
               </tbody>
             </table>

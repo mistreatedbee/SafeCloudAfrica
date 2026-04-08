@@ -6,6 +6,7 @@ import { useUser } from '@insforge/react';
 import type { UUID } from '../api/models/core';
 import {
   createRiskAssessmentFromTemplate,
+  deleteRiskAssessmentTemplate,
   listRiskAssessmentTemplates,
   listRiskAssessments,
   type MembershipScope,
@@ -111,6 +112,21 @@ export function RisksPage() {
       navigate(`/risk-assessments/${created.assessment.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create from template');
+    }
+  }
+
+  async function onDeleteTemplate(templateId: UUID) {
+    if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm('Delete this risk assessment template? This cannot be undone.')) return;
+    try {
+      await deleteRiskAssessmentTemplate({
+        companyId: activeCompanyId as UUID,
+        templateId,
+        actorUserId: user.id as UUID
+      });
+      setTemplates((current) => current.filter((template) => template.id !== templateId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete template');
     }
   }
 
@@ -228,7 +244,10 @@ export function RisksPage() {
                     <p className="text-sm font-semibold text-charcoal">{t.name}</p>
                     <p className="text-xs text-charcoal-500">{TYPE_LABEL[t.type]}</p>
                   </div>
-                  <button onClick={() => void onCreateFromTemplate(t.id)} className="px-3 py-1.5 rounded border border-teal text-teal text-xs font-semibold">Use Template</button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => void onCreateFromTemplate(t.id)} className="px-3 py-1.5 rounded border border-teal text-teal text-xs font-semibold">Use Template</button>
+                    <button onClick={() => void onDeleteTemplate(t.id)} className="px-3 py-1.5 rounded border border-critical text-critical text-xs font-semibold">Delete</button>
+                  </div>
                 </div>
               ))}
             </div>

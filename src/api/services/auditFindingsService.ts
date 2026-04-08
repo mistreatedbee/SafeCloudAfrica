@@ -61,9 +61,8 @@ export async function createAuditFinding(input: {
       responsible_user_id: null,
       due_date: null,
       created_by_user_id: created.created_by_user_id
-    }).catch(() => {});
+    }).catch(() => undefined);
   }
 
   return data as AuditFinding;
 }
-

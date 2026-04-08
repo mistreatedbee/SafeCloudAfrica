@@ -359,7 +359,7 @@ export async function upsertHrEmployeeSensitiveDetails(input: {
     action: 'hr.employee_sensitive.upsert',
     entityType: 'hr_employee_sensitive_details',
     entityId: input.employeeId
-  }).catch(() => {});
+  }).catch(() => undefined);
   return row;
 }
 
@@ -398,7 +398,7 @@ export async function replaceHrEmployeeDependents(input: {
     entityType: 'hr_employee',
     entityId: input.employeeId,
     metadata: { dependents: payload.length }
-  }).catch(() => {});
+  }).catch(() => undefined);
   return Number(data ?? 0);
 }
 
@@ -511,7 +511,7 @@ export async function upsertHrTimesheet(input: Omit<HrTimesheet, 'id' | 'created
     entityType: 'hr_timesheet',
     entityId: row.id
   }).catch(() => undefined);
-  await recalculateHrMonthlyHours(input.company_id, input.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.created_by_user_id).catch(() => {});
+  await recalculateHrMonthlyHours(input.company_id, input.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.created_by_user_id).catch(() => undefined);
   return row;
 }
 
@@ -547,8 +547,100 @@ export async function approveHrTimesheet(input: {
     entityId: input.timesheetId,
     metadata: { decision: input.decision }
   }).catch(() => undefined);
-  await recalculateHrMonthlyHours(row.company_id, row.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.actorUserId).catch(() => {});
+  await recalculateHrMonthlyHours(row.company_id, row.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.actorUserId).catch(() => undefined);
   return row;
+}
+
+export async function updateHrTimesheet(input: {
+  companyId: UUID;
+  timesheetId: UUID;
+  actorUserId: UUID;
+  patch: Partial<Pick<HrTimesheet, 'employee_id' | 'date' | 'hours_worked' | 'overtime_hours' | 'project_or_client' | 'notes' | 'status'>>;
+}): Promise<HrTimesheet> {
+  const { data: existing, error: existingError } = await insforge.database
+    .from('hr_timesheets')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('id', input.timesheetId)
+    .single();
+  if (existingError) throw new Error(getErrorMessage(existingError));
+  if (!existing) throw new Error('Timesheet not found');
+
+  const previous = existing as HrTimesheet;
+  const { data, error } = await insforge.database
+    .from('hr_timesheets')
+    .update({ ...input.patch, updated_at: new Date().toISOString() })
+    .eq('company_id', input.companyId)
+    .eq('id', input.timesheetId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update timesheet');
+
+  const row = data as HrTimesheet;
+  const previousDate = new Date(previous.date);
+  const nextDate = new Date(row.date);
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr.timesheet.update',
+    entityType: 'hr_timesheet',
+    entityId: input.timesheetId
+  }).catch(() => undefined);
+
+  await recalculateHrMonthlyHours(
+    previous.company_id,
+    previous.employee_id,
+    previousDate.getUTCFullYear(),
+    previousDate.getUTCMonth() + 1,
+    input.actorUserId
+  ).catch(() => undefined);
+
+  if (previous.employee_id !== row.employee_id || previous.date !== row.date) {
+    await recalculateHrMonthlyHours(
+      row.company_id,
+      row.employee_id,
+      nextDate.getUTCFullYear(),
+      nextDate.getUTCMonth() + 1,
+      input.actorUserId
+    ).catch(() => undefined);
+  }
+
+  return row;
+}
+
+export async function deleteHrTimesheet(input: {
+  companyId: UUID;
+  timesheetId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { data: existing, error: existingError } = await insforge.database
+    .from('hr_timesheets')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('id', input.timesheetId)
+    .single();
+  if (existingError) throw new Error(getErrorMessage(existingError));
+  if (!existing) throw new Error('Timesheet not found');
+
+  const row = existing as HrTimesheet;
+  const { error } = await insforge.database
+    .from('hr_timesheets')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.timesheetId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  const d = new Date(row.date);
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr.timesheet.delete',
+    entityType: 'hr_timesheet',
+    entityId: input.timesheetId
+  }).catch(() => undefined);
+  await recalculateHrMonthlyHours(row.company_id, row.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.actorUserId).catch(() => undefined);
 }
 
 export async function listHrRecords(companyId: UUID, table:
@@ -601,7 +693,7 @@ export async function createHrRecord(
       action: `hr.${table}.create`,
       entityType: table,
       entityId: row.id
-    }).catch(() => {});
+    }).catch(() => undefined);
   }
   return row;
 }
@@ -647,8 +739,48 @@ export async function updateHrRecord(
     action: `hr.${table}.update`,
     entityType: table,
     entityId: input.rowId
-  }).catch(() => {});
+  }).catch(() => undefined);
   return data as HrSimpleRecord;
+}
+
+export async function deleteHrRecord(
+  table:
+    | 'hr_performance_reviews'
+    | 'hr_disciplinary_cases'
+    | 'hr_leave_requests'
+    | 'hr_timesheets'
+    | 'hr_monthly_hours'
+    | 'hr_vacancies'
+    | 'hr_applicants'
+    | 'hr_employee_wellness_assessments'
+    | 'hr_employee_wellness_actions',
+  input: {
+    companyId: UUID;
+    rowId: UUID;
+    actorUserId: UUID;
+  }
+): Promise<void> {
+  if (table === 'hr_employee_wellness_assessments') {
+    const { error: childDeleteError } = await insforge.database
+      .from('hr_employee_wellness_actions')
+      .delete()
+      .eq('company_id', input.companyId)
+      .eq('assessment_id', input.rowId);
+    if (childDeleteError) throw new Error(getErrorMessage(childDeleteError));
+  }
+  const { error } = await insforge.database
+    .from(table)
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.rowId);
+  if (error) throw new Error(getErrorMessage(error));
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: `hr.${table}.delete`,
+    entityType: table,
+    entityId: input.rowId
+  }).catch(() => undefined);
 }
 
 export async function listEmployeeWellnessAssessments(input: {
@@ -1374,6 +1506,27 @@ export async function updateHrPersonalDocument(input: {
   return data as HrPersonalDocumentRow;
 }
 
+export async function deleteHrPersonalDocument(input: {
+  companyId: UUID;
+  documentId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('hr_employee_documents')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.documentId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr.personal_document.delete',
+    entityType: 'hr_employee_document',
+    entityId: input.documentId
+  }).catch(() => undefined);
+}
+
 export async function createHrAcknowledgementDocument(input: {
   companyId: UUID;
   actorUserId: UUID;
@@ -1423,7 +1576,7 @@ export async function createHrAcknowledgementDocument(input: {
 
   let eligible = (employees ?? []) as any[];
   if (!input.assignedAll && (assignedDeptSet.size > 0 || assignedRoleSet.size > 0)) {
-    let membershipMap = new Map<string, string>();
+    const membershipMap = new Map<string, string>();
     if (assignedRoleSet.size > 0) {
       const userIds = eligible.map((e) => e.user_id).filter(Boolean);
       if (userIds.length > 0) {
@@ -1554,6 +1707,34 @@ export async function submitHrAcknowledgement(input: {
   return data as HrAckReceiptRow;
 }
 
+export async function deleteHrAcknowledgementDocument(input: {
+  companyId: UUID;
+  documentId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { error: receiptsError } = await insforge.database
+    .from('hr_ack_receipts')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('ack_document_id', input.documentId);
+  if (receiptsError) throw new Error(getErrorMessage(receiptsError));
+
+  const { error: docError } = await insforge.database
+    .from('hr_ack_documents')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.documentId);
+  if (docError) throw new Error(getErrorMessage(docError));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr.ack_document.delete',
+    entityType: 'hr_ack_document',
+    entityId: input.documentId
+  }).catch(() => undefined);
+}
+
 export async function sendHrDocumentExpiryAlerts(companyId: UUID, actorUserId: UUID): Promise<number> {
   const docs = await listHrPersonalDocuments({
     companyId,
@@ -1591,7 +1772,7 @@ export async function sendHrDocumentExpiryAlerts(companyId: UUID, actorUserId: U
         title,
         message,
         { module: 'hr', route: '/dashboard/hr/documents', employeeId: doc.employee_id, documentId: doc.id, expiryStatus: status }
-      ).catch(() => {});
+      ).catch(() => undefined);
       count += 1;
     }
   }
@@ -1603,7 +1784,7 @@ export async function sendHrDocumentExpiryAlerts(companyId: UUID, actorUserId: U
     entityType: 'hr_employee_document',
     entityId: toNotify[0]?.id ?? actorUserId,
     metadata: { documents: toNotify.length, notifications: count }
-  }).catch(() => {});
+  }).catch(() => undefined);
 
   return count;
 }

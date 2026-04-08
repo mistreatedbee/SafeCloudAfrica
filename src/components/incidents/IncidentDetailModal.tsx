@@ -9,7 +9,7 @@ import { getIncidentInvestigation, upsertIncidentInvestigation } from '../../api
 import { exportIncidentPDF, downloadFile } from '../../api/services/exportService';
 import { useIdentity } from '../../hooks/useIdentity';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listIncidentCorrectiveActions } from '../../api/services/incidentCorrectiveActionsService';
+import { deleteIncidentCorrectiveAction, listIncidentCorrectiveActions } from '../../api/services/incidentCorrectiveActionsService';
 import { IncidentCorrectiveActionsList } from './IncidentCorrectiveActionsList';
 import { IncidentCorrectiveActionModal } from './IncidentCorrectiveActionModal';
 import { useDraftManager } from '../../session/DraftManagerProvider';
@@ -413,6 +413,24 @@ export function IncidentDetailModal(props: {
     setInvestigationSections((prev) => ({ ...prev, [section]: selected }));
   }
 
+  async function handleDeleteCorrectiveAction(actionId: UUID) {
+    if (!props.canEditInvestigation) return;
+    const confirmed = window.confirm('Delete this corrective action? This cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+      setError(null);
+      await deleteIncidentCorrectiveAction(props.companyId, actionId);
+      if (editingCorrectiveActionId === actionId) {
+        setEditingCorrectiveActionId(null);
+        setCorrectiveActionModalOpen(false);
+      }
+      setRefreshCorrectiveActions((c) => c + 1);
+    } catch (err: any) {
+      setError(formatAuthError(err));
+    }
+  }
+
   function renderInvestigationCard(section: InvestigationSectionKey, titleText: string, children: React.ReactNode) {
     const expanded = investigationSections[section];
     return (
@@ -575,7 +593,9 @@ export function IncidentDetailModal(props: {
                                     try {
                                       await updateEvidence(ev.id, { displayTitle: evidenceRenameValue.trim() });
                                       setEvidence(prev => prev.map(e => e.id === ev.id ? { ...e, display_title: evidenceRenameValue.trim() } : e));
-                                    } catch (_) {}
+                                    } catch {
+                                      // Ignore rename failures; user can retry.
+                                    }
                                   }
                                   setEvidenceRenamingId(null);
                                 }}
@@ -628,6 +648,7 @@ export function IncidentDetailModal(props: {
                         setCreateFromCause(null);
                         setCorrectiveActionModalOpen(true);
                       }}
+                      onDelete={(actionId) => void handleDeleteCorrectiveAction(actionId)}
                       disabled={!props.canEditInvestigation}
                     />
                   </div>
@@ -857,6 +878,7 @@ export function IncidentDetailModal(props: {
                           setCreateFromCause(null);
                           setCorrectiveActionModalOpen(true);
                         }}
+                        onDelete={(actionId) => void handleDeleteCorrectiveAction(actionId)}
                         disabled={!props.canEditInvestigation}
                       />
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -914,6 +936,7 @@ export function IncidentDetailModal(props: {
           initial={editingCorrectiveActionId ? (correctiveActions.find(a => a.id === editingCorrectiveActionId) ?? null) : null}
           createdByUserId={props.actorUserId}
           onSaved={() => setRefreshCorrectiveActions(c => c + 1)}
+          onDeleted={() => setRefreshCorrectiveActions(c => c + 1)}
           initialSourceCauseType={createFromCause?.type}
           initialSourceCauseText={createFromCause?.text}
           causeOptions={causeOptions}
@@ -922,4 +945,3 @@ export function IncidentDetailModal(props: {
     </div>
   );
 }
-

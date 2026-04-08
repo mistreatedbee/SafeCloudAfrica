@@ -5,7 +5,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listUserProfiles } from '../../api/services/profilesService';
-import { listEnvAirQuality, upsertEnvAirQuality, listLegalRequirementOptions } from '../../api/services/environmentService';
+import { deleteEnvAirQuality, listEnvAirQuality, upsertEnvAirQuality, listLegalRequirementOptions } from '../../api/services/environmentService';
 import { toCsv, downloadTextFile } from '../../utils/csv';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
@@ -382,7 +382,7 @@ export function EnvironmentAirPage() {
 
         {error && <div className="text-sm text-critical">{String(error.message)}</div>}
         {loading ? <p className="text-sm text-charcoal-500">Loading...</p> : (
-          <div className="bg-white border rounded-xl overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Reference</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Location</th><th className="px-3 py-2 text-left">Method</th><th className="px-3 py-2 text-left">Overall</th><th className="px-3 py-2 text-left">Reviewer</th><th className="px-3 py-2 text-left">NCR</th><th className="px-3 py-2 text-left">Actions</th></tr></thead><tbody className="divide-y divide-surface-100">{(rows ?? []).map((r: any) => <tr key={r.id}><td className="px-3 py-2">{r.reference_number}</td><td className="px-3 py-2">{r.monitoring_date}</td><td className="px-3 py-2">{r.monitoring_location}</td><td className="px-3 py-2">{r.method_used}</td><td className="px-3 py-2">{r.overall_status}</td><td className="px-3 py-2">{r.reviewed_by_user_id ? (userLabel.get(r.reviewed_by_user_id) ?? r.reviewed_by_user_id) : '-'}</td><td className="px-3 py-2">{r.system_generated_capa_id ? <Link to="/dashboard/management/ncrs" className="text-teal hover:underline">View NCR</Link> : '-'}</td><td className="px-3 py-2"><button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button></td></tr>)}{(rows ?? []).length === 0 && (
+          <div className="bg-white border rounded-xl overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Reference</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Location</th><th className="px-3 py-2 text-left">Method</th><th className="px-3 py-2 text-left">Overall</th><th className="px-3 py-2 text-left">Reviewer</th><th className="px-3 py-2 text-left">NCR</th><th className="px-3 py-2 text-left">Actions</th></tr></thead><tbody className="divide-y divide-surface-100">{(rows ?? []).map((r: any) => <tr key={r.id}><td className="px-3 py-2">{r.reference_number}</td><td className="px-3 py-2">{r.monitoring_date}</td><td className="px-3 py-2">{r.monitoring_location}</td><td className="px-3 py-2">{r.method_used}</td><td className="px-3 py-2">{r.overall_status}</td><td className="px-3 py-2">{r.reviewed_by_user_id ? (userLabel.get(r.reviewed_by_user_id) ?? r.reviewed_by_user_id) : '-'}</td><td className="px-3 py-2">{r.system_generated_capa_id ? <Link to="/dashboard/management/ncrs" className="text-teal hover:underline">View NCR</Link> : '-'}</td><td className="px-3 py-2"><div className="flex gap-2"><button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this air quality monitoring record?')) return; await deleteEnvAirQuality({ companyId: activeCompanyId, recordId: r.id, actorUserId: user.id, actorRole: activeRole }); if (String(editing?.id ?? '') === String(r.id)) setEditing(null); setRefreshKey((k) => k + 1); await refetch(); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}{(rows ?? []).length === 0 && (
                     <ListEmptyState
                       tableColSpan={8}
                       icon={WindIcon}
@@ -400,4 +400,3 @@ export function EnvironmentAirPage() {
     </Layout>
   );
 }
-
