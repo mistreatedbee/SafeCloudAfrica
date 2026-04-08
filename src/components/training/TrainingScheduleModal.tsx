@@ -112,12 +112,17 @@ export function TrainingScheduleModal(props: {
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
-      <div className="relative w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl border border-surface-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+        <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <p className="text-sm font-semibold text-charcoal">Schedule training</p>
-          <button type="button" onClick={closeWithDraftClear} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
+          <button
+            type="button"
+            onClick={closeWithDraftClear}
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 shrink-0"
+            aria-label="Close"
+          >
             <XIcon className="w-4 h-4" />
           </button>
         </div>

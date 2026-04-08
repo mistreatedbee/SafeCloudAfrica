@@ -328,7 +328,7 @@ export default function NCRDetailModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] overflow-y-auto p-4 sm:p-6"
       onClick={onClose}
     >
       <motion.div
@@ -336,14 +336,18 @@ export default function NCRDetailModal({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90dvh] overflow-y-auto"
       >
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-gray-900">{ncr.nc_number}</h2>
             <p className="text-sm text-gray-600 mt-1">{ncr.title}</p>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 transition-colors">
+          <button
+            onClick={onClose}
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0"
+            aria-label="Close"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>

@@ -251,16 +251,20 @@ function CreateTemplateModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center overflow-y-auto p-4 sm:p-6 z-[60]">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-xl max-w-md w-full max-h-[90dvh] overflow-y-auto"
       >
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-charcoal">Create Form Template</h3>
-            <button onClick={onClose} className="text-charcoal-400 hover:text-charcoal">
+            <button
+              onClick={onClose}
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-charcoal-400 hover:text-charcoal hover:bg-surface-100"
+              aria-label="Close"
+            >
               <XIcon className="w-5 h-5" />
             </button>
           </div>

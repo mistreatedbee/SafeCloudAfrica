@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { XIcon, UploadIcon, EyeIcon, DownloadIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
@@ -7,6 +7,7 @@ import { createEvidence, listEvidence } from '../../api/services/evidenceService
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/services/documentsStorageService';
 import { insforge } from '../../api/insforge/client';
 import { useAsync } from '../../api/hooks/useAsync';
+import { ListEmptyState } from '../ui/ListEmptyState';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -28,6 +29,7 @@ export function EvidenceModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data, loading: listLoading } = useAsync<EvidenceAttachment[]>(
     async () => listEvidence(props.companyId, { entityType: props.entityType, entityId: props.entityId, limit: 200 }),
@@ -67,15 +69,20 @@ export function EvidenceModal(props: {
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-2xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+        <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
             <p className="text-sm font-semibold text-charcoal">{props.title ?? 'Evidence'}</p>
             <p className="text-xs text-charcoal-500 mt-0.5">Upload and view evidence files linked to this record.</p>
           </div>
-          <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
+          <button
+            type="button"
+            onClick={props.onClose}
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 shrink-0"
+            aria-label="Close"
+          >
             <XIcon className="w-4 h-4" />
           </button>
         </div>
@@ -100,7 +107,12 @@ export function EvidenceModal(props: {
             </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">File</label>
-              <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-full text-sm" />
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="w-full text-sm"
+              />
             </div>
             <div className="sm:col-span-3 flex justify-end">
               <button
@@ -127,9 +139,23 @@ export function EvidenceModal(props: {
                 </div>
               )}
               {!listLoading && evidence.length === 0 && (
-                <div className="px-4 py-3">
-                  <p className="text-sm text-charcoal-500">No evidence uploaded yet.</p>
-                </div>
+                <ListEmptyState
+                  embedded
+                  className="px-4"
+                  icon={UploadIcon}
+                  title="No evidence yet"
+                  description="Add a file (photo, certificate, PDF) to keep an auditable trail linked to this record."
+                  primaryAction={{
+                    kind: 'button',
+                    label: 'Choose file',
+                    onClick: () => fileInputRef.current?.click()
+                  }}
+                  secondaryAction={{
+                    kind: 'button',
+                    label: 'Refresh',
+                    onClick: () => setRefreshKey((k) => k + 1)
+                  }}
+                />
               )}
               {evidence.map((evi) => (
                 <EvidenceRow key={evi.id} item={evi} />

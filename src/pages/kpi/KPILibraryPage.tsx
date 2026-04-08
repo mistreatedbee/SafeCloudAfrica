@@ -198,16 +198,21 @@ export function KPILibraryPage() {
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
           <div className="absolute inset-0 bg-black/40" onClick={() => setModalOpen(false)} />
-          <div className="relative w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 p-5">
-            <div className="flex items-center justify-between mb-4">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+            <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
               <h3 className="font-semibold text-charcoal">{editingId ? 'Edit KPI template' : 'Add KPI template'}</h3>
-              <button type="button" onClick={() => setModalOpen(false)} className="p-2 rounded-lg hover:bg-surface-100">
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 shrink-0"
+                aria-label="Close"
+              >
                 <XIcon className="w-4 h-4" />
               </button>
             </div>
-            <form onSubmit={handleSave} className="space-y-4">
+            <form onSubmit={handleSave} className="p-5 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1">KPI Questionnaire *</label>
                 <input

@@ -396,7 +396,7 @@ export function IncidentCorrectiveActionModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div
         className="absolute inset-0 bg-black/40"
         onClick={() => {
@@ -404,7 +404,7 @@ export function IncidentCorrectiveActionModal({
           onClose();
         }}
       />
-      <div className="relative w-full max-w-2xl mx-4 my-8 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[95vh] overflow-y-auto">
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-surface-200 px-5 py-4 flex items-center justify-between z-10">
           <p className="text-sm font-semibold text-charcoal">{actionId ? 'Edit Corrective Action' : 'Create Corrective Action'}</p>
           <button
@@ -413,7 +413,8 @@ export function IncidentCorrectiveActionModal({
               clearDraft(draftKey);
               onClose();
             }}
-            className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500"
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 shrink-0"
+            aria-label="Close"
           >
             <XIcon className="w-4 h-4" />
           </button>

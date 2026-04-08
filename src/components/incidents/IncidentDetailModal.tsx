@@ -461,10 +461,10 @@ export function IncidentDetailModal(props: {
   if (!props.open || !incident) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto p-3 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-4xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-6 border-b border-surface-200">
+      <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+        <div className="sticky top-0 bg-white z-10 flex flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-6 border-b border-surface-200">
           <div className="min-w-0 flex-1 basis-full sm:basis-auto">
             <p className="text-sm font-semibold text-charcoal truncate">{incident.title}</p>
             <p className="text-xs text-charcoal-500 mt-0.5">

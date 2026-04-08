@@ -54,12 +54,23 @@ html, body, #root {
   padding: 0;
 }
 
+html {
+  /* Prevent anchor/scrollIntoView targets from being hidden behind sticky headers */
+  scroll-padding-top: calc(var(--header-height) + 1.25rem);
+}
+
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background-color: var(--color-surface);
   color: var(--color-charcoal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Ensure in-page targets are not obscured by sticky headers (works for scrollIntoView too) */
+[id] {
+  scroll-margin-top: calc(var(--header-height) + 1.25rem);
 }
 
 /* Custom scrollbar */

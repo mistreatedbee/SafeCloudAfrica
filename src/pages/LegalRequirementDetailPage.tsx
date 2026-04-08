@@ -427,9 +427,9 @@ export function LegalRequirementDetailPage() {
       </div>
 
       {closingUpdateId && activeCompanyId && user?.id && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
           <div className="absolute inset-0 bg-black/40" onClick={() => setClosingUpdateId(null)} />
-          <div className="relative bg-white border border-surface-300 rounded-xl p-4 w-full max-w-md space-y-3">
+          <div className="relative bg-white border border-surface-300 rounded-xl p-4 w-full max-w-md space-y-3 max-h-[90dvh] overflow-y-auto">
             <p className="font-semibold text-charcoal">Close legal update</p>
             <textarea
               value={updateForm.closureNote}

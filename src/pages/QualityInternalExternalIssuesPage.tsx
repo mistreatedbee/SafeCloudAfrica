@@ -581,12 +581,20 @@ export default function QualityInternalExternalIssuesPage() {
         </div>
       </div>
       {modalOpen && (
-        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-5xl bg-white rounded-xl border border-surface-300 overflow-hidden">
-            <div className="px-5 py-4 border-b border-surface-200">
+        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+          <div className="w-full max-w-5xl bg-white rounded-xl border border-surface-300 overflow-hidden max-h-[90dvh] flex flex-col">
+            <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between shrink-0">
               <h2 className="text-lg font-semibold">{formMode === 'create' ? 'Add Issue Row' : formMode === 'edit' ? `Edit Issue #${issueForm.refNo ?? ''}` : `View Issue #${issueForm.refNo ?? ''}`}</h2>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 text-xl leading-none shrink-0"
+                aria-label="Close"
+              >
+                ×
+              </button>
             </div>
-            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+            <div className="flex-1 p-5 space-y-4 overflow-y-auto">
               {issueError && <p className="text-sm text-critical">{issueError}</p>}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <SelectOrType label="Internal/External" value={issueForm.scope} options={SCOPE_OPTIONS} onChange={(value) => setIssueForm((prev) => ({ ...prev, scope: value }))} companyId={activeCompanyId ?? undefined} moduleKey="quality" fieldKey="internal_external_scope" createdByUserId={(user?.id as UUID | undefined) ?? undefined} allowCreate={!!activeCompanyId} required disabled={formMode === 'view'} />
@@ -633,8 +641,8 @@ export default function QualityInternalExternalIssuesPage() {
                 </label>
               </div>
             </div>
-            <div className="px-5 py-4 border-t border-surface-200 flex items-center justify-end gap-2">
-              <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium">Close</button>
+            <div className="px-5 py-4 border-t border-surface-200 flex items-center justify-end gap-2 shrink-0">
+              <button type="button" onClick={() => setModalOpen(false)} className="min-h-[44px] px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium">Close</button>
               {formMode !== 'view' && canWrite && <button type="button" onClick={() => void handleSaveIssue()} disabled={issueSaving} className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-70">{issueSaving ? 'Saving...' : 'Save'}</button>}
             </div>
           </div>
