@@ -1,7 +1,14 @@
 import { getServerInsforge } from '../_insforge.js';
 import { logStructuredLine, sendAlertWebhook } from '../_observability.js';
 import { applyNoStoreHeaders } from '../_response.js';
-import { hashInviteToken, mapInvalidReason, normalizeInviteStatus } from './_shared.js';
+import {
+  hashInviteToken,
+  isSignedInviteToken,
+  mapInvalidReason,
+  normalizeInviteStatus,
+  parseSignedInviteToken,
+  verifyInviteToken
+} from './_shared.js';
 
 const MODULE = 'api.invites.validate';
 
@@ -18,14 +25,33 @@ export default async function handler(req: any, res: any) {
 
   try {
     const insforge = getServerInsforge();
-    const tokenHash = hashInviteToken(token);
+    let data: any = null;
+    let error: any = null;
 
-    const { data, error } = await insforge.database
-      .from('company_invites')
-      .select('id, company_id, organization_name, email, role, status, expires_at, companies(name)')
-      .or(`token_hash.eq.${tokenHash},token.eq.${token}`)
-      .limit(1)
-      .maybeSingle();
+    if (isSignedInviteToken(token)) {
+      const parsed = parseSignedInviteToken(token);
+      if (!parsed) return res.status(404).json({ ok: false, reason: 'not_found' });
+      const byId = await insforge.database
+        .from('company_invites')
+        .select('id, company_id, organization_name, email, role, status, expires_at, companies(name)')
+        .eq('id', parsed.inviteId)
+        .maybeSingle();
+      data = byId.data;
+      error = byId.error;
+      if (data && !verifyInviteToken(token, data)) {
+        return res.status(404).json({ ok: false, reason: 'not_found' });
+      }
+    } else {
+      const tokenHash = hashInviteToken(token);
+      const byHash = await insforge.database
+        .from('company_invites')
+        .select('id, company_id, organization_name, email, role, status, expires_at, companies(name)')
+        .or(`token_hash.eq.${tokenHash},token.eq.${token}`)
+        .limit(1)
+        .maybeSingle();
+      data = byHash.data;
+      error = byHash.error;
+    }
 
     if (error) {
       logStructuredLine({
@@ -50,7 +76,7 @@ export default async function handler(req: any, res: any) {
     const expiresAt = (data as any).expires_at ? new Date((data as any).expires_at) : null;
     const isExpired = !!expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
 
-    if (isExpired && status === 'PENDING') {
+    if (isExpired && (status === 'PENDING' || status === 'SENT' || status === 'FAILED')) {
       await insforge.database
         .from('company_invites')
         .update({ status: 'EXPIRED' })
