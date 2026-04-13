@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SearchIcon } from 'lucide-react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
+import { searchHrEmployees, type HrEmployee } from '../../api/services/hrService';
 import type { UUID } from '../../api/models/entities';
 
 export type HrEmployeeSelectProps = {
@@ -41,40 +41,25 @@ export function HrEmployeeSelect({
   onEmployeeChange
 }: HrEmployeeSelectProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const shouldIncludeUnlinked = includeUnlinked ?? valueField === 'id';
 
-  const { data: employees, loading } = useAsync<HrEmployee[]>(
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(searchQuery.trim()), 220);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
+  const { data: employees, loading, error } = useAsync<HrEmployee[]>(
     async () => {
       if (!companyId) return [];
-      const rows = await listHrEmployees(companyId);
-      return rows
-        .filter((e) => (shouldIncludeUnlinked ? true : !!e.user_id))
-        .sort((a, b) => {
-          const nameA = `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim().toLowerCase();
-          const nameB = `${b.first_name ?? ''} ${b.last_name ?? ''}`.trim().toLowerCase();
-          return nameA.localeCompare(nameB);
-        });
+      return await searchHrEmployees(companyId, {
+        query: debouncedQuery,
+        includeUnlinked: shouldIncludeUnlinked,
+        limit: 140
+      });
     },
-    [companyId, shouldIncludeUnlinked]
+    [companyId, shouldIncludeUnlinked, debouncedQuery]
   );
-
-  const filteredEmployees = useMemo(() => {
-    const list = employees ?? [];
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((e) => {
-      const fullName = `${e.first_name ?? ''} ${e.last_name ?? ''}`.toLowerCase();
-      const empNo = String(e.employee_no ?? '').toLowerCase();
-      const email = String(e.email ?? '').toLowerCase();
-      const jobTitle = String(e.job_title ?? '').toLowerCase();
-      return (
-        fullName.includes(q) ||
-        empNo.includes(q) ||
-        email.includes(q) ||
-        jobTitle.includes(q)
-      );
-    });
-  }, [employees, searchQuery]);
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedValue = (e.target.value || '') as UUID | '';
@@ -100,6 +85,8 @@ export function HrEmployeeSelect({
     if (match) onEmployeeChange?.(match);
   };
 
+  const rows = employees ?? [];
+
   return (
     <div className="space-y-1">
       {label && <label className="block text-sm font-medium text-charcoal mb-1">{label}</label>}
@@ -122,18 +109,24 @@ export function HrEmployeeSelect({
         className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
         disabled={disabled || !companyId || loading}
       >
-        <option value="">{placeholder}</option>
-        {filteredEmployees.map((e) => {
+        <option value="">{loading ? 'Loading employees...' : placeholder}</option>
+        {rows.map((e) => {
           const name = `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || e.email || e.employee_no;
           const empId = e.employee_no || '';
-          const display = empId ? `${empId} – ${name}` : name;
+          const display = empId ? `${empId} - ${name}` : name;
+          const optionValue = valueField === 'id' ? e.id : e.user_id ?? '';
+          if (!optionValue) return null;
           return (
-            <option key={e.id} value={(valueField === 'id' ? e.id : (e.user_id ?? '')) as any}>
+            <option key={e.id} value={optionValue}>
               {display}
             </option>
           );
         })}
       </select>
+      {error && <p className="text-xs text-critical">Failed to load employees. Please retry.</p>}
+      {!error && !loading && companyId && rows.length === 0 && (
+        <p className="text-xs text-charcoal-500">No employees found for this search.</p>
+      )}
     </div>
   );
 }

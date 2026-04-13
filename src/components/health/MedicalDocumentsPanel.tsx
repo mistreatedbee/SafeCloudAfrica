@@ -1,6 +1,8 @@
 import React from 'react';
-import type { EvidenceAttachment, HealthMedical, UUID } from '../../api/models/entities';
+import type { HealthMedical, UUID } from '../../api/models/entities';
 import { EvidenceModal } from '../evidence/EvidenceModal';
+import { useAsync } from '../../api/hooks/useAsync';
+import { listEvidence } from '../../api/services/evidenceService';
 
 export function MedicalDocumentsPanel(props: {
   medical: HealthMedical;
@@ -8,8 +10,11 @@ export function MedicalDocumentsPanel(props: {
   actorUserId: UUID;
 }) {
   const [open, setOpen] = React.useState(false);
+  const { data: documents, loading } = useAsync(async () => {
+    return await listEvidence(props.companyId, { entityType: 'health_medical', entityId: props.medical.id, limit: 100 });
+  }, [props.companyId, props.medical.id, open]);
 
-  const documents: EvidenceAttachment[] = (props.medical.uploaded_documents ?? []) as any;
+  const rows = documents ?? [];
 
   return (
     <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
@@ -27,10 +32,11 @@ export function MedicalDocumentsPanel(props: {
         </button>
       </div>
       <div className="border border-dashed border-surface-300 rounded-lg px-3 py-2 max-h-40 overflow-y-auto">
-        {documents.length === 0 && <p className="text-xs text-charcoal-400">No documents uploaded yet.</p>}
-        {documents.length > 0 && (
+        {loading && <p className="text-xs text-charcoal-400">Loading documents...</p>}
+        {!loading && rows.length === 0 && <p className="text-xs text-charcoal-400">No documents uploaded yet.</p>}
+        {!loading && rows.length > 0 && (
           <ul className="space-y-1 text-xs">
-            {documents.map((doc) => (
+            {rows.map((doc) => (
               <li key={doc.id} className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-charcoal-700">{doc.display_title ?? doc.original_filename ?? 'Document'}</p>

@@ -262,6 +262,39 @@ export async function listHrEmployees(companyId: UUID): Promise<HrEmployee[]> {
   return listTable<HrEmployee>('hr_employees', companyId);
 }
 
+export async function searchHrEmployees(
+  companyId: UUID,
+  input?: {
+    query?: string;
+    includeUnlinked?: boolean;
+    activeOnly?: boolean;
+    limit?: number;
+  }
+): Promise<HrEmployee[]> {
+  const qText = input?.query?.trim() ?? '';
+  let q = insforge.database
+    .from('hr_employees')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('first_name', { ascending: true })
+    .order('last_name', { ascending: true })
+    .limit(input?.limit ?? 120);
+
+  if (input?.activeOnly !== false) {
+    q = q.in('employment_status', ['ONBOARDING', 'ACTIVE', 'ON_LEAVE', 'SUSPENDED']);
+  }
+  if (!input?.includeUnlinked) q = q.not('user_id', 'is', null);
+  if (qText) {
+    q = q.or(
+      `first_name.ilike.%${qText}%,last_name.ilike.%${qText}%,employee_no.ilike.%${qText}%,email.ilike.%${qText}%,job_title.ilike.%${qText}%`
+    );
+  }
+
+  const { data, error } = await q;
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as HrEmployee[];
+}
+
 export async function getHrEmployeeById(companyId: UUID, id: UUID): Promise<HrEmployee | null> {
   const { data, error } = await insforge.database.from('hr_employees').select('*').eq('company_id', companyId).eq('id', id).maybeSingle();
   if (error) throw new Error(getErrorMessage(error));

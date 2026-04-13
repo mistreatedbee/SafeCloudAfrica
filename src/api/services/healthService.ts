@@ -140,6 +140,26 @@ export async function createHealthMedical(input: {
   uploadedDocuments?: unknown[] | null;
   createdByUserId: UUID;
 }): Promise<HealthMedical> {
+  let duplicateQuery = insforge.database
+    .from('health_medicals')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('medical_type', input.medicalType)
+    .eq('medical_date', input.medicalDate)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (input.employeeId) duplicateQuery = duplicateQuery.eq('employee_id', input.employeeId);
+  else duplicateQuery = duplicateQuery.is('employee_id', null);
+
+  if (input.employeeUserId) duplicateQuery = duplicateQuery.eq('employee_user_id', input.employeeUserId);
+  else duplicateQuery = duplicateQuery.is('employee_user_id', null);
+
+  const { data: duplicateRows, error: duplicateError } = await duplicateQuery;
+  if (duplicateError) throw new Error(getErrorMessage(duplicateError));
+  const existing = ((duplicateRows ?? [])[0] ?? null) as HealthMedical | null;
+  if (existing) return existing;
+
   const { data, error } = await insforge.database
     .from('health_medicals')
     .insert({
@@ -178,6 +198,20 @@ export async function createHealthMedical(input: {
   return row;
 }
 
+export async function deleteHealthMedical(companyId: UUID, medicalId: UUID, actorUserId?: UUID): Promise<void> {
+  const { error } = await insforge.database.from('health_medicals').delete().eq('company_id', companyId).eq('id', medicalId);
+  if (error) throw new Error(getErrorMessage(error));
+  if (actorUserId) {
+    await createActivityLog({
+      companyId,
+      actorUserId,
+      action: 'health.medicals.delete',
+      entityType: 'health_medical',
+      entityId: medicalId
+    }).catch(() => undefined);
+  }
+}
+
 export async function listHealthRestrictedDuty(input: {
   companyId: UUID;
   employee?: string;
@@ -206,7 +240,7 @@ async function autoCreateHygieneActionPlan(companyId: UUID, record: HealthHygien
     companyId,
     module: 'health',
     title: `Hygiene non-compliance: ${record.monitoring_type}`,
-    description: record.non_compliance_reason ?? record.results_summary ?? null,
+    description: record.non_compliance_reason ?? record.results_summary ?? undefined,
     category: 'capa',
     riskLevel: 'high',
     priority: 'high',
@@ -274,6 +308,18 @@ export async function createHealthHygieneRecord(input: {
   actionDueDate?: string | null;
   createdByUserId: UUID;
 }): Promise<HealthHygieneRecord> {
+  const { data: duplicateRows, error: duplicateError } = await insforge.database
+    .from('health_hygiene_records')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('monitoring_type', input.monitoringType)
+    .eq('monitored_on', input.monitoredOn)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (duplicateError) throw new Error(getErrorMessage(duplicateError));
+  const existing = ((duplicateRows ?? []) as HealthHygieneRecord[]).find((row) => (row.site_location ?? null) === (input.siteLocation ?? null)) ?? null;
+  if (existing) return existing;
+
   const { data, error } = await insforge.database
     .from('health_hygiene_records')
     .insert({
@@ -350,6 +396,68 @@ export async function deleteHealthHygieneRecord(companyId: UUID, recordId: UUID,
       entityId: recordId
     }).catch(() => undefined);
   }
+}
+
+export async function getEmployeeWarningOccurrences(input: {
+  companyId: UUID;
+  employeeId: UUID;
+  offenceType: string;
+  withinMonths?: number;
+}): Promise<number> {
+  const offence = input.offenceType.trim();
+  if (!offence) return 0;
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - Math.max(1, input.withinMonths ?? 6));
+  const cutoffIso = cutoff.toISOString().slice(0, 10);
+
+  const { count, error } = await insforge.database
+    .from('hr_disciplinary_cases')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', input.companyId)
+    .eq('employee_id', input.employeeId)
+    .or(`offence_type.ilike.%${offence}%,offence_category.ilike.%${offence}%`)
+    .gte('date_issued', cutoffIso);
+
+  if (error) throw new Error(getErrorMessage(error));
+  return count ?? 0;
+}
+
+export async function createEmployeeWarningFromHealth(input: {
+  companyId: UUID;
+  employeeId: UUID;
+  offenceType: string;
+  description: string;
+  warningLevel?: string;
+  repeatWindowMonths?: number;
+  createdByUserId: UUID;
+}): Promise<void> {
+  const offence = input.offenceType.trim();
+  if (!offence) return;
+
+  const repeatCount = await getEmployeeWarningOccurrences({
+    companyId: input.companyId,
+    employeeId: input.employeeId,
+    offenceType: offence,
+    withinMonths: input.repeatWindowMonths ?? 6
+  });
+  const isRepeat = repeatCount > 0;
+
+  const { error } = await insforge.database.from('hr_disciplinary_cases').insert({
+    company_id: input.companyId,
+    employee_id: input.employeeId,
+    case_type: input.warningLevel ?? 'Written Warning',
+    offence_type: offence,
+    offence_category: offence,
+    description: input.description.trim(),
+    warning_level: input.warningLevel ?? 'Written Warning',
+    date_issued: todayIsoDate(),
+    evidence_file_ids: [],
+    repeat_offence_flag: isRepeat,
+    offence_severity: isRepeat ? 'repeat' : 'minor',
+    status: 'OPEN',
+    created_by_user_id: input.createdByUserId
+  });
+  if (error) throw new Error(getErrorMessage(error));
 }
 
 export async function listHealthWellnessCampaigns(companyId: UUID): Promise<HealthWellnessCampaign[]> {
