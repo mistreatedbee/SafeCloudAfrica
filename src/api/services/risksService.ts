@@ -252,7 +252,6 @@ export async function createRiskAssessment(input: CreateRiskAssessmentInput): Pr
       await insforge.database
         .from('risk_assessments')
         .update({ ...patch, updated_at: new Date().toISOString() })
-        .eq('company_id', input.companyId)
         .eq('id', created.id);
       Object.assign(created as any, patch);
     } catch {
@@ -578,7 +577,6 @@ export async function updateRiskAssessmentItem(input: UpdateRiskAssessmentItemIn
   const { data, error } = await insforge.database
     .from('risk_assessment_items')
     .update(updateData)
-    .eq('company_id', input.companyId)
     .eq('id', input.itemId)
     .select('*')
     .single();
@@ -605,11 +603,7 @@ export async function deleteRiskAssessmentItem(
   companyId: UUID,
   deletedByUserId: UUID
 ): Promise<void> {
-  const { error } = await insforge.database
-    .from('risk_assessment_items')
-    .delete()
-    .eq('company_id', companyId)
-    .eq('id', itemId);
+  const { error } = await insforge.database.from('risk_assessment_items').delete().eq('id', itemId);
   if (error) throw new Error(getErrorMessage(error));
 
   await updateRiskAssessmentCounts(assessmentId);

@@ -28,7 +28,6 @@ import { listModuleTargets } from '../api/services/moduleTargetsService';
 import { countOverdueCorrectiveActions } from '../api/services/correctiveActionsService';
 import { countExpiringTraining, countExpiringTrainingForUser } from '../api/services/trainingService';
 import { listInspections } from '../api/services/inspectionsService';
-import { FirstWinBanner } from '../components/onboarding/FirstWinBanner';
 const containerVariants = {
   hidden: {
     opacity: 0
@@ -234,8 +233,6 @@ export function DashboardPage() {
     return moduleCards.map((m) => ({ ...m, score: moduleScoreByKey[m.id] ?? 0 }));
   }, [moduleScoreByKey]);
 
-  const showSafetyFirstWin = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
-
   return (
     <Layout title="Dashboard">
       <motion.div
@@ -243,8 +240,6 @@ export function DashboardPage() {
         initial="hidden"
         animate="visible"
         className="space-y-6">
-
-        {showSafetyFirstWin ? <FirstWinBanner persona="safety" /> : null}
 
         {/* Welcome Banner */}
         <motion.div
@@ -450,7 +445,7 @@ export function DashboardPage() {
             </div>
             <div className="px-5 py-3 bg-surface-50 border-t border-surface-200">
               <button
-                onClick={() => navigate('/dashboard/management/tasks?view=tasks')}
+                onClick={() => navigate('/dashboard/management/tasks')}
                 className="text-sm font-medium text-teal hover:text-teal-700 transition-colors">
 
                 View all tasks →
@@ -477,7 +472,7 @@ export function DashboardPage() {
             <div className="px-5 py-3 bg-surface-50 border-t border-surface-200">
               <button
                 type="button"
-              onClick={() => navigate('/dashboard/management/tasks?view=tasks')}
+                onClick={() => navigate('/dashboard/management/tasks')}
                 className="text-sm font-medium text-warning hover:text-warning-700 transition-colors"
               >
                 Resolve overdue →

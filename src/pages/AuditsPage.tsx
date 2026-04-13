@@ -19,7 +19,6 @@ import { listAudits } from '../api/services/auditsService';
 import { listInspections } from '../api/services/inspectionsService';
 import type { Inspection } from '../api/models/entities';
 import { AuditScheduleModal } from '../components/audits/AuditScheduleModal';
-import { ListEmptyState } from '../components/ui/ListEmptyState';
 
 const auditTypeColors = {
   internal: 'bg-teal-50 text-teal-700',
@@ -241,34 +240,9 @@ export function AuditsPage() {
             </div>
           )}
           {!auditsLoading && !auditsError && filtered.length === 0 && (
-            <ListEmptyState
-              icon={ClipboardCheckIcon}
-              title={(audits ?? []).length === 0 ? 'No audits scheduled yet' : 'No audits match your filters'}
-              description={
-                (audits ?? []).length === 0
-                  ? 'Plan audits to verify compliance, track findings, and close gaps with confidence.'
-                  : 'Adjust type, status, or search to see more records.'
-              }
-              primaryAction={
-                canSchedule
-                  ? { kind: 'button', label: 'Schedule audit', onClick: () => navigate('/audits/new') }
-                  : { kind: 'link', to: '/audits', label: 'Audits' }
-              }
-              secondaryAction={
-                (audits ?? []).length > 0 &&
-                (auditTypeFilter !== 'all' || statusFilter !== 'all' || searchQuery.trim())
-                  ? {
-                      kind: 'button',
-                      label: 'Clear filters',
-                      onClick: () => {
-                        setAuditTypeFilter('all');
-                        setStatusFilter('all');
-                        setSearchQuery('');
-                      }
-                    }
-                  : undefined
-              }
-            />
+            <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+              <p className="text-sm text-charcoal-500">No audits found.</p>
+            </div>
           )}
           {filtered.map((audit) =>
             <div

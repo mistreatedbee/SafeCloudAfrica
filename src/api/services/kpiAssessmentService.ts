@@ -165,6 +165,122 @@ export async function createKPIAssessment(input: CreateKPIAssessmentInput): Prom
   return out;
 }
 
+export type UpsertKPIAssessmentDraftInput = {
+  organizationId: UUID;
+  actorUserId: UUID;
+  assessmentId?: UUID | null;
+  assessmentName: string;
+  assessmentType: KpiAssessmentType;
+  employeeId?: UUID | null;
+  employeeNameSnapshot?: string | null;
+  managerId: UUID;
+  managerNameSnapshot: string | null;
+  projectId?: UUID | null;
+  projectName?: string | null;
+  departmentId?: UUID | null;
+  siteId?: UUID | null;
+  periodType: KpiPeriodType;
+  periodStartDate: string;
+  periodEndDate: string;
+  questionnaires?: Array<{
+    kpiItemId?: UUID | null;
+    customKpiTitle?: string | null;
+    kpiTitle: string;
+    importanceRating: KpiImportance;
+  }>;
+};
+
+/**
+ * Server-side draft persistence for autosave.
+ * - Creates KPI assessment with `status = draft` if it doesn't exist yet.
+ * - Otherwise updates the assessment fields and replaces KPI assessment lines.
+ *
+ * Best-effort callers should swallow errors to keep local drafts the source of truth.
+ */
+export async function upsertKPIAssessmentDraft(input: UpsertKPIAssessmentDraftInput): Promise<KPIAssessment> {
+  const organizationId = input.organizationId;
+  const actorUserId = input.actorUserId;
+  const assessmentId = input.assessmentId ?? null;
+
+  const questionnaires = input.questionnaires ?? [];
+
+  if (!assessmentId) {
+    return createKPIAssessment({
+      organizationId,
+      assessmentName: input.assessmentName,
+      assessmentType: input.assessmentType,
+      employeeId: input.employeeId ?? null,
+      employeeNameSnapshot: input.employeeNameSnapshot ?? null,
+      managerId: input.managerId,
+      managerNameSnapshot: input.managerNameSnapshot,
+      projectId: input.projectId ?? null,
+      projectName: input.projectName ?? null,
+      departmentId: input.departmentId ?? null,
+      siteId: input.siteId ?? null,
+      periodType: input.periodType,
+      periodStartDate: input.periodStartDate,
+      periodEndDate: input.periodEndDate,
+      createdByUserId: actorUserId,
+      questionnaires
+    });
+  }
+
+  const patch: Record<string, unknown> = {
+    assessment_name: input.assessmentName.trim(),
+    assessment_type: input.assessmentType,
+    employee_id: input.employeeId ?? null,
+    employee_name_snapshot: input.employeeNameSnapshot ?? null,
+    manager_id: input.managerId,
+    manager_name_snapshot: input.managerNameSnapshot ?? null,
+    project_id: input.projectId ?? null,
+    project_name: input.projectName ?? null,
+    department_id: input.departmentId ?? null,
+    site_id: input.siteId ?? null,
+    period_type: input.periodType,
+    period_start_date: input.periodStartDate,
+    period_end_date: input.periodEndDate,
+    status: 'draft',
+    updated_at: new Date().toISOString()
+  };
+
+  const { error: updateError } = await insforge.database
+    .from('kpi_assessments')
+    .update(patch)
+    .eq('assessment_id', assessmentId)
+    .eq('organization_id', organizationId);
+
+  if (updateError) throw new Error(getErrorMessage(updateError));
+
+  // Replace KPI assessment lines to match the latest draft payload.
+  const { error: deleteError } = await insforge.database
+    .from('kpi_assessment_lines')
+    .delete()
+    .eq('assessment_id', assessmentId);
+
+  if (deleteError) throw new Error(getErrorMessage(deleteError));
+
+  if (questionnaires.length > 0) {
+    const lineRows = questionnaires.map((l) => ({
+      assessment_id: assessmentId,
+      kpi_item_id: l.kpiItemId ?? null,
+      custom_kpi_title: l.customKpiTitle ?? null,
+      kpi_title: l.kpiTitle,
+      kpi_questionnaire: l.kpiTitle,
+      importance_rating: l.importanceRating
+    }));
+
+    const { error: insertError } = await insforge.database.from('kpi_assessment_lines').insert(lineRows);
+    if (insertError) throw new Error(getErrorMessage(insertError));
+  }
+
+  // Recompute stored scores so server-side draft stays useful.
+  await refreshAssessmentOverallScore(assessmentId, organizationId);
+
+  const out = await getKPIAssessment(assessmentId, organizationId);
+  if (!out) throw new Error('Failed to load updated KPI draft assessment.');
+  return out;
+}
+
 export async function getKPIAssessment(assessmentId: UUID, organizationId: UUID): Promise<KPIAssessment | null> {
   const { data, error } = await insforge.database
     .from('kpi_assessments')

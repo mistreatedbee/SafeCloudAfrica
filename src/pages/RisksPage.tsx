@@ -14,8 +14,6 @@ import {
   type RiskAssessmentTemplate,
   type RiskAssessmentType
 } from '../api/services/riskAssessmentsService';
-import { ListEmptyState } from '../components/ui/ListEmptyState';
-import { LayersIcon, ShieldAlertIcon } from 'lucide-react';
 
 function getScopeForActiveMembership(
   memberships: Array<{ company_id: UUID; site_id?: UUID | null; department_id?: UUID | null; consultant_scope?: any }> | undefined,
@@ -154,29 +152,7 @@ export function RisksPage() {
               <div className="h-10 bg-surface-100 rounded animate-pulse" />
             </div>
           ) : filtered.length === 0 ? (
-            <ListEmptyState
-              embedded
-              icon={ShieldAlertIcon}
-              title={rows.length === 0 ? 'No risk assessments yet' : 'No assessments match your filters'}
-              description={
-                rows.length === 0
-                  ? 'Create baseline, task, critical, or pre-work assessments to document hazards and controls.'
-                  : 'Try clearing search or setting the type filter to “All types”.'
-              }
-              primaryAction={{ kind: 'link', to: '/risk-assessments/new?type=baseline', label: 'Create baseline assessment' }}
-              secondaryAction={
-                rows.length > 0 && (search.trim() || typeFilter !== 'all')
-                  ? {
-                      kind: 'button',
-                      label: 'Clear filters',
-                      onClick: () => {
-                        setSearch('');
-                        setTypeFilter('all');
-                      }
-                    }
-                  : undefined
-              }
-            />
+            <div className="p-4 text-sm text-charcoal-500">No risk assessments found.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-surface-200">
@@ -213,13 +189,7 @@ export function RisksPage() {
             <span className="text-xs text-charcoal-500">Org scoped</span>
           </div>
           {templates.length === 0 ? (
-            <ListEmptyState
-              embedded
-              icon={LayersIcon}
-              title="No saved templates yet"
-              description="Open any assessment, then save it as a template to reuse the structure for new assessments."
-              primaryAction={{ kind: 'link', to: '/risk-assessments/new?type=baseline', label: 'Create assessment' }}
-            />
+            <p className="text-sm text-charcoal-500">No templates yet. Save an assessment as template from the detail page.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {templates.map((t) => (

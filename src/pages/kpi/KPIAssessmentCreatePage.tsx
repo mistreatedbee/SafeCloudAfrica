@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
@@ -6,7 +6,7 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { listUserProfiles } from '../../api/services/profilesService';
 import { listDepartments } from '../../api/services/departmentsService';
 import { listKpiItems } from '../../api/services/kpiItemService';
-import { createKPIAssessment } from '../../api/services/kpiAssessmentService';
+import { createKPIAssessment, upsertKPIAssessmentDraft } from '../../api/services/kpiAssessmentService';
 import { mapKpiTemplateItemToFormRow } from '../../api/services/kpiTemplateMapper';
 import type { Department, KPIItem, KpiAssessmentType, KpiImportance, KpiPeriodType } from '../../api/models/entities';
 import type { UUID } from '../../api/models/core';
@@ -44,6 +44,18 @@ export function KPIAssessmentCreatePage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `kpi-assessment-create:${user?.id ?? 'anon'}:${activeCompanyId ?? 'company'}`;
+  const serverDraftAssessmentIdStorageKey = `sca_server_kpi_assessment_draft_id:${draftKey}`;
+  const serverDraftAssessmentIdRef = useRef<UUID | null>(null);
+
+  // Reuse a previously created server draft assessment id to avoid duplicate drafts.
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(serverDraftAssessmentIdStorageKey);
+      serverDraftAssessmentIdRef.current = raw ? (raw as UUID) : null;
+    } catch {
+      serverDraftAssessmentIdRef.current = null;
+    }
+  }, [serverDraftAssessmentIdStorageKey]);
 
   const canCreate = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
 
@@ -103,7 +115,57 @@ export function KPIAssessmentCreatePage() {
       periodStartDate,
       periodEndDate,
       questionnaires
-    })
+    }),
+    flush: async () => {
+      if (!activeCompanyId || !user?.id || !canCreate) return;
+      if (!assessmentName.trim()) return;
+
+      // Mirror submit logic so server draft matches what user sees locally.
+      const manager = (managerId || user.id) as UUID;
+      const managerName = managerNameSnapshot || (profiles?.find((p) => p.user_id === manager)?.full_name ?? '');
+
+      const empId = assessmentType === 'employee' ? (employeeId || null) : null;
+      const empName = assessmentType === 'employee' ? employeeNameSnapshot.trim() : null;
+      const projName = assessmentType === 'project' ? projectName.trim() : null;
+
+      const questionnairePayload = questionnaires
+        .filter((q) => q.kpiQuestionnaire.trim())
+        .map((q) => ({
+          kpiItemId: q.kpiItemId,
+          customKpiTitle: null,
+          kpiTitle: q.kpiQuestionnaire.trim(),
+          importanceRating: q.importanceRating
+        }));
+
+      const periodStart = periodStartDate || new Date().toISOString().slice(0, 10);
+      const periodEnd = periodEndDate || new Date().toISOString().slice(0, 10);
+
+      const draft = await upsertKPIAssessmentDraft({
+        organizationId: activeCompanyId,
+        actorUserId: user.id as UUID,
+        assessmentId: serverDraftAssessmentIdRef.current,
+        assessmentName: assessmentName.trim(),
+        assessmentType,
+        employeeId: empId ?? null,
+        employeeNameSnapshot: empName || null,
+        managerId: manager,
+        managerNameSnapshot: managerName || null,
+        projectName: projName || null,
+        departmentId: (departmentId || null) as UUID | null,
+        siteId: null,
+        periodType,
+        periodStartDate: periodStart,
+        periodEndDate: periodEnd,
+        questionnaires: questionnairePayload
+      });
+
+      serverDraftAssessmentIdRef.current = draft.assessment_id as UUID;
+      try {
+        localStorage.setItem(serverDraftAssessmentIdStorageKey, draft.assessment_id as string);
+      } catch {
+        // ignore
+      }
+    }
   });
 
   React.useEffect(() => {
@@ -198,6 +260,12 @@ export function KPIAssessmentCreatePage() {
       });
       setSuccessMessage('KPI Assessment saved successfully. Redirecting...');
       clearDraft(draftKey);
+        try {
+          localStorage.removeItem(serverDraftAssessmentIdStorageKey);
+        } catch {
+          // ignore
+        }
+        serverDraftAssessmentIdRef.current = null;
       setTimeout(() => navigate(`/modules/hr/kpis/assessments/${created.assessment_id}`), 300);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to create KPI Assessment.');
