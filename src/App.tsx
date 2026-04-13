@@ -121,12 +121,16 @@ import { WorkspaceOnboardingPage } from './pages/onboarding/WorkspaceOnboardingP
 import { HoursWorkedPage } from './pages/management/HoursWorkedPage';
 import { OperationalInputsPage } from './pages/management/OperationalInputsPage';
 import { SELLABLE_FEATURE_ROUTE_PATHS } from './api/services/sellableFeaturesService';
+import { DraftManagerProvider } from './session/DraftManagerProvider';
+import { SessionManagerProvider } from './session/SessionManagerProvider';
 export function App() {
   return (
     <BrowserRouter>
       <TenantProvider>
-        <AuthSessionListener />
-        <Routes>
+        <DraftManagerProvider>
+          <SessionManagerProvider>
+            <AuthSessionListener />
+            <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
 
@@ -1770,7 +1774,9 @@ export function App() {
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            </Routes>
+          </SessionManagerProvider>
+        </DraftManagerProvider>
       </TenantProvider>
     </BrowserRouter>);
 
