@@ -555,6 +555,7 @@ export async function updateMembershipRole(input: {
   companyId: UUID;
   membershipId: UUID;
   role: CompanyRole;
+  actorUserId?: UUID;
 }): Promise<void> {
   const { error } = await insforge.database
     .from('company_memberships')
@@ -568,10 +569,25 @@ export async function updateMembershipStatus(input: {
   companyId: UUID;
   membershipId: UUID;
   status: 'INVITED' | 'ACTIVE' | 'DISABLED';
+  actorUserId?: UUID;
 }): Promise<void> {
   const { error } = await insforge.database
     .from('company_memberships')
     .update({ status })
+    .eq('company_id', input.companyId)
+    .eq('id', input.membershipId);
+  if (error) throw new Error(getErrorMessage(error));
+}
+
+export async function updateMembershipHrManagerFlag(input: {
+  companyId: UUID;
+  membershipId: UUID;
+  isHrManager: boolean;
+  actorUserId?: UUID;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('company_memberships')
+    .update({ is_hr_manager: input.isHrManager })
     .eq('company_id', input.companyId)
     .eq('id', input.membershipId);
   if (error) throw new Error(getErrorMessage(error));

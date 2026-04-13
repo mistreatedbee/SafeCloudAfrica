@@ -62,6 +62,8 @@ export async function upsertUserProfileAsManager(input: {
   phone?: string | null;
   department?: string | null;
   site?: string | null;
+  departmentId?: UUID | null;
+  siteId?: UUID | null;
 }): Promise<UserProfile> {
   const { data, error } = await insforge.database
     .from('user_profiles')
@@ -74,6 +76,8 @@ export async function upsertUserProfileAsManager(input: {
         phone: input.phone ?? null,
         department: input.department ?? null,
         site: input.site ?? null,
+        department_id: input.departmentId ?? null,
+        site_id: input.siteId ?? null,
         updated_at: new Date().toISOString()
       },
       { onConflict: 'company_id,user_id' }
@@ -83,6 +87,29 @@ export async function upsertUserProfileAsManager(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to save profile.');
   return data as UserProfile;
+}
+
+export async function adminUpdateEmployeeNumber(input: {
+  companyId: UUID;
+  userId: UUID;
+  employeeNumber: string;
+}): Promise<string> {
+  const employeeNumber = input.employeeNumber.trim();
+  if (!employeeNumber) throw new Error('Employee number is required.');
+
+  const { data, error } = await insforge.database
+    .from('user_profiles')
+    .update({
+      employee_number: employeeNumber,
+      updated_at: new Date().toISOString()
+    })
+    .eq('company_id', input.companyId)
+    .eq('user_id', input.userId)
+    .select('employee_number')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update employee number.');
+  return String((data as any).employee_number ?? employeeNumber);
 }
 
 /**
@@ -149,4 +176,3 @@ export async function updateUserProfile(
 
   return data as UserProfile;
 }
-

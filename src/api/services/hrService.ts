@@ -1416,6 +1416,27 @@ export async function updateHrPersonalDocument(input: {
   return data as HrPersonalDocumentRow;
 }
 
+export async function deleteHrPersonalDocument(input: {
+  companyId: UUID;
+  documentId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('hr_employee_documents')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.documentId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr.personal_document.delete',
+    entityType: 'hr_employee_document',
+    entityId: input.documentId
+  }).catch(() => {});
+}
+
 export async function createHrAcknowledgementDocument(input: {
   companyId: UUID;
   actorUserId: UUID;
@@ -1594,6 +1615,34 @@ export async function submitHrAcknowledgement(input: {
     entityId: (data as any).id as UUID
   });
   return data as HrAckReceiptRow;
+}
+
+export async function deleteHrAcknowledgementDocument(input: {
+  companyId: UUID;
+  documentId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { error: receiptsError } = await insforge.database
+    .from('hr_ack_receipts')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('ack_document_id', input.documentId);
+  if (receiptsError) throw new Error(getErrorMessage(receiptsError));
+
+  const { error: docError } = await insforge.database
+    .from('hr_ack_documents')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.documentId);
+  if (docError) throw new Error(getErrorMessage(docError));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr.ack_document.delete',
+    entityType: 'hr_ack_document',
+    entityId: input.documentId
+  }).catch(() => {});
 }
 
 export async function sendHrDocumentExpiryAlerts(companyId: UUID, actorUserId: UUID): Promise<number> {
