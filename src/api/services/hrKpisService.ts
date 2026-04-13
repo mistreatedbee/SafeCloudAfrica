@@ -155,3 +155,23 @@ export async function markHrKpiClosedOut(input: {
   return updateHrKpi(input.companyId, input.kpiId, patch, input.actorUserId);
 }
 
+export async function deleteHrKpi(input: {
+  companyId: UUID;
+  kpiId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('hr_kpis')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.kpiId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'hr_kpis.delete',
+    entityType: 'hr_kpi',
+    entityId: input.kpiId
+  }).catch(() => undefined);
+}

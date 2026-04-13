@@ -42,7 +42,7 @@ export async function markOverdueTasks(companyId: UUID): Promise<void> {
         severity,
         'Overdue Task',
         `Task "${task.title}" is overdue and requires your attention.`
-      ).catch(() => {});
+      ).catch(() => undefined);
     }
     if (task.task_owner_user_id && task.task_owner_user_id !== task.assignee_user_id) {
       await createNotification(
@@ -51,7 +51,7 @@ export async function markOverdueTasks(companyId: UUID): Promise<void> {
         severity,
         'Overdue Task',
         `Task "${task.title}" (assigned) is overdue.`
-      ).catch(() => {});
+      ).catch(() => undefined);
     }
   }
 }
@@ -92,7 +92,7 @@ export async function sendTaskReminders(companyId: UUID): Promise<void> {
         severity,
         'Task Due Today',
         `Task "${task.title}" is due today.`
-      ).catch(() => {});
+      ).catch(() => undefined);
       continue;
     }
     for (const d of REMINDER_DAYS_BEFORE) {
@@ -103,7 +103,7 @@ export async function sendTaskReminders(companyId: UUID): Promise<void> {
           severity,
           'Task Reminder',
           `Task "${task.title}" is due in ${d} days.`
-        ).catch(() => {});
+        ).catch(() => undefined);
         break;
       }
     }
@@ -126,7 +126,7 @@ export async function sendTaskReminders(companyId: UUID): Promise<void> {
         sev,
         'Overdue Task',
         `Task "${t.title}" is overdue.`
-      ).catch(() => {});
+      ).catch(() => undefined);
     }
   }
 }
@@ -170,7 +170,7 @@ export async function escalateHighRiskTasks(companyId: UUID): Promise<void> {
         severity,
         'Task Escalation',
         `"${task.title}": ${reason}`
-      ).catch(() => {});
+      ).catch(() => undefined);
     }
   }
 }
@@ -209,7 +209,7 @@ export async function escalateUnacceptedTasks(companyId: UUID): Promise<void> {
         'medium',
         'Unaccepted Task',
         `Task "${task.title}" was assigned but not accepted within ${UNACCEPTED_HOURS / 24} days.`
-      ).catch(() => {});
+      ).catch(() => undefined);
     }
     if (task.task_owner_user_id) {
       await createNotification(
@@ -218,7 +218,7 @@ export async function escalateUnacceptedTasks(companyId: UUID): Promise<void> {
         'medium',
         'Unaccepted Task',
         `Task "${task.title}" has not been accepted by the assignee.`
-      ).catch(() => {});
+      ).catch(() => undefined);
     }
   }
 }
@@ -265,7 +265,7 @@ export async function escalateNoProgressTasks(companyId: UUID): Promise<void> {
         'medium',
         'No Progress on Task',
         `Task "${task.title}" has had no progress update in ${NO_PROGRESS_DAYS} days.`
-      ).catch(() => {});
+      ).catch(() => undefined);
     }
   }
 }

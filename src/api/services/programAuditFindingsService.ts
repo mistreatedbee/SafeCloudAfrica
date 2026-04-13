@@ -78,7 +78,7 @@ export async function createProgramAuditFinding(
     due_date: created.due_date ?? null,
     created_by_user_id: created.created_by_user_id,
     deviation_type: (created as any).deviation_type ?? null
-  }).catch(() => {});
+  }).catch(() => undefined);
 
   // Authoritative NCR integration: non-conformance findings auto-generate NCR.
   if (created.deviation_type === 'non_conformance') {

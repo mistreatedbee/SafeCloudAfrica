@@ -1,5 +1,4 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef } from 'react';
-import { stableStringify } from '../services/autosave/stableStringify';
 
 export type DraftSnapshot = {
   key: string;
@@ -12,23 +11,17 @@ export type DraftRegistration = {
   key: string;
   isDirty: () => boolean;
   serialize: () => unknown;
-  /**
-   * Optional server-side persistence.
-   * Called best-effort whenever the draft is flushed (debounced autosave and/or logout).
-   *
-   * It receives the same snapshot we store locally.
-   */
   flush?: (snapshot: DraftSnapshot) => Promise<void>;
 };
 
 type DraftManagerContextValue = {
   registerDraft: (registration: DraftRegistration) => () => void;
   flushAllDrafts: () => Promise<void>;
+  persistDraftSnapshotLocally: (key: string, payload: unknown) => DraftSnapshot;
   restoreDraft: <T>(key: string) => T | null;
   hasDirtyDrafts: () => boolean;
   restoreLatestDraftByPrefix: <T>(keyPrefix: string) => { key: string; updatedAt: number; payload: T } | null;
   clearDraft: (key: string) => void;
-  persistDraftSnapshotLocally: (key: string, payload: unknown) => DraftSnapshot;
 };
 
 const STORAGE_PREFIX = 'sca_draft_snapshot_v1:';
@@ -36,26 +29,10 @@ const DraftManagerContext = createContext<DraftManagerContextValue | null>(null)
 
 function persistDraftSnapshot(snapshot: DraftSnapshot): void {
   try {
-    // Use stableStringify so payloads with `Date` / `File` become storage-safe.
-    localStorage.setItem(`${STORAGE_PREFIX}${snapshot.key}`, stableStringify(snapshot));
+    localStorage.setItem(`${STORAGE_PREFIX}${snapshot.key}`, JSON.stringify(snapshot));
   } catch {
     // ignore storage failures; flush still attempts server-side persistence.
   }
-}
-
-function createDraftSnapshot(key: string, payload: unknown): DraftSnapshot {
-  return {
-    key,
-    updatedAt: Date.now(),
-    route: typeof window !== 'undefined' ? window.location.pathname + window.location.search : undefined,
-    payload
-  };
-}
-
-function persistDraftSnapshotLocally(key: string, payload: unknown): DraftSnapshot {
-  const snapshot = createDraftSnapshot(key, payload);
-  persistDraftSnapshot(snapshot);
-  return snapshot;
 }
 
 function readDraftSnapshot<T>(key: string): T | null {
@@ -98,6 +75,17 @@ export function DraftManagerProvider({ children }: { children: React.ReactNode }
     };
   }, []);
 
+  const persistDraftSnapshotLocally = useCallback((key: string, payload: unknown): DraftSnapshot => {
+    const snapshot: DraftSnapshot = {
+      key,
+      updatedAt: Date.now(),
+      route: typeof window !== 'undefined' ? window.location.pathname + window.location.search : undefined,
+      payload
+    };
+    persistDraftSnapshot(snapshot);
+    return snapshot;
+  }, []);
+
   const flushAllDrafts = useCallback(async () => {
     const registrations = Array.from(registrationsRef.current.values());
     for (const registration of registrations) {
@@ -111,7 +99,7 @@ export function DraftManagerProvider({ children }: { children: React.ReactNode }
         }
       }
     }
-  }, []);
+  }, [persistDraftSnapshotLocally]);
 
   const hasDirtyDrafts = useCallback(() => {
     const registrations = registrationsRef.current.values();
@@ -168,13 +156,21 @@ export function DraftManagerProvider({ children }: { children: React.ReactNode }
     () => ({
       registerDraft,
       flushAllDrafts,
+      persistDraftSnapshotLocally,
       restoreDraft,
       hasDirtyDrafts,
       restoreLatestDraftByPrefix,
-      clearDraft,
-      persistDraftSnapshotLocally
+      clearDraft
     }),
-    [registerDraft, flushAllDrafts, restoreDraft, hasDirtyDrafts, restoreLatestDraftByPrefix, clearDraft]
+    [
+      registerDraft,
+      flushAllDrafts,
+      persistDraftSnapshotLocally,
+      restoreDraft,
+      hasDirtyDrafts,
+      restoreLatestDraftByPrefix,
+      clearDraft
+    ]
   );
 
   return <DraftManagerContext.Provider value={value}>{children}</DraftManagerContext.Provider>;

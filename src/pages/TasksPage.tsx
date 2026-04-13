@@ -43,7 +43,7 @@ import {
 import type { Task } from '../api/models/entities';
 import type { CorrectiveAction } from '../api/services/correctiveActionsService';
 import { TaskCreateModal } from '../components/tasks/TaskCreateModal';
-import { listCorrectiveActions, closeCorrectiveAction } from '../api/services/correctiveActionsService';
+import { listCorrectiveActions, closeCorrectiveAction, deleteCorrectiveAction } from '../api/services/correctiveActionsService';
 import { toCsv, downloadTextFile } from '../utils/csv';
 import { useIdentity } from '../hooks/useIdentity';
 import { TASK_CATEGORY_LABELS, TASK_TIME_STATUS_LABELS, TASK_SOURCE_ENTITY_LABELS } from '../api/constants/taskLabels';
@@ -210,6 +210,18 @@ export function TasksPage() {
       setRefreshKey((k) => k + 1);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Unable to close CAPA.');
+    }
+  }
+
+  async function onDeleteCapa(id: string) {
+    if (!activeCompanyId || !user?.id) return;
+    const confirmed = window.confirm('Delete this CAPA? This cannot be undone.');
+    if (!confirmed) return;
+    try {
+      await deleteCorrectiveAction(id as any, activeCompanyId, user.id as any);
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Unable to delete CAPA.');
     }
   }
 
@@ -999,6 +1011,14 @@ export function TasksPage() {
                       Close
                     </button>
                   )}
+                  <button
+                    type="button"
+                    disabled={!canManageCapa || !activeCompanyId || !user?.id}
+                    onClick={() => onDeleteCapa(capa.id)}
+                    className="px-3 py-1.5 rounded-lg border border-critical/30 text-critical text-xs font-semibold hover:bg-critical/5 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             </div>

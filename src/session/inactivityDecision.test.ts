@@ -8,7 +8,6 @@ describe('computeInactivityDecision', () => {
   it('does not warn or logout when idle below warning threshold', () => {
     const decision = computeInactivityDecision({
       idleMs: WARNING_TIMEOUT_MS - 1,
-      formEditing: false,
       warningTimeoutMs: WARNING_TIMEOUT_MS,
       logoutTimeoutMs: LOGOUT_TIMEOUT_MS
     });
@@ -18,7 +17,6 @@ describe('computeInactivityDecision', () => {
   it('shows warning at/after 45 minutes but before 60 minutes', () => {
     const decision = computeInactivityDecision({
       idleMs: WARNING_TIMEOUT_MS,
-      formEditing: false,
       warningTimeoutMs: WARNING_TIMEOUT_MS,
       logoutTimeoutMs: LOGOUT_TIMEOUT_MS
     });
@@ -28,21 +26,18 @@ describe('computeInactivityDecision', () => {
   it('logs out at/after 60 minutes', () => {
     const decision = computeInactivityDecision({
       idleMs: LOGOUT_TIMEOUT_MS,
-      formEditing: false,
       warningTimeoutMs: WARNING_TIMEOUT_MS,
       logoutTimeoutMs: LOGOUT_TIMEOUT_MS
     });
     expect(decision).toEqual({ shouldShowWarning: false, shouldLogout: true });
   });
 
-  it('suppresses warning/logout during form editing even if idle is high', () => {
+  it('logs out even at high idle durations', () => {
     const decision = computeInactivityDecision({
       idleMs: LOGOUT_TIMEOUT_MS + 10_000,
-      formEditing: true,
       warningTimeoutMs: WARNING_TIMEOUT_MS,
       logoutTimeoutMs: LOGOUT_TIMEOUT_MS
     });
-    expect(decision).toEqual({ shouldShowWarning: false, shouldLogout: false });
+    expect(decision).toEqual({ shouldShowWarning: false, shouldLogout: true });
   });
 });
-

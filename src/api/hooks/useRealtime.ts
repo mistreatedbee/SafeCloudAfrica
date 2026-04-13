@@ -54,7 +54,7 @@ export function useRealtimeSubscription({
 export function useAutoRefresh(
   callback: () => Promise<void>,
   dependencies: any[] = [],
-  intervalMs: number = 5000
+  intervalMs = 5000
 ) {
   useEffect(() => {
     // Initial fetch

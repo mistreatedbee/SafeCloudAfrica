@@ -103,4 +103,3 @@ export function stableStringify(value: unknown, options?: StableStringifyOptions
   if (normalized === undefined) return 'undefined';
   return JSON.stringify(normalized);
 }
-

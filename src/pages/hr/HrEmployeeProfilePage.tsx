@@ -15,6 +15,14 @@ import { useDraftManager } from '../../session/DraftManagerProvider';
 const TABS = ['overview', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'tasks', 'audit'] as const;
 type Tab = (typeof TABS)[number];
 
+function maskValue(value: string | null | undefined, visible = 4): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '-';
+  const compact = raw.replace(/\s+/g, '');
+  const suffix = compact.slice(-visible);
+  return `${'•'.repeat(Math.max(0, compact.length - visible))}${suffix}`;
+}
+
 export function HrEmployeeProfilePage() {
   const { id } = useParams();
   const { user } = useUser();
@@ -121,6 +129,7 @@ export function HrEmployeeProfilePage() {
               <Line label="Job Title" value={employee.job_title} />
               <Line label="Employment Type" value={employee.employment_type} />
               <Line label="Start Date" value={employee.start_date} />
+              <Line label="Contract Expiry" value={employee.contract_expiry_date} />
               <Line label="Next Review" value={employee.next_review_date} />
             </Card>
             <Card title="Restricted (POPIA)">
@@ -134,6 +143,48 @@ export function HrEmployeeProfilePage() {
                   )}
                 </div>
               ))}
+            </Card>
+            <Card title="Sensitive HR Fields">
+              {canSensitive ? (
+                <>
+                  <Line label="Marital Status" value={sensitiveDetails?.marital_status} />
+                  <Line label="Partner Name" value={sensitiveDetails?.partner_name} />
+                  <Line label="Medical Aid" value={sensitiveDetails?.medical_aid_name} />
+                  <Line label="Medical Aid Membership" value={sensitiveDetails?.medical_aid_membership_number} />
+                  <Line label="Tax Number" value={sensitiveDetails?.tax_number} />
+                  <Line label="Passport Number" value={sensitiveDetails?.passport_number} />
+                  <Line label="Passport Expiry" value={sensitiveDetails?.passport_expiry_date} />
+                  <Line label="Permit Number" value={sensitiveDetails?.permit_number} />
+                  <Line label="Permit Expiry" value={sensitiveDetails?.permit_expiry_date} />
+                  <Line label="Country Of Issue" value={sensitiveDetails?.country_of_issue} />
+                  <Line label="Bank Name" value={sensitiveDetails?.bank_name} />
+                  <Line label="Account Holder" value={sensitiveDetails?.account_holder_name} />
+                  <Line label="Account Number" value={maskValue(sensitiveDetails?.account_number)} />
+                  <Line label="Branch Code" value={sensitiveDetails?.branch_code} />
+                  <Line label="Account Type" value={sensitiveDetails?.account_type} />
+                </>
+              ) : (
+                <p className="text-sm text-charcoal-500">Sensitive employee fields are restricted for your current role.</p>
+              )}
+            </Card>
+            <Card title="Dependents">
+              {canSensitive ? (
+                dependents.length > 0 ? (
+                  <div className="space-y-3">
+                    {dependents.map((dependent) => (
+                      <div key={dependent.id} className="rounded-lg border border-surface-200 p-3">
+                        <Line label="Name" value={dependent.dependent_name} />
+                        <Line label="Relationship" value={dependent.relationship} />
+                        <Line label="Contact Details" value={dependent.contact_details} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-charcoal-500">No dependents recorded for this employee.</p>
+                )
+              ) : (
+                <p className="text-sm text-charcoal-500">Dependent information is restricted for your current role.</p>
+              )}
             </Card>
           </div>
         )}

@@ -39,6 +39,7 @@ export function OwnerOnboardingWizardPage() {
   const [finishing, setFinishing] = useState(false);
   const [completionMessage, setCompletionMessage] = useState<string | null>(null);
   const [inviteFeedback, setInviteFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [latestInviteLink, setLatestInviteLink] = useState<string | null>(null);
 
   const { data: licenseRow } = useAsync(
     async () => {
@@ -112,6 +113,16 @@ export function OwnerOnboardingWizardPage() {
     }
   };
 
+  async function copyLatestInviteLink() {
+    if (!latestInviteLink) return;
+    try {
+      await navigator.clipboard.writeText(latestInviteLink);
+      setInviteFeedback({ type: 'success', text: 'Invite link copied to clipboard.' });
+    } catch {
+      setInviteFeedback({ type: 'error', text: 'Could not copy invite link. Please copy it manually.' });
+    }
+  }
+
   if (!activeCompanyId || !activeCompany) {
     return (
       <Layout title="Onboarding">
@@ -151,6 +162,25 @@ export function OwnerOnboardingWizardPage() {
               {inviteFeedback.type === 'success' ? 'Success' : 'Error'}
             </p>
             <p className="text-sm text-charcoal-600 mt-1">{inviteFeedback.text}</p>
+            {latestInviteLink && inviteFeedback.type === 'error' && (
+              <div className="mt-3 flex flex-wrap gap-2 items-center">
+                <button
+                  type="button"
+                  onClick={() => void copyLatestInviteLink()}
+                  className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                >
+                  Copy Invite Link
+                </button>
+                <a
+                  href={latestInviteLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-medium text-teal hover:underline"
+                >
+                  Open link
+                </a>
+              </div>
+            )}
           </div>
         )}
 
@@ -199,11 +229,14 @@ export function OwnerOnboardingWizardPage() {
               onInviteResult={(result: InviteCreateResult, _email: string) => {
                 if (result.ok) {
                   if (result.status === 'FAILED') {
+                    setLatestInviteLink(result.inviteLink ?? null);
                     setInviteFeedback({ type: 'error', text: result.message || 'Invite created, but email failed. Copy link and send manually.' });
                   } else {
+                    setLatestInviteLink(null);
                     setInviteFeedback({ type: 'success', text: 'Invite email sent successfully.' });
                   }
                 } else {
+                  setLatestInviteLink(null);
                   setInviteFeedback({ type: 'error', text: result.message || 'Email failed to send, try again.' });
                 }
               }}
@@ -232,11 +265,14 @@ export function OwnerOnboardingWizardPage() {
               onInviteResult={(result: InviteCreateResult, _email: string) => {
                 if (result.ok) {
                   if (result.status === 'FAILED') {
+                    setLatestInviteLink(result.inviteLink ?? null);
                     setInviteFeedback({ type: 'error', text: result.message || 'Invite created, but email failed. Copy link and send manually.' });
                   } else {
+                    setLatestInviteLink(null);
                     setInviteFeedback({ type: 'success', text: 'Invite email sent successfully.' });
                   }
                 } else {
+                  setLatestInviteLink(null);
                   setInviteFeedback({ type: 'error', text: result.message || 'Email failed to send, try again.' });
                 }
               }}

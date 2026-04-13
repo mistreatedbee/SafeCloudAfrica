@@ -842,6 +842,30 @@ export async function closeLegalUpdate(input: {
   return data as LegalUpdate;
 }
 
+export async function deleteLegalUpdate(input: {
+  companyId: UUID;
+  updateId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+}): Promise<void> {
+  if (!canCloseUpdates(input.actorRole)) throw new Error('Only owner/admin can delete legal updates.');
+
+  const { error } = await insforge.database
+    .from('legal_updates')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.updateId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'legal_updates.delete',
+    entityType: 'legal_update',
+    entityId: input.updateId
+  }).catch(() => undefined);
+}
+
 function isDueInDays(deadline: string | null, days: number): boolean {
   if (!deadline) return false;
   const target = new Date(deadline);

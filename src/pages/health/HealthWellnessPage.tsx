@@ -5,16 +5,24 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
 import {
+  createHealthWellnessCampaign,
   createHealthSubstanceCase,
   createHealthVaccination,
+  deleteHealthWellnessCampaign,
+  deleteHealthSubstanceCase,
+  deleteHealthVaccination,
   listHealthSubstanceCases,
   listHealthVaccinations,
-  listHealthWellnessCampaigns
+  listHealthWellnessCampaigns,
+  updateHealthWellnessCampaign,
+  updateHealthSubstanceCase,
+  updateHealthVaccination
 } from '../../api/services/healthService';
 import { SelectOrType } from '../../components/ui/SelectOrType';
 import { getMergedOptions } from '../../api/services/dynamicOptionsService';
 import type { CompanyRole } from '../../api/models/core';
 import type { OptionItem } from '../../api/services/dynamicOptionsService';
+import type { HealthWellnessCampaignType } from '../../api/models/entities';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 
@@ -26,10 +34,20 @@ export function HealthWellnessPage() {
   const { activeCompanyId, activeRole, activeMembership } = useTenant();
   const [tab, setTab] = useState<TabKey>('Programmes/Campaigns');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
+  const [editingSubstanceId, setEditingSubstanceId] = useState<string | null>(null);
+  const [editingVaccinationId, setEditingVaccinationId] = useState<string | null>(null);
   const [vaccineOptions, setVaccineOptions] = useState<OptionItem[]>([]);
   const [substanceOptions, setSubstanceOptions] = useState<OptionItem[]>([]);
   const [vaccineName, setVaccineName] = useState('');
   const [substanceManual, setSubstanceManual] = useState('');
+  const [campaignForm, setCampaignForm] = useState({
+    title: '',
+    campaignType: 'Mental health' as HealthWellnessCampaignType,
+    dateFrom: '',
+    dateTo: '',
+    description: ''
+  });
   const [substanceForm, setSubstanceForm] = useState({
     employeeName: '',
     dateOfReport: '',
@@ -182,53 +200,150 @@ export function HealthWellnessPage() {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
     const allSubstances = [...substanceForm.substanceSuspected, ...(substanceManual ? [substanceManual] : [])];
-    await createHealthSubstanceCase({
-      companyId: activeCompanyId,
-      employeeName: substanceForm.employeeName,
-      dateOfReport: substanceForm.dateOfReport,
-      testConductedBy: substanceForm.testConductedBy,
-      typeOfCase: substanceForm.typeOfCase as any,
-      substanceSuspected: allSubstances,
-      observedBehaviourSymptoms: substanceForm.observedBehaviourSymptoms,
-      witnessNames: substanceForm.witnessNames.split(',').map((v) => v.trim()).filter(Boolean),
-      typeOfTest: substanceForm.typeOfTest as any,
-      testResult: substanceForm.testResult as any,
-      immediateActionTaken: substanceForm.immediateActionTaken,
-      outcome: substanceForm.outcome as any,
-      createdByUserId: user.id,
-      actorRole: activeRole as CompanyRole,
-      actorIsHrManager: activeMembership?.is_hr_manager === true
-    });
+    if (editingSubstanceId) {
+      await updateHealthSubstanceCase(
+        activeCompanyId,
+        editingSubstanceId as any,
+        {
+          employee_name: substanceForm.employeeName,
+          date_of_report: substanceForm.dateOfReport,
+          test_conducted_by: substanceForm.testConductedBy || null,
+          type_of_case: substanceForm.typeOfCase as any,
+          substance_suspected: allSubstances,
+          observed_behaviour_symptoms: substanceForm.observedBehaviourSymptoms || null,
+          witness_names: substanceForm.witnessNames.split(',').map((v) => v.trim()).filter(Boolean),
+          type_of_test: substanceForm.typeOfTest as any,
+          test_result: substanceForm.testResult as any,
+          immediate_action_taken: substanceForm.immediateActionTaken || null,
+          outcome: substanceForm.outcome as any
+        },
+        user.id
+      );
+    } else {
+      await createHealthSubstanceCase({
+        companyId: activeCompanyId,
+        employeeName: substanceForm.employeeName,
+        dateOfReport: substanceForm.dateOfReport,
+        testConductedBy: substanceForm.testConductedBy,
+        typeOfCase: substanceForm.typeOfCase as any,
+        substanceSuspected: allSubstances,
+        observedBehaviourSymptoms: substanceForm.observedBehaviourSymptoms,
+        witnessNames: substanceForm.witnessNames.split(',').map((v) => v.trim()).filter(Boolean),
+        typeOfTest: substanceForm.typeOfTest as any,
+        testResult: substanceForm.testResult as any,
+        immediateActionTaken: substanceForm.immediateActionTaken,
+        outcome: substanceForm.outcome as any,
+        createdByUserId: user.id,
+        actorRole: activeRole as CompanyRole,
+        actorIsHrManager: activeMembership?.is_hr_manager === true
+      });
+    }
     setRefreshKey((k) => k + 1);
+    setEditingSubstanceId(null);
+    const clearedSubstanceForm = {
+      employeeName: '',
+      dateOfReport: '',
+      testConductedBy: '',
+      typeOfCase: 'Reasonable Suspicion',
+      substanceSuspected: [] as string[],
+      observedBehaviourSymptoms: '',
+      witnessNames: '',
+      typeOfTest: 'Breathalyser',
+      testResult: 'Negative',
+      immediateActionTaken: '',
+      outcome: 'Verbal Warning'
+    };
+    setSubstanceForm(clearedSubstanceForm);
+    setSubstanceManual('');
     setSubstanceBaseline({
-      substanceForm: {
-        ...substanceForm,
-        substanceSuspected: [...substanceForm.substanceSuspected]
-      },
-      substanceManual
+      substanceForm: clearedSubstanceForm,
+      substanceManual: ''
     });
     clearDraft(draftKeySubstance);
+  }
+
+  async function submitCampaign(e: React.FormEvent) {
+    e.preventDefault();
+    if (!activeCompanyId || !user?.id) return;
+    if (editingCampaignId) {
+      await updateHealthWellnessCampaign(activeCompanyId, editingCampaignId, {
+        title: campaignForm.title,
+        campaign_type: campaignForm.campaignType,
+        date_from: campaignForm.dateFrom || null,
+        date_to: campaignForm.dateTo || null,
+        description: campaignForm.description || null
+      });
+    } else {
+      await createHealthWellnessCampaign({
+        companyId: activeCompanyId,
+        title: campaignForm.title,
+        campaignType: campaignForm.campaignType,
+        dateFrom: campaignForm.dateFrom || null,
+        dateTo: campaignForm.dateTo || null,
+        description: campaignForm.description || null,
+        createdByUserId: user.id
+      });
+    }
+    setEditingCampaignId(null);
+    setCampaignForm({
+      title: '',
+      campaignType: 'Mental health',
+      dateFrom: '',
+      dateTo: '',
+      description: ''
+    });
+    setRefreshKey((k) => k + 1);
   }
 
   async function submitVaccination(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
-    await createHealthVaccination({
-      companyId: activeCompanyId,
-      employeeName: vaccinationForm.employeeName,
-      vaccineName,
-      doseNo: vaccinationForm.doseNo ? Number(vaccinationForm.doseNo) : null,
-      dateAdministered: vaccinationForm.dateAdministered || null,
-      batchNo: vaccinationForm.batchNo || null,
-      administeredBy: vaccinationForm.administeredBy || null,
-      nextDueDate: vaccinationForm.nextDueDate || null,
-      validity: vaccinationForm.validity || null,
-      createdByUserId: user.id
-    });
+    if (editingVaccinationId) {
+      await updateHealthVaccination(
+        activeCompanyId,
+        editingVaccinationId as any,
+        {
+          employee_name: vaccinationForm.employeeName,
+          vaccine_name: vaccineName,
+          dose_no: vaccinationForm.doseNo ? Number(vaccinationForm.doseNo) : null,
+          date_administered: vaccinationForm.dateAdministered || null,
+          batch_no: vaccinationForm.batchNo || null,
+          administered_by: vaccinationForm.administeredBy || null,
+          next_due_date: vaccinationForm.nextDueDate || null,
+          validity: vaccinationForm.validity || null
+        },
+        user.id
+      );
+    } else {
+      await createHealthVaccination({
+        companyId: activeCompanyId,
+        employeeName: vaccinationForm.employeeName,
+        vaccineName,
+        doseNo: vaccinationForm.doseNo ? Number(vaccinationForm.doseNo) : null,
+        dateAdministered: vaccinationForm.dateAdministered || null,
+        batchNo: vaccinationForm.batchNo || null,
+        administeredBy: vaccinationForm.administeredBy || null,
+        nextDueDate: vaccinationForm.nextDueDate || null,
+        validity: vaccinationForm.validity || null,
+        createdByUserId: user.id
+      });
+    }
     setRefreshKey((k) => k + 1);
+    setEditingVaccinationId(null);
+    setVaccineName('');
+    const clearedVaccinationForm = {
+      employeeName: '',
+      doseNo: '',
+      dateAdministered: '',
+      batchNo: '',
+      administeredBy: '',
+      nextDueDate: '',
+      validity: ''
+    };
+    setVaccinationForm(clearedVaccinationForm);
     setVaccinationBaseline({
-      vaccineName,
-      vaccinationForm: { ...vaccinationForm }
+      vaccineName: '',
+      vaccinationForm: clearedVaccinationForm
     });
     clearDraft(draftKeyVaccination);
   }
@@ -254,10 +369,59 @@ export function HealthWellnessPage() {
         </div>
 
         {tab === 'Programmes/Campaigns' && (
-          <div className="bg-white border border-surface-300 rounded-xl p-4">
-            <p className="text-sm text-charcoal-500 mb-3">Mental health, EAP, stress management and awareness campaigns.</p>
-            <div className="space-y-2">
-              {(campaigns ?? []).map((c) => <div key={c.id} className="border border-surface-200 rounded-lg p-3 text-sm"><p className="font-semibold">{c.title}</p><p className="text-charcoal-500">{c.campaign_type} | {c.date_from ?? '-'} to {c.date_to ?? '-'}</p></div>)}
+          <div className="space-y-4">
+            <form className="bg-white border border-surface-300 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-3" onSubmit={submitCampaign}>
+              <input required value={campaignForm.title} onChange={(e) => setCampaignForm((s) => ({ ...s, title: e.target.value }))} placeholder="Campaign title" className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+              <select value={campaignForm.campaignType} onChange={(e) => setCampaignForm((s) => ({ ...s, campaignType: e.target.value as HealthWellnessCampaignType }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm">
+                <option value="Mental health">Mental health</option>
+                <option value="EAP">EAP</option>
+                <option value="Stress management">Stress management</option>
+                <option value="Awareness">Awareness</option>
+              </select>
+              <textarea value={campaignForm.description} onChange={(e) => setCampaignForm((s) => ({ ...s, description: e.target.value }))} placeholder="Description" className="px-3 py-2 border border-surface-300 rounded-lg text-sm md:row-span-2" />
+              <input type="date" value={campaignForm.dateFrom} onChange={(e) => setCampaignForm((s) => ({ ...s, dateFrom: e.target.value }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+              <input type="date" value={campaignForm.dateTo} onChange={(e) => setCampaignForm((s) => ({ ...s, dateTo: e.target.value }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+              <div className="flex gap-2">
+                <button className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">{editingCampaignId ? 'Update campaign' : 'Save campaign'}</button>
+                {editingCampaignId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingCampaignId(null);
+                      setCampaignForm({
+                        title: '',
+                        campaignType: 'Mental health',
+                        dateFrom: '',
+                        dateTo: '',
+                        description: ''
+                      });
+                    }}
+                    className="px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </form>
+            <div className="bg-white border border-surface-300 rounded-xl p-4">
+              <p className="text-sm text-charcoal-500 mb-3">Mental health, EAP, stress management and awareness campaigns.</p>
+              <div className="space-y-2">
+                {(campaigns ?? []).map((c) => (
+                  <div key={c.id} className="border border-surface-200 rounded-lg p-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">{c.title}</p>
+                        <p className="text-charcoal-500">{c.campaign_type} | {c.date_from ?? '-'} to {c.date_to ?? '-'}</p>
+                        {c.description && <p className="text-charcoal-500 mt-1">{c.description}</p>}
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button type="button" onClick={() => { setEditingCampaignId(c.id); setCampaignForm({ title: c.title ?? '', campaignType: c.campaign_type ?? 'Mental health', dateFrom: c.date_from ?? '', dateTo: c.date_to ?? '', description: c.description ?? '' }); }} className="px-2 py-1 border rounded text-xs">Edit</button>
+                        <button type="button" onClick={async () => { if (!activeCompanyId) return; if (!window.confirm('Delete this wellness campaign?')) return; await deleteHealthWellnessCampaign(activeCompanyId, c.id); if (editingCampaignId === c.id) { setEditingCampaignId(null); setCampaignForm({ title: '', campaignType: 'Mental health', dateFrom: '', dateTo: '', description: '' }); } setRefreshKey((k) => k + 1); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -282,12 +446,39 @@ export function HealthWellnessPage() {
               <select value={substanceForm.testResult} onChange={(e) => setSubstanceForm((s) => ({ ...s, testResult: e.target.value }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm"><option>Negative</option><option>Positive</option><option>Refused</option></select>
               <textarea value={substanceForm.immediateActionTaken} onChange={(e) => setSubstanceForm((s) => ({ ...s, immediateActionTaken: e.target.value }))} placeholder="Immediate action taken" className="px-3 py-2 border border-surface-300 rounded-lg text-sm md:col-span-2" />
               <select value={substanceForm.outcome} onChange={(e) => setSubstanceForm((s) => ({ ...s, outcome: e.target.value }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm"><option>Verbal Warning</option><option>Written Warning</option><option>Final Warning</option><option>Dismissal</option><option>Referral to Rehab</option></select>
-              <button className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">Save substance case</button>
+              <div className="flex gap-2">
+                <button className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">{editingSubstanceId ? 'Update substance case' : 'Save substance case'}</button>
+                {editingSubstanceId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSubstanceId(null);
+                      setSubstanceForm({
+                        employeeName: '',
+                        dateOfReport: '',
+                        testConductedBy: '',
+                        typeOfCase: 'Reasonable Suspicion',
+                        substanceSuspected: [],
+                        observedBehaviourSymptoms: '',
+                        witnessNames: '',
+                        typeOfTest: 'Breathalyser',
+                        testResult: 'Negative',
+                        immediateActionTaken: '',
+                        outcome: 'Verbal Warning'
+                      });
+                      setSubstanceManual('');
+                    }}
+                    className="px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
             </form>
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <table className="w-full text-sm">
-                <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Employee</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Case type</th><th className="px-3 py-2 text-left">Result</th></tr></thead>
-                <tbody className="divide-y divide-surface-100">{(substanceCases ?? []).map((s) => <tr key={s.id}><td className="px-3 py-2">{s.employee_name ?? '-'}</td><td className="px-3 py-2">{s.date_of_report}</td><td className="px-3 py-2">{s.type_of_case}</td><td className="px-3 py-2">{s.test_result}</td></tr>)}</tbody>
+                <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Employee</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Case type</th><th className="px-3 py-2 text-left">Result</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
+                <tbody className="divide-y divide-surface-100">{(substanceCases ?? []).map((s) => <tr key={s.id}><td className="px-3 py-2">{s.employee_name ?? '-'}</td><td className="px-3 py-2">{s.date_of_report}</td><td className="px-3 py-2">{s.type_of_case}</td><td className="px-3 py-2">{s.test_result}</td><td className="px-3 py-2"><div className="flex gap-2"><button type="button" onClick={() => { setEditingSubstanceId(s.id); setSubstanceForm({ employeeName: s.employee_name ?? '', dateOfReport: s.date_of_report ?? '', testConductedBy: s.test_conducted_by ?? '', typeOfCase: s.type_of_case ?? 'Reasonable Suspicion', substanceSuspected: s.substance_suspected ?? [], observedBehaviourSymptoms: s.observed_behaviour_symptoms ?? '', witnessNames: (s.witness_names ?? []).join(', '), typeOfTest: s.type_of_test ?? 'Breathalyser', testResult: s.test_result ?? 'Negative', immediateActionTaken: s.immediate_action_taken ?? '', outcome: s.outcome ?? 'Verbal Warning' }); setSubstanceManual(s.substance_suspected_other ?? ''); }} className="px-2 py-1 border rounded text-xs">Edit</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this substance case?')) return; await deleteHealthSubstanceCase(activeCompanyId, s.id, user.id); if (editingSubstanceId === s.id) setEditingSubstanceId(null); setRefreshKey((k) => k + 1); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}</tbody>
               </table>
             </div>
           </div>
@@ -304,12 +495,35 @@ export function HealthWellnessPage() {
               <input value={vaccinationForm.administeredBy} onChange={(e) => setVaccinationForm((s) => ({ ...s, administeredBy: e.target.value }))} placeholder="Administered by" className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
               <input type="date" value={vaccinationForm.nextDueDate} onChange={(e) => setVaccinationForm((s) => ({ ...s, nextDueDate: e.target.value }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
               <input value={vaccinationForm.validity} onChange={(e) => setVaccinationForm((s) => ({ ...s, validity: e.target.value }))} placeholder="Validity" className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
-              <button className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">Save vaccination</button>
+              <div className="flex gap-2">
+                <button className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">{editingVaccinationId ? 'Update vaccination' : 'Save vaccination'}</button>
+                {editingVaccinationId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingVaccinationId(null);
+                      setVaccineName('');
+                      setVaccinationForm({
+                        employeeName: '',
+                        doseNo: '',
+                        dateAdministered: '',
+                        batchNo: '',
+                        administeredBy: '',
+                        nextDueDate: '',
+                        validity: ''
+                      });
+                    }}
+                    className="px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
             </form>
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <table className="w-full text-sm">
-                <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Employee</th><th className="px-3 py-2 text-left">Vaccine</th><th className="px-3 py-2 text-left">Dose</th><th className="px-3 py-2 text-left">Administered</th><th className="px-3 py-2 text-left">Next due</th></tr></thead>
-                <tbody className="divide-y divide-surface-100">{(vaccinations ?? []).map((v) => <tr key={v.id}><td className="px-3 py-2">{v.employee_name ?? '-'}</td><td className="px-3 py-2">{v.vaccine_name}</td><td className="px-3 py-2">{v.dose_no ?? '-'}</td><td className="px-3 py-2">{v.date_administered ?? '-'}</td><td className="px-3 py-2">{v.next_due_date ?? '-'}</td></tr>)}</tbody>
+                <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Employee</th><th className="px-3 py-2 text-left">Vaccine</th><th className="px-3 py-2 text-left">Dose</th><th className="px-3 py-2 text-left">Administered</th><th className="px-3 py-2 text-left">Next due</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
+                <tbody className="divide-y divide-surface-100">{(vaccinations ?? []).map((v) => <tr key={v.id}><td className="px-3 py-2">{v.employee_name ?? '-'}</td><td className="px-3 py-2">{v.vaccine_name}</td><td className="px-3 py-2">{v.dose_no ?? '-'}</td><td className="px-3 py-2">{v.date_administered ?? '-'}</td><td className="px-3 py-2">{v.next_due_date ?? '-'}</td><td className="px-3 py-2"><div className="flex gap-2"><button type="button" onClick={() => { setEditingVaccinationId(v.id); setVaccineName(v.vaccine_name ?? ''); setVaccinationForm({ employeeName: v.employee_name ?? '', doseNo: v.dose_no != null ? String(v.dose_no) : '', dateAdministered: v.date_administered ?? '', batchNo: v.batch_no ?? '', administeredBy: v.administered_by ?? '', nextDueDate: v.next_due_date ?? '', validity: v.validity ?? '' }); }} className="px-2 py-1 border rounded text-xs">Edit</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this vaccination record?')) return; await deleteHealthVaccination(activeCompanyId, v.id, user.id); if (editingVaccinationId === v.id) setEditingVaccinationId(null); setRefreshKey((k) => k + 1); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}</tbody>
               </table>
             </div>
           </div>
@@ -318,4 +532,3 @@ export function HealthWellnessPage() {
     </Layout>
   );
 }
-

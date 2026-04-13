@@ -398,6 +398,40 @@ export async function updateCustomerComplaint(input: {
   return updated;
 }
 
+export async function deleteCustomerComplaint(input: {
+  companyId: UUID;
+  complaintId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+}): Promise<void> {
+  const existing = await getCustomerComplaint(input.companyId, input.complaintId);
+  if (!existing) throw new Error('Complaint not found.');
+
+  const canDeleteOwnDraft =
+    input.actorRole === 'employee' &&
+    existing.created_by_user_id === input.actorUserId &&
+    existing.status !== 'CLOSED';
+  if (!canWrite(input.actorRole) && !canDeleteOwnDraft) {
+    throw new Error('You do not have permission to delete complaints.');
+  }
+
+  const { error } = await insforge.database
+    .from('quality_customer_complaints')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.complaintId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'quality_customer_complaints.delete',
+    entityType: 'quality_customer_complaint',
+    entityId: input.complaintId,
+    metadata: { complaintRefNo: existing.complaint_ref_no }
+  });
+}
+
 export async function getCustomerComplaintSummary(input: {
   companyId: UUID;
   actorRole: CompanyRole | null;

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BriefcaseIcon, BookOpenIcon, Building2Icon, Grid3X3Icon, PlusIcon, PencilIcon } from 'lucide-react';
+import { BriefcaseIcon, BookOpenIcon, Building2Icon, Grid3X3Icon, PlusIcon, PencilIcon, Trash2Icon } from 'lucide-react';
 import { useAsync } from '../../api/hooks/useAsync';
 import type { JobDescription, TrainingCourse, TrainingProvider, JobTrainingRequirement, UUID } from '../../api/models/entities';
 import {
@@ -7,7 +7,9 @@ import {
   listTrainingCourses,
   listTrainingProviders,
   listJobTrainingRequirements,
-  createTrainingCourse
+  createTrainingCourse,
+  deleteTrainingCourse,
+  deleteTrainingProvider
 } from '../../api/services/trainingService';
 import { JobDescriptionModal } from './JobDescriptionModal';
 import { TrainingProviderModal } from './TrainingProviderModal';
@@ -108,6 +110,36 @@ export function TrainingMatrixSetupTab(props: {
       setNewCourseError(formatAuthError(err));
     } finally {
       setNewCourseLoading(false);
+    }
+  }
+
+  async function handleDeleteCourse(courseId: UUID) {
+    const confirmed = window.confirm('Delete this training course? This cannot be undone.');
+    if (!confirmed) return;
+    try {
+      await deleteTrainingCourse({
+        companyId: props.companyId,
+        courseId,
+        actorUserId: props.createdByUserId
+      });
+      refreshAll();
+    } catch (err: unknown) {
+      window.alert(formatAuthError(err));
+    }
+  }
+
+  async function handleDeleteProvider(providerId: UUID) {
+    const confirmed = window.confirm('Delete this training provider? This cannot be undone.');
+    if (!confirmed) return;
+    try {
+      await deleteTrainingProvider({
+        companyId: props.companyId,
+        providerId,
+        actorUserId: props.createdByUserId
+      });
+      refreshAll();
+    } catch (err: unknown) {
+      window.alert(formatAuthError(err));
     }
   }
 
@@ -247,7 +279,7 @@ export function TrainingMatrixSetupTab(props: {
                     <th className="px-4 py-2 text-left font-medium text-charcoal-500">Unit standard</th>
                     <th className="px-4 py-2 text-left font-medium text-charcoal-500">Credits</th>
                     <th className="px-4 py-2 text-left font-medium text-charcoal-500">Freq. (mo)</th>
-                    <th className="px-4 py-2 text-left font-medium text-charcoal-500 w-16"></th>
+                    <th className="px-4 py-2 text-left font-medium text-charcoal-500 w-24"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-100">
@@ -258,14 +290,24 @@ export function TrainingMatrixSetupTab(props: {
                       <td className="px-4 py-2 text-charcoal-600">{c.credits ?? '—'}</td>
                       <td className="px-4 py-2 text-charcoal-600">{c.default_frequency_months ?? '—'}</td>
                       <td className="px-4 py-2">
-                        <button
-                          type="button"
-                          onClick={() => setCourseEditId(String(c.id))}
-                          className="p-1.5 rounded-lg hover:bg-surface-100 text-charcoal-500"
-                          aria-label="Edit course"
-                        >
-                          <PencilIcon className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setCourseEditId(String(c.id))}
+                            className="p-1.5 rounded-lg hover:bg-surface-100 text-charcoal-500"
+                            aria-label="Edit course"
+                          >
+                            <PencilIcon className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteCourse(c.id)}
+                            className="p-1.5 rounded-lg hover:bg-critical/5 text-charcoal-500 hover:text-critical"
+                            aria-label="Delete course"
+                          >
+                            <Trash2Icon className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -306,14 +348,24 @@ export function TrainingMatrixSetupTab(props: {
                 <li key={p.id} className="flex items-center justify-between py-2 border-b border-surface-100 last:border-0">
                   <span className="font-medium text-charcoal">{p.name}</span>
                   <span className="text-xs text-charcoal-500 bg-surface-100 px-2 py-0.5 rounded">{p.provider_type}</span>
-                  <button
-                    type="button"
-                    onClick={() => setEditingProvider(p)}
-                    className="p-1.5 rounded-lg hover:bg-surface-100 text-charcoal-500"
-                    aria-label="Edit"
-                  >
-                    <PencilIcon className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditingProvider(p)}
+                      className="p-1.5 rounded-lg hover:bg-surface-100 text-charcoal-500"
+                      aria-label="Edit"
+                    >
+                      <PencilIcon className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteProvider(p.id)}
+                      className="p-1.5 rounded-lg hover:bg-critical/5 text-charcoal-500 hover:text-critical"
+                      aria-label="Delete provider"
+                    >
+                      <Trash2Icon className="w-4 h-4" />
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

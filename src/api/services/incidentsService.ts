@@ -2,6 +2,7 @@ import { insforge } from '../insforge/client';
 import type { Incident, UUID } from '../models/entities';
 import type { IncidentCategory, IncidentStatus, ModuleKey, Severity, IncidentRiskCategory } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
+import { createActivityLog } from './activityLogService';
 
 export type ListIncidentsInput = {
   companyId: UUID;
@@ -187,6 +188,9 @@ export type CreateIncidentInput = {
   natureOfIncident?: string;
   causeOfIncident?: string;
   affectedPerson?: string;
+  affectedUserId?: UUID | null;
+  affectedPersonName?: string | null;
+  affectedEmployeeId?: UUID | null;
   reportedBy?: string;
   reportedTo?: string;
   copyToEmails?: string[];
@@ -234,42 +238,41 @@ function getMissingColumnFromSchemaError(error: unknown): string | null {
 }
 
 async function insertIncidentWithSchemaFallback(payload: Record<string, unknown>): Promise<Incident> {
-  let workingPayload: Record<string, unknown> = { ...payload };
-  for (let attempts = 0; attempts < 5; attempts += 1) {
-    const { data, error } = await insforge.database
-      .from('incidents')
-      .insert(workingPayload)
-      .select('*')
-      .single();
-    if (!error && data) return data as Incident;
-    const missingColumn = getMissingColumnFromSchemaError(error);
-    if (!missingColumn || !Object.prototype.hasOwnProperty.call(workingPayload, missingColumn)) {
-      throw new Error(getErrorMessage(error));
-    }
-    const { [missingColumn]: _ignored, ...rest } = workingPayload;
-    workingPayload = rest;
+  const { data, error } = await insforge.database
+    .from('incidents')
+    .insert(payload)
+    .select('*')
+    .single();
+  if (!error && data) return data as Incident;
+
+  const missingColumn = getMissingColumnFromSchemaError(error);
+  if (missingColumn && Object.prototype.hasOwnProperty.call(payload, missingColumn)) {
+    throw new Error(
+      `The incidents table is missing the "${missingColumn}" column required by the latest application build. Apply the latest database migrations before creating incidents.`
+    );
   }
-  throw new Error('Failed to create incident after schema compatibility retries.');
+
+  throw new Error(getErrorMessage(error));
 }
 
-async function updateIncidentWithSchemaFallback(incidentId: UUID, payload: Record<string, unknown>): Promise<Incident> {
-  let workingPayload: Record<string, unknown> = { ...payload };
-  for (let attempts = 0; attempts < 5; attempts += 1) {
-    const { data, error } = await insforge.database
-      .from('incidents')
-      .update(workingPayload)
-      .eq('id', incidentId)
-      .select('*')
-      .single();
-    if (!error && data) return data as Incident;
-    const missingColumn = getMissingColumnFromSchemaError(error);
-    if (!missingColumn || !Object.prototype.hasOwnProperty.call(workingPayload, missingColumn)) {
-      throw new Error(getErrorMessage(error));
-    }
-    const { [missingColumn]: _ignored, ...rest } = workingPayload;
-    workingPayload = rest;
+async function updateIncidentWithSchemaFallback(companyId: UUID, incidentId: UUID, payload: Record<string, unknown>): Promise<Incident> {
+  const { data, error } = await insforge.database
+    .from('incidents')
+    .update(payload)
+    .eq('company_id', companyId)
+    .eq('id', incidentId)
+    .select('*')
+    .single();
+  if (!error && data) return data as Incident;
+
+  const missingColumn = getMissingColumnFromSchemaError(error);
+  if (missingColumn && Object.prototype.hasOwnProperty.call(payload, missingColumn)) {
+    throw new Error(
+      `The incidents table is missing the "${missingColumn}" column required by the latest application build. Apply the latest database migrations before updating incidents.`
+    );
   }
-  throw new Error('Failed to update incident after schema compatibility retries.');
+
+  throw new Error(getErrorMessage(error));
 }
 
 export async function createIncident(input: CreateIncidentInput): Promise<Incident> {
@@ -286,6 +289,9 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
     nature_of_incident: input.natureOfIncident ?? null,
     cause_of_incident: input.causeOfIncident ?? null,
     affected_person: input.affectedPerson ?? null,
+    affected_person_id: input.affectedEmployeeId ?? null,
+    affected_user_id: input.affectedUserId ?? null,
+    affected_person_name: input.affectedPersonName ?? null,
     reported_by: input.reportedBy ?? null,
     reported_to: input.reportedTo ?? null,
     copy_to_emails: input.copyToEmails ?? null,
@@ -378,6 +384,9 @@ export type UpdateIncidentPatch = Partial<{
   natureOfIncident: string | null;
   causeOfIncident: string | null;
   affectedPerson: string | null;
+  affectedUserId: UUID | null;
+  affectedPersonName: string | null;
+  affectedEmployeeId: UUID | null;
   reportedBy: string | null;
   reportedTo: string | null;
   copyToEmails: string[] | null;
@@ -407,6 +416,14 @@ export type UpdateIncidentPatch = Partial<{
 }>;
 
 export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatch): Promise<Incident> {
+  const { data: current, error: currentError } = await insforge.database
+    .from('incidents')
+    .select('id,company_id')
+    .eq('id', incidentId)
+    .maybeSingle();
+  if (currentError) throw new Error(getErrorMessage(currentError));
+  if (!current) throw new Error('Incident not found.');
+
   const updateData: Record<string, unknown> = {
     updated_at: new Date().toISOString()
   };
@@ -425,6 +442,9 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
   if (patch.natureOfIncident !== undefined) updateData.nature_of_incident = patch.natureOfIncident;
   if (patch.causeOfIncident !== undefined) updateData.cause_of_incident = patch.causeOfIncident;
   if (patch.affectedPerson !== undefined) updateData.affected_person = patch.affectedPerson;
+  if (patch.affectedEmployeeId !== undefined) updateData.affected_person_id = patch.affectedEmployeeId;
+  if (patch.affectedUserId !== undefined) updateData.affected_user_id = patch.affectedUserId;
+  if (patch.affectedPersonName !== undefined) updateData.affected_person_name = patch.affectedPersonName;
   if (patch.reportedBy !== undefined) updateData.reported_by = patch.reportedBy;
   if (patch.reportedTo !== undefined) updateData.reported_to = patch.reportedTo;
   if (patch.copyToEmails !== undefined) updateData.copy_to_emails = patch.copyToEmails;
@@ -476,13 +496,13 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
     }
   }
 
-  const data = await updateIncidentWithSchemaFallback(incidentId, updateData);
+  const data = await updateIncidentWithSchemaFallback((current as any).company_id as UUID, incidentId, updateData);
   return data;
 }
 
 export async function syncIncidentClosureFromLinks(incidentId: UUID): Promise<void> {
   const [{ data: incidentRow, error: incidentError }, { count: openNcrCount, error: openNcrError }, { count: openActionCount, error: openActionError }] = await Promise.all([
-    insforge.database.from('incidents').select('id,status').eq('id', incidentId).maybeSingle(),
+    insforge.database.from('incidents').select('id,company_id,status').eq('id', incidentId).maybeSingle(),
     insforge.database
       .from('quality_ncrs')
       .select('*', { count: 'exact', head: true })
@@ -509,8 +529,30 @@ export async function syncIncidentClosureFromLinks(incidentId: UUID): Promise<vo
   const { error: updateError } = await insforge.database
     .from('incidents')
     .update({ status: next, updated_at: new Date().toISOString() })
+    .eq('company_id', (incidentRow as any).company_id)
     .eq('id', incidentId);
   if (updateError) throw new Error(getErrorMessage(updateError));
+}
+
+export async function deleteIncident(input: {
+  companyId: UUID;
+  incidentId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('incidents')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.incidentId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'incidents.delete',
+    entityType: 'incident',
+    entityId: input.incidentId
+  });
 }
 
 export const incidentsService = {
@@ -518,5 +560,6 @@ export const incidentsService = {
   listIncidentsWithFilters,
   createIncident,
   updateIncident,
-  syncIncidentClosureFromLinks
+  syncIncidentClosureFromLinks,
+  deleteIncident
 };

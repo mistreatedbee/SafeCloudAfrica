@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useDraftManager } from './DraftManagerProvider';
 import { useAutosave } from '../hooks/useAutosave';
+import { saveDraftSnapshotToBackend } from '../api/services/draftSnapshotsService';
 
 type UseDraftRegistrationArgs = {
   key: string;
@@ -28,12 +29,12 @@ export function useDraftRegistration(args: UseDraftRegistrationArgs) {
   } | null>(null);
   const isDirtyRef = useRef(isDirty);
   const serializeRef = useRef(serialize);
-  const flushRef = useRef(flush);
+  const flushRef = useRef(flush ?? (async (snapshot) => saveDraftSnapshotToBackend(snapshot)));
 
   useEffect(() => {
     isDirtyRef.current = isDirty;
     serializeRef.current = serialize;
-    flushRef.current = flush;
+    flushRef.current = flush ?? (async (snapshot) => saveDraftSnapshotToBackend(snapshot));
   }, [isDirty, serialize, flush]);
 
   // Phase 3: hybrid saving
@@ -41,13 +42,14 @@ export function useDraftRegistration(args: UseDraftRegistrationArgs) {
   // - Optional `flush()` is used for best-effort server-side persistence.
   useAutosave({
     enabled,
-    debounceMs: 400,
+    // Local snapshots should persist frequently enough to prevent data loss,
+    // but not so often that large forms cause noticeable main-thread jank.
+    debounceMs: 1500,
     skipFirstSave: true,
     getSnapshot: () => serializeRef.current(),
     save: async (payload) => {
       if (!isDirtyRef.current()) return;
       const snapshot = persistDraftSnapshotLocally(key, payload);
-      if (!flushRef.current) return;
 
       // Debounce/coalesce server writes.
       serverSnapshotRef.current = snapshot;
@@ -59,7 +61,7 @@ export function useDraftRegistration(args: UseDraftRegistrationArgs) {
         // Fire-and-forget server flush; errors are swallowed so local drafts remain primary.
         void (async () => {
           try {
-            await flushRef.current?.(toFlush);
+            await flushRef.current(toFlush);
           } catch {
             // Best-effort: if the server is unavailable, keep local snapshots.
           }
@@ -104,7 +106,7 @@ export function useDraftRegistration(args: UseDraftRegistrationArgs) {
       key,
       isDirty: () => isDirtyRef.current(),
       serialize: () => serializeRef.current(),
-      flush: async (snapshot) => flushRef.current?.(snapshot)
+      flush: async (snapshot) => flushRef.current(snapshot)
     });
   }, [enabled, key, registerDraft]);
 }

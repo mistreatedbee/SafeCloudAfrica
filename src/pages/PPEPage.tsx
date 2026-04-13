@@ -16,6 +16,7 @@ import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
 import {
+  deletePpeItem,
   listPpeIssues,
   listPpeItems,
   listPpeReorderRequests,
@@ -157,6 +158,7 @@ export function PPEPage() {
   const [showAllItemSpend, setShowAllItemSpend] = useState(false);
   const [issueOpen, setIssueOpen] = useState(false);
   const [createItemOpen, setCreateItemOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<PPEItem | null>(null);
   const [stockCreateOpen, setStockCreateOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState<PpeStock | null>(null);
   const [stockDetailOpen, setStockDetailOpen] = useState(false);
@@ -613,8 +615,12 @@ export function PPEPage() {
           )}
           <PpeItemCreateModal
             open={createItemOpen}
-            onClose={() => setCreateItemOpen(false)}
+            onClose={() => {
+              setCreateItemOpen(false);
+              setSelectedItem(null);
+            }}
             companyId={activeCompanyId}
+            item={selectedItem}
             onCreated={() => setRefreshKey((k) => k + 1)}
           />
           <PpeStockCreateModal
@@ -1417,6 +1423,97 @@ export function PPEPage() {
         )}
 
         {activeTab === 'inventory' && (
+          <>
+          <motion.div
+            variants={itemVariants}
+            className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden"
+          >
+            <div className="px-5 py-4 border-b border-surface-200 flex flex-wrap items-center justify-between gap-3">
+              <h3 className="font-semibold text-charcoal">PPE Items</h3>
+              <span className="text-sm text-charcoal-400">
+                {(items ?? []).length} item {(items ?? []).length === 1 ? 'record' : 'records'}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-surface-50">
+                  <tr>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Name</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Category</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Unit cost</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Sizes</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Supplier</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Stock location</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-100">
+                  {!items?.length && (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-4 text-sm text-charcoal-500">
+                        No PPE items set up yet. Use "Add PPE item" to create one.
+                      </td>
+                    </tr>
+                  )}
+                  {(items ?? []).map((item) => {
+                    const sizeLabel =
+                      item.sizes_with_prices?.map((row) => row.size).filter(Boolean).join(', ') ||
+                      item.sizes_available?.join(', ') ||
+                      '-';
+                    return (
+                      <tr key={item.id} className="hover:bg-surface-50 transition-colors">
+                        <td className="px-5 py-4 text-sm font-medium text-charcoal">{item.name}</td>
+                        <td className="px-5 py-4 text-sm text-charcoal-500">{item.category || '-'}</td>
+                        <td className="px-5 py-4 text-sm text-charcoal-500">
+                          {item.unit_cost != null ? formatMoney(item.unit_cost) : '-'}
+                        </td>
+                        <td className="px-5 py-4 text-sm text-charcoal-500">{sizeLabel}</td>
+                        <td className="px-5 py-4 text-sm text-charcoal-500">{item.supplier_name || '-'}</td>
+                        <td className="px-5 py-4 text-sm text-charcoal-500">{item.stock_location || '-'}</td>
+                        <td className="px-5 py-4 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={!canManage}
+                              onClick={() => {
+                                setSelectedItem(item);
+                                setCreateItemOpen(true);
+                              }}
+                              className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!canManage}
+                              onClick={async () => {
+                                if (!activeCompanyId || !user?.id) return;
+                                if (!window.confirm(`Delete PPE item "${item.name}"? This only works if it has no stock or issue history.`)) return;
+                                try {
+                                  await deletePpeItem({
+                                    companyId: activeCompanyId,
+                                    itemId: item.id,
+                                    actorUserId: user.id
+                                  });
+                                  setRefreshKey((k) => k + 1);
+                                } catch (err: any) {
+                                  alert(err instanceof Error ? err.message : 'Failed to delete PPE item.');
+                                }
+                              }}
+                              className="px-2 py-1 rounded border border-critical/30 text-xs text-critical hover:bg-critical/5 disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+
           <motion.div
             variants={itemVariants}
             className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden"
@@ -1569,9 +1666,9 @@ export function PPEPage() {
               </table>
             </div>
           </motion.div>
+          </>
         )}
       </motion.div>
     </Layout>
   );
 }
-

@@ -428,6 +428,41 @@ export async function approveInternalExternalIssueRegister(input: {
   return approved;
 }
 
+export async function deleteInternalExternalIssueRegister(input: {
+  companyId: UUID;
+  registerId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+}): Promise<void> {
+  assertApprove(input.actorRole);
+
+  const existing = await getRegisterById(input.companyId, input.registerId);
+  if (!existing) throw new Error('Register not found.');
+
+  const { error: issuesError } = await insforge.database
+    .from('quality_internal_external_issues')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('register_id', input.registerId);
+  if (issuesError) throw new Error(getErrorMessage(issuesError));
+
+  const { error: regError } = await insforge.database
+    .from('quality_internal_external_issues_registers')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.registerId);
+  if (regError) throw new Error(getErrorMessage(regError));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'quality_ie_register.delete',
+    entityType: 'quality_internal_external_issues_register',
+    entityId: input.registerId,
+    metadata: { issueNo: existing.issue_no, revisionNumber: existing.revision_number }
+  }).catch(() => undefined);
+}
+
 export async function listInternalExternalIssues(input: {
   companyId: UUID;
   actorRole: CompanyRole | null;
@@ -727,6 +762,41 @@ export async function updateInternalExternalIssue(input: {
   }
 
   return updated;
+}
+
+export async function deleteInternalExternalIssue(input: {
+  companyId: UUID;
+  issueId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+}): Promise<void> {
+  assertWrite(input.actorRole);
+
+  const { data: row, error: rowError } = await insforge.database
+    .from('quality_internal_external_issues')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('id', input.issueId)
+    .maybeSingle();
+  if (rowError) throw new Error(getErrorMessage(rowError));
+  if (!row) throw new Error('Issue row not found.');
+  const existing = row as QualityInternalExternalIssue;
+
+  const { error } = await insforge.database
+    .from('quality_internal_external_issues')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.issueId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'quality_ie_issue.delete',
+    entityType: 'quality_internal_external_issue',
+    entityId: input.issueId,
+    metadata: { registerId: existing.register_id, refNo: existing.ref_no }
+  });
 }
 
 export async function getInternalExternalIssuesSummary(input: {

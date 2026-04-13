@@ -385,10 +385,19 @@ export function CalibrationPage(props: { title?: string; defaultModuleTag?: Cali
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
           <div className="absolute inset-0 bg-black/40" onClick={() => setModalOpen(false)} />
-          <div className="relative w-full max-w-5xl bg-white rounded-2xl border border-surface-300 shadow-xl max-h-[95vh] overflow-y-auto">
-            <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between"><h2 className="text-lg font-semibold text-charcoal">{formMode === 'create' ? 'Create Calibration' : formMode === 'edit' ? 'Edit Calibration' : 'Calibration Details'}</h2><button type="button" onClick={() => setModalOpen(false)} className="px-3 py-1.5 rounded border border-surface-300 text-sm">Close</button></div>
+          <div className="relative w-full max-w-5xl bg-white rounded-2xl border border-surface-300 shadow-xl max-h-[90dvh] overflow-y-auto">
+            <div className="sticky top-0 bg-white z-10 px-5 py-4 border-b border-surface-200 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-charcoal">{formMode === 'create' ? 'Create Calibration' : formMode === 'edit' ? 'Edit Calibration' : 'Calibration Details'}</h2>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="min-h-[44px] px-3 rounded-lg border border-surface-300 text-sm"
+              >
+                Close
+              </button>
+            </div>
             <div className="p-5 space-y-4">
               {formError && <div className="bg-critical/5 border border-critical/20 rounded-xl p-3"><p className="text-sm text-critical">{formError}</p></div>}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

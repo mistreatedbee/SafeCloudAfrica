@@ -99,6 +99,57 @@ export async function updateTrainingCourse(input: {
   return data as TrainingCourse;
 }
 
+export async function deleteTrainingCourse(input: {
+  companyId: UUID;
+  courseId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { count: linkedRecords, error: recordsError } = await insforge.database
+    .from('training_records')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', input.companyId)
+    .eq('course_id', input.courseId);
+  if (recordsError) throw new Error(getErrorMessage(recordsError));
+  if ((linkedRecords ?? 0) > 0) {
+    throw new Error('This course cannot be deleted because training records already exist for it.');
+  }
+
+  const { count: linkedRequirements, error: reqError } = await insforge.database
+    .from('job_training_requirements')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', input.companyId)
+    .eq('course_id', input.courseId);
+  if (reqError) throw new Error(getErrorMessage(reqError));
+  if ((linkedRequirements ?? 0) > 0) {
+    throw new Error('This course cannot be deleted because it is linked to job training requirements.');
+  }
+
+  const { count: linkedPrices, error: pricesError } = await insforge.database
+    .from('course_provider_prices')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', input.companyId)
+    .eq('course_id', input.courseId);
+  if (pricesError) throw new Error(getErrorMessage(pricesError));
+  if ((linkedPrices ?? 0) > 0) {
+    throw new Error('This course cannot be deleted because provider pricing is linked to it.');
+  }
+
+  const { error } = await insforge.database
+    .from('training_courses')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.courseId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'training_courses.delete',
+    entityType: 'training_course',
+    entityId: input.courseId
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Training records (assignments)
 // ---------------------------------------------------------------------------
@@ -271,7 +322,29 @@ export async function cancelTrainingRecord(input: {
   });
 }
 
+export async function deleteTrainingRecord(input: {
+  companyId: UUID;
+  recordId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('training_records')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.recordId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'training_records.delete',
+    entityType: 'training_record',
+    entityId: input.recordId
+  });
+}
+
 export async function countExpiringTraining(companyId: UUID, withinDays = 30): Promise<number> {
+  const nowIso = new Date().toISOString();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + withinDays);
   const { count, error } = await insforge.database
@@ -279,12 +352,14 @@ export async function countExpiringTraining(companyId: UUID, withinDays = 30): P
     .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .not('expires_at', 'is', null)
+    .gte('expires_at', nowIso)
     .lte('expires_at', cutoff.toISOString());
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
 }
 
 export async function countExpiringTrainingForUser(companyId: UUID, userId: UUID, withinDays = 30): Promise<number> {
+  const nowIso = new Date().toISOString();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + withinDays);
   const { count, error } = await insforge.database
@@ -293,6 +368,7 @@ export async function countExpiringTrainingForUser(companyId: UUID, userId: UUID
     .eq('company_id', companyId)
     .eq('user_id', userId)
     .not('expires_at', 'is', null)
+    .gte('expires_at', nowIso)
     .lte('expires_at', cutoff.toISOString());
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
@@ -469,6 +545,47 @@ export async function updateTrainingProvider(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update training provider.');
   return data as TrainingProvider;
+}
+
+export async function deleteTrainingProvider(input: {
+  companyId: UUID;
+  providerId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { count: linkedRecords, error: recordsError } = await insforge.database
+    .from('training_records')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', input.companyId)
+    .eq('provider_id', input.providerId);
+  if (recordsError) throw new Error(getErrorMessage(recordsError));
+  if ((linkedRecords ?? 0) > 0) {
+    throw new Error('This provider cannot be deleted because training records already reference it.');
+  }
+
+  const { count: linkedPrices, error: pricesError } = await insforge.database
+    .from('course_provider_prices')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', input.companyId)
+    .eq('provider_id', input.providerId);
+  if (pricesError) throw new Error(getErrorMessage(pricesError));
+  if ((linkedPrices ?? 0) > 0) {
+    throw new Error('This provider cannot be deleted because course pricing is linked to it.');
+  }
+
+  const { error } = await insforge.database
+    .from('training_providers')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.providerId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'training_providers.delete',
+    entityType: 'training_provider',
+    entityId: input.providerId
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import { Plus, AlertTriangle, CheckCircle, Clock, Filter } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
-import { listQualityNcrs, createQualityNcr, closeQualityNcr } from '../api/services/qualityNcrsService';
+import { listQualityNcrs, createQualityNcr, closeQualityNcr, deleteQualityNcr } from '../api/services/qualityNcrsService';
 import type { QualityNcr, UUID } from '../api/models/entities';
 import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
 import NCRDetailModal from '../components/ncrs/NCRDetailModal';
@@ -44,6 +44,8 @@ export default function NCRsPage() {
 
   const canCreateNcr = activeRole !== 'employee';
   const canCloseNcr = activeRole === 'admin' || activeRole === 'supervisor';
+  const canDeleteNcr =
+    activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
 
   const canUploadEvidenceForNcr = (ncr: QualityNcr): boolean => {
     if (!user?.id) return false;
@@ -99,6 +101,18 @@ export default function NCRsPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to close NCR');
+    }
+  }
+
+  async function handleDeleteNCR(ncrId: UUID) {
+    if (!user?.id || !canDeleteNcr) return;
+    try {
+      await deleteQualityNcr(ncrId, activeCompanyId, user.id);
+      setNcrs((current) => current.filter((ncr) => ncr.id !== ncrId));
+      setSelectedNCR(null);
+      setIsDetailModalOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete NCR');
     }
   }
 
@@ -333,9 +347,14 @@ export default function NCRsPage() {
             companyId={activeCompanyId}
             actorUserId={user.id as UUID}
             canCloseNcr={canCloseNcr}
+            canDeleteNcr={canDeleteNcr}
             canUploadEvidence={canUploadEvidenceForNcr(selectedNCR)}
-            onClose={() => setIsDetailModalOpen(false)}
+            onClose={() => {
+              setIsDetailModalOpen(false);
+              setSelectedNCR(null);
+            }}
             onCloseNCR={handleCloseNCR}
+            onDeleteNCR={handleDeleteNCR}
             onNcrUpdated={(updated) => {
               setNcrs((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
               setSelectedNCR(updated);

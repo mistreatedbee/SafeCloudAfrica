@@ -1,6 +1,13 @@
-import { getServerInsforge, nowIso, readBearerToken } from '../_insforge';
-import { logStructuredLine, sendAlertWebhook } from '../_observability';
-import { hashInviteToken, normalizeInviteStatus } from './_shared';
+import { getServerInsforge, nowIso, readBearerToken } from '../_insforge.js';
+import { logStructuredLine, sendAlertWebhook } from '../_observability.js';
+import { applyNoStoreHeaders } from '../_response.js';
+import {
+  hashInviteToken,
+  isSignedInviteToken,
+  normalizeInviteStatus,
+  parseSignedInviteToken,
+  verifyInviteToken
+} from './_shared.js';
 
 const MODULE = 'api.invites.accept';
 
@@ -9,6 +16,7 @@ function normalizeRole(role: unknown): string {
 }
 
 export default async function handler(req: any, res: any) {
+  applyNoStoreHeaders(res);
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
@@ -31,13 +39,23 @@ export default async function handler(req: any, res: any) {
 
     logUserId = String(userId);
 
-    const tokenHash = hashInviteToken(token);
-    const inviteRes = await insforge.database
-      .from('company_invites')
-      .select('*')
-      .or(`token_hash.eq.${tokenHash},token.eq.${token}`)
-      .limit(1)
-      .maybeSingle();
+    let inviteRes: any;
+    if (isSignedInviteToken(token)) {
+      const parsed = parseSignedInviteToken(token);
+      if (!parsed) return res.status(404).json({ ok: false, reason: 'not_found', error: 'Invalid invite link.' });
+      inviteRes = await insforge.database.from('company_invites').select('*').eq('id', parsed.inviteId).maybeSingle();
+      if (inviteRes.data && !verifyInviteToken(token, inviteRes.data)) {
+        return res.status(404).json({ ok: false, reason: 'not_found', error: 'Invalid invite link.' });
+      }
+    } else {
+      const tokenHash = hashInviteToken(token);
+      inviteRes = await insforge.database
+        .from('company_invites')
+        .select('*')
+        .or(`token_hash.eq.${tokenHash},token.eq.${token}`)
+        .limit(1)
+        .maybeSingle();
+    }
 
     if (inviteRes.error || !inviteRes.data) {
       return res.status(404).json({ ok: false, reason: 'not_found', error: 'Invalid invite link.' });

@@ -1,6 +1,24 @@
 import { createClient } from '@insforge/sdk';
 
 type InsforgeClient = ReturnType<typeof createClient>;
+const NO_STORE_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0';
+
+function getServerFetch(): typeof fetch {
+  const baseFetch = globalThis.fetch.bind(globalThis);
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const headers = new Headers(init?.headers ?? request?.headers);
+    headers.set('Cache-Control', NO_STORE_CACHE_CONTROL);
+    headers.set('Pragma', 'no-cache');
+    headers.set('Expires', '0');
+    const nextInit: RequestInit = {
+      ...init,
+      cache: 'no-store',
+      headers
+    };
+    return request ? baseFetch(new Request(request, nextInit)) : baseFetch(input, nextInit);
+  };
+}
 
 function getBaseUrl(): string {
   const raw =
@@ -35,6 +53,12 @@ export function getServiceInsforge(): InsforgeClient | null {
   return createClient({
     baseUrl: getBaseUrl(),
     anonKey: key,
+    fetch: getServerFetch(),
+    headers: {
+      'Cache-Control': NO_STORE_CACHE_CONTROL,
+      Pragma: 'no-cache',
+      Expires: '0'
+    },
     persistSession: false,
     autoRefreshToken: false
   });
@@ -44,6 +68,12 @@ export function getServerInsforge(authToken?: string | null): InsforgeClient {
   const client = createClient({
     baseUrl: getBaseUrl(),
     anonKey: getAnonKey(),
+    fetch: getServerFetch(),
+    headers: {
+      'Cache-Control': NO_STORE_CACHE_CONTROL,
+      Pragma: 'no-cache',
+      Expires: '0'
+    },
     persistSession: false,
     autoRefreshToken: false
   });

@@ -263,6 +263,7 @@ export async function createInvite(input: {
     const headers = await getAuthHeaders();
     const response = await fetch('/api/invites/create', {
       method: 'POST',
+      cache: 'no-store',
       headers,
       body: JSON.stringify({
         companyId: input.company.id,
@@ -298,7 +299,9 @@ export async function validateInvitationToken(token: string): Promise<InviteVali
   if (!cleanToken) return { code: 'INVITE_INVALID', invite: null };
 
   try {
-    const response = await fetch(`/api/invites/validate?token=${encodeURIComponent(cleanToken)}`);
+    const response = await fetch(`/api/invites/validate?token=${encodeURIComponent(cleanToken)}`, {
+      cache: 'no-store'
+    });
     const data = await response.json().catch(() => null as any);
     if (!response.ok || !data?.ok) {
       const reason = String(data?.reason ?? '').toLowerCase();
@@ -429,6 +432,7 @@ export async function acceptInviteByToken(input: { token: string; userId: UUID }
   const headers = await getAuthHeaders();
   const response = await fetch('/api/invites/accept', {
     method: 'POST',
+    cache: 'no-store',
     headers,
     body: JSON.stringify({ token: input.token })
   });
@@ -455,6 +459,7 @@ export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID })
   const headers = await getAuthHeaders();
   const response = await fetch('/api/invites/resend', {
     method: 'POST',
+    cache: 'no-store',
     headers,
     body: JSON.stringify({
       inviteId: input.inviteId,
@@ -472,6 +477,7 @@ export async function getInviteLinkForInviteId(input: { inviteId: UUID }): Promi
   const headers = await getAuthHeaders();
   const response = await fetch('/api/invites/resend', {
     method: 'POST',
+    cache: 'no-store',
     headers,
     body: JSON.stringify({
       inviteId: input.inviteId,
@@ -509,7 +515,9 @@ export function getInviteIdByToken(token: string): Promise<UUID | null> {
   const cleanToken = token.trim();
   if (!cleanToken) return Promise.resolve(null);
 
-  return fetch(`/api/invites/validate?token=${encodeURIComponent(cleanToken)}`)
+  return fetch(`/api/invites/validate?token=${encodeURIComponent(cleanToken)}`, {
+    cache: 'no-store'
+  })
     .then(async (response) => {
       const data = await response.json().catch(() => null as any);
       if (!response.ok || !data?.ok || !data?.invite?.id) return null;

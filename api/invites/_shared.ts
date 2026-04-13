@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export type InviteStatus = 'PENDING' | 'SENT' | 'FAILED' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED' | 'REVOKED';
 
@@ -12,6 +12,96 @@ export function generateRawInviteToken(): string {
 
 export function hashInviteToken(rawToken: string): string {
   return createHash('sha256').update(rawToken.trim()).digest('hex');
+}
+
+function base64UrlEncode(buffer: Buffer): string {
+  return buffer
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+function looksLikeUuid(value: string): boolean {
+  const v = value.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
+
+export function getInviteSigningSecret(): string | null {
+  const secret = process.env.INVITE_SIGNING_SECRET?.trim() ?? '';
+  return secret ? secret : null;
+}
+
+export function isSignedInviteToken(token: string): boolean {
+  const t = token.trim();
+  const parts = t.split('.');
+  if (parts.length !== 2) return false;
+  return looksLikeUuid(parts[0] ?? '') && (parts[1] ?? '').length >= 16;
+}
+
+export function parseSignedInviteToken(token: string): { inviteId: string; signature: string } | null {
+  const t = token.trim();
+  const parts = t.split('.');
+  if (parts.length !== 2) return null;
+  const inviteId = String(parts[0] ?? '').trim();
+  const signature = String(parts[1] ?? '').trim();
+  if (!looksLikeUuid(inviteId) || !signature) return null;
+  return { inviteId, signature };
+}
+
+export function signInviteToken(input: {
+  inviteId: string;
+  companyId: string;
+  email: string;
+  role: string;
+  expiresAtIso: string;
+}): string {
+  const secret = getInviteSigningSecret();
+  if (!secret) {
+    throw new Error('Invite signing secret not configured. Set INVITE_SIGNING_SECRET.');
+  }
+  if (!input.expiresAtIso || !String(input.expiresAtIso).trim()) {
+    throw new Error('Invite expiresAt is required to sign token.');
+  }
+  const message = [
+    input.inviteId.trim(),
+    input.companyId.trim(),
+    String(input.email || '').trim().toLowerCase(),
+    String(input.role || '').trim().toLowerCase(),
+    input.expiresAtIso.trim()
+  ].join('.');
+  const mac = createHmac('sha256', secret).update(message).digest();
+  const sig = base64UrlEncode(mac);
+  return `${input.inviteId.trim()}.${sig}`;
+}
+
+export function verifyInviteToken(token: string, invite: any): boolean {
+  const parsed = parseSignedInviteToken(token);
+  if (!parsed) return false;
+  const secret = getInviteSigningSecret();
+  if (!secret) return false;
+
+  const inviteId = String(invite?.id ?? '').trim();
+  const companyId = String(invite?.company_id ?? '').trim();
+  const email = String(invite?.email ?? '').trim().toLowerCase();
+  const role = String(invite?.role ?? '').trim().toLowerCase();
+  const expiresAtIso = String(invite?.expires_at ?? '').trim();
+  if (!inviteId || !companyId || !email || !expiresAtIso) return false;
+  if (inviteId !== parsed.inviteId) return false;
+
+  const message = [inviteId, companyId, email, role, expiresAtIso].join('.');
+  const expected = createHmac('sha256', secret).update(message).digest();
+
+  let provided: Buffer;
+  try {
+    const b64 = parsed.signature.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    provided = Buffer.from(padded, 'base64');
+  } catch {
+    return false;
+  }
+  if (provided.length !== expected.length) return false;
+  return timingSafeEqual(provided, expected);
 }
 
 function originFromUrlCandidate(candidate: string): string | null {

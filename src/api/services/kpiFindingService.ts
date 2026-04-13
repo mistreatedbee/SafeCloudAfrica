@@ -211,3 +211,44 @@ export async function closeKPIFindingWithSignOff(input: ManagerSignOffInput): Pr
   if (!data) throw new Error('Failed to close finding.');
   return data as KPIFinding;
 }
+
+export async function deleteKPIFinding(input: {
+  organizationId: UUID;
+  findingId: UUID;
+  actorUserId: UUID;
+}): Promise<void> {
+  const { data: existing, error: existingError } = await insforge.database
+    .from('kpi_findings')
+    .select('finding_id,line_id')
+    .eq('organization_id', input.organizationId)
+    .eq('finding_id', input.findingId)
+    .maybeSingle();
+  if (existingError) throw new Error(getErrorMessage(existingError));
+  if (!existing) throw new Error('Finding not found.');
+
+  const lineId = (existing as any).line_id as UUID | null;
+
+  const { error } = await insforge.database
+    .from('kpi_findings')
+    .delete()
+    .eq('organization_id', input.organizationId)
+    .eq('finding_id', input.findingId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  if (lineId) {
+    await insforge.database
+      .from('kpi_assessment_lines')
+      .update({ finding_generated: false, finding_id: null, updated_at: new Date().toISOString() })
+      .eq('organization_id', input.organizationId)
+      .eq('line_id', lineId)
+      .eq('finding_id', input.findingId);
+  }
+
+  await createActivityLog({
+    companyId: input.organizationId,
+    actorUserId: input.actorUserId,
+    action: 'kpi_findings.delete',
+    entityType: 'kpi_finding',
+    entityId: input.findingId
+  }).catch(() => undefined);
+}

@@ -48,7 +48,7 @@ export async function validatePasswordStrength(
     errors.push('Password must contain at least one number');
   }
 
-  if (settings.passwordRequireSymbols && !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+  if (settings.passwordRequireSymbols && !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
     errors.push('Password must contain at least one special character');
   }
 

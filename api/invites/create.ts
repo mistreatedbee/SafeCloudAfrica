@@ -1,12 +1,16 @@
-import { addDaysIso, getServerInsforge, nowIso, readBearerToken } from '../_insforge';
-import { logStructuredLine, sendAlertWebhook } from '../_observability';
+import { addDaysIso, getServerInsforge, nowIso, readBearerToken } from '../_insforge.js';
+import { logStructuredLine, sendAlertWebhook } from '../_observability.js';
+import { applyNoStoreHeaders } from '../_response.js';
+import { sendTransactionalEmail } from '../email/_shared.js';
 import {
   buildInviteLink,
   generateRawInviteToken,
+  getInviteSigningSecret,
   hashInviteToken,
   resolvePublicOrigin,
+  signInviteToken,
   toInviteEmailHtml
-} from './_shared';
+} from './_shared.js';
 
 const MODULE = 'api.invites.create';
 
@@ -19,6 +23,7 @@ function normalizeStatus(status: unknown): string {
 }
 
 export default async function handler(req: any, res: any) {
+  applyNoStoreHeaders(res);
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
@@ -89,9 +94,17 @@ export default async function handler(req: any, res: any) {
         .in('id', existingInvitesRes.data.map((i: any) => i.id));
     }
 
-    const rawToken = generateRawInviteToken();
-    const tokenHash = hashInviteToken(rawToken);
     const expiresAt = addDaysIso(7);
+    const hasSignedTokens = !!getInviteSigningSecret();
+    let inviteToken = '';
+    let tokenHash = '';
+    if (!hasSignedTokens) {
+      inviteToken = generateRawInviteToken();
+      tokenHash = hashInviteToken(inviteToken);
+    } else {
+      tokenHash = hashInviteToken(generateRawInviteToken());
+    }
+
     const consultantScope = role === 'consultant' || role === 'auditor'
       ? {
           allowedModules: Array.from(new Set(modulesScope.map((item: any) => String(item)))),
@@ -132,7 +145,31 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ ok: false, error: 'Failed to create invite' });
     }
 
-    const inviteLink = buildInviteLink(rawToken, resolvePublicOrigin(req));
+    if (hasSignedTokens) {
+      try {
+        inviteToken = signInviteToken({
+          inviteId: String((insertRes.data as any).id),
+          companyId,
+          email,
+          role,
+          expiresAtIso: expiresAt
+        });
+        tokenHash = hashInviteToken(inviteToken);
+        await insforge.database
+          .from('company_invites')
+          .update({ token_hash: tokenHash })
+          .eq('id', (insertRes.data as any).id);
+      } catch {
+        inviteToken = generateRawInviteToken();
+        tokenHash = hashInviteToken(inviteToken);
+        await insforge.database
+          .from('company_invites')
+          .update({ token_hash: tokenHash })
+          .eq('id', (insertRes.data as any).id);
+      }
+    }
+
+    const inviteLink = buildInviteLink(inviteToken, resolvePublicOrigin(req));
     const profileRes = await insforge.database
       .from('user_profiles')
       .select('full_name, email')
@@ -154,22 +191,17 @@ export default async function handler(req: any, res: any) {
 
     let emailSent = false;
     try {
-      const emailRes = await fetch(`${getOrigin(req)}/api/email/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({
+      const emailResult = await sendTransactionalEmail({
+        actor: { userId: logUserId, organizationId: logOrgId },
+        body: {
           to: email,
           subject: emailContent.subject,
           html: emailContent.html,
           text: emailContent.text,
           meta: { orgId: companyId, inviteId: (insertRes.data as any).id, role }
-        })
+        }
       });
-
-      const emailBody = await emailRes.json().catch(() => null);
-      if (!emailRes.ok || emailBody?.ok === false) {
-        throw new Error(emailBody?.error || `${emailRes.status} ${emailRes.statusText}`);
-      }
+      if (!emailResult.ok) throw new Error(emailResult.error);
 
       emailSent = true;
       await insforge.database

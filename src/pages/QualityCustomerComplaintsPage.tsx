@@ -9,6 +9,7 @@ import type { CustomerComplaintStatus, QualityCustomerComplaint } from '../api/m
 import {
   CUSTOMER_COMPLAINT_STATUS_LABELS,
   createCustomerComplaint,
+  deleteCustomerComplaint,
   getCustomerComplaintSummary,
   listComplaintHandlers,
   listCustomerComplaints,
@@ -254,6 +255,23 @@ export default function QualityCustomerComplaintsPage() {
     }
   }
 
+  async function handleDelete(row: QualityCustomerComplaint) {
+    if (!activeCompanyId || !user?.id) return;
+    const confirmed = window.confirm(`Delete complaint ${row.complaint_ref_no}? This cannot be undone.`);
+    if (!confirmed) return;
+    try {
+      await deleteCustomerComplaint({
+        companyId: activeCompanyId,
+        complaintId: row.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole ?? null
+      });
+      await reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete complaint.');
+    }
+  }
+
   function exportRows(rows: QualityCustomerComplaint[], filenamePrefix = 'customer-complaints') {
     const csvRows = rows.map((row) => ({
       'Complaint Ref. No#': row.complaint_ref_no,
@@ -416,6 +434,24 @@ export default function QualityCustomerComplaintsPage() {
                             View NCR
                           </button>
                         )}
+                        {row.linked_task_id && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/tasks/${row.linked_task_id}`)}
+                            className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50"
+                          >
+                            View Task
+                          </button>
+                        )}
+                        {(canEdit || (activeRole === 'employee' && row.created_by_user_id === (user?.id as UUID))) && (
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(row)}
+                            className="px-2 py-1 rounded border border-critical/30 text-xs text-critical hover:bg-critical/5"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -436,14 +472,18 @@ export default function QualityCustomerComplaintsPage() {
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
           <div className="absolute inset-0 bg-black/40" onClick={() => setModalOpen(false)} />
-          <div className="relative w-full max-w-4xl bg-white rounded-2xl border border-surface-300 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between">
+          <div className="relative w-full max-w-4xl bg-white rounded-2xl border border-surface-300 shadow-xl max-h-[90dvh] overflow-y-auto">
+            <div className="sticky top-0 bg-white z-10 px-5 py-4 border-b border-surface-200 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-charcoal">
                 {formMode === 'create' ? 'Create Complaint' : formMode === 'edit' ? 'Edit Complaint' : 'Complaint Details'}
               </h2>
-              <button type="button" onClick={() => setModalOpen(false)} className="px-3 py-1.5 rounded border border-surface-300 text-sm">
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="min-h-[44px] px-3 rounded-lg border border-surface-300 text-sm"
+              >
                 Close
               </button>
             </div>
@@ -642,6 +682,15 @@ export default function QualityCustomerComplaintsPage() {
                       View NCR
                     </button>
                   )}
+                  {(complaints ?? []).find((x) => x.id === form.id)?.linked_task_id && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/tasks/${(complaints ?? []).find((x) => x.id === form.id)?.linked_task_id}`)}
+                      className="px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                    >
+                      View Task
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -678,4 +727,3 @@ export default function QualityCustomerComplaintsPage() {
     </Layout>
   );
 }
-

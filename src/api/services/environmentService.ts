@@ -133,6 +133,28 @@ export async function upsertEnvImpactAssessment(input: any): Promise<any> {
   return data;
 }
 
+export async function deleteEnvImpactAssessment(input: {
+  companyId: UUID;
+  recordId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+}): Promise<void> {
+  if (!yes(input.actorRole ?? null, WRITE_ROLES)) throw new Error('You do not have permission to delete EIA records.');
+  const { error } = await insforge.database
+    .from('env_impact_assessments')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.recordId);
+  if (error) throw new Error(getErrorMessage(error));
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'environment.eia.delete',
+    entityType: 'env_impact_assessment',
+    entityId: input.recordId
+  });
+}
+
 export async function listEnvRiskOpportunity(companyId: UUID, filters?: any): Promise<any[]> {
   let q = insforge.database.from('env_risk_opportunity').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(2000);
   if (filters?.status && filters.status !== 'all') q = q.eq('status', filters.status);
@@ -161,6 +183,28 @@ export async function upsertEnvRiskOpportunity(input: any): Promise<any> {
   if (!data) throw new Error('Failed to save environmental risk/opportunity record.');
   await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: input.id ? 'environment.risk_opportunity.update' : 'environment.risk_opportunity.create', entityType: 'env_risk_opportunity', entityId: (data as any).id as UUID });
   return data;
+}
+
+export async function deleteEnvRiskOpportunity(input: {
+  companyId: UUID;
+  recordId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+}): Promise<void> {
+  if (!yes(input.actorRole ?? null, WRITE_ROLES)) throw new Error('You do not have permission to delete environmental risk/opportunity records.');
+  const { error } = await insforge.database
+    .from('env_risk_opportunity')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.recordId);
+  if (error) throw new Error(getErrorMessage(error));
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'environment.risk_opportunity.delete',
+    entityType: 'env_risk_opportunity',
+    entityId: input.recordId
+  });
 }
 
 export async function listEnvWasteDisposal(companyId: UUID, filters?: any): Promise<any[]> {
@@ -245,6 +289,28 @@ export async function upsertEnvWasteDisposal(input: any): Promise<any> {
     entityId: (data as any).id as UUID
   });
   return data;
+}
+
+export async function deleteEnvWasteDisposal(input: {
+  companyId: UUID;
+  recordId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+}): Promise<void> {
+  if (!yes(input.actorRole ?? null, WRITE_ROLES)) throw new Error('You do not have permission to delete waste disposal records.');
+  const { error } = await insforge.database
+    .from('env_waste_disposal')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.recordId);
+  if (error) throw new Error(getErrorMessage(error));
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'environment.waste.delete',
+    entityType: 'env_waste_disposal',
+    entityId: input.recordId
+  });
 }
 
 async function createNcrFromEnv(input: { companyId: UUID; actorUserId: UUID; source: 'env_water_monitoring' | 'env_air_quality'; referenceId: UUID; summary: string; riskLevel?: string | null; legalReference?: string | null; }): Promise<UUID> {
@@ -332,6 +398,28 @@ export async function upsertEnvWaterMonitoring(input: any): Promise<any> {
   return saved;
 }
 
+export async function deleteEnvWaterMonitoring(input: {
+  companyId: UUID;
+  recordId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+}): Promise<void> {
+  if (!yes(input.actorRole ?? null, WRITE_ROLES)) throw new Error('You do not have permission to delete water monitoring records.');
+  const { error } = await insforge.database
+    .from('env_water_monitoring')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.recordId);
+  if (error) throw new Error(getErrorMessage(error));
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'environment.water.delete',
+    entityType: 'env_water_monitoring',
+    entityId: input.recordId
+  });
+}
+
 export async function listEnvAirQuality(companyId: UUID, filters?: any): Promise<any[]> {
   let q = insforge.database.from('env_air_quality').select('*').eq('company_id', companyId).order('monitoring_date', { ascending: false }).limit(2000);
   if (filters?.status && filters.status !== 'all') q = q.eq('overall_status', filters.status);
@@ -388,6 +476,28 @@ export async function upsertEnvAirQuality(input: any): Promise<any> {
 
   await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: input.id ? 'environment.air.update' : 'environment.air.create', entityType: 'env_air_quality', entityId: saved.id });
   return saved;
+}
+
+export async function deleteEnvAirQuality(input: {
+  companyId: UUID;
+  recordId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+}): Promise<void> {
+  if (!yes(input.actorRole ?? null, WRITE_ROLES)) throw new Error('You do not have permission to delete air quality records.');
+  const { error } = await insforge.database
+    .from('env_air_quality')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.recordId);
+  if (error) throw new Error(getErrorMessage(error));
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'environment.air.delete',
+    entityType: 'env_air_quality',
+    entityId: input.recordId
+  });
 }
 
 export async function getEnvironmentDashboardStats(companyId: UUID): Promise<EnvDashboardStats> {

@@ -9,6 +9,8 @@ import {
   approveInternalExternalIssueRegister,
   createInternalExternalIssue,
   createInternalExternalIssueRegister,
+  deleteInternalExternalIssue,
+  deleteInternalExternalIssueRegister,
   getInternalExternalIssuesSummary,
   IE_DOC_NO_DEFAULT,
   IE_RISK_OR_OPP_OPTIONS,
@@ -163,6 +165,7 @@ export default function QualityInternalExternalIssuesPage() {
   const [approvalSignature, setApprovalSignature] = useState('');
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [registerSaving, setRegisterSaving] = useState(false);
+  const [registerDeleting, setRegisterDeleting] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [formMode, setFormMode] = useState<FormMode>('create');
@@ -305,6 +308,27 @@ export default function QualityInternalExternalIssuesPage() {
     }
   }
 
+  async function handleDeleteRegister() {
+    if (!activeCompanyId || !selectedRegister || !user?.id || !canApprove) return;
+    const label = selectedRegister.issue_no || selectedRegister.id;
+    if (!window.confirm(`Delete register ${label} and all its issues? This cannot be undone.`)) return;
+    setRegisterDeleting(true);
+    try {
+      await deleteInternalExternalIssueRegister({
+        companyId: activeCompanyId,
+        registerId: selectedRegister.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole ?? null
+      });
+      setSelectedRegisterId('');
+      await refreshAll();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete register.');
+    } finally {
+      setRegisterDeleting(false);
+    }
+  }
+
   function openCreateIssue() {
     setIssueError(null);
     setFormMode('create');
@@ -389,6 +413,23 @@ export default function QualityInternalExternalIssuesPage() {
     }
   }
 
+  async function handleDeleteIssue(issueId: UUID) {
+    if (!activeCompanyId || !user?.id) return;
+    const confirmed = window.confirm('Delete this issue row? This cannot be undone.');
+    if (!confirmed) return;
+    try {
+      await deleteInternalExternalIssue({
+        companyId: activeCompanyId,
+        issueId,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole ?? null
+      });
+      await refreshAll();
+    } catch (err) {
+      setIssueError(err instanceof Error ? err.message : 'Failed to delete issue.');
+    }
+  }
+
   function exportRows(rowsToExport: QualityInternalExternalIssue[], filePrefix = 'internal-external-issues') {
     if (!selectedRegister) return;
     const csvRows = rowsToExport.map((row) => ({
@@ -468,6 +509,16 @@ export default function QualityInternalExternalIssuesPage() {
             <div className="flex items-end gap-2">
               {canWrite && <button type="button" onClick={() => void handleSaveRegister()} disabled={registerSaving} className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-70">{registerSaving ? 'Saving...' : selectedRegister ? 'Save Register' : 'Create Register'}</button>}
               {canApprove && selectedRegister && <button type="button" onClick={() => void handleApproveRegister()} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium hover:bg-surface-50">Approve Register</button>}
+              {canApprove && selectedRegister && (
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteRegister()}
+                  disabled={registerDeleting}
+                  className="px-4 py-2 rounded-lg border border-critical/30 text-critical text-sm font-medium hover:bg-critical/5 disabled:opacity-60"
+                >
+                  {registerDeleting ? 'Deleting…' : 'Delete Register'}
+                </button>
+              )}
             </div>
           </div>
           {registerError && <p className="text-sm text-critical">{registerError}</p>}
@@ -508,7 +559,7 @@ export default function QualityInternalExternalIssuesPage() {
                 {(rows ?? []).map((row) => (
                   <tr key={row.id} className="align-top">
                     <td className="px-3 py-2 font-semibold text-teal">{row.ref_no}</td><td className="px-3 py-2">{row.scope}</td><td className="px-3 py-2">{row.issue_identification}</td><td className="px-3 py-2">{row.risk_or_opp}</td><td className="px-3 py-2">{row.likelihood}</td><td className="px-3 py-2">{row.severity}</td><td className="px-3 py-2 font-semibold">{row.risk_rating}</td><td className="px-3 py-2"><span className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${natureClass(String(row.nature))}`}>{row.nature}</span></td><td className="px-3 py-2">{row.control_measure || '-'}</td><td className="px-3 py-2">{row.responsible_name_snapshot}</td><td className="px-3 py-2">{formatDate(row.target_date)}</td><td className="px-3 py-2">{row.linked_risk_assessment_id ? (riskAssessmentOptions ?? []).find((x) => x.id === row.linked_risk_assessment_id)?.label ?? row.linked_risk_assessment_id : '-'}</td><td className="px-3 py-2">{row.linked_ncr_id ? (ncrOptions ?? []).find((x) => x.id === row.linked_ncr_id)?.label ?? row.linked_ncr_id : '-'}</td><td className="px-3 py-2">{row.status}</td>
-                    <td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => openViewIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">View</button>{canWrite && <button type="button" onClick={() => openEditIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Edit</button>}{canApprove && <button type="button" onClick={() => void handleApproveRegister()} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Approve</button>}{canExport && <button type="button" onClick={() => exportRows([row], `internal-external-issue-${row.ref_no}`)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Export</button>}</div></td>
+                    <td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => openViewIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">View</button>{canWrite && <button type="button" onClick={() => openEditIssue(row)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Edit</button>}{canWrite && <button type="button" onClick={() => void handleDeleteIssue(row.id)} className="px-2 py-1 rounded border border-critical/30 text-xs text-critical hover:bg-critical/5">Delete</button>}{canApprove && <button type="button" onClick={() => void handleApproveRegister()} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Approve</button>}{canExport && <button type="button" onClick={() => exportRows([row], `internal-external-issue-${row.ref_no}`)} className="px-2 py-1 rounded border border-surface-300 text-xs hover:bg-surface-50">Export</button>}</div></td>
                   </tr>
                 ))}
                 {(rows ?? []).length === 0 && (
@@ -530,12 +581,20 @@ export default function QualityInternalExternalIssuesPage() {
         </div>
       </div>
       {modalOpen && (
-        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-5xl bg-white rounded-xl border border-surface-300 overflow-hidden">
-            <div className="px-5 py-4 border-b border-surface-200">
+        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+          <div className="w-full max-w-5xl bg-white rounded-xl border border-surface-300 overflow-hidden max-h-[90dvh] flex flex-col">
+            <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between shrink-0">
               <h2 className="text-lg font-semibold">{formMode === 'create' ? 'Add Issue Row' : formMode === 'edit' ? `Edit Issue #${issueForm.refNo ?? ''}` : `View Issue #${issueForm.refNo ?? ''}`}</h2>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 text-xl leading-none shrink-0"
+                aria-label="Close"
+              >
+                ×
+              </button>
             </div>
-            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+            <div className="flex-1 p-5 space-y-4 overflow-y-auto">
               {issueError && <p className="text-sm text-critical">{issueError}</p>}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <SelectOrType label="Internal/External" value={issueForm.scope} options={SCOPE_OPTIONS} onChange={(value) => setIssueForm((prev) => ({ ...prev, scope: value }))} companyId={activeCompanyId ?? undefined} moduleKey="quality" fieldKey="internal_external_scope" createdByUserId={(user?.id as UUID | undefined) ?? undefined} allowCreate={!!activeCompanyId} required disabled={formMode === 'view'} />
@@ -582,8 +641,8 @@ export default function QualityInternalExternalIssuesPage() {
                 </label>
               </div>
             </div>
-            <div className="px-5 py-4 border-t border-surface-200 flex items-center justify-end gap-2">
-              <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium">Close</button>
+            <div className="px-5 py-4 border-t border-surface-200 flex items-center justify-end gap-2 shrink-0">
+              <button type="button" onClick={() => setModalOpen(false)} className="min-h-[44px] px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium">Close</button>
               {formMode !== 'view' && canWrite && <button type="button" onClick={() => void handleSaveIssue()} disabled={issueSaving} className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-70">{issueSaving ? 'Saving...' : 'Save'}</button>}
             </div>
           </div>

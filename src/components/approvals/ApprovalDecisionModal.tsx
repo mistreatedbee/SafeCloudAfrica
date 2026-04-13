@@ -46,10 +46,10 @@ export function ApprovalDecisionModal(props: {
   if (!props.open || !props.approval) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
+      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+        <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
             <p className="text-sm font-semibold text-charcoal">
               {props.decision === 'approved' ? 'Approve request' : 'Reject request'}
@@ -58,7 +58,12 @@ export function ApprovalDecisionModal(props: {
               {props.approval.entity_type} • {String(props.approval.entity_id).slice(0, 8)}
             </p>
           </div>
-          <button type="button" onClick={props.onClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
+          <button
+            type="button"
+            onClick={props.onClose}
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 shrink-0"
+            aria-label="Close"
+          >
             <XIcon className="w-4 h-4" />
           </button>
         </div>
@@ -106,4 +111,3 @@ export function ApprovalDecisionModal(props: {
     </div>
   );
 }
-

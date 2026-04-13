@@ -79,7 +79,13 @@ const emailTemplates: Record<string, EmailTemplate> = {
 export async function sendEmail(payload: EmailPayload): Promise<void> {
   const response = await fetch('/api/email/send', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+      Pragma: 'no-cache',
+      Expires: '0'
+    },
     body: JSON.stringify(payload)
   });
   const data = await response.json().catch(() => null as any);

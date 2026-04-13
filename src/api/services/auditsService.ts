@@ -304,6 +304,13 @@ export async function createAuditQuestion(input: {
 }
 
 export async function deleteAuditQuestion(questionId: UUID): Promise<void> {
+  const { error: responsesError } = await insforge.database
+    .from('audit_responses')
+    .delete()
+    .eq('audit_question_id', questionId);
+
+  if (responsesError) throw new Error(getErrorMessage(responsesError));
+
   const { error } = await insforge.database
     .from('audit_questions')
     .delete()

@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlusIcon, PencilIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, Trash2Icon } from 'lucide-react';
 import type { IncidentCorrectiveAction, UUID } from '../../api/models/entities';
 
 export type IncidentCorrectiveActionsListProps = {
@@ -8,6 +8,7 @@ export type IncidentCorrectiveActionsListProps = {
   actions: IncidentCorrectiveAction[];
   onAdd: () => void;
   onEdit: (actionId: UUID) => void;
+  onDelete?: (actionId: UUID) => void;
   disabled?: boolean;
 };
 
@@ -40,6 +41,7 @@ export function IncidentCorrectiveActionsList({
   actions,
   onAdd,
   onEdit,
+  onDelete,
   disabled = false
 }: IncidentCorrectiveActionsListProps) {
   return (
@@ -80,15 +82,28 @@ export function IncidentCorrectiveActionsList({
                     <span className="md:col-span-2"><strong>Linked Causes:</strong> {formatCauseLink(action)}</span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onEdit(action.id)}
-                  disabled={disabled}
-                  className="p-2 text-charcoal-500 hover:text-teal disabled:opacity-60"
-                  title="Edit action"
-                >
-                  <PencilIcon className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(action.id)}
+                    disabled={disabled}
+                    className="p-2 text-charcoal-500 hover:text-teal disabled:opacity-60"
+                    title="Edit action"
+                  >
+                    <PencilIcon className="w-4 h-4" />
+                  </button>
+                  {onDelete && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete(action.id)}
+                      disabled={disabled}
+                      className="p-2 text-charcoal-500 hover:text-critical disabled:opacity-60"
+                      title="Delete action"
+                    >
+                      <Trash2Icon className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}

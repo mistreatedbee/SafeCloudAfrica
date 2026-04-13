@@ -3,7 +3,7 @@ import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
 import type { HrKpi, HrKpiAssessmentType } from '../api/models/entities';
-import { listHrKpis, createHrKpi } from '../api/services/hrKpisService';
+import { listHrKpis, createHrKpi, updateHrKpi, deleteHrKpi } from '../api/services/hrKpisService';
 import { useUser } from '@insforge/react';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { XIcon } from 'lucide-react';
@@ -14,7 +14,8 @@ function HrKpiCreateModal(props: {
   onClose: () => void;
   companyId: UUID;
   managerUserId: UUID;
-  onCreated?: () => void;
+  existing?: HrKpi | null;
+  onSaved?: () => void;
 }) {
   const [kpiTitle, setKpiTitle] = useState('');
   const [assessmentType, setAssessmentType] = useState<HrKpiAssessmentType>('employee');
@@ -32,41 +33,90 @@ function HrKpiCreateModal(props: {
 
   const canSubmit = useMemo(() => kpiTitle.trim().length > 2, [kpiTitle]);
 
+  React.useEffect(() => {
+    if (!props.open) return;
+    const existing = props.existing;
+    if (existing) {
+      setKpiTitle(existing.kpi_title ?? '');
+      setAssessmentType((existing.assessment_type as HrKpiAssessmentType) ?? 'employee');
+      setImportance((existing.importance as any) ?? 'medium');
+      setTargetValue(existing.target_value_numeric != null ? String(existing.target_value_numeric) : '');
+      setActualValue(existing.actual_value_numeric != null ? String(existing.actual_value_numeric) : '');
+      setEmployeeSelfRating(existing.employee_self_rating != null ? String(existing.employee_self_rating) : '3');
+      setManagerRating(existing.manager_rating != null ? String(existing.manager_rating) : '3');
+      setManagerRemarks(existing.manager_remarks ?? '');
+      setEmployeeComments(existing.employee_comments ?? '');
+      setPeriodStart(existing.period_start ?? '');
+      setPeriodEnd(existing.period_end ?? '');
+      setError(null);
+      return;
+    }
+    setKpiTitle('');
+    setTargetValue('');
+    setActualValue('');
+    setEmployeeSelfRating('3');
+    setManagerRating('3');
+    setManagerRemarks('');
+    setEmployeeComments('');
+    setPeriodStart('');
+    setPeriodEnd('');
+    setImportance('medium');
+    setAssessmentType('employee');
+    setError(null);
+  }, [props.existing, props.open]);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
     setError(null);
     try {
       setLoading(true);
-      await createHrKpi({
-        companyId: props.companyId,
-        kpiTitle: kpiTitle.trim(),
-        assessmentType,
-        managerUserId: props.managerUserId,
-        importance,
-        targetValueNumeric: targetValue ? Number(targetValue) || 0 : null,
-        actualValueNumeric: actualValue ? Number(actualValue) || 0 : null,
-        employeeSelfRating: employeeSelfRating ? Number(employeeSelfRating) || null : null,
-        managerRating: managerRating ? Number(managerRating) || null : null,
-        managerRemarks: managerRemarks.trim() || null,
-        employeeComments: employeeComments.trim() || null,
-        periodStart: periodStart || null,
-        periodEnd: periodEnd || null,
-        createdByUserId: props.managerUserId
-      });
-      props.onCreated?.();
+      const targetValueNumeric = targetValue ? Number(targetValue) || 0 : null;
+      const actualValueNumeric = actualValue ? Number(actualValue) || 0 : null;
+      const achieved =
+        targetValueNumeric != null && actualValueNumeric != null ? actualValueNumeric >= targetValueNumeric : null;
+
+      if (props.existing?.id) {
+        await updateHrKpi(
+          props.companyId,
+          props.existing.id as UUID,
+          {
+            kpi_title: kpiTitle.trim(),
+            assessment_type: assessmentType,
+            importance,
+            target_value_numeric: targetValueNumeric,
+            actual_value_numeric: actualValueNumeric,
+            achieved,
+            employee_self_rating: employeeSelfRating ? Number(employeeSelfRating) || null : null,
+            manager_rating: managerRating ? Number(managerRating) || null : null,
+            manager_remarks: managerRemarks.trim() || null,
+            employee_comments: employeeComments.trim() || null,
+            period_start: periodStart || null,
+            period_end: periodEnd || null
+          } as any,
+          props.managerUserId
+        );
+      } else {
+        await createHrKpi({
+          companyId: props.companyId,
+          kpiTitle: kpiTitle.trim(),
+          assessmentType,
+          managerUserId: props.managerUserId,
+          importance,
+          targetValueNumeric,
+          actualValueNumeric,
+          employeeSelfRating: employeeSelfRating ? Number(employeeSelfRating) || null : null,
+          managerRating: managerRating ? Number(managerRating) || null : null,
+          managerRemarks: managerRemarks.trim() || null,
+          employeeComments: employeeComments.trim() || null,
+          periodStart: periodStart || null,
+          periodEnd: periodEnd || null,
+          createdByUserId: props.managerUserId
+        });
+      }
+
+      props.onSaved?.();
       props.onClose();
-      setKpiTitle('');
-      setTargetValue('');
-      setActualValue('');
-      setEmployeeSelfRating('3');
-      setManagerRating('3');
-      setManagerRemarks('');
-      setEmployeeComments('');
-      setPeriodStart('');
-      setPeriodEnd('');
-      setImportance('medium');
-      setAssessmentType('employee');
     } catch (err: any) {
       setError(err?.message ?? 'Could not create KPI');
     } finally {
@@ -77,15 +127,16 @@ function HrKpiCreateModal(props: {
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-2xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+        <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <p className="text-sm font-semibold text-charcoal">Add HR KPI</p>
           <button
             type="button"
             onClick={props.onClose}
-            className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500"
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 shrink-0"
+            aria-label="Close"
           >
             <XIcon className="w-4 h-4" />
           </button>
@@ -253,6 +304,8 @@ export function HrKpisPage() {
   const { user } = useUser();
   const [filterType, setFilterType] = useState<'all' | HrKpiAssessmentType>('all');
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<HrKpi | null>(null);
+  const [deletingId, setDeletingId] = useState<UUID | null>(null);
 
   const {
     data: kpis,
@@ -277,6 +330,20 @@ export function HrKpisPage() {
     return Math.round((achieved / list.length) * 100);
   }, [kpis]);
 
+  async function onDelete(row: HrKpi) {
+    if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm(`Delete KPI "${row.kpi_title}"? This cannot be undone.`)) return;
+    setDeletingId(row.id as any);
+    try {
+      await deleteHrKpi({ companyId: activeCompanyId as any, kpiId: row.id as any, actorUserId: user.id as any });
+      await refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete KPI.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <Layout title="HR KPIs">
       <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
@@ -289,7 +356,10 @@ export function HrKpisPage() {
           </div>
           <button
             type="button"
-            onClick={() => setModalOpen(true)}
+            onClick={() => {
+              setEditing(null);
+              setModalOpen(true);
+            }}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600"
           >
             Add KPI
@@ -346,6 +416,7 @@ export function HrKpisPage() {
                   <th className="py-2 pr-4">Manager</th>
                   <th className="py-2 pr-4">Achieved</th>
                   <th className="py-2 pr-4">Period</th>
+                  <th className="py-2 pr-4">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -391,6 +462,28 @@ export function HrKpisPage() {
                         ? `${kpi.period_start ?? ''} – ${kpi.period_end ?? ''}`
                         : '—'}
                     </td>
+                    <td className="py-2 pr-4">
+                      <div className="flex flex-wrap gap-3 text-xs">
+                        <button
+                          type="button"
+                          className="text-teal underline"
+                          onClick={() => {
+                            setEditing(kpi);
+                            setModalOpen(true);
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="text-critical underline disabled:opacity-50"
+                          onClick={() => void onDelete(kpi)}
+                          disabled={deletingId === (kpi.id as any)}
+                        >
+                          {deletingId === (kpi.id as any) ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -402,13 +495,16 @@ export function HrKpisPage() {
       {activeCompanyId && user?.id && (
         <HrKpiCreateModal
           open={modalOpen}
-          onClose={() => setModalOpen(false)}
+          onClose={() => {
+            setModalOpen(false);
+            setEditing(null);
+          }}
           companyId={activeCompanyId as any}
           managerUserId={user.id as any}
-          onCreated={refresh}
+          existing={editing}
+          onSaved={refresh}
         />
       )}
     </Layout>
   );
 }
-

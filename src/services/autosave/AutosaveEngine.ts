@@ -88,7 +88,7 @@ export class AutosaveEngine<S> {
   }
 
   /**
-   * Save immediately (ignores debounce). Useful for “Save Draft” buttons.
+   * Save immediately (ignores debounce). Useful for "Save Draft" buttons.
    */
   async flush(): Promise<void> {
     if (this.timer) {
@@ -154,4 +154,3 @@ export class AutosaveEngine<S> {
 export function computeAutosaveKey(snapshot: unknown): string {
   return stableStringify(snapshot);
 }
-

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { createClient } from '@insforge/sdk';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { formatAuthError } from '../../auth/authMessages';
@@ -386,6 +386,7 @@ export function SeedDemoPage() {
 
   const enabled = ENABLE_DEMO_SEED;
   const tokenConfigured = !!DEMO_SEED_TOKEN?.trim();
+  const canRun = enabled && tokenConfigured && token.trim() === DEMO_SEED_TOKEN;
 
   if (!enabled) {
     return (
@@ -397,12 +398,6 @@ export function SeedDemoPage() {
       </AuthShell>
     );
   }
-
-  const canRun = useMemo(() => {
-    if (!enabled) return false;
-    if (!tokenConfigured) return false;
-    return token.trim() === DEMO_SEED_TOKEN;
-  }, [enabled, token, tokenConfigured]);
 
   async function runSeed() {
     setError(null);
@@ -602,4 +597,3 @@ export function SeedDemoPage() {
     </>
   );
 }
-

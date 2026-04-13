@@ -101,4 +101,3 @@ export function useAutosave<S>(args: UseAutosaveArgs<S>) {
 
   return { status, error, flush };
 }
-

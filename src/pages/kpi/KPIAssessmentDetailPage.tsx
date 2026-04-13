@@ -11,8 +11,8 @@ import {
   normalizeAssessmentStatus,
   updateKPIAssessment
 } from '../../api/services/kpiAssessmentService';
-import { updateKPIAssessmentLine } from '../../api/services/kpiAssessmentLineService';
-import { createKPIFinding, listKPIFindings } from '../../api/services/kpiFindingService';
+import { deleteKPIAssessmentLine, updateKPIAssessmentLine } from '../../api/services/kpiAssessmentLineService';
+import { createKPIFinding, deleteKPIFinding, listKPIFindings } from '../../api/services/kpiFindingService';
 import { listActivityLogsByEntity } from '../../api/services/activityLogService';
 import type { KPIAssessment, KPIAssessmentLine, KPIFinding, KpiAssessmentStatus } from '../../api/models/entities';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
@@ -48,6 +48,8 @@ export function KPIAssessmentDetailPage() {
   const [managerRemarksDraft, setManagerRemarksDraft] = useState('');
   const [savingLineIds, setSavingLineIds] = useState<Record<string, boolean>>({});
   const [savingAssessmentComments, setSavingAssessmentComments] = useState(false);
+  const [deletingLineId, setDeletingLineId] = useState<string | null>(null);
+  const [deletingFindingId, setDeletingFindingId] = useState<string | null>(null);
 
   type KPIAssessmentDetailDraftLinePatch = {
     lineId: string;
@@ -122,7 +124,7 @@ export function KPIAssessmentDetailPage() {
     [activeCompanyId, assessmentId, refresher]
   );
 
-  const { data: findings } = useAsync<KPIFinding[]>(
+  const { data: findings, refetch: refetchFindings } = useAsync<KPIFinding[]>(
     async () => {
       if (!activeCompanyId || !assessmentId) return [];
       return listKPIFindings({ organizationId: activeCompanyId, assessmentId: assessmentId as any });
@@ -339,6 +341,38 @@ export function KPIAssessmentDetailPage() {
     }
   };
 
+  const handleDeleteLine = async (line: KPIAssessmentLine) => {
+    if (!activeCompanyId || !assessment || deletingLineId === line.line_id) return;
+    if (!window.confirm('Delete this KPI questionnaire line from the assessment? This cannot be undone.')) return;
+
+    const lineId = String(line.line_id);
+    const existingTimer = lineTimeoutsRef.current.get(lineId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      lineTimeoutsRef.current.delete(lineId);
+    }
+    pendingLinePatchesRef.current.delete(lineId);
+
+    setDeletingLineId(lineId);
+    setError(null);
+    setMessage(null);
+    try {
+      await deleteKPIAssessmentLine(line.line_id as any, assessment.assessment_id, activeCompanyId);
+      setLineDraft((prev) => prev.filter((entry) => entry.line_id !== line.line_id));
+      setMessage('KPI questionnaire line deleted.');
+      if (draftEnabled) {
+        clearDraft(draftKey);
+        setDraftBaselineJson(null);
+        restoredOnceRef.current = false;
+      }
+      setRefresher((r) => r + 1);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to delete KPI questionnaire line.');
+    } finally {
+      setDeletingLineId(null);
+    }
+  };
+
   if (loadingAssess || !assessmentId) {
     return (
       <div className="flex items-center gap-3 p-6">
@@ -528,11 +562,21 @@ export function KPIAssessmentDetailPage() {
                       </td>
                       {canCloseAssessment && (
                         <td className="py-2 pr-4">
-                          {label === 'Not Achieved' && !line.finding_generated && (
-                            <button type="button" onClick={() => handleGenerateFinding(line)} className="text-sm text-teal hover:underline">
-                              Create action
+                          <div className="flex flex-col items-start gap-1">
+                            {label === 'Not Achieved' && !line.finding_generated && (
+                              <button type="button" onClick={() => handleGenerateFinding(line)} className="text-sm text-teal hover:underline">
+                                Create action
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteLine(line)}
+                              disabled={deletingLineId === String(line.line_id)}
+                              className="text-sm text-critical hover:underline disabled:opacity-50 disabled:no-underline"
+                            >
+                              {deletingLineId === String(line.line_id) ? 'Deleting…' : 'Delete line'}
                             </button>
-                          )}
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -594,9 +638,38 @@ export function KPIAssessmentDetailPage() {
                   <p className="text-sm font-medium text-charcoal">{f.description.slice(0, 90)}</p>
                   <p className="text-xs text-charcoal-500">Due: {f.due_date} | Status: {f.status.replace('_', ' ')}</p>
                 </div>
-                <button type="button" onClick={() => navigate('/modules/hr/kpis/findings')} className="text-sm text-teal hover:underline">
-                  View
-                </button>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => navigate('/modules/hr/kpis/findings')} className="text-sm text-teal hover:underline">
+                    View
+                  </button>
+                  {activeCompanyId && user?.id && (
+                    <button
+                      type="button"
+                      className="text-sm text-critical hover:underline disabled:opacity-50"
+                      disabled={deletingFindingId === String(f.finding_id)}
+                      onClick={async () => {
+                        if (!window.confirm('Delete this corrective action finding? This cannot be undone.')) return;
+                        setDeletingFindingId(String(f.finding_id));
+                        try {
+                          await deleteKPIFinding({
+                            organizationId: activeCompanyId,
+                            findingId: f.finding_id as any,
+                            actorUserId: user.id as any
+                          });
+                          setMessage('Corrective action finding deleted.');
+                          await refetchFindings();
+                          setRefresher((r) => r + 1);
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : 'Failed to delete finding.');
+                        } finally {
+                          setDeletingFindingId(null);
+                        }
+                      }}
+                    >
+                      {deletingFindingId === String(f.finding_id) ? 'Deleting…' : 'Delete'}
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

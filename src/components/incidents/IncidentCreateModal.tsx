@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { XIcon, FileTextIcon, ImageIcon, Trash2Icon, ExternalLinkIcon, DownloadIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
@@ -13,7 +13,8 @@ import {
   IMMEDIATE_CAUSES_UNSAFE_CONDITIONS_GROUPS,
   ROOT_CAUSE_HUMAN_FACTORS_CATEGORIES,
   ROOT_CAUSE_WORKPLACE_FACTORS_CATEGORIES,
-  SYSTEM_FAILURE_OPTIONS
+  SYSTEM_FAILURE_OPTIONS,
+  getIncidentRiskCategory
 } from '../../api/models/core';
 import type { Incident } from '../../api/models/entities';
 import { createIncident, updateIncident } from '../../api/services/incidentsService';
@@ -21,11 +22,11 @@ import { getIncidentInvestigation, upsertIncidentInvestigation } from '../../api
 import { createIncidentCorrectiveAction } from '../../api/services/incidentCorrectiveActionsService';
 import { createEvidence } from '../../api/services/evidenceService';
 import { uploadFile } from '../../api/services/storageService';
-import { useAsync } from '../../api/hooks/useAsync';
-import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
 import { AffectedPersonSelector } from './AffectedPersonSelector';
 import type { TimelineEvent } from './IncidentTimelineBuilder';
 import { UserMultiSelect } from '../ui/UserMultiSelect';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const EVIDENCE_BUCKET = 'sca-evidence';
 
@@ -62,8 +63,11 @@ type AffectedPersonEntry = {
 
 type UploadDraft = {
   id: string;
-  file: File;
+  // File objects cannot be reliably persisted across sessions.
+  // When restored from a draft, `file` will be null and the user must re-select.
+  file: File | null;
   displayName: string;
+  originalFileName: string;
   previewUrl: string | null;
   kind: 'image' | 'document';
 };
@@ -139,6 +143,7 @@ function buildUploadDraft(file: File): UploadDraft {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     file,
     displayName: file.name,
+    originalFileName: file.name,
     previewUrl: isImage ? URL.createObjectURL(file) : null,
     kind: isImage ? 'image' : 'document'
   };
@@ -146,19 +151,6 @@ function buildUploadDraft(file: File): UploadDraft {
 
 function makeCauseKey(group: string, item: string): string {
   return `${group}::${item}`;
-}
-
-function getRiskCategoryFromScore(score: number): 'Low' | 'Medium' | 'High' {
-  const value = Math.max(1, Math.min(25, Number(score) || 1));
-  if (value <= 5) return 'Low';
-  if (value <= 12) return 'Medium';
-  return 'High';
-}
-
-function buildEmployeeName(employee: HrEmployee): string {
-  const fullName = `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim();
-  if (fullName) return fullName;
-  return employee.email ?? employee.employee_no ?? 'Unknown employee';
 }
 
 export function IncidentCreateModal(props: {
@@ -173,23 +165,29 @@ export function IncidentCreateModal(props: {
 }) {
   const editingIncident = props.incident ?? null;
   const isEditing = Boolean(editingIncident);
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `incident-modal:${props.companyId}:${editingIncident?.id ?? 'new'}`;
   const [module, setModule] = useState<ModuleKey>(props.defaultModule ?? 'safety');
   const [incidentTypeSelections, setIncidentTypeSelections] = useState<Record<string, boolean>>(
     Object.fromEntries(INCIDENT_TYPES.map((t) => [t, false]))
   );
   const [incidentTypeOther, setIncidentTypeOther] = useState('');
   const [category, setCategory] = useState<IncidentCategory>(INCIDENT_CATEGORIES[0]);
+  const [selectedCategories, setSelectedCategories] = useState<IncidentCategory[]>([INCIDENT_CATEGORIES[0]]);
   const [subcategory, setSubcategory] = useState('');
+  const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
   const [subcategoryManual, setSubcategoryManual] = useState('');
   const [useManualSubcategory, setUseManualSubcategory] = useState(false);
 
   const [title, setTitle] = useState('');
+  const [projectClient, setProjectClient] = useState('');
   const [briefDescription, setBriefDescription] = useState('');
   const [occurredAtInput, setOccurredAtInput] = useState(new Date().toISOString().slice(0, 16));
   const [location, setLocation] = useState('');
   const [natureOfIncident, setNatureOfIncident] = useState('');
   const [causeOfIncident, setCauseOfIncident] = useState('');
   const [affectedPersonId, setAffectedPersonId] = useState<UUID | null>(null);
+  const [affectedEmployeeId, setAffectedEmployeeId] = useState<UUID | null>(null);
   const [affectedPersonName, setAffectedPersonName] = useState('');
   const [affectedPersons, setAffectedPersons] = useState<AffectedPersonEntry[]>([
     {
@@ -205,13 +203,11 @@ export function IncidentCreateModal(props: {
 
   const [reportedBy, setReportedBy] = useState('');
   const [reportedTo, setReportedTo] = useState('');
-  const [reportedByEmployeeId, setReportedByEmployeeId] = useState<UUID | null>(null);
-  const [reportedToEmployeeId, setReportedToEmployeeId] = useState<UUID | null>(null);
   const [copyTo, setCopyTo] = useState('');
   const [riskCategorySimple, setRiskCategorySimple] = useState<'Low' | 'Medium' | 'High'>('Medium');
 
-  const [riskLikelihood, setRiskLikelihood] = useState<1 | 2 | 3 | 4 | 5 | ''>('');
-  const [riskSeverity, setRiskSeverity] = useState<1 | 2 | 3 | 4 | 5 | ''>('');
+  const [riskLikelihood, setRiskLikelihood] = useState<1 | 2 | 3 | 4 | 5>(3);
+  const [riskSeverity, setRiskSeverity] = useState<1 | 2 | 3 | 4 | 5>(3);
 
   const [investigationRequired, setInvestigationRequired] = useState(false);
   const [generateNcr, setGenerateNcr] = useState(false);
@@ -242,36 +238,31 @@ export function IncidentCreateModal(props: {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
-  const draftStorageKey = useMemo(
-    () => `incident-form-draft:v2:${props.companyId}:${props.createdByUserId}:${editingIncident?.id ?? 'new'}`,
-    [props.companyId, props.createdByUserId, editingIncident?.id]
-  );
-  const isHydratingDraftRef = useRef(false);
-
-  const {
-    data: hrEmployeesData,
-    loading: hrEmployeesLoading,
-    error: hrEmployeesError,
-    retry: retryHrEmployees
-  } = useAsync<HrEmployee[]>(
-    async () => {
-      if (!props.open || !props.companyId) return [];
-      const rows = await listHrEmployees(props.companyId);
-      return rows
-        .filter((row) => Boolean(row.user_id))
-        .sort((a, b) => buildEmployeeName(a).localeCompare(buildEmployeeName(b)));
-    },
-    [props.open, props.companyId]
-  );
-  const hrEmployees = hrEmployeesData ?? [];
-
-  const availableSubcategories = useMemo(() => INCIDENT_SUBCATEGORIES[category] || [], [category]);
+  const availableSubcategories = useMemo(() => {
+    const baseCategories = (selectedCategories.length > 0 ? selectedCategories : [category]) as IncidentCategory[];
+    const all = new Set<string>();
+    for (const c of baseCategories) {
+      for (const s of INCIDENT_SUBCATEGORIES[c] ?? []) {
+        all.add(s);
+      }
+    }
+    return Array.from(all);
+  }, [selectedCategories, category]);
   const finalSubcategory = useMemo(
     () => (useManualSubcategory ? subcategoryManual.trim() : subcategory.trim()),
     [useManualSubcategory, subcategory, subcategoryManual]
   );
+  const allSelectedSubcategories = useMemo(() => {
+    const values = new Set<string>();
+    for (const s of selectedSubcategories) {
+      const trimmed = s.trim();
+      if (trimmed) values.add(trimmed);
+    }
+    const primary = finalSubcategory;
+    if (primary) values.add(primary);
+    return Array.from(values);
+  }, [selectedSubcategories, finalSubcategory]);
   const finalIncidentType = useMemo(
     () => {
       const selected = Object.entries(incidentTypeSelections)
@@ -282,24 +273,8 @@ export function IncidentCreateModal(props: {
     },
     [incidentTypeSelections, incidentTypeOther]
   );
-  const calculatedRisk = useMemo(() => {
-    if (!riskLikelihood || !riskSeverity) return null;
-    return riskLikelihood * riskSeverity;
-  }, [riskLikelihood, riskSeverity]);
-  const calculatedRiskCategory = useMemo(() => {
-    if (!calculatedRisk) return null;
-    return getRiskCategoryFromScore(calculatedRisk);
-  }, [calculatedRisk]);
-  const riskCategoryTone = useMemo(() => {
-    if (!calculatedRiskCategory) return 'bg-surface-100 text-charcoal-500 border-surface-300';
-    if (calculatedRiskCategory === 'Low') {
-      return 'bg-success/15 text-success border-success/30';
-    }
-    if (calculatedRiskCategory === 'Medium') {
-      return 'bg-warning/15 text-warning border-warning/30';
-    }
-    return 'bg-critical/15 text-critical border-critical/30';
-  }, [calculatedRiskCategory]);
+  const calculatedRisk = riskLikelihood * riskSeverity;
+  const calculatedRiskCategory = useMemo(() => getIncidentRiskCategory(calculatedRisk), [calculatedRisk]);
   const causeLinkOptions = useMemo(() => {
     const items: Array<{ type: InvestigationCauseLinkType; text: string }> = [];
     for (const entry of Object.values(unsafeActs)) items.push({ type: 'unsafe_act', text: `${entry.group}: ${entry.item}` });
@@ -313,17 +288,183 @@ export function IncidentCreateModal(props: {
   const canSubmit = useMemo(() => {
     return (
       title.trim().length > 0 &&
+      projectClient.trim().length > 0 &&
       briefDescription.trim().length > 0 &&
       finalIncidentType.length > 0 &&
-      finalSubcategory.length > 0 &&
+      allSelectedSubcategories.length > 0 &&
       natureOfIncident.trim().length > 0 &&
       causeOfIncident.trim().length > 0 &&
       reportedBy.trim().length > 0 &&
-      reportedTo.trim().length > 0 &&
-      Boolean(riskLikelihood) &&
-      Boolean(riskSeverity)
+      reportedTo.trim().length > 0
     );
-  }, [title, briefDescription, finalIncidentType, finalSubcategory, natureOfIncident, causeOfIncident, reportedBy, reportedTo, riskLikelihood, riskSeverity]);
+  }, [title, projectClient, briefDescription, finalIncidentType, allSelectedSubcategories, natureOfIncident, causeOfIncident, reportedBy, reportedTo]);
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      !loading &&
+      (title.trim().length > 0 ||
+        projectClient.trim().length > 0 ||
+        briefDescription.trim().length > 0 ||
+        location.trim().length > 0 ||
+        natureOfIncident.trim().length > 0 ||
+        causeOfIncident.trim().length > 0 ||
+        incidentTypeOther.trim().length > 0 ||
+        Object.values(incidentTypeSelections).some(Boolean) ||
+        category !== INCIDENT_CATEGORIES[0] ||
+        selectedCategories.length !== 1 ||
+        selectedCategories.some((c) => c !== INCIDENT_CATEGORIES[0]) ||
+        selectedSubcategories.length > 0 ||
+        (useManualSubcategory ? subcategoryManual.trim().length > 0 : subcategory.trim().length > 0) ||
+        reportedBy.trim().length > 0 ||
+        reportedTo.trim().length > 0 ||
+        copyTo.trim().length > 0 ||
+        affectedPersonId !== null ||
+        affectedEmployeeId !== null ||
+        affectedPersonName.trim().length > 0 ||
+        riskLikelihood !== 3 ||
+        riskSeverity !== 3 ||
+        investigationRequired ||
+        generateNcr ||
+        actualOutcome.trim().length > 0 ||
+        lossTypes.length > 0 ||
+        lossOther.trim().length > 0 ||
+        lossNotes.trim().length > 0 ||
+        Object.keys(unsafeActs).length > 0 ||
+        Object.keys(unsafeConditions).length > 0 ||
+        Object.keys(rootCauseHuman).length > 0 ||
+        Object.keys(rootCauseWorkplace).length > 0 ||
+        Object.keys(systemFailures).length > 0 ||
+        incidentTimelineEvents.length > 0 ||
+        potentialConsequence.trim().length > 0 ||
+        contributingFactors.trim().length > 0 ||
+        lessonsLearned.trim().length > 0 ||
+        investigationTeam.trim().length > 0 ||
+        conclusion.trim().length > 0 ||
+        preparedBy.trim().length > 0 ||
+        distributionList.trim().length > 0 ||
+        Object.values(investigationSections).some(Boolean) ||
+        correctiveActionDrafts.some((d) => Boolean(d.actionRequired.trim() || d.responsibleUserId || d.dueDate)) ||
+        evidenceUploads.length > 0 ||
+        investigationUploads.length > 0 ||
+        affectedPersons.some((p) => Boolean(p.personId || p.personName.trim() || p.role.trim() || p.department.trim() || p.injuryType.trim() || p.contactDetails.trim()))),
+    [
+      affectedPersons,
+      affectedEmployeeId,
+      affectedPersonId,
+      affectedPersonName,
+      category,
+      actualOutcome,
+      briefDescription,
+      causeOfIncident,
+      conclusion,
+      contributingFactors,
+      correctiveActionDrafts,
+      distributionList,
+      evidenceUploads.length,
+      investigationSections,
+      investigationTeam,
+      investigationRequired,
+      investigationUploads.length,
+      incidentTimelineEvents.length,
+      incidentTypeOther,
+      incidentTypeSelections,
+      lessonsLearned,
+      loading,
+      lossNotes,
+      lossOther,
+      lossTypes,
+      location,
+      natureOfIncident,
+      preparedBy,
+      projectClient,
+      potentialConsequence,
+      props.open,
+      reportedBy,
+      reportedTo,
+      riskLikelihood,
+      riskSeverity,
+      selectedSubcategories.length,
+      subcategory,
+      subcategoryManual,
+      systemFailures,
+      title,
+      selectedCategories,
+      unsafeActs,
+      unsafeConditions,
+      useManualSubcategory,
+      rootCauseHuman,
+      rootCauseWorkplace,
+      copyTo,
+      generateNcr
+    ]
+  );
+
+  useDraftRegistration({
+    key: draftKey,
+    enabled: props.open && !isEditing,
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      module,
+      incidentTypeSelections,
+      incidentTypeOther,
+      category,
+      selectedCategories,
+      subcategory,
+      selectedSubcategories,
+      subcategoryManual,
+      useManualSubcategory,
+      title,
+      projectClient,
+      briefDescription,
+      occurredAtInput,
+      location,
+      natureOfIncident,
+      causeOfIncident,
+      affectedPersonId,
+      affectedEmployeeId,
+      affectedPersonName,
+      affectedPersons,
+      reportedBy,
+      reportedTo,
+      copyTo,
+      riskCategorySimple,
+      riskLikelihood,
+      riskSeverity,
+      investigationRequired,
+      generateNcr,
+      actualOutcome,
+      lossTypes,
+      lossOther,
+      lossNotes,
+      unsafeActs,
+      unsafeConditions,
+      rootCauseHuman,
+      rootCauseWorkplace,
+      systemFailures,
+      incidentTimelineEvents,
+      potentialConsequence,
+      contributingFactors,
+      lessonsLearned,
+      investigationTeam,
+      conclusion,
+      preparedBy,
+      distributionList,
+      investigationSections,
+      correctiveActionDrafts,
+      evidenceUploadsMeta: evidenceUploads.map((u) => ({
+        id: u.id,
+        displayName: u.displayName,
+        originalFileName: u.originalFileName,
+        kind: u.kind
+      })),
+      investigationUploadsMeta: investigationUploads.map((u) => ({
+        id: u.id,
+        displayName: u.displayName,
+        originalFileName: u.originalFileName,
+        kind: u.kind
+      }))
+    })
+  });
 
   function releasePreviews(items: UploadDraft[]) {
     for (const item of items) {
@@ -338,10 +479,13 @@ export function IncidentCreateModal(props: {
     setIncidentTypeSelections(Object.fromEntries(INCIDENT_TYPES.map((t) => [t, false])));
     setIncidentTypeOther('');
     setCategory(INCIDENT_CATEGORIES[0]);
+    setSelectedCategories([INCIDENT_CATEGORIES[0]]);
     setSubcategory('');
+    setSelectedSubcategories([]);
     setSubcategoryManual('');
     setUseManualSubcategory(false);
     setTitle('');
+    setProjectClient('');
     setBriefDescription('');
     setOccurredAtInput(new Date().toISOString().slice(0, 16));
     setLocation('');
@@ -362,12 +506,10 @@ export function IncidentCreateModal(props: {
     ]);
     setReportedBy('');
     setReportedTo('');
-    setReportedByEmployeeId(null);
-    setReportedToEmployeeId(null);
     setCopyTo('');
     setRiskCategorySimple('Medium');
-    setRiskLikelihood('');
-    setRiskSeverity('');
+    setRiskLikelihood(3);
+    setRiskSeverity(3);
     setInvestigationRequired(false);
     setGenerateNcr(false);
     setActualOutcome('');
@@ -392,89 +534,162 @@ export function IncidentCreateModal(props: {
     setEvidenceUploads([]);
     setInvestigationUploads([]);
     setError(null);
-    setSaveSuccessMessage(null);
   }
 
   useEffect(() => {
     if (!props.open) return;
     if (!editingIncident) {
+      const restored = restoreDraft<{
+        module?: ModuleKey;
+        incidentTypeSelections?: Record<string, boolean>;
+        incidentTypeOther?: string;
+        category?: IncidentCategory;
+        selectedCategories?: IncidentCategory[];
+        subcategory?: string;
+        selectedSubcategories?: string[];
+        subcategoryManual?: string;
+        useManualSubcategory?: boolean;
+        title?: string;
+        projectClient?: string;
+        briefDescription?: string;
+        occurredAtInput?: string;
+        location?: string;
+        natureOfIncident?: string;
+        causeOfIncident?: string;
+        affectedPersonId?: UUID | null;
+        affectedEmployeeId?: UUID | null;
+        affectedPersonName?: string;
+        affectedPersons?: AffectedPersonEntry[];
+        reportedBy?: string;
+        reportedTo?: string;
+        copyTo?: string;
+        riskCategorySimple?: 'Low' | 'Medium' | 'High';
+        riskLikelihood?: 1 | 2 | 3 | 4 | 5;
+        riskSeverity?: 1 | 2 | 3 | 4 | 5;
+        investigationRequired?: boolean;
+        generateNcr?: boolean;
+        actualOutcome?: string;
+        lossTypes?: string[];
+        lossOther?: string;
+        lossNotes?: string;
+        unsafeActs?: Record<string, UnsafeCauseEntry>;
+        unsafeConditions?: Record<string, UnsafeCauseEntry>;
+        rootCauseHuman?: Record<string, CauseDetailEntry>;
+        rootCauseWorkplace?: Record<string, CauseDetailEntry>;
+        systemFailures?: Record<string, CauseDetailEntry>;
+        incidentTimelineEvents?: TimelineEvent[];
+        potentialConsequence?: string;
+        contributingFactors?: string;
+        lessonsLearned?: string;
+        investigationTeam?: string;
+        conclusion?: string;
+        preparedBy?: string;
+        distributionList?: string;
+        investigationSections?: Record<InvestigationSectionKey, boolean>;
+        correctiveActionDrafts?: CorrectiveActionDraft[];
+        evidenceUploadsMeta?: Array<{ id: string; displayName: string; originalFileName: string; kind: 'image' | 'document' }>;
+        investigationUploadsMeta?: Array<{ id: string; displayName: string; originalFileName: string; kind: 'image' | 'document' }>;
+      }>(draftKey);
       resetForm();
-      setSaveSuccessMessage(null);
-      isHydratingDraftRef.current = true;
-      try {
-        const raw = localStorage.getItem(draftStorageKey);
-        if (raw) {
-          const draft = JSON.parse(raw) as Record<string, unknown>;
-          setModule((draft.module as ModuleKey) ?? (props.defaultModule ?? 'safety'));
-          setIncidentTypeSelections((draft.incidentTypeSelections as Record<string, boolean>) ?? Object.fromEntries(INCIDENT_TYPES.map((t) => [t, false])));
-          setIncidentTypeOther(String(draft.incidentTypeOther ?? ''));
-          setCategory((draft.category as IncidentCategory) ?? INCIDENT_CATEGORIES[0]);
-          setSubcategory(String(draft.subcategory ?? ''));
-          setSubcategoryManual(String(draft.subcategoryManual ?? ''));
-          setUseManualSubcategory(Boolean(draft.useManualSubcategory));
-          setTitle(String(draft.title ?? ''));
-          setBriefDescription(String(draft.briefDescription ?? ''));
-          setOccurredAtInput(String(draft.occurredAtInput ?? new Date().toISOString().slice(0, 16)));
-          setLocation(String(draft.location ?? ''));
-          setNatureOfIncident(String(draft.natureOfIncident ?? ''));
-          setCauseOfIncident(String(draft.causeOfIncident ?? ''));
-          setAffectedPersonId((draft.affectedPersonId as UUID | null) ?? null);
-          setAffectedPersonName(String(draft.affectedPersonName ?? ''));
-          if (Array.isArray(draft.affectedPersons) && draft.affectedPersons.length > 0) {
-            setAffectedPersons(
-              draft.affectedPersons.map((entry: any) => ({
-                id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                personId: (entry?.personId as UUID) ?? null,
-                personName: String(entry?.personName ?? ''),
-                role: String(entry?.role ?? ''),
-                department: String(entry?.department ?? ''),
-                injuryType: String(entry?.injuryType ?? ''),
-                contactDetails: String(entry?.contactDetails ?? '')
-              }))
-            );
-          }
-          setReportedBy(String(draft.reportedBy ?? ''));
-          setReportedTo(String(draft.reportedTo ?? ''));
-          setReportedByEmployeeId((draft.reportedByEmployeeId as UUID | null) ?? null);
-          setReportedToEmployeeId((draft.reportedToEmployeeId as UUID | null) ?? null);
-          setCopyTo(String(draft.copyTo ?? ''));
-          const draftLikelihood = Number(draft.riskLikelihood);
-          const draftSeverity = Number(draft.riskSeverity);
-          setRiskLikelihood(Number.isFinite(draftLikelihood) && draftLikelihood >= 1 && draftLikelihood <= 5 ? (draftLikelihood as 1 | 2 | 3 | 4 | 5) : '');
-          setRiskSeverity(Number.isFinite(draftSeverity) && draftSeverity >= 1 && draftSeverity <= 5 ? (draftSeverity as 1 | 2 | 3 | 4 | 5) : '');
-          setRiskCategorySimple((draft.riskCategorySimple as 'Low' | 'Medium' | 'High') ?? 'Medium');
-          setInvestigationRequired(Boolean(draft.investigationRequired));
-          setGenerateNcr(Boolean(draft.generateNcr));
-          setActualOutcome(String(draft.actualOutcome ?? ''));
-          setLossTypes(Array.isArray(draft.lossTypes) ? draft.lossTypes.filter((x: unknown) => typeof x === 'string') : []);
-          setLossOther(String(draft.lossOther ?? ''));
-          setLossNotes(String(draft.lossNotes ?? ''));
-          setUnsafeActs((draft.unsafeActs as Record<string, UnsafeCauseEntry>) ?? {});
-          setUnsafeConditions((draft.unsafeConditions as Record<string, UnsafeCauseEntry>) ?? {});
-          setRootCauseHuman((draft.rootCauseHuman as Record<string, CauseDetailEntry>) ?? {});
-          setRootCauseWorkplace((draft.rootCauseWorkplace as Record<string, CauseDetailEntry>) ?? {});
-          setSystemFailures((draft.systemFailures as Record<string, CauseDetailEntry>) ?? {});
-          setIncidentTimelineEvents((draft.incidentTimelineEvents as TimelineEvent[]) ?? []);
-          setPotentialConsequence(String(draft.potentialConsequence ?? ''));
-          setContributingFactors(String(draft.contributingFactors ?? ''));
-          setLessonsLearned(String(draft.lessonsLearned ?? ''));
-          setInvestigationTeam(String(draft.investigationTeam ?? ''));
-          setConclusion(String(draft.conclusion ?? ''));
-          setPreparedBy(String(draft.preparedBy ?? ''));
-          setDistributionList(String(draft.distributionList ?? ''));
-          setInvestigationSections((draft.investigationSections as Record<InvestigationSectionKey, boolean>) ?? emptyInvestigationSectionSelection());
-          setCorrectiveActionDrafts((draft.correctiveActionDrafts as CorrectiveActionDraft[]) ?? []);
+      if (restored) {
+        setModule(restored.module ?? (props.defaultModule ?? 'safety'));
+
+        const nextTypeSelections =
+          restored.incidentTypeSelections && typeof restored.incidentTypeSelections === 'object'
+            ? (restored.incidentTypeSelections as Record<string, boolean>)
+            : Object.fromEntries(INCIDENT_TYPES.map((t) => [t, false]));
+        setIncidentTypeSelections(nextTypeSelections);
+        setIncidentTypeOther(restored.incidentTypeOther ?? '');
+
+        const nextSelectedCategories = Array.isArray(restored.selectedCategories) && restored.selectedCategories.length
+          ? restored.selectedCategories
+          : restored.category
+            ? [restored.category]
+            : [INCIDENT_CATEGORIES[0]];
+        setSelectedCategories(nextSelectedCategories);
+        setCategory(nextSelectedCategories[0] ?? INCIDENT_CATEGORIES[0]);
+
+        const nextSelectedSubcategories = Array.isArray(restored.selectedSubcategories)
+          ? restored.selectedSubcategories
+          : [];
+        setSelectedSubcategories(nextSelectedSubcategories);
+
+        setSubcategory(restored.subcategory ?? '');
+        setSubcategoryManual(restored.subcategoryManual ?? '');
+        setUseManualSubcategory(Boolean(restored.useManualSubcategory));
+
+        setTitle(restored.title ?? '');
+        setProjectClient(restored.projectClient ?? '');
+        setBriefDescription(restored.briefDescription ?? '');
+        if (restored.occurredAtInput) setOccurredAtInput(restored.occurredAtInput);
+        setLocation(restored.location ?? '');
+        setNatureOfIncident(restored.natureOfIncident ?? '');
+        setCauseOfIncident(restored.causeOfIncident ?? '');
+
+        setAffectedPersonId(restored.affectedPersonId ?? null);
+        setAffectedEmployeeId(restored.affectedEmployeeId ?? null);
+        setAffectedPersonName(restored.affectedPersonName ?? '');
+        if (Array.isArray(restored.affectedPersons) && restored.affectedPersons.length > 0) {
+          setAffectedPersons(restored.affectedPersons);
         }
-      } catch {
-        localStorage.removeItem(draftStorageKey);
-      } finally {
-        setTimeout(() => {
-          isHydratingDraftRef.current = false;
-        }, 0);
+
+        setReportedBy(restored.reportedBy ?? '');
+        setReportedTo(restored.reportedTo ?? '');
+        setCopyTo(restored.copyTo ?? '');
+
+        setRiskCategorySimple(restored.riskCategorySimple ?? 'Medium');
+        if (restored.riskLikelihood) setRiskLikelihood(restored.riskLikelihood);
+        if (restored.riskSeverity) setRiskSeverity(restored.riskSeverity);
+
+        setInvestigationRequired(Boolean(restored.investigationRequired));
+        setGenerateNcr(Boolean(restored.generateNcr));
+        setActualOutcome(restored.actualOutcome ?? '');
+
+        setLossTypes(Array.isArray(restored.lossTypes) ? restored.lossTypes : []);
+        setLossOther(restored.lossOther ?? '');
+        setLossNotes(restored.lossNotes ?? '');
+
+        setUnsafeActs(restored.unsafeActs ?? {});
+        setUnsafeConditions(restored.unsafeConditions ?? {});
+        setRootCauseHuman(restored.rootCauseHuman ?? {});
+        setRootCauseWorkplace(restored.rootCauseWorkplace ?? {});
+        setSystemFailures(restored.systemFailures ?? {});
+
+        setIncidentTimelineEvents(Array.isArray(restored.incidentTimelineEvents) ? restored.incidentTimelineEvents : []);
+        setPotentialConsequence(restored.potentialConsequence ?? '');
+        setContributingFactors(restored.contributingFactors ?? '');
+        setLessonsLearned(restored.lessonsLearned ?? '');
+        setInvestigationTeam(restored.investigationTeam ?? '');
+        setConclusion(restored.conclusion ?? '');
+        setPreparedBy(restored.preparedBy ?? '');
+        setDistributionList(restored.distributionList ?? '');
+
+        setInvestigationSections({
+          ...emptyInvestigationSectionSelection(),
+          ...(restored.investigationSections ?? {})
+        });
+
+        if (Array.isArray(restored.correctiveActionDrafts)) {
+          setCorrectiveActionDrafts(restored.correctiveActionDrafts);
+        }
+
+        const toUploadDraft = (meta: Array<{ id: string; displayName: string; originalFileName: string; kind: 'image' | 'document' }> | undefined): UploadDraft[] => {
+          if (!Array.isArray(meta)) return [];
+          return meta.map((m) => ({
+            id: m.id,
+            file: null,
+            displayName: m.displayName ?? m.originalFileName ?? '',
+            originalFileName: m.originalFileName ?? m.displayName ?? '',
+            previewUrl: null,
+            kind: m.kind ?? 'document'
+          }));
+        };
+
+        setEvidenceUploads(toUploadDraft(restored.evidenceUploadsMeta));
+        setInvestigationUploads(toUploadDraft(restored.investigationUploadsMeta));
       }
       return;
     }
-    isHydratingDraftRef.current = true;
     releasePreviews(evidenceUploads);
     releasePreviews(investigationUploads);
     const occurred = new Date(editingIncident.occurred_at);
@@ -495,9 +710,33 @@ export function IncidentCreateModal(props: {
     }
     setIncidentTypeSelections(nextTypeSelections);
     setIncidentTypeOther(customTypes.join(', '));
-    setCategory(editingIncident.category ?? INCIDENT_CATEGORIES[0]);
+
+    const metadata = (editingIncident as any)?.metadata ?? null;
+    const metaCategoriesRaw = Array.isArray(metadata?.categories) ? metadata.categories : null;
+    const parsedMetaCategories: IncidentCategory[] = Array.isArray(metaCategoriesRaw)
+      ? metaCategoriesRaw
+          .map((c: unknown) => String(c ?? '').trim())
+          .filter((c): c is IncidentCategory => (INCIDENT_CATEGORIES as readonly string[]).includes(c))
+      : [];
+    const baseCategory = (editingIncident.category as IncidentCategory) ?? INCIDENT_CATEGORIES[0];
+    const nextCategories: IncidentCategory[] =
+      parsedMetaCategories.length > 0 ? Array.from(new Set(parsedMetaCategories)) : [baseCategory];
+    setSelectedCategories(nextCategories);
+    setCategory(nextCategories[0] ?? INCIDENT_CATEGORIES[0]);
+
     const existingSubcategory = String(editingIncident.subcategory ?? '');
-    const validSubcategories = INCIDENT_SUBCATEGORIES[editingIncident.category as IncidentCategory] ?? [];
+    const metaSubcategoriesRaw = Array.isArray(metadata?.subcategories) ? metadata.subcategories : null;
+    const parsedMetaSubcategories: string[] = Array.isArray(metaSubcategoriesRaw)
+      ? metaSubcategoriesRaw.map((s: unknown) => String(s ?? '').trim()).filter((s) => s.length > 0)
+      : [];
+    const validSubcategories = INCIDENT_SUBCATEGORIES[baseCategory as IncidentCategory] ?? [];
+    if (parsedMetaSubcategories.length > 0) {
+      setSelectedSubcategories(parsedMetaSubcategories);
+    } else if (existingSubcategory) {
+      setSelectedSubcategories([existingSubcategory]);
+    } else {
+      setSelectedSubcategories([]);
+    }
     if (validSubcategories.includes(existingSubcategory)) {
       setSubcategory(existingSubcategory);
       setSubcategoryManual('');
@@ -505,9 +744,10 @@ export function IncidentCreateModal(props: {
     } else {
       setSubcategory('');
       setSubcategoryManual(existingSubcategory);
-      setUseManualSubcategory(true);
+      setUseManualSubcategory(Boolean(existingSubcategory));
     }
     setTitle(editingIncident.title ?? '');
+    setProjectClient((editingIncident as any).project_client ?? '');
     setBriefDescription(String(editingIncident.description ?? ''));
     setOccurredAtInput(occurredAtValue);
     setLocation(editingIncident.location ?? '');
@@ -515,7 +755,8 @@ export function IncidentCreateModal(props: {
     setCauseOfIncident((editingIncident as any).cause_of_incident ?? (editingIncident as any).cause ?? '');
     setAffectedPersonId((editingIncident as any).affected_person_id ?? null);
     setAffectedPersonName((editingIncident as any).affected_person ?? '');
-    const metadata = (editingIncident as any)?.metadata ?? null;
+    // Keep the primary HR employee reference separate so we can persist both employee_id and user_id consistently.
+    setAffectedEmployeeId((editingIncident as any).affected_person_id ?? null);
     const metadataPersons = Array.isArray(metadata?.affectedPersons) ? metadata.affectedPersons : null;
     if (metadataPersons && metadataPersons.length > 0) {
       setAffectedPersons(
@@ -544,10 +785,8 @@ export function IncidentCreateModal(props: {
     }
     setReportedBy((editingIncident as any).reported_by ?? '');
     setReportedTo((editingIncident as any).reported_to ?? '');
-    setReportedByEmployeeId((metadata?.reportedByEmployeeId as UUID | null) ?? null);
-    setReportedToEmployeeId((metadata?.reportedToEmployeeId as UUID | null) ?? null);
     setCopyTo(Array.isArray((editingIncident as any).copy_to_emails) ? (editingIncident as any).copy_to_emails.join(', ') : '');
-    setRiskCategorySimple(((editingIncident as any).risk_category ?? getRiskCategoryFromScore((editingIncident as any).risk_rating_product ?? 9)) as 'Low' | 'Medium' | 'High');
+    setRiskCategorySimple(((editingIncident as any).risk_category ?? 'Medium') as 'Low' | 'Medium' | 'High');
     setRiskLikelihood(Math.max(1, Math.min(5, Number((editingIncident as any).risk_likelihood_1_5 ?? 3))) as 1 | 2 | 3 | 4 | 5);
     setRiskSeverity(Math.max(1, Math.min(5, Number((editingIncident as any).risk_severity_1_5 ?? 3))) as 1 | 2 | 3 | 4 | 5);
     setInvestigationRequired(Boolean((editingIncident as any).investigation_required));
@@ -595,12 +834,8 @@ export function IncidentCreateModal(props: {
     setEvidenceUploads([]);
     setInvestigationUploads([]);
     setError(null);
-    setSaveSuccessMessage(null);
-    setTimeout(() => {
-      isHydratingDraftRef.current = false;
-    }, 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.open, editingIncident?.id, draftStorageKey]);
+  }, [draftKey, props.open, editingIncident?.id, restoreDraft]);
 
   useEffect(() => {
     if (!props.open || !editingIncident?.id) return;
@@ -697,185 +932,6 @@ export function IncidentCreateModal(props: {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (calculatedRiskCategory) setRiskCategorySimple(calculatedRiskCategory);
-  }, [calculatedRiskCategory]);
-
-  useEffect(() => {
-    if (!props.open || hrEmployees.length === 0) return;
-    if (!reportedByEmployeeId && reportedBy.trim()) {
-      const match = hrEmployees.find((employee) => buildEmployeeName(employee).toLowerCase() === reportedBy.trim().toLowerCase());
-      if (match) setReportedByEmployeeId(match.id);
-    }
-    if (!reportedToEmployeeId && reportedTo.trim()) {
-      const match = hrEmployees.find((employee) => buildEmployeeName(employee).toLowerCase() === reportedTo.trim().toLowerCase());
-      if (match) setReportedToEmployeeId(match.id);
-    }
-  }, [props.open, hrEmployees, reportedByEmployeeId, reportedToEmployeeId, reportedBy, reportedTo]);
-
-  useEffect(() => {
-    if (!props.open || isHydratingDraftRef.current) return;
-    const draftPayload = {
-      module,
-      incidentTypeSelections,
-      incidentTypeOther,
-      category,
-      subcategory,
-      subcategoryManual,
-      useManualSubcategory,
-      title,
-      briefDescription,
-      occurredAtInput,
-      location,
-      natureOfIncident,
-      causeOfIncident,
-      affectedPersonId,
-      affectedPersonName,
-      affectedPersons,
-      reportedBy,
-      reportedTo,
-      reportedByEmployeeId,
-      reportedToEmployeeId,
-      copyTo,
-      riskCategorySimple,
-      riskLikelihood,
-      riskSeverity,
-      investigationRequired,
-      generateNcr,
-      actualOutcome,
-      lossTypes,
-      lossOther,
-      lossNotes,
-      unsafeActs,
-      unsafeConditions,
-      rootCauseHuman,
-      rootCauseWorkplace,
-      systemFailures,
-      incidentTimelineEvents,
-      potentialConsequence,
-      contributingFactors,
-      lessonsLearned,
-      investigationTeam,
-      conclusion,
-      preparedBy,
-      distributionList,
-      investigationSections,
-      correctiveActionDrafts
-    };
-    localStorage.setItem(draftStorageKey, JSON.stringify(draftPayload));
-  }, [
-    props.open,
-    draftStorageKey,
-    module,
-    incidentTypeSelections,
-    incidentTypeOther,
-    category,
-    subcategory,
-    subcategoryManual,
-    useManualSubcategory,
-    title,
-    briefDescription,
-    occurredAtInput,
-    location,
-    natureOfIncident,
-    causeOfIncident,
-    affectedPersonId,
-    affectedPersonName,
-    affectedPersons,
-    reportedBy,
-    reportedTo,
-    reportedByEmployeeId,
-    reportedToEmployeeId,
-    copyTo,
-    riskCategorySimple,
-    riskLikelihood,
-    riskSeverity,
-    investigationRequired,
-    generateNcr,
-    actualOutcome,
-    lossTypes,
-    lossOther,
-    lossNotes,
-    unsafeActs,
-    unsafeConditions,
-    rootCauseHuman,
-    rootCauseWorkplace,
-    systemFailures,
-    incidentTimelineEvents,
-    potentialConsequence,
-    contributingFactors,
-    lessonsLearned,
-    investigationTeam,
-    conclusion,
-    preparedBy,
-    distributionList,
-    investigationSections,
-    correctiveActionDrafts
-  ]);
-
-  const hasUnsavedChanges = useMemo(() => {
-    if (loading) return false;
-    return Boolean(
-      title.trim() ||
-      briefDescription.trim() ||
-      finalIncidentType ||
-      finalSubcategory ||
-      location.trim() ||
-      natureOfIncident.trim() ||
-      causeOfIncident.trim() ||
-      reportedBy.trim() ||
-      reportedTo.trim() ||
-      copyTo.trim() ||
-      actualOutcome.trim() ||
-      potentialConsequence.trim() ||
-      contributingFactors.trim() ||
-      lessonsLearned.trim() ||
-      conclusion.trim() ||
-      lossOther.trim() ||
-      lossNotes.trim() ||
-      affectedPersons.some((entry) => entry.personName.trim() || entry.role.trim() || entry.department.trim() || entry.injuryType.trim() || entry.contactDetails.trim()) ||
-      correctiveActionDrafts.length > 0 ||
-      incidentTimelineEvents.length > 0 ||
-      evidenceUploads.length > 0 ||
-      investigationUploads.length > 0
-    );
-  }, [
-    loading,
-    title,
-    briefDescription,
-    finalIncidentType,
-    finalSubcategory,
-    location,
-    natureOfIncident,
-    causeOfIncident,
-    reportedBy,
-    reportedTo,
-    copyTo,
-    actualOutcome,
-    potentialConsequence,
-    contributingFactors,
-    lessonsLearned,
-    conclusion,
-    lossOther,
-    lossNotes,
-    affectedPersons,
-    correctiveActionDrafts.length,
-    incidentTimelineEvents.length,
-    evidenceUploads.length,
-    investigationUploads.length
-  ]);
-
-  function requestClose() {
-    if (!hasUnsavedChanges) {
-      props.onClose();
-      return;
-    }
-    const shouldClose = window.confirm('You have unsaved changes. Close the form? Your draft will be kept and restored next time.');
-    if (shouldClose) {
-      props.onClose();
-    }
-  }
 
   function addUploads(files: FileList | null, section: 'evidence' | 'investigation', displayPrefix?: string) {
     if (!files) return;
@@ -987,7 +1043,9 @@ export function IncidentCreateModal(props: {
 
   async function uploadEvidenceForIncident(incidentId: UUID, entries: UploadDraft[], entityType: string) {
     for (const entry of entries) {
-      const safeName = entry.file.name.replace(/\s+/g, '_');
+      if (!entry.file) continue; // File cannot be restored; user must re-select to upload.
+
+      const safeName = (entry.originalFileName || entry.file.name).replace(/\s+/g, '_');
       const key = `${props.companyId}/${entityType}/${incidentId}/${Date.now()}-${safeName}`;
       const uploaded = await uploadFile(EVIDENCE_BUCKET, entry.file, { key });
       await createEvidence({
@@ -997,8 +1055,8 @@ export function IncidentCreateModal(props: {
         storageBucket: uploaded.bucket,
         storageKey: uploaded.key,
         createdByUserId: props.createdByUserId,
-        originalFilename: entry.file.name,
-        displayTitle: (entry.displayName || entry.file.name).trim(),
+        originalFilename: entry.originalFileName || entry.file.name,
+        displayTitle: (entry.displayName || entry.originalFileName || entry.file.name).trim(),
         fileKind: entry.kind
       });
     }
@@ -1038,10 +1096,6 @@ export function IncidentCreateModal(props: {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
-    if (!riskLikelihood || !riskSeverity || !calculatedRisk || !calculatedRiskCategory) {
-      setError('Severity and likelihood are required to calculate risk rating.');
-      return;
-    }
     const hasInvalidDraftAction = correctiveActionDrafts.some(
       (draft) => Boolean(draft.actionRequired.trim() || draft.responsibleUserId || draft.dueDate)
         && (!draft.actionRequired.trim() || !draft.responsibleUserId || !draft.dueDate)
@@ -1064,6 +1118,7 @@ export function IncidentCreateModal(props: {
       const unsafeConditionsData = Object.values(unsafeConditions);
       const incidentTitle = title.trim();
       const affectedPersonValue = affectedPersonName.trim() || undefined;
+      const affectedPersonNameSnapshot = affectedPersonName.trim() || null;
       const affectedPersonsPayload = affectedPersons
         .map((entry) => ({
           personId: entry.personId,
@@ -1075,19 +1130,24 @@ export function IncidentCreateModal(props: {
         }))
         .filter((entry) => entry.personId || entry.personName);
       const incidentTypeValue = finalIncidentType;
+      const primaryCategory = (selectedCategories[0] ?? category) as IncidentCategory;
+      const subcategoriesForMetadata = allSelectedSubcategories;
 
       if (isEditing && editingIncident) {
         const updated = await updateIncident(editingIncident.id, {
           module,
-          category,
+          category: primaryCategory,
           subcategory: finalSubcategory,
           title: incidentTitle,
           description: briefDescription.trim() || null,
           incidentType: incidentTypeValue || null,
-          projectClient: incidentTitle || null,
+          projectClient: projectClient.trim() || null,
           natureOfIncident: natureOfIncident.trim() || null,
           causeOfIncident: causeOfIncident.trim() || null,
           affectedPerson: affectedPersonValue || null,
+          affectedUserId: affectedPersonId ?? null,
+          affectedPersonName: affectedPersonNameSnapshot,
+          affectedEmployeeId: affectedEmployeeId ?? null,
           reportedBy: reportedBy.trim() || null,
           reportedTo: reportedTo.trim() || null,
           copyToEmails: copyToEmails.length > 0 ? copyToEmails : null,
@@ -1119,8 +1179,8 @@ export function IncidentCreateModal(props: {
           metadata: {
             ...(editingIncident as any)?.metadata,
             affectedPersons: affectedPersonsPayload,
-            reportedByEmployeeId: reportedByEmployeeId ?? null,
-            reportedToEmployeeId: reportedToEmployeeId ?? null
+            categories: selectedCategories,
+            subcategories: subcategoriesForMetadata
           }
         } as any);
         await uploadEvidenceForIncident(updated.id, evidenceUploads, 'incident');
@@ -1158,19 +1218,23 @@ export function IncidentCreateModal(props: {
           });
         }
         props.onUpdated?.(updated);
+        clearDraft(draftKey);
       } else {
         const incident = await createIncident({
           companyId: props.companyId,
           module,
-          category,
+          category: primaryCategory,
           subcategory: finalSubcategory,
           title: incidentTitle,
           description: briefDescription.trim() || undefined,
           incidentType: incidentTypeValue || undefined,
-          projectClient: incidentTitle || undefined,
+          projectClient: projectClient.trim() || undefined,
           natureOfIncident: natureOfIncident.trim(),
           causeOfIncident: causeOfIncident.trim(),
           affectedPerson: affectedPersonValue || undefined,
+          affectedUserId: affectedPersonId ?? null,
+          affectedPersonName: affectedPersonNameSnapshot,
+          affectedEmployeeId: affectedEmployeeId ?? null,
           reportedBy: reportedBy.trim(),
           reportedTo: reportedTo.trim(),
           copyToEmails,
@@ -1205,8 +1269,8 @@ export function IncidentCreateModal(props: {
           autoGenerateNcr: generateNcr,
           metadata: {
             affectedPersons: affectedPersonsPayload,
-            reportedByEmployeeId: reportedByEmployeeId ?? null,
-            reportedToEmployeeId: reportedToEmployeeId ?? null
+            categories: selectedCategories,
+            subcategories: subcategoriesForMetadata
           }
         });
 
@@ -1245,10 +1309,8 @@ export function IncidentCreateModal(props: {
           });
         }
         props.onCreated?.();
+        clearDraft(draftKey);
       }
-      localStorage.removeItem(draftStorageKey);
-      sessionStorage.setItem('incidents.flash.success', 'Incident saved successfully.');
-      setSaveSuccessMessage('Incident saved successfully.');
       props.onClose();
       resetForm();
     } catch (err: any) {
@@ -1275,13 +1337,26 @@ export function IncidentCreateModal(props: {
         {items.length > 0 && (
           <div className="space-y-2">
             {items.map((entry) => (
-              <div key={entry.id} className="rounded-lg border border-surface-200 p-3 bg-surface-50">
+              <div
+                key={entry.id}
+                className={`rounded-lg border p-3 bg-surface-50 ${
+                  !entry.file ? 'border-amber-300 bg-amber-50/60' : 'border-surface-200'
+                }`}
+              >
                 <div className="flex items-start gap-3">
                   <div className="shrink-0 mt-1">
                     {entry.kind === 'image' ? <ImageIcon className="w-4 h-4 text-teal" /> : <FileTextIcon className="w-4 h-4 text-charcoal-500" />}
                   </div>
                   <div className="flex-1 min-w-0 space-y-2">
-                    <p className="text-xs text-charcoal-500 truncate">Original: {entry.file.name}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs text-charcoal-500 truncate">Original: {entry.originalFileName}</p>
+                      {!entry.file && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-amber-200 bg-amber-50 text-[11px] text-amber-800">
+                          Restored (metadata only)
+                        </span>
+                      )}
+                    </div>
+                    {!entry.file && <p className="text-[11px] text-charcoal-400">File cannot be restored; reselect to upload.</p>}
                     <input
                       value={entry.displayName}
                       onChange={(e) => renameUpload(entry.id, e.target.value, section)}
@@ -1289,7 +1364,7 @@ export function IncidentCreateModal(props: {
                       className="w-full px-3 py-2 text-sm border border-surface-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal"
                     />
                     {entry.previewUrl && (
-                      <img src={entry.previewUrl} alt={entry.displayName || entry.file.name} className="w-24 h-24 object-cover rounded-lg border border-surface-200" />
+                      <img src={entry.previewUrl} alt={entry.displayName || entry.originalFileName} className="w-24 h-24 object-cover rounded-lg border border-surface-200" />
                     )}
                     <div className="flex items-center gap-3 text-xs">
                       <a
@@ -1303,7 +1378,7 @@ export function IncidentCreateModal(props: {
                       </a>
                       <a
                         href={entry.previewUrl ?? '#'}
-                        download={entry.displayName || entry.file.name}
+                        download={entry.displayName || entry.originalFileName}
                         className={`inline-flex items-center gap-1 ${entry.previewUrl ? 'text-charcoal-600 hover:text-charcoal' : 'text-charcoal-400 pointer-events-none'}`}
                       >
                         <DownloadIcon className="w-3.5 h-3.5" />
@@ -1441,24 +1516,24 @@ export function IncidentCreateModal(props: {
   if (!props.open) return null;
   return createPortal(
     <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-3 pt-16 sm:p-6 sm:pt-20">
-      <div className="absolute inset-0 bg-black/45" />
-      <div className="relative w-full max-w-6xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-surface-200 px-5 py-4 flex items-center justify-between z-10">
+      <div className="absolute inset-0 bg-black/45" onClick={props.onClose} />
+      <div className="relative w-full max-w-6xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-surface-200 px-4 py-4 sm:px-6 flex items-center justify-between z-10">
           <div>
             <p className="text-sm font-semibold text-charcoal">{isEditing ? 'Edit Incident (Updated Form)' : 'Updated Incident Form'}</p>
             <p className="text-xs text-charcoal-500 mt-0.5">Likelihood and severity use 1-5 scale. Risk is auto-calculated.</p>
           </div>
-          <button type="button" onClick={requestClose} className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500">
+          <button
+            type="button"
+            onClick={props.onClose}
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 shrink-0"
+            aria-label="Close"
+          >
             <XIcon className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="p-5 space-y-6">
-          {saveSuccessMessage && (
-            <div className="bg-success/10 border border-success/30 rounded-xl p-3">
-              <p className="text-sm font-semibold text-success">{saveSuccessMessage}</p>
-            </div>
-          )}
+        <form onSubmit={onSubmit} className="p-4 sm:p-6 space-y-6">
           {error && (
             <div className="bg-critical/5 border border-critical/20 rounded-xl p-3">
               <p className="text-sm font-semibold text-critical">Could not create incident</p>
@@ -1468,10 +1543,19 @@ export function IncidentCreateModal(props: {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Project / Client *</label>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Incident Title *</label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Project / Client *</label>
+              <input
+                value={projectClient}
+                onChange={(e) => setProjectClient(e.target.value)}
                 className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
                 required
               />
@@ -1516,23 +1600,31 @@ export function IncidentCreateModal(props: {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Category *</label>
-              <select
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value as IncidentCategory);
-                  setSubcategory('');
-                  setSubcategoryManual('');
-                  setUseManualSubcategory(false);
-                }}
-                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
-              >
-                {INCIDENT_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Category * (multi-select)</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-lg border border-surface-200 p-3">
+                {INCIDENT_CATEGORIES.map((c) => {
+                  const checked = selectedCategories.includes(c);
+                  return (
+                    <label key={c} className="flex items-start gap-2 text-sm text-charcoal">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          setSelectedCategories((prev) => {
+                            const next = e.target.checked ? [...prev, c] : prev.filter((x) => x !== c);
+                            const deduped = Array.from(new Set(next));
+                            const fallback = deduped.length > 0 ? deduped : [INCIDENT_CATEGORIES[0]];
+                            setCategory(fallback[0]);
+                            return fallback;
+                          });
+                        }}
+                        className="mt-0.5 w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
+                      />
+                      <span>{c}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Subcategory *</label>
@@ -1545,7 +1637,11 @@ export function IncidentCreateModal(props: {
                         setUseManualSubcategory(true);
                         return;
                       }
-                      setSubcategory(e.target.value);
+                      const value = e.target.value;
+                      setSubcategory(value);
+                      setSelectedSubcategories((prev) =>
+                        value && !prev.includes(value) ? [...prev, value] : prev
+                      );
                     }}
                     className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
                     required
@@ -1577,6 +1673,34 @@ export function IncidentCreateModal(props: {
                     >
                       Select from category list
                     </button>
+                  </div>
+                )}
+                {allSelectedSubcategories.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {allSelectedSubcategories.map((s) => (
+                      <span
+                        key={s}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-100 text-xs text-charcoal"
+                      >
+                        {s}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedSubcategories((prev) => prev.filter((x) => x !== s));
+                            if (subcategory === s) {
+                              setSubcategory('');
+                            }
+                            if (useManualSubcategory && subcategoryManual.trim() === s) {
+                              setSubcategoryManual('');
+                            }
+                          }}
+                          className="text-charcoal-400 hover:text-charcoal-600"
+                          aria-label={`Remove ${s}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1652,10 +1776,11 @@ export function IncidentCreateModal(props: {
                           companyId={props.companyId}
                           selectedPersonId={entry.personId}
                           selectedPersonName={entry.personName}
-                          onChange={(personId, personName) => {
+                          onChange={(personId, personName, employeeId) => {
                             if (index === 0) {
                               setAffectedPersonId(personId);
                               setAffectedPersonName(personName ?? '');
+                              setAffectedEmployeeId(employeeId);
                             }
                             setAffectedPersons((prev) =>
                               prev.map((p) =>
@@ -1740,70 +1865,17 @@ export function IncidentCreateModal(props: {
                 ))}
               </div>
             </div>
-            <div className="md:col-span-2 rounded-xl border border-surface-200 bg-surface-50/50 p-4 space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold text-charcoal">Risk Rating</h3>
-                <p className="text-xs text-charcoal-500 mt-0.5">Severity x Likelihood = Risk Rating</p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-charcoal mb-1">Likelihood (1-5) *</label>
-                  <select
-                    value={riskLikelihood === '' ? '' : String(riskLikelihood)}
-                    onChange={(e) => {
-                      if (!e.target.value) {
-                        setRiskLikelihood('');
-                        return;
-                      }
-                      setRiskLikelihood(Math.max(1, Math.min(5, Number(e.target.value) || 1)) as 1 | 2 | 3 | 4 | 5);
-                    }}
-                    className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
-                    required
-                  >
-                    <option value="">Select likelihood</option>
-                    <option value="1">1 - Rare</option>
-                    <option value="2">2 - Unlikely</option>
-                    <option value="3">3 - Possible</option>
-                    <option value="4">4 - Likely</option>
-                    <option value="5">5 - Almost Certain</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-charcoal mb-1">Severity (1-5) *</label>
-                  <select
-                    value={riskSeverity === '' ? '' : String(riskSeverity)}
-                    onChange={(e) => {
-                      if (!e.target.value) {
-                        setRiskSeverity('');
-                        return;
-                      }
-                      setRiskSeverity(Math.max(1, Math.min(5, Number(e.target.value) || 1)) as 1 | 2 | 3 | 4 | 5);
-                    }}
-                    className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
-                    required
-                  >
-                    <option value="">Select severity</option>
-                    <option value="1">1 - Negligible</option>
-                    <option value="2">2 - Minor Injury</option>
-                    <option value="3">3 - Major Injury</option>
-                    <option value="4">4 - Fatality</option>
-                    <option value="5">5 - Multiple Fatality</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-charcoal mb-1">Calculated risk</label>
-                  <div className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm bg-white font-semibold text-charcoal">
-                    {calculatedRisk ?? '-'}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-charcoal mb-1">Calculated category</label>
-                  <div className={`w-full px-3 py-2 border rounded-lg text-sm font-semibold ${riskCategoryTone}`}>
-                    {calculatedRiskCategory ?? '-'}
-                  </div>
-                </div>
-              </div>
-              <p className="text-xs text-charcoal-500">1-5 Low (Green), 6-12 Medium (Yellow), 13-25 High (Red)</p>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Risk category (core)</label>
+              <select
+                value={riskCategorySimple}
+                onChange={(e) => setRiskCategorySimple(e.target.value as 'Low' | 'Medium' | 'High')}
+                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
             </div>
           </div>
 
@@ -1840,62 +1912,22 @@ export function IncidentCreateModal(props: {
             </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Reported by *</label>
-              <select
-                value={reportedByEmployeeId ?? ''}
-                onChange={(e) => {
-                  const selectedId = (e.target.value || null) as UUID | null;
-                  setReportedByEmployeeId(selectedId);
-                  const match = hrEmployees.find((row) => row.id === selectedId);
-                  setReportedBy(match ? buildEmployeeName(match) : '');
-                }}
-                disabled={hrEmployeesLoading}
-                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:bg-surface-100"
+              <input
+                value={reportedBy}
+                onChange={(e) => setReportedBy(e.target.value)}
+                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
                 required
-              >
-                <option value="">{hrEmployeesLoading ? 'Loading employees...' : 'Select employee'}</option>
-                {hrEmployees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.employee_no ? `${employee.employee_no} - ${buildEmployeeName(employee)}` : buildEmployeeName(employee)}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Reported to *</label>
-              <select
-                value={reportedToEmployeeId ?? ''}
-                onChange={(e) => {
-                  const selectedId = (e.target.value || null) as UUID | null;
-                  setReportedToEmployeeId(selectedId);
-                  const match = hrEmployees.find((row) => row.id === selectedId);
-                  setReportedTo(match ? buildEmployeeName(match) : '');
-                }}
-                disabled={hrEmployeesLoading}
-                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal disabled:bg-surface-100"
+              <input
+                value={reportedTo}
+                onChange={(e) => setReportedTo(e.target.value)}
+                className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
                 required
-              >
-                <option value="">{hrEmployeesLoading ? 'Loading employees...' : 'Select employee'}</option>
-                {hrEmployees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.employee_no ? `${employee.employee_no} - ${buildEmployeeName(employee)}` : buildEmployeeName(employee)}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
-            {hrEmployeesError && (
-              <div className="md:col-span-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2">
-                <p className="text-xs text-charcoal">
-                  Could not load employee names. {hrEmployeesError.message}
-                </p>
-                <button
-                  type="button"
-                  onClick={retryHrEmployees}
-                  className="mt-1 text-xs font-medium text-teal hover:text-teal-700"
-                >
-                  Retry loading employees
-                </button>
-              </div>
-            )}
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Copy to (comma-separated emails)</label>
               <input
@@ -2032,11 +2064,15 @@ export function IncidentCreateModal(props: {
                 <div className="pt-3">{renderUploadSection('Upload investigation files', 'investigation', investigationUploads)}</div>
               </details>
             )}
-            {(investigationRequired || Number(riskSeverity || 0) >= 4) && (
+            {(investigationRequired || riskSeverity >= 4) && (
               <details>
-                <summary className="cursor-pointer text-sm font-semibold text-charcoal">Consequence & Outcome</summary>
+                <summary className="cursor-pointer text-sm font-semibold text-charcoal">Risk & Consequence</summary>
                 <div className="pt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:col-span-2">
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">Risk rating</label>
+                    <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm bg-surface-50">{calculatedRiskCategory} ({calculatedRisk})</div>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-charcoal mb-1.5">Potential consequence</label>
                     <textarea value={potentialConsequence} onChange={(e) => setPotentialConsequence(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
                   </div>
@@ -2216,18 +2252,18 @@ export function IncidentCreateModal(props: {
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-surface-200">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-4 border-t border-surface-200">
             <button
               type="button"
-              onClick={requestClose}
-              className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+              onClick={props.onClose}
+              className="min-h-[44px] inline-flex items-center justify-center px-4 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!canSubmit || loading}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-critical text-white text-sm font-semibold hover:bg-critical-600 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg bg-critical text-white text-sm font-semibold hover:bg-critical-600 disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto"
             >
               {loading && <LoadingSpinner size={16} />}
               {isEditing ? 'Save changes' : 'Save incident'}

@@ -47,7 +47,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoaded, isSignedIn, signOut } = useAuth();
-  const { flushAllDrafts, hasDirtyDrafts } = useDraftManager();
+  const { flushAllDrafts } = useDraftManager();
   const [showWarning, setShowWarning] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
@@ -67,6 +67,14 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     isLoggingOutRef.current = false;
     hasNavigatedToLoginRef.current = false;
   }, [isSignedIn]);
+
+  // Passive activity should not dismiss the inactivity warning modal; users must explicitly choose "Continue Session".
+  const registerPassiveActivity = useCallback(() => {
+    if (isLoggingOutRef.current) return;
+    if (showWarningRef.current) return;
+    lastActivityRef.current = Date.now();
+    setRemainingMs(LOGOUT_TIMEOUT_MS);
+  }, []);
 
   const registerActivity = useCallback(() => {
     if (isLoggingOutRef.current) return;
@@ -204,7 +212,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     if (isLoggingOutRef.current) return;
-    const onActivity = () => registerActivity();
+    const onActivity = () => registerPassiveActivity();
     // Activity signals: track meaningful user interaction to reset inactivity timers.
     // Keep listeners at the document/window level so they work across all routes.
     const windowEvents = [
@@ -228,7 +236,28 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     }
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        registerActivity();
+        // Background tabs can throttle timers; when returning to the app,
+        // immediately enforce inactivity rules instead of treating this as activity.
+        const idleMs = Date.now() - lastActivityRef.current;
+        const { shouldShowWarning, shouldLogout } = computeInactivityDecision({
+          idleMs,
+          warningTimeoutMs: WARNING_TIMEOUT_MS,
+          logoutTimeoutMs: LOGOUT_TIMEOUT_MS
+        });
+        const remaining = Math.max(0, LOGOUT_TIMEOUT_MS - idleMs);
+        setRemainingMs(remaining);
+
+        if (shouldLogout) {
+          void markSessionExpiredAndLogout('inactivity');
+          return;
+        }
+
+        if (shouldShowWarning) {
+          setShowWarning(true);
+          return;
+        }
+
+        void refreshSessionIfNeeded();
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -241,17 +270,15 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       }
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [isLoaded, isSignedIn, registerActivity]);
+  }, [isLoaded, isSignedIn, registerPassiveActivity, markSessionExpiredAndLogout, refreshSessionIfNeeded]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     const interval = window.setInterval(() => {
       if (isLoggingOutRef.current) return;
       const idleMs = Date.now() - lastActivityRef.current;
-      const formEditing = hasDirtyDrafts();
       const { shouldShowWarning, shouldLogout } = computeInactivityDecision({
         idleMs,
-        formEditing,
         warningTimeoutMs: WARNING_TIMEOUT_MS,
         logoutTimeoutMs: LOGOUT_TIMEOUT_MS
       });
@@ -272,21 +299,19 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         setShowWarning(false);
       }
 
-      if (!shouldShowWarning) {
-        void (async () => {
-          const ok = await refreshSessionIfNeeded();
-          if (!ok && refreshRetryCountRef.current <= MAX_REFRESH_RETRIES) {
-            window.setTimeout(() => {
-              void refreshSessionIfNeeded();
-            }, REFRESH_RETRY_MS);
-          } else if (!ok) {
-            await markSessionExpiredAndLogout('refresh_failure');
-          }
-        })();
-      }
+      void (async () => {
+        const ok = await refreshSessionIfNeeded();
+        if (!ok && refreshRetryCountRef.current <= MAX_REFRESH_RETRIES) {
+          window.setTimeout(() => {
+            void refreshSessionIfNeeded();
+          }, REFRESH_RETRY_MS);
+        } else if (!ok) {
+          await markSessionExpiredAndLogout('refresh_failure');
+        }
+      })();
     }, CHECK_INTERVAL_MS);
     return () => window.clearInterval(interval);
-  }, [isLoaded, isSignedIn, markSessionExpiredAndLogout, refreshSessionIfNeeded, hasDirtyDrafts]);
+  }, [isLoaded, isSignedIn, markSessionExpiredAndLogout, refreshSessionIfNeeded]);
 
   const value = useMemo<SessionManagerContextValue>(
     () => ({

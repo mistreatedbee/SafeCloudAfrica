@@ -2,11 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
-  BuildingIcon,
-  UsersIcon,
-  FileTextIcon,
   ShieldCheckIcon,
-  AlertTriangleIcon,
   CheckCircleIcon,
   SearchIcon,
   PlusIcon,
@@ -14,22 +10,20 @@ import {
 } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
-import { useUser } from '@insforge/react';
-import { StatusBadge } from '../../components/ui/StatusBadge';
+import { ListEmptyState } from '../../components/ui/ListEmptyState';
 
 // HCS is a sellable add-on module
 // This page should only be accessible if the company has HCS enabled
 export function HCSModulePage() {
   const navigate = useNavigate();
-  const { activeCompanyId, activeRole } = useTenant();
-  const { user } = useUser();
+  const { activeCompany, activeRole } = useTenant();
   const [searchQuery, setSearchQuery] = useState('');
 
   const canManage = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
 
-  // Check if HCS is enabled for this company
-  // TODO: Implement actual check from company settings/features
-  const hcsEnabled = true; // Placeholder - should check from company.features or license
+  const metadata = (activeCompany?.metadata ?? null) as Record<string, unknown> | null;
+  const modulesMeta = (metadata?.modules ?? null) as Record<string, unknown> | null;
+  const hcsEnabled = Boolean(activeCompany?.modules_enabled?.hcs ?? modulesMeta?.hcs ?? false);
 
   if (!hcsEnabled) {
     return (
@@ -53,31 +47,7 @@ export function HCSModulePage() {
     );
   }
 
-  // Mock data - replace with actual API calls
-  const hcsRecords = [
-    {
-      id: '1',
-      title: 'Site Safety Inspection - Building A',
-      type: 'inspection',
-      status: 'completed' as const,
-      date: new Date().toISOString(),
-      location: 'Building A',
-      inspector: 'John Doe'
-    },
-    {
-      id: '2',
-      title: 'Health Surveillance - Medical Check',
-      type: 'health',
-      status: 'pending' as const,
-      date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      location: 'Main Office',
-      inspector: 'Jane Smith'
-    }
-  ];
-
-  const filteredRecords = hcsRecords.filter(record =>
-    record.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const hasSearch = searchQuery.trim().length > 0;
 
   return (
     <Layout title="HCS Module">
@@ -108,19 +78,19 @@ export function HCSModulePage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Active Inspections</p>
-            <p className="text-2xl font-bold text-charcoal mt-1">12</p>
+            <p className="text-2xl font-bold text-charcoal mt-1">0</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Health Records</p>
-            <p className="text-2xl font-bold text-charcoal mt-1">45</p>
+            <p className="text-2xl font-bold text-charcoal mt-1">0</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Compliance Score</p>
-            <p className="text-2xl font-bold text-teal mt-1">87%</p>
+            <p className="text-2xl font-bold text-teal mt-1">0%</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Pending Actions</p>
-            <p className="text-2xl font-bold text-warning mt-1">5</p>
+            <p className="text-2xl font-bold text-warning mt-1">0</p>
           </div>
         </div>
 
@@ -138,11 +108,11 @@ export function HCSModulePage() {
           </div>
           {canManage && (
             <button
-              onClick={() => navigate('/hcs/new')}
+              onClick={() => setSearchQuery('')}
               className="flex items-center gap-2 px-4 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors"
             >
               <PlusIcon className="w-4 h-4" />
-              New Record
+              Refresh View
             </button>
           )}
         </div>
@@ -152,47 +122,18 @@ export function HCSModulePage() {
           <div className="px-5 py-4 border-b border-surface-200">
             <h3 className="font-semibold text-charcoal">HCS Records</h3>
           </div>
-          <div className="divide-y divide-surface-200">
-            {filteredRecords.length === 0 ? (
-              <div className="p-8 text-center text-charcoal-500">
-                <FileTextIcon className="w-12 h-12 mx-auto mb-3 text-charcoal-300" />
-                <p>No records found</p>
-              </div>
-            ) : (
-              filteredRecords.map(record => (
-                <div key={record.id} className="p-4 hover:bg-surface-50 transition-colors">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <FileTextIcon className="w-5 h-5 text-charcoal-400 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-charcoal truncate">{record.title}</h4>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-charcoal-500">
-                            <span>{record.type}</span>
-                            <span>•</span>
-                            <span>{record.location}</span>
-                            <span>•</span>
-                            <span>By {record.inspector}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4 mt-2 text-xs">
-                        <StatusBadge status={record.status} size="sm" />
-                        <span className="text-charcoal-500">
-                          {new Date(record.date).toLocaleDateString('en-ZA')}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button className="text-sm text-teal hover:text-teal-600">View</button>
-                      {canManage && (
-                        <button className="text-sm text-charcoal-500 hover:text-charcoal">Edit</button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
+          <div className="p-4">
+            <ListEmptyState
+              embedded
+              icon={ShieldCheckIcon}
+              title={hasSearch ? 'No matching live HCS records' : 'No live HCS records yet'}
+              description="This page no longer shows placeholder inspections or health records. Live HCS records will appear here when the organisation enables HCS data collection."
+              primaryAction={{
+                kind: 'button',
+                label: hasSearch ? 'Clear Search' : 'Open Settings',
+                onClick: hasSearch ? () => setSearchQuery('') : () => navigate('/settings')
+              }}
+            />
           </div>
         </div>
 
@@ -227,4 +168,3 @@ export function HCSModulePage() {
     </Layout>
   );
 }
-

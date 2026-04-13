@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
@@ -6,8 +6,10 @@ import type { PPEItem, PpeReorderRequest, PpeStock, PpeStockMovement, UUID } fro
 import {
   createPpeReorderRequest,
   createPpeStockMovement,
+  deletePpeStock,
   listPpeReorderRequests,
-  listPpeStockMovements
+  listPpeStockMovements,
+  updatePpeStock
 } from '../../api/services/ppeService';
 import { useAsync } from '../../api/hooks/useAsync';
 
@@ -33,6 +35,34 @@ export function PpeStockDetailModal(props: {
   const [reorderReason, setReorderReason] = useState('');
   const [reorderLoading, setReorderLoading] = useState(false);
   const [reorderError, setReorderError] = useState<string | null>(null);
+  const [metaLoading, setMetaLoading] = useState(false);
+  const [metaError, setMetaError] = useState<string | null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [reorderLevel, setReorderLevel] = useState('');
+  const [reorderQuantity, setReorderQuantity] = useState('');
+  const [dateOrdered, setDateOrdered] = useState('');
+  const [dateStockReceived, setDateStockReceived] = useState('');
+  const [capturedByName, setCapturedByName] = useState('');
+  const [openingStockQty, setOpeningStockQty] = useState('');
+  const [qtyOrdered, setQtyOrdered] = useState('');
+  const [qtyReceived, setQtyReceived] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+
+  useEffect(() => {
+    if (!props.open) return;
+    setReorderLevel(props.stock.reorder_level ? String(props.stock.reorder_level) : '');
+    setReorderQuantity(props.stock.reorder_qty ? String(props.stock.reorder_qty) : '');
+    setDateOrdered(props.stock.date_ordered ?? '');
+    setDateStockReceived(props.stock.date_stock_received ?? '');
+    setCapturedByName(props.stock.captured_by_name ?? '');
+    setOpeningStockQty(
+      props.stock.opening_stock_qty != null ? String(props.stock.opening_stock_qty) : ''
+    );
+    setQtyOrdered(props.stock.qty_ordered != null ? String(props.stock.qty_ordered) : '');
+    setQtyReceived(props.stock.qty_received != null ? String(props.stock.qty_received) : '');
+    setExpiryDate(props.stock.expiry_date ?? '');
+    setMetaError(null);
+  }, [props.open, props.stock]);
 
   const { data: movements, loading: movementsLoading, error: movementsError } = useAsync<PpeStockMovement[]>(
     async () => {
@@ -122,15 +152,66 @@ export function PpeStockDetailModal(props: {
     }
   }
 
+  async function handleMetaSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setMetaError(null);
+    try {
+      setMetaLoading(true);
+      await updatePpeStock({
+        companyId: props.companyId,
+        stockId: props.stock.id,
+        actorUserId: props.actorUserId,
+        patch: {
+          reorder_level: reorderLevel.trim() === '' ? 0 : Number(reorderLevel),
+          reorder_qty: reorderQuantity.trim() === '' ? 0 : Number(reorderQuantity),
+          date_ordered: dateOrdered || null,
+          date_stock_received: dateStockReceived || null,
+          captured_by_name: capturedByName.trim() || null,
+          opening_stock_qty: openingStockQty.trim() === '' ? null : Number(openingStockQty),
+          qty_ordered: qtyOrdered.trim() === '' ? null : Number(qtyOrdered),
+          qty_received: qtyReceived.trim() === '' ? null : Number(qtyReceived),
+          expiry_date: expiryDate || null
+        },
+      });
+      setRefreshKey((k) => k + 1);
+      props.onChanged?.();
+    } catch (err: any) {
+      setMetaError(formatAuthError(err));
+    } finally {
+      setMetaLoading(false);
+    }
+  }
+
+  async function handleArchive() {
+    if (!window.confirm('Archive this PPE stock record? It will be removed from active inventory lists.')) {
+      return;
+    }
+    setMetaError(null);
+    try {
+      setArchiveLoading(true);
+      await deletePpeStock({
+        companyId: props.companyId,
+        stockId: props.stock.id,
+        actorUserId: props.actorUserId
+      });
+      props.onChanged?.();
+      props.onClose();
+    } catch (err: any) {
+      setMetaError(formatAuthError(err));
+    } finally {
+      setArchiveLoading(false);
+    }
+  }
+
   if (!props.open) return null;
 
   const title = props.item?.name ?? `Item ${String(props.stock.ppe_item_id).slice(0, 8)}`;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-5xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
+      <div className="relative w-full max-w-5xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-hidden flex flex-col">
+        <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
             <p className="text-sm font-semibold text-charcoal">PPE Stock Detail</p>
             <p className="text-xs text-charcoal-500 mt-0.5">
@@ -146,13 +227,83 @@ export function PpeStockDetailModal(props: {
           <button
             type="button"
             onClick={props.onClose}
-            className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500"
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 shrink-0"
+            aria-label="Close"
           >
             <XIcon className="w-4 h-4" />
           </button>
         </div>
 
         <div className="p-5 space-y-6 overflow-y-auto">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-charcoal">Stock details</p>
+              <button
+                type="button"
+                onClick={() => void handleArchive()}
+                disabled={archiveLoading}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-critical/30 text-critical text-xs font-semibold hover:bg-critical/5 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {archiveLoading && <LoadingSpinner size={14} />}
+                Archive stock
+              </button>
+            </div>
+            {metaError && (
+              <div className="bg-critical/5 border border-critical/20 rounded-xl p-3">
+                <p className="text-xs font-semibold text-critical">Could not update stock details</p>
+                <p className="text-xs text-charcoal-600 mt-1">{metaError}</p>
+              </div>
+            )}
+            <form onSubmit={handleMetaSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Reorder level</label>
+                <input type="number" min={0} value={reorderLevel} onChange={(e) => setReorderLevel(e.target.value)} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Reorder quantity</label>
+                <input type="number" min={0} value={reorderQuantity} onChange={(e) => setReorderQuantity(e.target.value)} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Expiry date</label>
+                <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Date ordered</label>
+                <input type="date" value={dateOrdered} onChange={(e) => setDateOrdered(e.target.value)} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Date received</label>
+                <input type="date" value={dateStockReceived} onChange={(e) => setDateStockReceived(e.target.value)} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Captured by name</label>
+                <input value={capturedByName} onChange={(e) => setCapturedByName(e.target.value)} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Opening stock</label>
+                <input type="number" min={0} value={openingStockQty} onChange={(e) => setOpeningStockQty(e.target.value)} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Qty ordered</label>
+                <input type="number" min={0} value={qtyOrdered} onChange={(e) => setQtyOrdered(e.target.value)} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Qty received</label>
+                <input type="number" min={0} value={qtyReceived} onChange={(e) => setQtyReceived(e.target.value)} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
+              </div>
+              <div className="md:col-span-3 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={metaLoading}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-xs font-semibold hover:bg-teal-600 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {metaLoading && <LoadingSpinner size={14} />}
+                  Save stock details
+                </button>
+              </div>
+            </form>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Movement form */}
             <div className="lg:col-span-2 space-y-4">
@@ -375,4 +526,3 @@ export function PpeStockDetailModal(props: {
     </div>
   );
 }
-

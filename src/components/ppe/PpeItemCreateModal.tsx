@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
-import type { PpeSizeWithPrice, UUID } from '../../api/models/entities';
+import type { PPEItem, PpeSizeWithPrice, UUID } from '../../api/models/entities';
 import { PPE_CATEGORY_OPTIONS } from '../../api/models/entities';
-import { createPpeItem } from '../../api/services/ppeService';
+import { createPpeItem, updatePpeItem } from '../../api/services/ppeService';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 
@@ -12,8 +12,10 @@ export function PpeItemCreateModal(props: {
   open: boolean;
   onClose: () => void;
   companyId: UUID;
+  item?: PPEItem | null;
   onCreated?: () => void;
 }) {
+  const isEditMode = !!props.item;
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
@@ -42,7 +44,48 @@ export function PpeItemCreateModal(props: {
   };
 
   const { restoreDraft, clearDraft } = useDraftManager();
-  const draftKey = `ppe-item-create:${props.companyId}`;
+  const draftKey = isEditMode
+    ? `ppe-item-edit:${props.companyId}:${props.item?.id ?? 'unknown'}`
+    : `ppe-item-create:${props.companyId}`;
+
+  function resetFormFromItem(item?: PPEItem | null) {
+    if (item) {
+      setName(item.name ?? '');
+      setCategory(item.category ?? '');
+      setDescription(item.description ?? '');
+      setSizesText((item.sizes_available ?? []).join(', '));
+      setSupplierName(item.supplier_name ?? '');
+      setStockLocation(item.stock_location ?? '');
+      setUnitCost(item.unit_cost != null ? String(item.unit_cost) : '');
+      setSizeRows(
+        item.sizes_with_prices && item.sizes_with_prices.length > 0
+          ? item.sizes_with_prices.map((row, index) => ({
+              id: `row-${index + 1}`,
+              size: row.size ?? '',
+              price: row.price != null ? String(row.price) : ''
+            }))
+          : [
+              { id: 's', size: 'Small', price: '' },
+              { id: 'm', size: 'Medium', price: '' },
+              { id: 'l', size: 'Large', price: '' }
+            ]
+      );
+      return;
+    }
+
+    setName('');
+    setCategory('');
+    setDescription('');
+    setSizesText('');
+    setSupplierName('');
+    setStockLocation('');
+    setUnitCost('');
+    setSizeRows([
+      { id: 's', size: 'Small', price: '' },
+      { id: 'm', size: 'Medium', price: '' },
+      { id: 'l', size: 'Large', price: '' }
+    ]);
+  }
 
   const payload = useMemo<PpeItemCreateDraftPayload>(
     () => ({
@@ -109,6 +152,33 @@ export function PpeItemCreateModal(props: {
   useEffect(() => {
     if (!props.open) return;
 
+    if (isEditMode) {
+      resetFormFromItem(props.item);
+      const editPayload = {
+        name: props.item?.name ?? '',
+        category: props.item?.category ?? '',
+        description: props.item?.description ?? '',
+        sizesText: (props.item?.sizes_available ?? []).join(', '),
+        supplierName: props.item?.supplier_name ?? '',
+        stockLocation: props.item?.stock_location ?? '',
+        unitCost: props.item?.unit_cost != null ? String(props.item.unit_cost) : '',
+        sizeRows:
+          props.item?.sizes_with_prices && props.item.sizes_with_prices.length > 0
+            ? props.item.sizes_with_prices.map((row, index) => ({
+                id: `row-${index + 1}`,
+                size: row.size ?? '',
+                price: row.price != null ? String(row.price) : ''
+              }))
+            : [
+                { id: 's', size: 'Small', price: '' },
+                { id: 'm', size: 'Medium', price: '' },
+                { id: 'l', size: 'Large', price: '' }
+              ]
+      } satisfies PpeItemCreateDraftPayload;
+      setDraftBaselineJson(JSON.stringify(editPayload));
+      return;
+    }
+
     // Mark the current state as baseline before attempting restore,
     // so users don't immediately get "dirty" autosave loops.
     setDraftBaselineJson(payloadJson);
@@ -131,7 +201,7 @@ export function PpeItemCreateModal(props: {
 
     setDraftBaselineJson(JSON.stringify(restored));
     // evidence-like fields are not in this payload (no File objects)
-  }, [draftKey, props.open, restoreDraft]);
+  }, [draftKey, isEditMode, props.item, props.open, restoreDraft]);
 
   const closeWithDraftClear = () => {
     clearDraft(draftKey);
@@ -144,32 +214,43 @@ export function PpeItemCreateModal(props: {
     setError(null);
     try {
       setLoading(true);
-      await createPpeItem({
-        companyId: props.companyId,
-        name: name.trim(),
-        category: category.trim() || undefined,
-        unitCost: unitCost ? Number(unitCost) : (sizesWithPrices && sizesWithPrices[0] ? sizesWithPrices[0].price ?? null : null),
-        sizesWithPrices,
-        description: description.trim() || null,
-        sizesAvailable: sizesAvailable && sizesAvailable.length > 0 ? sizesAvailable : null,
-        supplierName: supplierName.trim() || null,
-        stockLocation: stockLocation.trim() || null
-      });
+      if (props.item) {
+        await updatePpeItem({
+          companyId: props.companyId,
+          itemId: props.item.id,
+          patch: {
+            name: name.trim(),
+            category: category.trim() || null,
+            unit_cost:
+              unitCost !== ''
+                ? Number(unitCost)
+                : sizesWithPrices && sizesWithPrices[0]
+                ? sizesWithPrices[0].price ?? null
+                : null,
+            sizes_with_prices: sizesWithPrices,
+            description: description.trim() || null,
+            sizes_available: sizesAvailable && sizesAvailable.length > 0 ? sizesAvailable : null,
+            supplier_name: supplierName.trim() || null,
+            stock_location: stockLocation.trim() || null
+          }
+        });
+      } else {
+        await createPpeItem({
+          companyId: props.companyId,
+          name: name.trim(),
+          category: category.trim() || undefined,
+          unitCost: unitCost ? Number(unitCost) : (sizesWithPrices && sizesWithPrices[0] ? sizesWithPrices[0].price ?? null : null),
+          sizesWithPrices,
+          description: description.trim() || null,
+          sizesAvailable: sizesAvailable && sizesAvailable.length > 0 ? sizesAvailable : null,
+          supplierName: supplierName.trim() || null,
+          stockLocation: stockLocation.trim() || null
+        });
+      }
       props.onCreated?.();
       clearDraft(draftKey);
       props.onClose();
-      setName('');
-      setCategory('');
-      setDescription('');
-      setSizesText('');
-      setSupplierName('');
-      setStockLocation('');
-      setUnitCost('');
-      setSizeRows([
-        { id: 's', size: 'Small', price: '' },
-        { id: 'm', size: 'Medium', price: '' },
-        { id: 'l', size: 'Large', price: '' }
-      ]);
+      resetFormFromItem(null);
       setDraftBaselineJson(null);
     } catch (err: unknown) {
       setError(formatAuthError(err as Error));
@@ -181,11 +262,11 @@ export function PpeItemCreateModal(props: {
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
-      <div className="relative w-full max-w-xl mx-4 bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
-        <div className="flex items-center justify-between px-4 py-4 sm:px-6 border-b border-surface-200">
-          <p className="text-sm font-semibold text-charcoal">Add PPE item</p>
+      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+        <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-4 py-4 sm:px-6 border-b border-surface-200">
+          <p className="text-sm font-semibold text-charcoal">{isEditMode ? 'Edit PPE item' : 'Add PPE item'}</p>
           <button
             type="button"
             onClick={closeWithDraftClear}
@@ -199,7 +280,7 @@ export function PpeItemCreateModal(props: {
         <form onSubmit={onSubmit} className="p-4 sm:p-6 space-y-4">
           {error && (
             <div className="bg-critical/5 border border-critical/20 rounded-xl p-3">
-              <p className="text-sm font-semibold text-critical">Could not create item</p>
+              <p className="text-sm font-semibold text-critical">{isEditMode ? 'Could not update item' : 'Could not create item'}</p>
               <p className="text-sm text-charcoal-600 mt-1">{error}</p>
             </div>
           )}
@@ -364,7 +445,7 @@ export function PpeItemCreateModal(props: {
               className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-700 disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto"
             >
               {loading && <LoadingSpinner size={16} />}
-              Create
+              {isEditMode ? 'Save changes' : 'Create'}
             </button>
           </div>
         </form>
@@ -372,4 +453,3 @@ export function PpeItemCreateModal(props: {
     </div>
   );
 }
-
