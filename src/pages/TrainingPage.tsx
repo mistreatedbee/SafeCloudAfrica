@@ -60,9 +60,15 @@ export function TrainingPage() {
   const [activeTab, setActiveTab] = useState<TrainingTab>('employees');
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
-  const canManage = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
-  const canManageMatrix = activeRole === 'admin' || activeRole === 'manager';
+  const canManage =
+    activeRole === 'owner' ||
+    activeRole === 'admin' ||
+    activeRole === 'manager' ||
+    activeRole === 'supervisor' ||
+    activeRole === 'consultant';
+  const canManageMatrix = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager';
   const isEmployee = activeRole === 'employee';
+  const canAddTraining = Boolean(activeCompanyId && user?.id && (canManage || activeRole === 'employee'));
 
   const [addOpen, setAddOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<TrainingRecordStatus | ''>('');
@@ -70,6 +76,9 @@ export function TrainingPage() {
   const [scheduleRecord, setScheduleRecord] = useState<TrainingRecord | null>(null);
   const [completeRecord, setCompleteRecord] = useState<TrainingRecord | null>(null);
   const [recordsRefresh, setRecordsRefresh] = useState(0);
+  const [actionLoadingRecordId, setActionLoadingRecordId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const { data: courses } = useAsync<TrainingCourse[]>(
     async () => {
@@ -202,6 +211,8 @@ export function TrainingPage() {
           courses={courses ?? []}
           onAdded={() => {
             setRecordsRefresh((r) => r + 1);
+            setActionError(null);
+            setActionSuccess('Saved successfully.');
             setAddOpen(false);
           }}
         />
@@ -312,7 +323,11 @@ export function TrainingPage() {
               companyId={activeCompanyId!}
               record={scheduleRecord}
               providers={providers ?? []}
-              onSaved={() => setRecordsRefresh((r) => r + 1)}
+              onSaved={() => {
+                setRecordsRefresh((r) => r + 1);
+                setActionError(null);
+                setActionSuccess('Saved successfully.');
+              }}
             />
           )}
           {completeRecord && (
@@ -322,7 +337,11 @@ export function TrainingPage() {
               companyId={activeCompanyId!}
               record={completeRecord}
               course={courseById.get(completeRecord.course_id) ?? null}
-              onSaved={() => setRecordsRefresh((r) => r + 1)}
+              onSaved={() => {
+                setRecordsRefresh((r) => r + 1);
+                setActionError(null);
+                setActionSuccess('Saved successfully.');
+              }}
             />
           )}
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -331,14 +350,35 @@ export function TrainingPage() {
             </h2>
             <button
               type="button"
-              disabled={!activeCompanyId || !user?.id || (!canManage && activeRole !== 'employee')}
-              onClick={() => setAddOpen(true)}
+              disabled={!canAddTraining}
+              onClick={() => {
+                setActionError(null);
+                setActionSuccess(null);
+                setAddOpen(true);
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <PlusIcon className="w-4 h-4" />
               Add Training
             </button>
           </div>
+          {!canAddTraining && (
+            <div className="mb-4 bg-warning/10 border border-warning/30 rounded-lg p-3">
+              <p className="text-sm text-warning">
+                You do not currently have permission to add training records in this workspace.
+              </p>
+            </div>
+          )}
+          {actionError && (
+            <div className="mb-4 bg-critical/5 border border-critical/20 rounded-lg p-3">
+              <p className="text-sm text-critical">{actionError}</p>
+            </div>
+          )}
+          {actionSuccess && (
+            <div className="mb-4 bg-success/10 border border-success/30 rounded-lg p-3">
+              <p className="text-sm text-success">{actionSuccess}</p>
+            </div>
+          )}
           {canManage && (
             <div className="flex flex-wrap items-center gap-3 mb-4">
               <div>
@@ -407,6 +447,7 @@ export function TrainingPage() {
               const canCancel =
                 canManage && (r.status === 'REQUIRED' || r.status === 'SCHEDULED' || r.status === 'OVERDUE');
               const canDelete = canManage;
+              const actionIsLoading = actionLoadingRecordId === r.id;
               const userName = profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email || String(r.user_id).slice(0, 8);
               const uploaderProfile = profileByUserId.get(r.created_by_user_id);
               const uploaderName =
@@ -500,6 +541,7 @@ export function TrainingPage() {
                     {canCancel && (
                       <button
                         type="button"
+                        disabled={actionIsLoading}
                         onClick={async () => {
                           // eslint-disable-next-line no-alert
                           const confirmed = window.confirm(
@@ -507,40 +549,52 @@ export function TrainingPage() {
                           );
                           if (!confirmed) return;
                           try {
+                            setActionLoadingRecordId(r.id);
+                            setActionError(null);
+                            setActionSuccess(null);
                             await cancelTrainingRecord({ companyId: activeCompanyId!, recordId: r.id });
                             setRecordsRefresh((prev) => prev + 1);
+                            setActionSuccess('Saved successfully.');
                           } catch (err) {
-                            // eslint-disable-next-line no-alert
-                            alert('Could not cancel training record. Please try again or contact support.');
+                            setActionError('Could not cancel training record. Please try again or contact support.');
+                          } finally {
+                            setActionLoadingRecordId(null);
                           }
                         }}
-                        className="px-3 py-2 rounded-lg border border-critical/40 text-critical text-sm font-medium hover:bg-critical/5"
+                        className="px-3 py-2 rounded-lg border border-critical/40 text-critical text-sm font-medium hover:bg-critical/5 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        Cancel record
+                        {actionIsLoading ? 'Cancelling...' : 'Cancel record'}
                       </button>
                     )}
                     {canDelete && (
                       <button
                         type="button"
+                        disabled={actionIsLoading}
                         onClick={async () => {
                           const confirmed = window.confirm(
                             'Delete this training record permanently? This cannot be undone.'
                           );
                           if (!confirmed || !activeCompanyId || !user?.id) return;
                           try {
+                            setActionLoadingRecordId(r.id);
+                            setActionError(null);
+                            setActionSuccess(null);
                             await deleteTrainingRecord({
                               companyId: activeCompanyId,
                               recordId: r.id,
                               actorUserId: user.id
                             });
                             setRecordsRefresh((prev) => prev + 1);
+                            setActionSuccess('Saved successfully.');
                           } catch (err) {
-                            alert('Could not delete training record. Please try again or contact support.');
+                            setActionError('Could not delete training record. Please try again or contact support.');
+                          } finally {
+                            setActionLoadingRecordId(null);
                           }
                         }}
-                        className="px-3 py-2 rounded-lg border border-critical/40 text-critical text-sm font-medium hover:bg-critical/5"
+                        className="px-3 py-2 rounded-lg border border-critical/40 text-critical text-sm font-medium hover:bg-critical/5 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        Delete record
+                        {actionIsLoading ? 'Deleting...' : 'Delete record'}
                       </button>
                     )}
                   </div>
