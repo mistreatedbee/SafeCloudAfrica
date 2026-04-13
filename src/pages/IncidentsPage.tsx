@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
+import React, { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -13,12 +13,9 @@ import { Layout } from '../components/layout/Layout';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { deleteIncident, listIncidents } from '../api/services/incidentsService';
+import { listIncidents } from '../api/services/incidentsService';
 import type { Incident } from '../api/models/entities';
 import { useUser } from '@insforge/react';
-import { FirstWinBanner } from '../components/onboarding/FirstWinBanner';
-import { ListEmptyState } from '../components/ui/ListEmptyState';
-import { useDraftManager } from '../session/DraftManagerProvider';
 
 const IncidentCreateModal = lazy(() => import('../components/incidents/IncidentCreateModal').then(m => ({ default: m.IncidentCreateModal })));
 const IncidentDetailModal = lazy(() => import('../components/incidents/IncidentDetailModal').then(m => ({ default: m.IncidentDetailModal })));
@@ -78,24 +75,21 @@ export function IncidentsPage() {
   const [createOpen, setCreateOpen] = useState(isNew);
   const [editingIncident, setEditingIncident] = useState<Incident | null>(null);
   const [viewIncident, setViewIncident] = useState<Incident | null>(null);
+  const [saveFlashMessage, setSaveFlashMessage] = useState<string | null>(null);
   const canEditInvestigation = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
-  const canDeleteAny = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
 
   useEffect(() => {
     setCreateOpen(isNew);
   }, [isNew]);
 
-  const { restoreDraft } = useDraftManager();
-
   useEffect(() => {
-    if (!activeCompanyId || !user?.id) return;
-    if (!isNew) return;
-    if (createOpen) return;
-
-    const draftKey = `incident-modal:${activeCompanyId}:new`;
-    const restored = restoreDraft(draftKey);
-    if (restored) setCreateOpen(true);
-  }, [activeCompanyId, createOpen, isNew, restoreDraft, user?.id]);
+    const flash = sessionStorage.getItem('incidents.flash.success');
+    if (!flash) return;
+    setSaveFlashMessage(flash);
+    sessionStorage.removeItem('incidents.flash.success');
+    const timer = window.setTimeout(() => setSaveFlashMessage(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const { data: incidents, loading, error, retry, isBackendUnavailable } = useAsync<Incident[]>(
     async () => {
@@ -169,9 +163,7 @@ export function IncidentsPage() {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="space-y-6 min-w-0 max-w-full">
-
-        {activeRole !== 'employee' ? <FirstWinBanner persona="safety" /> : null}
+        className="space-y-6">
 
         {/* Stats */}
         <motion.div
@@ -283,6 +275,12 @@ export function IncidentsPage() {
           </motion.div>
         )}
 
+        {saveFlashMessage && (
+          <motion.div variants={itemVariants} className="bg-success/10 rounded-xl border border-success/30 p-4 shadow-card">
+            <p className="text-sm font-semibold text-success">{saveFlashMessage}</p>
+          </motion.div>
+        )}
+
         {!activeCompanyId && (
           <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">No company selected. Please register or join a company workspace.</p>
@@ -298,28 +296,9 @@ export function IncidentsPage() {
           )}
 
           {!loading && list.length === 0 && activeCompanyId && (
-            <ListEmptyState
-              icon={AlertTriangleIcon}
-              title={scopedIncidents.length === 0 ? 'No incidents yet' : 'No incidents match your filters'}
-              description={
-                scopedIncidents.length === 0
-                  ? 'Log incidents to track investigations, corrective actions, and trends.'
-                  : 'Adjust search, date range, or filters to see more records.'
-              }
-              primaryAction={{ kind: 'button', label: 'Report incident', onClick: () => setCreateOpen(true) }}
-              secondaryAction={
-                dateFilter !== 'all' || searchQuery.trim()
-                  ? {
-                      kind: 'button',
-                      label: 'Clear search & dates',
-                      onClick: () => {
-                        setSearchQuery('');
-                        setDateFilter('all');
-                      }
-                    }
-                  : undefined
-              }
-            />
+            <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+              <p className="text-sm text-charcoal-500">No incidents found.</p>
+            </div>
           )}
 
           {list.map((incident) => (
@@ -365,39 +344,7 @@ export function IncidentsPage() {
                       >
                         Edit
                       </button>
-                      <button
-                        type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (!activeCompanyId || !user?.id) return;
-                          const isOwner = String((incident as any).created_by_user_id) === String(user.id);
-                          if (!canDeleteAny && !isOwner) return;
-                          // eslint-disable-next-line no-alert
-                          const ok = window.confirm('Delete this incident? This cannot be undone.');
-                          if (!ok) return;
-                          try {
-                            await deleteIncident({
-                              companyId: activeCompanyId,
-                              incidentId: incident.id,
-                              actorUserId: user.id
-                            });
-                            if (String(viewIncident?.id) === String(incident.id)) setViewIncident(null);
-                            void retry();
-                          } catch (_) {
-                            // eslint-disable-next-line no-alert
-                            alert('Could not delete incident. Please try again or contact support.');
-                          }
-                        }}
-                        className={`text-sm ${
-                          canDeleteAny || String((incident as any).created_by_user_id) === String(user?.id)
-                            ? 'text-critical hover:text-critical-600'
-                            : 'text-charcoal-300 cursor-not-allowed'
-                        }`}
-                        disabled={!canDeleteAny && String((incident as any).created_by_user_id) !== String(user?.id)}
-                        aria-disabled={!canDeleteAny && String((incident as any).created_by_user_id) !== String(user?.id)}
-                      >
-                        Delete
-                      </button>
+                      <button className="text-critical hover:text-critical-600 text-sm">Delete</button>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">
@@ -414,34 +361,7 @@ export function IncidentsPage() {
                       {incident.assignee_user_id ? `User ${shortId(incident.assignee_user_id)}` : 'Unassigned'}
                     </span>
                     <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
-                      {(() => {
-                        const metadata = (incident as any)?.metadata ?? null;
-                        const metaCategoriesRaw = Array.isArray(metadata?.categories) ? metadata.categories : null;
-                        const metaSubcategoriesRaw = Array.isArray(metadata?.subcategories) ? metadata.subcategories : null;
-                        const parsedMetaCategories: string[] = Array.isArray(metaCategoriesRaw)
-                          ? metaCategoriesRaw.map((c: unknown) => String(c ?? '').trim()).filter((c) => c.length > 0)
-                          : [];
-                        const parsedMetaSubcategories: string[] = Array.isArray(metaSubcategoriesRaw)
-                          ? metaSubcategoriesRaw.map((s: unknown) => String(s ?? '').trim()).filter((s) => s.length > 0)
-                          : [];
-                        const primaryCategory = incident.category;
-                        const primarySubcategory = incident.subcategory;
-                        const categoryExtras = Array.from(new Set(parsedMetaCategories)).filter(
-                          (c) => c && c !== primaryCategory
-                        );
-                        const subcategoryExtras = Array.from(new Set(parsedMetaSubcategories)).filter(
-                          (s) => s && s !== primarySubcategory
-                        );
-                        const categoryLabel =
-                          categoryExtras.length > 0
-                            ? [primaryCategory, ...categoryExtras].join('; ')
-                            : primaryCategory;
-                        const subcategoryLabel =
-                          subcategoryExtras.length > 0
-                            ? [primarySubcategory, ...subcategoryExtras].join('; ')
-                            : primarySubcategory;
-                        return `${categoryLabel} • ${subcategoryLabel}`;
-                      })()}
+                      {incident.category} • {incident.subcategory}
                     </span>
                   </div>
                 </div>
