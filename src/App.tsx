@@ -22,6 +22,7 @@ import { EnvironmentWaterPage } from './pages/environment/EnvironmentWaterPage';
 import { EnvironmentAirPage } from './pages/environment/EnvironmentAirPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { TasksPage } from './pages/TasksPage';
+import { TaskDetailPage } from './pages/TaskDetailPage';
 import { IncidentsPage } from './pages/IncidentsPage';
 import { TrainingPage } from './pages/TrainingPage';
 import { AuditsPage } from './pages/AuditsPage';
@@ -1367,6 +1368,36 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <TasksPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/tasks/:taskId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <TaskDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/tasks/:taskId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <TaskDetailPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/tasks/:taskId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <TaskDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

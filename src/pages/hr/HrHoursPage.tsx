@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
@@ -16,6 +16,7 @@ import {
 } from '../../api/services/hrService';
 import { downloadTextFile, toCsv } from '../../utils/csv';
 import type { UUID } from '../../api/models/core';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 export function HrHoursPage() {
   const { activeCompanyId, activeRole } = useTenant();
@@ -74,6 +75,7 @@ export function HrHoursPage() {
   );
 
   const dailyTotal = Number(hoursWorked || 0) + Number(overtimeHours || 0);
+  const canReopen = canApprove || isEmployee;
 
   const byMonth = useMemo(() => {
     const map = new Map<string, number>();
@@ -101,6 +103,14 @@ export function HrHoursPage() {
       return;
     }
 
+    const approvedForDate = (rows ?? []).find(
+      (r) => String(r.employee_id) === String(activeEmployeeId) && r.date === date && r.status === 'APPROVED'
+    );
+    if (approvedForDate) {
+      setError('This record is already approved and locked. Create a new entry for another date.');
+      return;
+    }
+
     try {
       const row = await upsertHrTimesheet({
         company_id: activeCompanyId,
@@ -116,17 +126,23 @@ export function HrHoursPage() {
       const d = new Date(row.date);
       await recalculateHrMonthlyHours(activeCompanyId, row.employee_id as UUID, d.getUTCFullYear(), d.getUTCMonth() + 1, user.id as UUID);
       await Promise.all([refetch(), refetchMonthly()]);
-      setSuccess('Hours worked record saved successfully.');
+      setSuccess('Saved successfully.');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to save hours worked record. Please try again.';
-      setError(message);
+      setError(toUserFacingError(err, 'Unable to save hours worked right now. Please try again.'));
     }
   }
 
   async function onApprove(rowId: UUID) {
     if (!activeCompanyId || !user?.id) return;
-    await approveHrTimesheet({ companyId: activeCompanyId, timesheetId: rowId, actorUserId: user.id as UUID, decision: 'APPROVED' });
-    await Promise.all([refetch(), refetchMonthly()]);
+    setError(null);
+    setSuccess(null);
+    try {
+      await approveHrTimesheet({ companyId: activeCompanyId, timesheetId: rowId, actorUserId: user.id as UUID, decision: 'APPROVED' });
+      await Promise.all([refetch(), refetchMonthly()]);
+      setSuccess('Saved successfully.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to approve this request right now.'));
+    }
   }
 
   async function onDecline(rowId: UUID) {
@@ -136,8 +152,28 @@ export function HrHoursPage() {
       setError('Decline reason is required.');
       return;
     }
-    await approveHrTimesheet({ companyId: activeCompanyId, timesheetId: rowId, actorUserId: user.id as UUID, decision: 'DECLINED', declineReason: reason.trim() });
-    await Promise.all([refetch(), refetchMonthly()]);
+    setError(null);
+    setSuccess(null);
+    try {
+      await approveHrTimesheet({ companyId: activeCompanyId, timesheetId: rowId, actorUserId: user.id as UUID, decision: 'DECLINED', declineReason: reason.trim() });
+      await Promise.all([refetch(), refetchMonthly()]);
+      setSuccess('Saved successfully.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to decline this request right now.'));
+    }
+  }
+
+  function onReopen(rowId: UUID) {
+    const row = (rows ?? []).find((r) => String(r.id) === String(rowId));
+    if (!row) return;
+    if (!isEmployee) setEmployeeId(String(row.employee_id ?? ''));
+    setDate(row.date);
+    setHoursWorked(String(row.hours_worked ?? '0'));
+    setOvertimeHours(String(row.overtime_hours ?? '0'));
+    setProjectOrClient(String(row.project_or_client ?? ''));
+    setComments(String(row.notes ?? ''));
+    setError(null);
+    setSuccess('Request reopened. Update details and click Save timesheet to resubmit.');
   }
 
   return (
@@ -229,7 +265,7 @@ export function HrHoursPage() {
 
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
           <table className="w-full text-sm">
-            <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Date</th><th className="text-left px-3 py-2">Hours worked</th><th className="text-left px-3 py-2">Overtime</th><th className="text-left px-3 py-2">Daily total</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Action</th></tr></thead>
+            <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Date</th><th className="text-left px-3 py-2">Hours worked</th><th className="text-left px-3 py-2">Overtime</th><th className="text-left px-3 py-2">Daily total</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Decline reason</th><th className="text-left px-3 py-2">Action</th></tr></thead>
             <tbody>
               {(rows ?? []).map((row) => (
                 <tr key={row.id} className="border-t border-surface-100">
@@ -240,12 +276,23 @@ export function HrHoursPage() {
                   <td className="px-3 py-2 font-semibold">{(Number(row.hours_worked ?? 0) + Number(row.overtime_hours ?? 0)).toFixed(2)}</td>
                   <td className="px-3 py-2">{row.status}</td>
                   <td className="px-3 py-2">
+                    {row.status === 'DECLINED' ? (
+                      <span className="text-critical text-xs">{row.decline_reason ? String(row.decline_reason) : 'No reason provided'}</span>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
                     {canApprove && row.status === 'SUBMITTED' && (
                       <div className="space-x-2">
                         <button className="text-teal" onClick={() => void onApprove(row.id as UUID)}>Approve</button>
                         <button className="text-critical" onClick={() => void onDecline(row.id as UUID)}>Decline</button>
                       </div>
                     )}
+                    {canReopen && row.status === 'DECLINED' && (!isEmployee || String(row.employee_id) === String(selfEmployee?.id)) && (
+                      <button className="text-teal" onClick={() => onReopen(row.id as UUID)}>Reopen</button>
+                    )}
+                    {row.status === 'APPROVED' && <span className="text-xs text-charcoal-500">Locked</span>}
                   </td>
                 </tr>
               ))}

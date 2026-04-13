@@ -427,6 +427,7 @@ export function DashboardPage() {
               {(summary?.tasks ?? []).map((task) =>
               <div
                 key={task.id}
+                onClick={() => navigate(`/dashboard/management/tasks/${task.id}`)}
                 className="px-5 py-3 hover:bg-surface-50 cursor-pointer transition-colors">
 
                   <div className="flex items-start justify-between gap-3">

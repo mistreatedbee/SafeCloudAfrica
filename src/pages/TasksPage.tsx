@@ -835,7 +835,7 @@ export function TasksPage() {
                       <div className="min-w-0">
                         <button
                           type="button"
-                          onClick={() => navigate(`/tasks/${task.id}`)}
+                          onClick={() => navigate(`/dashboard/management/tasks/${task.id}`)}
                           className="text-left font-medium text-charcoal hover:text-teal hover:underline truncate block"
                         >
                           {task.title}

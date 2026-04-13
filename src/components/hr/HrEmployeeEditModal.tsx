@@ -11,6 +11,7 @@ import { listSites } from '../../api/services/sitesService';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 type Props = {
   open: boolean;
@@ -402,7 +403,7 @@ export function HrEmployeeEditModal(props: Props) {
       props.onSaved?.();
       clearDraft(draftKey);
     } catch (err: any) {
-      setError(formatAuthError(err));
+      setError(toUserFacingError(err, formatAuthError(err)));
     } finally {
       setLoading(false);
     }

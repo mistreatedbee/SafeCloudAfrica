@@ -261,7 +261,7 @@ export function TaskDetailPage() {
       <Layout>
         <div className="p-6">
           <p className="text-charcoal-500">Task not found.</p>
-          <button type="button" onClick={() => navigate('/tasks')} className="mt-2 text-teal hover:underline">
+          <button type="button" onClick={() => navigate('/dashboard/management/tasks')} className="mt-2 text-teal hover:underline">
             Back to tasks
           </button>
         </div>
@@ -279,7 +279,7 @@ export function TaskDetailPage() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate('/tasks')}
+            onClick={() => navigate('/dashboard/management/tasks')}
             className="p-2 rounded-lg border border-surface-300 text-charcoal hover:bg-surface-50"
           >
             <ArrowLeftIcon className="w-4 h-4" />

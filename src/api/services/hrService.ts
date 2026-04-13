@@ -652,6 +652,46 @@ export async function updateHrRecord(
   return data as HrSimpleRecord;
 }
 
+export async function deleteHrRecord(
+  table:
+    | 'hr_employee_documents'
+    | 'hr_employment_contracts'
+    | 'hr_leave_types'
+    | 'hr_leave_balances'
+    | 'hr_performance_reviews'
+    | 'hr_disciplinary_cases'
+    | 'hr_policy_acknowledgements'
+    | 'hr_vacancies'
+    | 'hr_applicants'
+    | 'hr_interview_notes'
+    | 'hr_leave_requests'
+    | 'hr_timesheets'
+    | 'hr_monthly_hours'
+    | 'hr_ack_documents'
+    | 'hr_ack_receipts'
+    | 'hr_employee_wellness_assessments'
+    | 'hr_employee_wellness_actions',
+  input: {
+    companyId: UUID;
+    rowId: UUID;
+    actorUserId: UUID;
+  }
+): Promise<void> {
+  const { error } = await insforge.database
+    .from(table)
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.rowId);
+  if (error) throw new Error(getErrorMessage(error));
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: `hr.${table}.delete`,
+    entityType: table,
+    entityId: input.rowId
+  }).catch(() => {});
+}
+
 export async function listEmployeeWellnessAssessments(input: {
   companyId: UUID;
   employeeId?: UUID;
@@ -864,6 +904,7 @@ export async function upsertHrSettings(input: {
   leave_requires_hr_final_approval?: boolean;
   leave_escalation_days?: number;
   repeat_offence_window_months?: number;
+  working_days?: string[];
 }): Promise<Record<string, unknown>> {
   return upsertTable<Record<string, unknown>>('hr_settings', { ...input, updated_at: new Date().toISOString() }, 'company_id');
 }

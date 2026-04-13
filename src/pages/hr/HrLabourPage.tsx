@@ -17,6 +17,7 @@ import { createNotification } from '../../api/services/notificationsService';
 import { SelectOrType } from '../../components/ui/SelectOrType';
 import type { UUID } from '../../api/models/core';
 import { downloadTextFile, toCsv } from '../../utils/csv';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 type SeverityFlag = 'minor' | 'major' | 'repeat';
 
@@ -57,9 +58,24 @@ export function HrLabourPage() {
   const [disciplinaryActionTaken, setDisciplinaryActionTaken] = useState('');
   const [repeatOffenceAction, setRepeatOffenceAction] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedCaseId, setSelectedCaseId] = useState<UUID | null>(null);
-  const [selectedCaseStatus, setSelectedCaseStatus] = useState('OPEN');
+  const [selectedCaseDraft, setSelectedCaseDraft] = useState<{
+    status: string;
+    description: string;
+    disciplinaryActionTaken: string;
+    repeatOffenceAction: string;
+    recommendedAction: string;
+    offenceSeverity: string;
+  }>({
+    status: 'OPEN',
+    description: '',
+    disciplinaryActionTaken: '',
+    repeatOffenceAction: '',
+    recommendedAction: '',
+    offenceSeverity: ''
+  });
 
   const { data: settings } = useAsync(async () => {
     if (!activeCompanyId) return null;
@@ -101,8 +117,15 @@ export function HrLabourPage() {
 
   React.useEffect(() => {
     if (!selectedCase) return;
-    setSelectedCaseStatus(String(selectedCase.status ?? 'OPEN'));
-  }, [selectedCase?.id, selectedCase?.status]);
+    setSelectedCaseDraft({
+      status: String(selectedCase.status ?? 'OPEN'),
+      description: String(selectedCase.description ?? ''),
+      disciplinaryActionTaken: String(selectedCase.disciplinary_action_taken ?? ''),
+      repeatOffenceAction: String(selectedCase.repeat_offence_action ?? ''),
+      recommendedAction: String(selectedCase.recommended_action ?? ''),
+      offenceSeverity: String(selectedCase.offence_severity ?? '')
+    });
+  }, [selectedCase]);
 
   async function onCreate() {
     if (!activeCompanyId || !user?.id || !employeeId || !description.trim() || !offenceType.trim()) {
@@ -110,6 +133,7 @@ export function HrLabourPage() {
       return;
     }
     setError(null);
+    setSuccess(null);
     setSaving(true);
     try {
       const created = await createHrRecord('hr_disciplinary_cases', {
@@ -147,8 +171,9 @@ export function HrLabourPage() {
       setDisciplinaryActionTaken('');
       setRepeatOffenceAction('');
       await refetch();
+      setSuccess('Saved successfully.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to log offence case.');
+      setError(toUserFacingError(err, 'Unable to save this labour case right now. Please try again.'));
     } finally {
       setSaving(false);
     }
@@ -156,22 +181,26 @@ export function HrLabourPage() {
 
   async function onSaveSelected() {
     if (!activeCompanyId || !user?.id || !selectedCase) return;
+    setError(null);
+    setSuccess(null);
     try {
       await updateHrRecord('hr_disciplinary_cases', {
         companyId: activeCompanyId,
         rowId: selectedCase.id as UUID,
         actorUserId: user.id as UUID,
         patch: {
-          status: selectedCaseStatus,
-          disciplinary_action_taken: selectedCase.disciplinary_action_taken ?? null,
-          repeat_offence_action: selectedCase.repeat_offence_action ?? null,
-          recommended_action: selectedCase.recommended_action ?? null,
-          offence_severity: selectedCase.offence_severity ?? null
+          status: selectedCaseDraft.status,
+          description: selectedCaseDraft.description.trim() || null,
+          disciplinary_action_taken: selectedCaseDraft.disciplinaryActionTaken.trim() || null,
+          repeat_offence_action: selectedCaseDraft.repeatOffenceAction.trim() || null,
+          recommended_action: selectedCaseDraft.recommendedAction.trim() || null,
+          offence_severity: selectedCaseDraft.offenceSeverity.trim() || null
         }
       });
       await refetch();
+      setSuccess('Saved successfully.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update offence case.');
+      setError(toUserFacingError(err, 'Unable to update this labour case right now.'));
     }
   }
 
@@ -196,6 +225,7 @@ export function HrLabourPage() {
     <Layout title="Labour Relations & Compliance">
       <div className="space-y-4">
         <HrSectionNav />
+        {success && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700">{success}</div>}
 
         <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
           <h3 className="font-semibold">Employee Offence Log</h3>
@@ -246,9 +276,9 @@ export function HrLabourPage() {
               <span className="block text-xs text-charcoal-500 mb-1">Action for repeat offence</span>
               <input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={repeatOffenceAction} onChange={(e) => setRepeatOffenceAction(e.target.value)} disabled={!canManage} />
             </label>
-            <div className="text-sm rounded-lg border border-surface-200 p-3 bg-surface-50">
-              <p>Severity: <span className="font-semibold uppercase">{severity}</span></p>
-              <p>Related cases in {repeatWindowMonths} months: <span className="font-semibold">{repeatCount}</span></p>
+            <div className={`text-sm rounded-lg border p-3 ${severity === 'repeat' ? 'border-critical bg-critical/5' : 'border-surface-200 bg-surface-50'}`}>
+              <p>Severity: <span className={`font-semibold uppercase ${severity === 'repeat' ? 'text-critical' : ''}`}>{severity}</span></p>
+              <p>Related cases in {repeatWindowMonths} months: <span className={`font-semibold ${repeatCount > 0 ? 'text-critical' : ''}`}>{repeatCount}</span></p>
               <p className="mt-1">Recommended action: <span className="font-medium">{recommended}</span></p>
             </div>
           </div>
@@ -278,7 +308,15 @@ export function HrLabourPage() {
                   <td className="px-3 py-2">{employeeLabel.get(row.employee_id as UUID) ?? String(row.employee_id ?? '')}</td>
                   <td className="px-3 py-2">{String(row.offence_type ?? row.offence_category ?? '')}</td>
                   <td className="px-3 py-2">{String(row.offence_severity ?? '-')}</td>
-                  <td className="px-3 py-2">{String(row.repeat_offence_flag ?? false)}</td>
+                  <td className="px-3 py-2">
+                    {Boolean(row.repeat_offence_flag) ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-critical/10 text-critical border border-critical/40 text-xs font-semibold">
+                        Repeat offence
+                      </span>
+                    ) : (
+                      'No'
+                    )}
+                  </td>
                   <td className="px-3 py-2">{String(row.status ?? '')}</td>
                   <td className="px-3 py-2">
                     <button className="text-teal" onClick={() => setSelectedCaseId(row.id as UUID)}>View details</button>
@@ -298,13 +336,53 @@ export function HrLabourPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <p><span className="text-charcoal-500">Employee:</span> {employeeLabel.get(selectedCase.employee_id as UUID) ?? String(selectedCase.employee_id)}</p>
               <p><span className="text-charcoal-500">Offence:</span> {String(selectedCase.offence_type ?? selectedCase.offence_category ?? '')}</p>
-              <p><span className="text-charcoal-500">Description:</span> {String(selectedCase.description ?? '')}</p>
+              <label className="md:col-span-2">
+                <span className="block text-xs text-charcoal-500 mb-1">Description</span>
+                <textarea
+                  className="w-full border border-surface-300 rounded-lg px-3 py-2"
+                  rows={3}
+                  value={selectedCaseDraft.description}
+                  onChange={(e) => setSelectedCaseDraft((prev) => ({ ...prev, description: e.target.value }))}
+                />
+              </label>
+              <label>
+                <span className="block text-xs text-charcoal-500 mb-1">Disciplinary action taken</span>
+                <input
+                  className="w-full border border-surface-300 rounded-lg px-3 py-2"
+                  value={selectedCaseDraft.disciplinaryActionTaken}
+                  onChange={(e) => setSelectedCaseDraft((prev) => ({ ...prev, disciplinaryActionTaken: e.target.value }))}
+                />
+              </label>
+              <label>
+                <span className="block text-xs text-charcoal-500 mb-1">Action for repeat offence</span>
+                <input
+                  className="w-full border border-surface-300 rounded-lg px-3 py-2"
+                  value={selectedCaseDraft.repeatOffenceAction}
+                  onChange={(e) => setSelectedCaseDraft((prev) => ({ ...prev, repeatOffenceAction: e.target.value }))}
+                />
+              </label>
+              <label>
+                <span className="block text-xs text-charcoal-500 mb-1">Recommended action</span>
+                <input
+                  className="w-full border border-surface-300 rounded-lg px-3 py-2"
+                  value={selectedCaseDraft.recommendedAction}
+                  onChange={(e) => setSelectedCaseDraft((prev) => ({ ...prev, recommendedAction: e.target.value }))}
+                />
+              </label>
+              <label>
+                <span className="block text-xs text-charcoal-500 mb-1">Offence severity</span>
+                <input
+                  className="w-full border border-surface-300 rounded-lg px-3 py-2"
+                  value={selectedCaseDraft.offenceSeverity}
+                  onChange={(e) => setSelectedCaseDraft((prev) => ({ ...prev, offenceSeverity: e.target.value }))}
+                />
+              </label>
               <label>
                 <span className="block text-xs text-charcoal-500 mb-1">Status</span>
                 <select
                   className="w-full border border-surface-300 rounded-lg px-3 py-2"
-                  value={selectedCaseStatus}
-                  onChange={(e) => setSelectedCaseStatus(e.target.value)}
+                  value={selectedCaseDraft.status}
+                  onChange={(e) => setSelectedCaseDraft((prev) => ({ ...prev, status: e.target.value }))}
                 >
                   <option value="OPEN">OPEN</option>
                   <option value="IN_PROGRESS">IN_PROGRESS</option>

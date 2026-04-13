@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
@@ -19,6 +19,7 @@ import { downloadTextFile, toCsv } from '../../utils/csv';
 import type { UUID } from '../../api/models/core';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 export function HrLeavePage() {
   const { activeCompanyId, activeRole } = useTenant();
@@ -31,6 +32,7 @@ export function HrLeavePage() {
   const [reason, setReason] = useState('');
   const [declineReasonByRow, setDeclineReasonByRow] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const { restoreDraft, clearDraft } = useDraftManager();
 
@@ -228,6 +230,7 @@ export function HrLeavePage() {
   async function onCreate() {
     if (!activeCompanyId || !user?.id || !activeEmployeeId || !leaveTypeValue.trim()) return;
     setError(null);
+    setSuccess(null);
     try {
       const leaveTypeId = await getOrCreateHrLeaveTypeByName(activeCompanyId, user.id as UUID, leaveTypeValue.trim());
       await refetchLeaveTypes();
@@ -266,20 +269,28 @@ export function HrLeavePage() {
       const baseline: HrLeaveCreateDraft = { employeeId, leaveTypeValue, startDate, endDate, reason };
       setCreateBaseline(baseline);
       clearDraft(draftKeyCreate);
+      setSuccess('Saved successfully.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create leave request.');
+      setError(toUserFacingError(err, 'Unable to submit leave request right now. Please try again.'));
     }
   }
 
   async function onApprove(row: Record<string, unknown>) {
     if (!activeCompanyId || !user?.id) return;
-    await applyHrLeaveApproval({
-      companyId: activeCompanyId,
-      leaveRequestId: row.id as UUID,
-      actorUserId: user.id as UUID,
-      decision: isSupervisor ? 'SUPERVISOR_APPROVE' : 'HR_APPROVE'
-    });
-    await refetch();
+    setError(null);
+    setSuccess(null);
+    try {
+      await applyHrLeaveApproval({
+        companyId: activeCompanyId,
+        leaveRequestId: row.id as UUID,
+        actorUserId: user.id as UUID,
+        decision: isSupervisor ? 'SUPERVISOR_APPROVE' : 'HR_APPROVE'
+      });
+      await refetch();
+      setSuccess('Saved successfully.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to approve this leave request right now.'));
+    }
   }
 
   async function onDecline(row: Record<string, unknown>) {
@@ -289,18 +300,25 @@ export function HrLeavePage() {
       setError('Decline reason is required.');
       return;
     }
-    await applyHrLeaveApproval({
-      companyId: activeCompanyId,
-      leaveRequestId: row.id as UUID,
-      actorUserId: user.id as UUID,
-      decision: isSupervisor ? 'SUPERVISOR_DECLINE' : 'HR_DECLINE',
-      declineReason: reasonForDecline
-    });
-    await refetch();
+    setError(null);
+    setSuccess(null);
+    try {
+      await applyHrLeaveApproval({
+        companyId: activeCompanyId,
+        leaveRequestId: row.id as UUID,
+        actorUserId: user.id as UUID,
+        decision: isSupervisor ? 'SUPERVISOR_DECLINE' : 'HR_DECLINE',
+        declineReason: reasonForDecline
+      });
+      await refetch();
 
-    const baseline: HrLeaveDeclineDraft = { ...declineReasonByRow };
-    setDeclineBaseline(baseline);
-    clearDraft(draftKeyDecline);
+      const baseline: HrLeaveDeclineDraft = { ...declineReasonByRow };
+      setDeclineBaseline(baseline);
+      clearDraft(draftKeyDecline);
+      setSuccess('Saved successfully.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to decline this leave request right now.'));
+    }
   }
 
   const pending = useMemo(() => (requests ?? []).filter((row) => row.status === 'SUBMITTED'), [requests]);
@@ -310,6 +328,7 @@ export function HrLeavePage() {
       <div className="space-y-4">
         <HrSectionNav />
         {error && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
+        {success && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700">{success}</div>}
 
         <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
           <h3 className="font-semibold">Create leave request</h3>
@@ -389,7 +408,7 @@ export function HrLeavePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                 {(balances ?? []).map((row) => (
                   <div key={String(row.id)} className="rounded border border-surface-200 p-2">
-                    <p className="font-medium">{leaveTypeLabelById.get(row.leave_type_id as UUID) ?? String(row.leave_type_id ?? '')} ({row.year})</p>
+                    <p className="font-medium">{leaveTypeLabelById.get(row.leave_type_id as UUID) ?? String(row.leave_type_id ?? '')} ({String(row.year ?? '')})</p>
                     <p className="text-charcoal-500">Allocated: {String(row.allocated_days ?? 0)} | Used: {String(row.used_days ?? 0)} | Remaining: {String(row.remaining_days ?? 0)}</p>
                   </div>
                 ))}

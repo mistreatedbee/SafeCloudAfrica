@@ -1,12 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
-import { createHrRecord, listHrRecords, updateHrRecord, upsertHrEmployee } from '../../api/services/hrService';
+import { createHrRecord, deleteHrRecord, listHrRecords, updateHrRecord, upsertHrEmployee } from '../../api/services/hrService';
 import { SelectOrType } from '../../components/ui/SelectOrType';
 import type { UUID } from '../../api/models/core';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 const COMPETENCY_OPTIONS = ['Communication', 'Safety compliance', 'Technical', 'Leadership', 'Administration'].map((value) => ({ id: value, value, label: value }));
 const EXPERIENCE_OPTIONS = ['0-1 years', '2-3 years', '4-5 years', '6+ years'].map((value) => ({ id: value, value, label: value }));
@@ -32,6 +33,7 @@ export function HrRecruitmentPage() {
   const [leavingReason, setLeavingReason] = useState('');
   const [criminalRecord, setCriminalRecord] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const { data: vacancies, refetch: refetchVacancies } = useAsync(async () => {
     if (!activeCompanyId) return [];
@@ -48,6 +50,7 @@ export function HrRecruitmentPage() {
   async function onCreateVacancy() {
     if (!activeCompanyId || !user?.id || !vacancyTitle.trim()) return;
     setError(null);
+    setSuccess(null);
     try {
       await createHrRecord('hr_vacancies', {
         company_id: activeCompanyId,
@@ -66,14 +69,16 @@ export function HrRecruitmentPage() {
       setExperienceRequired('');
       setReferenceChecksDone(false);
       await refetchVacancies();
+      setSuccess('Saved successfully.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create vacancy.');
+      setError(toUserFacingError(err, 'Unable to create vacancy right now. Please try again.'));
     }
   }
 
   async function onCreateApplicant() {
     if (!activeCompanyId || !user?.id || !applicantName.trim()) return;
     setError(null);
+    setSuccess(null);
     try {
       await createHrRecord('hr_applicants', {
         company_id: activeCompanyId,
@@ -97,54 +102,77 @@ export function HrRecruitmentPage() {
       setLeavingReason('');
       setCriminalRecord(null);
       await refetchApplicants();
+      setSuccess('Saved successfully.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create applicant.');
+      setError(toUserFacingError(err, 'Unable to create applicant right now. Please try again.'));
     }
   }
 
   async function approveVacancyAsDepartmentManager(rowId: UUID) {
     if (!activeCompanyId || !user?.id || !canDepartmentManagerApprove) return;
-    await updateHrRecord('hr_vacancies', {
-      companyId: activeCompanyId,
-      rowId,
-      actorUserId: user.id as UUID,
-      patch: {
-        department_manager_approved: true,
-        department_manager_approved_by: user.id,
-        department_manager_approved_at: new Date().toISOString()
-      }
-    });
-    await refetchVacancies();
+    setError(null);
+    setSuccess(null);
+    try {
+      await updateHrRecord('hr_vacancies', {
+        companyId: activeCompanyId,
+        rowId,
+        actorUserId: user.id as UUID,
+        patch: {
+          department_manager_approved: true,
+          department_manager_approved_by: user.id,
+          department_manager_approved_at: new Date().toISOString()
+        }
+      });
+      await refetchVacancies();
+      setSuccess('Saved successfully.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to approve this vacancy right now.'));
+    }
   }
 
   async function setReferenceChecked(rowId: UUID, value: boolean) {
     if (!activeCompanyId || !user?.id || !canWrite) return;
-    await updateHrRecord('hr_vacancies', {
-      companyId: activeCompanyId,
-      rowId,
-      actorUserId: user.id as UUID,
-      patch: { reference_checks_done: value }
-    });
-    await refetchVacancies();
+    setError(null);
+    setSuccess(null);
+    try {
+      await updateHrRecord('hr_vacancies', {
+        companyId: activeCompanyId,
+        rowId,
+        actorUserId: user.id as UUID,
+        patch: { reference_checks_done: value }
+      });
+      await refetchVacancies();
+      setSuccess('Saved successfully.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to update reference checks right now.'));
+    }
   }
 
   async function approveApplicant(rowId: UUID, actor: 'hr' | 'dept') {
     if (!activeCompanyId || !user?.id) return;
+    setError(null);
+    setSuccess(null);
     const patch =
       actor === 'hr'
         ? { hr_manager_approved: true, hr_manager_approved_by: user.id, hr_manager_approved_at: new Date().toISOString() }
         : { department_manager_approved: true, department_manager_approved_by: user.id, department_manager_approved_at: new Date().toISOString() };
-    await updateHrRecord('hr_applicants', {
-      companyId: activeCompanyId,
-      rowId,
-      actorUserId: user.id as UUID,
-      patch
-    });
-    await refetchApplicants();
+    try {
+      await updateHrRecord('hr_applicants', {
+        companyId: activeCompanyId,
+        rowId,
+        actorUserId: user.id as UUID,
+        patch
+      });
+      await refetchApplicants();
+      setSuccess('Saved successfully.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to approve this applicant right now.'));
+    }
   }
 
   async function convertApplicantToEmployee(row: Record<string, unknown>) {
     if (!activeCompanyId || !user?.id) return;
+    setSuccess(null);
     const hrApproved = Boolean(row.hr_manager_approved);
     const deptApproved = Boolean(row.department_manager_approved);
     if (!hrApproved || !deptApproved) {
@@ -163,27 +191,56 @@ export function HrRecruitmentPage() {
     const [firstName, ...rest] = fullName.split(' ').filter(Boolean);
     const lastName = rest.join(' ') || 'Unknown';
     const employeeNo = `EMP-${Date.now().toString().slice(-6)}`;
-    const employee = await upsertHrEmployee({
-      company_id: activeCompanyId,
-      created_by_user_id: user.id as UUID,
-      employee_no: employeeNo,
-      first_name: firstName || 'Unknown',
-      last_name: lastName,
-      email: String(row.email ?? `${employeeNo.toLowerCase()}@pending.local`),
-      employment_type: 'Permanent',
-      start_date: new Date().toISOString().slice(0, 10),
-      employment_status: 'ONBOARDING'
-    });
-    await updateHrRecord('hr_applicants', {
-      companyId: activeCompanyId,
-      rowId: row.id as UUID,
-      actorUserId: user.id as UUID,
-      patch: {
-        converted_employee_id: employee.id,
-        status: 'HIRED'
+    try {
+      const employee = await upsertHrEmployee({
+        company_id: activeCompanyId,
+        created_by_user_id: user.id as UUID,
+        employee_no: employeeNo,
+        first_name: firstName || 'Unknown',
+        last_name: lastName,
+        email: String(row.email ?? `${employeeNo.toLowerCase()}@pending.local`),
+        employment_type: 'Permanent',
+        start_date: new Date().toISOString().slice(0, 10),
+        employment_status: 'ONBOARDING'
+      });
+      await updateHrRecord('hr_applicants', {
+        companyId: activeCompanyId,
+        rowId: row.id as UUID,
+        actorUserId: user.id as UUID,
+        patch: {
+          converted_employee_id: employee.id,
+          status: 'HIRED'
+        }
+      });
+      await refetchApplicants();
+      setSuccess('Employee saved successfully.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to convert applicant to employee right now.'));
+    }
+  }
+
+  async function onDeleteRecord(table: 'hr_vacancies' | 'hr_applicants', rowId: UUID) {
+    if (!activeCompanyId || !user?.id) return;
+    const confirmed = window.confirm('Are you sure you want to delete this record?');
+    if (!confirmed) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      await deleteHrRecord(table, {
+        companyId: activeCompanyId,
+        rowId,
+        actorUserId: user.id as UUID
+      });
+      if (table === 'hr_vacancies') {
+        await refetchVacancies();
+        if (vacancyIdForApplicant === String(rowId)) setVacancyIdForApplicant('');
+      } else {
+        await refetchApplicants();
       }
-    });
-    await refetchApplicants();
+      setSuccess('Saved successfully.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to delete this record right now.'));
+    }
   }
 
   return (
@@ -191,6 +248,7 @@ export function HrRecruitmentPage() {
       <div className="space-y-4">
         <HrSectionNav />
         {error && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
+        {success && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700">{success}</div>}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
@@ -245,6 +303,9 @@ export function HrRecruitmentPage() {
                         Reference checks: {Boolean(row.reference_checks_done) ? 'Yes' : 'No'}
                       </button>
                     )}
+                    {canWrite && (
+                      <button className="text-xs px-2 py-1 rounded border border-critical/40 text-critical" onClick={() => void onDeleteRecord('hr_vacancies', row.id as UUID)}>Delete</button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -293,7 +354,7 @@ export function HrRecruitmentPage() {
               {(applicants ?? []).map((row) => (
                 <div key={String(row.id)} className="border border-surface-200 rounded-lg p-3">
                   <p className="font-medium">{String(row.full_name ?? '')}</p>
-                  <p className="text-charcoal-500">Vacancy: {row.vacancy_id ? (vacancyMap.get(row.vacancy_id as UUID) ?? row.vacancy_id) : '-'}</p>
+                  <p className="text-charcoal-500">Vacancy: {row.vacancy_id ? String(vacancyMap.get(row.vacancy_id as UUID) ?? row.vacancy_id) : '-'}</p>
                   <p className="text-charcoal-500">Interviewed+Met: {String(row.interviewed_met_requirements ?? '-')} | Offer accepted: {String(row.offer_accepted ?? '-')}</p>
                   <p className="text-charcoal-500">HR approval: {String(Boolean(row.hr_manager_approved))} | Department approval: {String(Boolean(row.department_manager_approved))}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -306,6 +367,9 @@ export function HrRecruitmentPage() {
                     <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void convertApplicantToEmployee(row)}>
                       Convert to Employee
                     </button>
+                    {canWrite && (
+                      <button className="text-xs px-2 py-1 rounded border border-critical/40 text-critical" onClick={() => void onDeleteRecord('hr_applicants', row.id as UUID)}>Delete</button>
+                    )}
                   </div>
                 </div>
               ))}
