@@ -1,6 +1,7 @@
+import { Fragment } from 'react';
 import type { RiskAssessmentType } from '../../api/services/riskAssessmentsService';
+import { buildRiskTableLayout } from '../../utils/riskTableLayout';
 
-/** Mirrors `RiskTableColumn` in pages/risks/riskTemplates (kept here to avoid components importing pages). */
 export type RiskTableColumnDef = { key: string; label: string; kind?: 'text' | 'date' };
 
 export type RiskDraftRow = {
@@ -28,7 +29,6 @@ type Props = {
   columns: RiskTableColumnDef[];
   rows: RiskDraftRow[];
   readOnly?: boolean;
-  /** Create page uses inputs; edit page shows residual as read-only text in the table. */
   allowResidualEditing: boolean;
   onUpdateRow: (rowId: string, patch: Partial<RiskDraftRow>) => void;
   onAddRow?: () => void;
@@ -37,102 +37,344 @@ type Props = {
   onRemoveRow: (rowId: string) => void;
 };
 
-function ColumnCellsTable(props: {
+function JsonCellTable(props: {
   type: RiskAssessmentType;
-  columns: RiskTableColumnDef[];
+  col: RiskTableColumnDef;
   row: RiskDraftRow;
   readOnly: boolean;
   onUpdateRow: (rowId: string, patch: Partial<RiskDraftRow>) => void;
 }) {
-  const { type, columns, row, readOnly, onUpdateRow } = props;
+  const { type, col, row, readOnly, onUpdateRow } = props;
+  if (type === 'prework' && col.key === 'quick_rating') {
+    return (
+      <td className="px-3 py-2">
+        <select
+          disabled={readOnly}
+          value={String(row.json_data.quick_rating ?? 'Medium')}
+          onChange={(e) => onUpdateRow(row.localId, { json_data: { ...row.json_data, quick_rating: e.target.value } })}
+          className={inputTable}
+        >
+          <option>Low</option>
+          <option>Medium</option>
+          <option>High</option>
+        </select>
+      </td>
+    );
+  }
+
   return (
-    <>
-      {columns.map((col) => {
-        if (type === 'prework' && col.key === 'quick_rating') {
-          return (
-            <td key={col.key} className="px-3 py-2">
-              <select
-                disabled={readOnly}
-                value={String(row.json_data.quick_rating ?? 'Medium')}
-                onChange={(e) => onUpdateRow(row.localId, { json_data: { ...row.json_data, quick_rating: e.target.value } })}
-                className={inputTable}
-              >
-                <option>Low</option>
-                <option>Medium</option>
-                <option>High</option>
-              </select>
-            </td>
-          );
-        }
-        return (
-          <td key={col.key} className="px-3 py-2">
-            <input
-              disabled={readOnly}
-              type={col.kind === 'date' ? 'date' : 'text'}
-              value={String(row.json_data[col.key] ?? '')}
-              onChange={(e) =>
-                onUpdateRow(row.localId, { json_data: { ...row.json_data, [col.key]: e.target.value } })
-              }
-              className={`${inputTable} md:min-w-[180px]`}
-            />
-          </td>
-        );
-      })}
-    </>
+    <td className="px-3 py-2">
+      <input
+        disabled={readOnly}
+        type={col.kind === 'date' ? 'date' : 'text'}
+        value={String(row.json_data[col.key] ?? '')}
+        onChange={(e) => onUpdateRow(row.localId, { json_data: { ...row.json_data, [col.key]: e.target.value } })}
+        className={`${inputTable} md:min-w-[180px]`}
+      />
+    </td>
   );
 }
 
-function ColumnFieldsCard(props: {
+function JsonFieldCard(props: {
   type: RiskAssessmentType;
-  columns: RiskTableColumnDef[];
+  col: RiskTableColumnDef;
   row: RiskDraftRow;
   readOnly: boolean;
   onUpdateRow: (rowId: string, patch: Partial<RiskDraftRow>) => void;
   rowKeyPrefix: string;
 }) {
-  const { type, columns, row, readOnly, onUpdateRow, rowKeyPrefix } = props;
+  const { type, col, row, readOnly, onUpdateRow, rowKeyPrefix } = props;
+  const id = `${rowKeyPrefix}-${col.key}`;
+
+  if (type === 'prework' && col.key === 'quick_rating') {
+    return (
+      <div>
+        <label htmlFor={id} className={labelCard}>
+          {col.label}
+        </label>
+        <select
+          id={id}
+          disabled={readOnly}
+          value={String(row.json_data.quick_rating ?? 'Medium')}
+          onChange={(e) => onUpdateRow(row.localId, { json_data: { ...row.json_data, quick_rating: e.target.value } })}
+          className={inputCard}
+        >
+          <option>Low</option>
+          <option>Medium</option>
+          <option>High</option>
+        </select>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-3">
-      {columns.map((col) => {
-        const id = `${rowKeyPrefix}-${col.key}`;
-        if (type === 'prework' && col.key === 'quick_rating') {
-          return (
-            <div key={col.key}>
-              <label htmlFor={id} className={labelCard}>
-                {col.label}
-              </label>
-              <select
-                id={id}
-                disabled={readOnly}
-                value={String(row.json_data.quick_rating ?? 'Medium')}
-                onChange={(e) => onUpdateRow(row.localId, { json_data: { ...row.json_data, quick_rating: e.target.value } })}
-                className={inputCard}
-              >
-                <option>Low</option>
-                <option>Medium</option>
-                <option>High</option>
-              </select>
-            </div>
-          );
-        }
-        return (
-          <div key={col.key}>
-            <label htmlFor={id} className={labelCard}>
-              {col.label}
+    <div>
+      <label htmlFor={id} className={labelCard}>
+        {col.label}
+      </label>
+      <input
+        id={id}
+        disabled={readOnly}
+        type={col.kind === 'date' ? 'date' : 'text'}
+        value={String(row.json_data[col.key] ?? '')}
+        onChange={(e) => onUpdateRow(row.localId, { json_data: { ...row.json_data, [col.key]: e.target.value } })}
+        className={inputCard}
+      />
+    </div>
+  );
+}
+
+function ResidualCellTable(props: {
+  row: RiskDraftRow;
+  readOnly: boolean;
+  allowResidualEditing: boolean;
+  onUpdateRow: (rowId: string, patch: Partial<RiskDraftRow>) => void;
+}) {
+  const { row, readOnly, allowResidualEditing, onUpdateRow } = props;
+  if (allowResidualEditing) {
+    return (
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1 text-sm flex-wrap">
+          <input
+            disabled={readOnly}
+            type="number"
+            min={1}
+            max={5}
+            value={row.residual_severity ?? ''}
+            onChange={(e) =>
+              onUpdateRow(row.localId, { residual_severity: e.target.value ? Number(e.target.value) : null })
+            }
+            className="w-12 px-1 py-1 border border-surface-300 rounded"
+            aria-label="Residual severity"
+          />
+          <input
+            disabled={readOnly}
+            type="number"
+            min={1}
+            max={5}
+            value={row.residual_likelihood ?? ''}
+            onChange={(e) =>
+              onUpdateRow(row.localId, { residual_likelihood: e.target.value ? Number(e.target.value) : null })
+            }
+            className="w-12 px-1 py-1 border border-surface-300 rounded"
+            aria-label="Residual likelihood"
+          />
+          <span>{row.residual_rr ?? '-'}</span>
+          <span>{row.residual_index ?? '-'}</span>
+        </div>
+      </td>
+    );
+  }
+
+  return (
+    <td className="px-3 py-2">
+      <span className="text-sm">
+        {`${row.residual_severity ?? '-'} / ${row.residual_likelihood ?? '-'} / ${row.residual_rr ?? '-'} / ${row.residual_index ?? '-'}`}
+      </span>
+    </td>
+  );
+}
+
+function ResidualBlockCard(props: {
+  row: RiskDraftRow;
+  readOnly: boolean;
+  allowResidualEditing: boolean;
+  onUpdateRow: (rowId: string, patch: Partial<RiskDraftRow>) => void;
+}) {
+  const { row, readOnly, allowResidualEditing, onUpdateRow } = props;
+  return (
+    <div>
+      <p className={labelCard}>Residual (S / L / S×L / Index)</p>
+      {allowResidualEditing && !readOnly ? (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[11px] text-charcoal-500" htmlFor={`ra-${row.localId}-rs`}>
+              Res. S
             </label>
             <input
-              id={id}
-              disabled={readOnly}
-              type={col.kind === 'date' ? 'date' : 'text'}
-              value={String(row.json_data[col.key] ?? '')}
+              id={`ra-${row.localId}-rs`}
+              type="number"
+              min={1}
+              max={5}
+              value={row.residual_severity ?? ''}
               onChange={(e) =>
-                onUpdateRow(row.localId, { json_data: { ...row.json_data, [col.key]: e.target.value } })
+                onUpdateRow(row.localId, { residual_severity: e.target.value ? Number(e.target.value) : null })
               }
               className={inputCard}
             />
           </div>
-        );
-      })}
+          <div>
+            <label className="text-[11px] text-charcoal-500" htmlFor={`ra-${row.localId}-rl`}>
+              Res. L
+            </label>
+            <input
+              id={`ra-${row.localId}-rl`}
+              type="number"
+              min={1}
+              max={5}
+              value={row.residual_likelihood ?? ''}
+              onChange={(e) =>
+                onUpdateRow(row.localId, { residual_likelihood: e.target.value ? Number(e.target.value) : null })
+              }
+              className={inputCard}
+            />
+          </div>
+          <div className="col-span-2 text-sm">
+            {row.residual_rr ?? '-'} / {row.residual_index ?? '-'}
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-charcoal">
+          {`${row.residual_severity ?? '-'} / ${row.residual_likelihood ?? '-'} / ${row.residual_rr ?? '-'} / ${row.residual_index ?? '-'}`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function RawScoringHeaders(props: { variant: 'compact' | 'separate' }) {
+  if (props.variant === 'compact') {
+    return (
+      <>
+        <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">SL</th>
+        <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">RR</th>
+        <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Index</th>
+      </>
+    );
+  }
+  return (
+    <>
+      <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">S</th>
+      <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">L</th>
+      <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">S*L</th>
+      <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Index</th>
+    </>
+  );
+}
+
+function RawScoringCellsTable(props: {
+  row: RiskDraftRow;
+  readOnly: boolean;
+  variant: 'compact' | 'separate';
+  onUpdateRow: (rowId: string, patch: Partial<RiskDraftRow>) => void;
+}) {
+  const { row, readOnly, variant, onUpdateRow } = props;
+  if (variant === 'compact') {
+    return (
+      <>
+        <td className="px-3 py-2">
+          <div className="flex items-center gap-1">
+            <input
+              disabled={readOnly}
+              type="number"
+              min={1}
+              max={5}
+              value={row.severity ?? ''}
+              onChange={(e) => onUpdateRow(row.localId, { severity: e.target.value ? Number(e.target.value) : null })}
+              className="w-14 px-2 py-1 border border-surface-300 rounded text-sm"
+              aria-label="Severity"
+            />
+            <input
+              disabled={readOnly}
+              type="number"
+              min={1}
+              max={5}
+              value={row.likelihood ?? ''}
+              onChange={(e) =>
+                onUpdateRow(row.localId, { likelihood: e.target.value ? Number(e.target.value) : null })
+              }
+              className="w-14 px-2 py-1 border border-surface-300 rounded text-sm"
+              aria-label="Likelihood"
+            />
+          </div>
+        </td>
+        <td className="px-3 py-2 text-sm">{row.raw_rr ?? '-'}</td>
+        <td className="px-3 py-2 text-sm">{row.raw_index ?? '-'}</td>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <td className="px-3 py-2">
+        <input
+          disabled={readOnly}
+          type="number"
+          min={1}
+          max={5}
+          value={row.severity ?? ''}
+          onChange={(e) => onUpdateRow(row.localId, { severity: e.target.value ? Number(e.target.value) : null })}
+          className="w-14 px-2 py-1 border border-surface-300 rounded text-sm"
+        />
+      </td>
+      <td className="px-3 py-2">
+        <input
+          disabled={readOnly}
+          type="number"
+          min={1}
+          max={5}
+          value={row.likelihood ?? ''}
+          onChange={(e) => onUpdateRow(row.localId, { likelihood: e.target.value ? Number(e.target.value) : null })}
+          className="w-14 px-2 py-1 border border-surface-300 rounded text-sm"
+        />
+      </td>
+      <td className="px-3 py-2 text-sm">{row.raw_rr ?? '-'}</td>
+      <td className="px-3 py-2 text-sm">{row.raw_index ?? '-'}</td>
+    </>
+  );
+}
+
+function RawScoringBlockCard(props: {
+  row: RiskDraftRow;
+  readOnly: boolean;
+  onUpdateRow: (rowId: string, patch: Partial<RiskDraftRow>) => void;
+}) {
+  const { row, readOnly, onUpdateRow } = props;
+  return (
+    <div className="space-y-2">
+      <p className={labelCard}>Risk Rating</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCard} htmlFor={`ra-${row.localId}-s`}>
+            S (severity)
+          </label>
+          <input
+            id={`ra-${row.localId}-s`}
+            disabled={readOnly}
+            type="number"
+            min={1}
+            max={5}
+            value={row.severity ?? ''}
+            onChange={(e) => onUpdateRow(row.localId, { severity: e.target.value ? Number(e.target.value) : null })}
+            className={inputCard}
+          />
+        </div>
+        <div>
+          <label className={labelCard} htmlFor={`ra-${row.localId}-l`}>
+            L (likelihood)
+          </label>
+          <input
+            id={`ra-${row.localId}-l`}
+            disabled={readOnly}
+            type="number"
+            min={1}
+            max={5}
+            value={row.likelihood ?? ''}
+            onChange={(e) => onUpdateRow(row.localId, { likelihood: e.target.value ? Number(e.target.value) : null })}
+            className={inputCard}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-sm text-charcoal-600">
+        <div>
+          <span className="text-xs text-charcoal-500">S×L</span>
+          <p className="font-medium text-charcoal">{row.raw_rr ?? '-'}</p>
+        </div>
+        <div>
+          <span className="text-xs text-charcoal-500">Index</span>
+          <p className="font-medium text-charcoal">{row.raw_index ?? '-'}</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -152,6 +394,8 @@ export function RiskAssessmentRowsEditor(props: Props) {
   } = props;
 
   const showResidualCol = type !== 'critical' && type !== 'prework';
+  const rawVariant: 'compact' | 'separate' = type === 'task' ? 'compact' : 'separate';
+  const layout = buildRiskTableLayout(type, columns);
 
   return (
     <div className="bg-white border border-surface-300 rounded-xl shadow-card overflow-hidden">
@@ -173,20 +417,30 @@ export function RiskAssessmentRowsEditor(props: Props) {
           <thead className="bg-surface-50">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">#</th>
-              {columns.map((col) => (
-                <th key={col.key} className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">
-                  {col.label}
-                </th>
-              ))}
-              <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">S</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">L</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">S*L</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Index</th>
-              {showResidualCol && (
-                <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">
-                  Residual S/L/S*L/Index
-                </th>
-              )}
+              {layout.map((item, idx) => {
+                if (item.kind === 'data') {
+                  return (
+                    <th key={item.col.key} className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">
+                      {item.col.label}
+                    </th>
+                  );
+                }
+                if (item.kind === 'raw_scoring') {
+                  return (
+                    <Fragment key={`raw-${idx}`}>
+                      <RawScoringHeaders variant={rawVariant} />
+                    </Fragment>
+                  );
+                }
+                if (item.kind === 'residual' && showResidualCol) {
+                  return (
+                    <th key={`residual-${idx}`} className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">
+                      Residual
+                    </th>
+                  );
+                }
+                return null;
+              })}
               <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Row Actions</th>
             </tr>
           </thead>
@@ -194,73 +448,39 @@ export function RiskAssessmentRowsEditor(props: Props) {
             {rows.map((row, idx) => (
               <tr key={row.localId}>
                 <td className="px-3 py-2 text-sm">{idx + 1}</td>
-                <ColumnCellsTable
-                  type={type}
-                  columns={columns}
-                  row={row}
-                  readOnly={readOnly}
-                  onUpdateRow={onUpdateRow}
-                />
-                <td className="px-3 py-2">
-                  <input
-                    disabled={readOnly}
-                    type="number"
-                    min={1}
-                    max={5}
-                    value={row.severity ?? ''}
-                    onChange={(e) => onUpdateRow(row.localId, { severity: e.target.value ? Number(e.target.value) : null })}
-                    className="w-14 px-2 py-1 border border-surface-300 rounded text-sm"
-                  />
-                </td>
-                <td className="px-3 py-2">
-                  <input
-                    disabled={readOnly}
-                    type="number"
-                    min={1}
-                    max={5}
-                    value={row.likelihood ?? ''}
-                    onChange={(e) => onUpdateRow(row.localId, { likelihood: e.target.value ? Number(e.target.value) : null })}
-                    className="w-14 px-2 py-1 border border-surface-300 rounded text-sm"
-                  />
-                </td>
-                <td className="px-3 py-2 text-sm">{row.raw_rr ?? '-'}</td>
-                <td className="px-3 py-2 text-sm">{row.raw_index ?? '-'}</td>
-                {showResidualCol && (
-                  <td className="px-3 py-2">
-                    {allowResidualEditing ? (
-                      <div className="flex items-center gap-1 text-sm flex-wrap">
-                        <input
-                          disabled={readOnly}
-                          type="number"
-                          min={1}
-                          max={5}
-                          value={row.residual_severity ?? ''}
-                          onChange={(e) =>
-                            onUpdateRow(row.localId, { residual_severity: e.target.value ? Number(e.target.value) : null })
-                          }
-                          className="w-12 px-1 py-1 border border-surface-300 rounded"
-                        />
-                        <input
-                          disabled={readOnly}
-                          type="number"
-                          min={1}
-                          max={5}
-                          value={row.residual_likelihood ?? ''}
-                          onChange={(e) =>
-                            onUpdateRow(row.localId, { residual_likelihood: e.target.value ? Number(e.target.value) : null })
-                          }
-                          className="w-12 px-1 py-1 border border-surface-300 rounded"
-                        />
-                        <span>{row.residual_rr ?? '-'}</span>
-                        <span>{row.residual_index ?? '-'}</span>
-                      </div>
-                    ) : (
-                      <span className="text-sm">
-                        {`${row.residual_severity ?? '-'} / ${row.residual_likelihood ?? '-'} / ${row.residual_rr ?? '-'} / ${row.residual_index ?? '-'}`}
-                      </span>
-                    )}
-                  </td>
-                )}
+                {layout.map((item, itemIdx) => {
+                  if (item.kind === 'data') {
+                    return (
+                      <JsonCellTable
+                        key={`${row.localId}-${item.col.key}`}
+                        type={type}
+                        col={item.col as RiskTableColumnDef}
+                        row={row}
+                        readOnly={readOnly}
+                        onUpdateRow={onUpdateRow}
+                      />
+                    );
+                  }
+                  if (item.kind === 'raw_scoring') {
+                    return (
+                      <Fragment key={`${row.localId}-raw-${itemIdx}`}>
+                        <RawScoringCellsTable row={row} readOnly={readOnly} variant={rawVariant} onUpdateRow={onUpdateRow} />
+                      </Fragment>
+                    );
+                  }
+                  if (item.kind === 'residual' && showResidualCol) {
+                    return (
+                      <ResidualCellTable
+                        key={`${row.localId}-residual-${itemIdx}`}
+                        row={row}
+                        readOnly={readOnly}
+                        allowResidualEditing={allowResidualEditing}
+                        onUpdateRow={onUpdateRow}
+                      />
+                    );
+                  }
+                  return null;
+                })}
                 <td className="px-3 py-2">
                   {!readOnly && (
                     <div className="flex flex-col items-start gap-1 text-xs">
@@ -307,104 +527,42 @@ export function RiskAssessmentRowsEditor(props: Props) {
         {rows.map((row, idx) => (
           <div key={row.localId} className="rounded-xl border border-surface-200 p-4 space-y-4 bg-surface-50/30">
             <p className="text-sm font-semibold text-charcoal">Row {idx + 1}</p>
-            <ColumnFieldsCard
-              type={type}
-              columns={columns}
-              row={row}
-              readOnly={readOnly}
-              onUpdateRow={onUpdateRow}
-              rowKeyPrefix={`ra-${row.localId}`}
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCard} htmlFor={`ra-${row.localId}-s`}>
-                  S (severity)
-                </label>
-                <input
-                  id={`ra-${row.localId}-s`}
-                  disabled={readOnly}
-                  type="number"
-                  min={1}
-                  max={5}
-                  value={row.severity ?? ''}
-                  onChange={(e) => onUpdateRow(row.localId, { severity: e.target.value ? Number(e.target.value) : null })}
-                  className={inputCard}
-                />
-              </div>
-              <div>
-                <label className={labelCard} htmlFor={`ra-${row.localId}-l`}>
-                  L (likelihood)
-                </label>
-                <input
-                  id={`ra-${row.localId}-l`}
-                  disabled={readOnly}
-                  type="number"
-                  min={1}
-                  max={5}
-                  value={row.likelihood ?? ''}
-                  onChange={(e) => onUpdateRow(row.localId, { likelihood: e.target.value ? Number(e.target.value) : null })}
-                  className={inputCard}
-                />
-              </div>
+            <div className="space-y-3">
+              {layout.map((item, itemIdx) => {
+                if (item.kind === 'data') {
+                  return (
+                    <JsonFieldCard
+                      key={`${row.localId}-${item.col.key}`}
+                      type={type}
+                      col={item.col as RiskTableColumnDef}
+                      row={row}
+                      readOnly={readOnly}
+                      onUpdateRow={onUpdateRow}
+                      rowKeyPrefix={`ra-${row.localId}`}
+                    />
+                  );
+                }
+                if (item.kind === 'raw_scoring') {
+                  return (
+                    <div key={`${row.localId}-raw-${itemIdx}`}>
+                      <RawScoringBlockCard row={row} readOnly={readOnly} onUpdateRow={onUpdateRow} />
+                    </div>
+                  );
+                }
+                if (item.kind === 'residual' && showResidualCol) {
+                  return (
+                    <ResidualBlockCard
+                      key={`${row.localId}-residual-${itemIdx}`}
+                      row={row}
+                      readOnly={readOnly}
+                      allowResidualEditing={allowResidualEditing}
+                      onUpdateRow={onUpdateRow}
+                    />
+                  );
+                }
+                return null;
+              })}
             </div>
-            <div className="grid grid-cols-2 gap-2 text-sm text-charcoal-600">
-              <div>
-                <span className="text-xs text-charcoal-500">S×L</span>
-                <p className="font-medium text-charcoal">{row.raw_rr ?? '-'}</p>
-              </div>
-              <div>
-                <span className="text-xs text-charcoal-500">Index</span>
-                <p className="font-medium text-charcoal">{row.raw_index ?? '-'}</p>
-              </div>
-            </div>
-            {showResidualCol && (
-              <div>
-                <p className={labelCard}>Residual (S / L / S×L / Index)</p>
-                {allowResidualEditing && !readOnly ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] text-charcoal-500" htmlFor={`ra-${row.localId}-rs`}>
-                        Res. S
-                      </label>
-                      <input
-                        id={`ra-${row.localId}-rs`}
-                        type="number"
-                        min={1}
-                        max={5}
-                        value={row.residual_severity ?? ''}
-                        onChange={(e) =>
-                          onUpdateRow(row.localId, { residual_severity: e.target.value ? Number(e.target.value) : null })
-                        }
-                        className={inputCard}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-charcoal-500" htmlFor={`ra-${row.localId}-rl`}>
-                        Res. L
-                      </label>
-                      <input
-                        id={`ra-${row.localId}-rl`}
-                        type="number"
-                        min={1}
-                        max={5}
-                        value={row.residual_likelihood ?? ''}
-                        onChange={(e) =>
-                          onUpdateRow(row.localId, { residual_likelihood: e.target.value ? Number(e.target.value) : null })
-                        }
-                        className={inputCard}
-                      />
-                    </div>
-                    <div className="col-span-2 text-sm">
-                      {row.residual_rr ?? '-'} / {row.residual_index ?? '-'}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-charcoal">
-                    {`${row.residual_severity ?? '-'} / ${row.residual_likelihood ?? '-'} / ${row.residual_rr ?? '-'} / ${row.residual_index ?? '-'}`}
-                  </p>
-                )}
-              </div>
-            )}
             {!readOnly && (
               <div className="flex flex-col gap-2 pt-2 border-t border-surface-200">
                 <button
@@ -443,3 +601,4 @@ export function RiskAssessmentRowsEditor(props: Props) {
     </div>
   );
 }
+

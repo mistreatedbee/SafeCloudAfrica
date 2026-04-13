@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
@@ -101,6 +101,18 @@ export function RiskAssessmentCreatePage() {
   const [error, setError] = useState<string | null>(null);
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `risk-assessment-create:${user?.id ?? 'anon'}:${type}`;
+  const serverDraftAssessmentIdStorageKey = `sca_server_risk_assessment_draft_id:${draftKey}`;
+  const serverDraftAssessmentIdRef = useRef<UUID | null>(null);
+
+  // If a server-side draft was created by autosave, reuse that record to avoid duplicates.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(serverDraftAssessmentIdStorageKey);
+      serverDraftAssessmentIdRef.current = raw ? (raw as UUID) : null;
+    } catch {
+      serverDraftAssessmentIdRef.current = null;
+    }
+  }, [serverDraftAssessmentIdStorageKey]);
 
   useEffect(() => {
     const t = normalizeType(searchParams.get('type'));
@@ -133,7 +145,107 @@ export function RiskAssessmentCreatePage() {
     key: draftKey,
     enabled: Boolean(user?.id),
     isDirty: () => hasDirtyDraft,
-    serialize: () => ({ header, rows, docUrl })
+    serialize: () => ({ header, rows, docUrl }),
+    flush: async () => {
+      if (!activeCompanyId || !user?.id || !activeRole) return;
+      if (!header.title?.trim()) return;
+      const actorUserId = user.id as UUID;
+      const companyId = activeCompanyId as UUID;
+
+      try {
+        if (!serverDraftAssessmentIdRef.current) {
+	          const created = await createRiskAssessment({
+	            companyId,
+	            actorUserId,
+	            actorRole: activeRole ?? null,
+	            type,
+	            title: header.title.trim(),
+            heading: header.heading?.trim() || null,
+            area: header.area?.trim() || null,
+            activity: header.activity?.trim() || null,
+            riskAssessorName: header.riskAssessorName?.trim() || null,
+            assessmentDate: header.assessmentDate || null,
+            nextReviewDate: header.nextReviewDate || null,
+            reference: header.reference?.trim() || null,
+            status: 'draft',
+            docUrl: docUrl.trim() || null,
+            departmentId: scope?.departmentId ?? null,
+            siteId: scope?.siteId ?? null
+          });
+
+	          await replaceRiskAssessmentRows({
+	            companyId,
+	            assessmentId: created.id,
+	            actorUserId,
+	            actorRole: activeRole ?? null,
+	            scope,
+	            rows: rows.map((r, idx) => ({
+              row_index: idx,
+              json_data: r.json_data,
+              severity: r.severity,
+              likelihood: r.likelihood,
+              residual_severity: r.residual_severity,
+              residual_likelihood: r.residual_likelihood,
+              responsible_person: r.responsible_person,
+              target_date: r.target_date,
+              completion_date: r.completion_date
+            }))
+          });
+
+          serverDraftAssessmentIdRef.current = created.id;
+          try {
+            localStorage.setItem(serverDraftAssessmentIdStorageKey, created.id);
+          } catch {
+            // ignore
+          }
+        } else {
+	          const assessmentId = serverDraftAssessmentIdRef.current;
+	          await updateRiskAssessment({
+	            companyId,
+	            assessmentId,
+	            actorUserId,
+	            actorRole: activeRole ?? null,
+	            scope,
+	            patch: {
+              type,
+              title: header.title.trim(),
+              heading: header.heading?.trim() || null,
+              area: header.area?.trim() || null,
+              activity: header.activity?.trim() || null,
+              risk_assessor_name: header.riskAssessorName?.trim() || null,
+              department_id: scope?.departmentId ?? null,
+              site_id: scope?.siteId ?? null,
+              assessment_date: header.assessmentDate || null,
+              next_review_date: header.nextReviewDate || null,
+              reference: header.reference?.trim() || null,
+              doc_url: docUrl.trim() || null,
+              status: 'draft'
+            }
+          });
+
+	          await replaceRiskAssessmentRows({
+	            companyId,
+	            assessmentId,
+	            actorUserId,
+	            actorRole: activeRole ?? null,
+	            scope,
+	            rows: rows.map((r, idx) => ({
+              row_index: idx,
+              json_data: r.json_data,
+              severity: r.severity,
+              likelihood: r.likelihood,
+              residual_severity: r.residual_severity,
+              residual_likelihood: r.residual_likelihood,
+              responsible_person: r.responsible_person,
+              target_date: r.target_date,
+              completion_date: r.completion_date
+            }))
+          });
+        }
+      } catch {
+        // Best-effort server draft save; local drafts still protect the user.
+      }
+    }
   });
 
   function recalc(row: DraftRow): DraftRow {
@@ -196,75 +308,171 @@ export function RiskAssessmentCreatePage() {
     });
   }
 
+  function friendlySaveError(err: unknown): string {
+    const raw = err instanceof Error ? err.message : String(err ?? '');
+    const msg = raw.toLowerCase();
+    if (msg.includes('access denied')) return 'You do not have permission to save this risk assessment.';
+    if (msg.includes('closed')) return 'This risk assessment is closed and cannot be edited.';
+    if (msg.includes('network')) return 'Network error. Please check your connection and try again.';
+    return 'Failed to save risk assessment. Please try again.';
+  }
+
   async function save(status: RiskAssessmentStatus) {
     if (!activeCompanyId || !user?.id) return;
+    if (!activeRole) {
+      setError('Please select an active role to save this risk assessment.');
+      return;
+    }
     if (!header.title?.trim()) {
       setError('Title is required.');
       return;
     }
 
+    // Ensure we reuse an existing server-side draft if autosave already created one.
+    try {
+      const raw = localStorage.getItem(serverDraftAssessmentIdStorageKey);
+      serverDraftAssessmentIdRef.current = raw ? (raw as UUID) : serverDraftAssessmentIdRef.current;
+    } catch {
+      // ignore
+    }
+
     setSaving(true);
     setError(null);
     try {
-      const created = await createRiskAssessment({
-        companyId: activeCompanyId as UUID,
-        actorUserId: user.id as UUID,
-        actorRole: activeRole,
-        type,
-        title: header.title.trim(),
-        heading: header.heading?.trim() || null,
-        area: header.area?.trim() || null,
-        activity: header.activity?.trim() || null,
-        riskAssessorName: header.riskAssessorName?.trim() || null,
-        assessmentDate: header.assessmentDate || null,
-        nextReviewDate: header.nextReviewDate || null,
-        reference: header.reference?.trim() || null,
-        status,
-        docUrl: docUrl.trim() || null,
-        departmentId: scope?.departmentId ?? null,
-        siteId: scope?.siteId ?? null
-      });
+      const flash = status === 'draft' ? 'Draft saved successfully.' : 'Risk assessment submitted successfully.';
+      const existingAssessmentId = serverDraftAssessmentIdRef.current;
 
-      await replaceRiskAssessmentRows({
-        companyId: activeCompanyId as UUID,
-        assessmentId: created.id,
-        actorUserId: user.id as UUID,
-        actorRole: activeRole,
-        scope,
-        rows: rows.map((r, idx) => ({
-          row_index: idx,
-          json_data: r.json_data,
-          severity: r.severity,
-          likelihood: r.likelihood,
-          residual_severity: r.residual_severity,
-          residual_likelihood: r.residual_likelihood,
-          responsible_person: r.responsible_person,
-          target_date: r.target_date,
-          completion_date: r.completion_date
-        }))
-      });
-
-      if (type === 'baseline' && baselineFile) {
-        const uploaded = await uploadFile('sca-evidence', baselineFile, {
-          key: `${activeCompanyId}/risk-baseline/${Date.now()}-${baselineFile.name}`.replace(/\s+/g, '-')
-        });
+      if (existingAssessmentId) {
         await updateRiskAssessment({
+          companyId: activeCompanyId as UUID,
+          assessmentId: existingAssessmentId,
+          actorUserId: user.id as UUID,
+          actorRole: activeRole ?? null,
+          scope,
+          patch: {
+            type,
+            title: header.title.trim(),
+            heading: header.heading?.trim() || null,
+            area: header.area?.trim() || null,
+            activity: header.activity?.trim() || null,
+            risk_assessor_name: header.riskAssessorName?.trim() || null,
+            assessment_date: header.assessmentDate || null,
+            next_review_date: header.nextReviewDate || null,
+            reference: header.reference?.trim() || null,
+            doc_url: docUrl.trim() || null,
+            department_id: scope?.departmentId ?? null,
+            site_id: scope?.siteId ?? null,
+            status
+          }
+        });
+
+        await replaceRiskAssessmentRows({
+          companyId: activeCompanyId as UUID,
+          assessmentId: existingAssessmentId,
+          actorUserId: user.id as UUID,
+          actorRole: activeRole ?? null,
+          scope,
+          rows: rows.map((r, idx) => ({
+            row_index: idx,
+            json_data: r.json_data,
+            severity: r.severity,
+            likelihood: r.likelihood,
+            residual_severity: r.residual_severity,
+            residual_likelihood: r.residual_likelihood,
+            responsible_person: r.responsible_person,
+            target_date: r.target_date,
+            completion_date: r.completion_date
+          }))
+        });
+
+        if (type === 'baseline' && baselineFile) {
+          const uploaded = await uploadFile('sca-evidence', baselineFile, {
+            key: `${activeCompanyId}/risk-baseline/${Date.now()}-${baselineFile.name}`.replace(/\s+/g, '-')
+          });
+          await updateRiskAssessment({
+            companyId: activeCompanyId as UUID,
+            assessmentId: existingAssessmentId,
+            actorUserId: user.id as UUID,
+            actorRole: activeRole ?? null,
+            scope,
+            patch: {
+              baseline_spreadsheet_bucket: uploaded.bucket,
+              baseline_spreadsheet_key: uploaded.key
+            }
+          });
+        }
+
+        navigate(`/risk-assessments/${existingAssessmentId}`, { state: { flash } });
+      } else {
+        const created = await createRiskAssessment({
+          companyId: activeCompanyId as UUID,
+          actorUserId: user.id as UUID,
+          actorRole: activeRole ?? null,
+          type,
+          title: header.title.trim(),
+          heading: header.heading?.trim() || null,
+          area: header.area?.trim() || null,
+          activity: header.activity?.trim() || null,
+          riskAssessorName: header.riskAssessorName?.trim() || null,
+          assessmentDate: header.assessmentDate || null,
+          nextReviewDate: header.nextReviewDate || null,
+          reference: header.reference?.trim() || null,
+          status,
+          docUrl: docUrl.trim() || null,
+          departmentId: scope?.departmentId ?? null,
+          siteId: scope?.siteId ?? null
+        });
+
+        await replaceRiskAssessmentRows({
           companyId: activeCompanyId as UUID,
           assessmentId: created.id,
           actorUserId: user.id as UUID,
-          actorRole: activeRole,
+          actorRole: activeRole ?? null,
           scope,
-          patch: {
-            baseline_spreadsheet_bucket: uploaded.bucket,
-            baseline_spreadsheet_key: uploaded.key
-          }
+          rows: rows.map((r, idx) => ({
+            row_index: idx,
+            json_data: r.json_data,
+            severity: r.severity,
+            likelihood: r.likelihood,
+            residual_severity: r.residual_severity,
+            residual_likelihood: r.residual_likelihood,
+            responsible_person: r.responsible_person,
+            target_date: r.target_date,
+            completion_date: r.completion_date
+          }))
         });
+
+        if (type === 'baseline' && baselineFile) {
+          const uploaded = await uploadFile('sca-evidence', baselineFile, {
+            key: `${activeCompanyId}/risk-baseline/${Date.now()}-${baselineFile.name}`.replace(/\s+/g, '-')
+          });
+          await updateRiskAssessment({
+            companyId: activeCompanyId as UUID,
+            assessmentId: created.id,
+            actorUserId: user.id as UUID,
+            actorRole: activeRole ?? null,
+            scope,
+            patch: {
+              baseline_spreadsheet_bucket: uploaded.bucket,
+              baseline_spreadsheet_key: uploaded.key
+            }
+          });
+        }
+
+        navigate(`/risk-assessments/${created.id}`, { state: { flash } });
       }
 
-      navigate(`/risk-assessments/${created.id}`);
       clearDraft(draftKey);
+
+      try {
+        localStorage.removeItem(serverDraftAssessmentIdStorageKey);
+      } catch {
+        // ignore
+      }
+      serverDraftAssessmentIdRef.current = null;
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create assessment');
+      console.error('Risk assessment save failed', e);
+      setError(friendlySaveError(e));
     } finally {
       setSaving(false);
     }

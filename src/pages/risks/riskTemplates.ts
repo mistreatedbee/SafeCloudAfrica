@@ -52,9 +52,7 @@ export function columnsForType(type: RiskAssessmentType): RiskTableColumn[] {
     { key: 'hazard', label: 'Hazard' },
     { key: 'risk', label: 'Risk' },
     { key: 'quick_rating', label: 'Risk Rating (L/M/H)' },
-    { key: 'control_measures', label: 'Control Measures' },
-    { key: 'employees_signatures', label: 'Employees + Signatures' },
-    { key: 'supervisor_signoff', label: 'Signed off by Supervisor' }
+    { key: 'control_measures', label: 'Control Measures' }
   ];
 }
 

@@ -127,7 +127,7 @@ export function RiskAssessmentEditPage() {
             companyId: activeCompanyId as UUID,
             assessmentId: id as UUID,
             actorUserId: user.id as UUID,
-            actorRole: activeRole,
+            actorRole: activeRole ?? null,
             scope
           }),
           listRiskAssessmentRows({ companyId: activeCompanyId as UUID, assessmentId: id as UUID })
@@ -254,8 +254,21 @@ export function RiskAssessmentEditPage() {
     });
   }
 
+  function friendlySaveError(err: unknown): string {
+    const raw = err instanceof Error ? err.message : String(err ?? '');
+    const msg = raw.toLowerCase();
+    if (msg.includes('access denied')) return 'You do not have permission to save this risk assessment.';
+    if (msg.includes('closed')) return 'This risk assessment is closed and cannot be edited.';
+    if (msg.includes('network')) return 'Network error. Please check your connection and try again.';
+    return 'Failed to save risk assessment. Please try again.';
+  }
+
   async function save(nextStatus?: RiskAssessmentStatus) {
     if (!activeCompanyId || !user?.id || !id) return;
+    if (!activeRole) {
+      setError('Please select an active role to save this risk assessment.');
+      return;
+    }
     if (!header.title.trim()) {
       setError('Title is required.');
       return;
@@ -265,11 +278,12 @@ export function RiskAssessmentEditPage() {
     setError(null);
     try {
       const appliedStatus = nextStatus ?? status;
+      const flash = appliedStatus === 'draft' ? 'Draft saved successfully.' : 'Risk assessment submitted successfully.';
       await updateRiskAssessment({
         companyId: activeCompanyId as UUID,
         assessmentId: id as UUID,
         actorUserId: user.id as UUID,
-        actorRole: activeRole,
+        actorRole: activeRole ?? null,
         scope,
         patch: {
           type,
@@ -290,7 +304,7 @@ export function RiskAssessmentEditPage() {
         companyId: activeCompanyId as UUID,
         assessmentId: id as UUID,
         actorUserId: user.id as UUID,
-        actorRole: activeRole,
+        actorRole: activeRole ?? null,
         scope,
         rows: rows.map((r, idx) => ({
           row_index: idx,
@@ -313,7 +327,7 @@ export function RiskAssessmentEditPage() {
           companyId: activeCompanyId as UUID,
           assessmentId: id as UUID,
           actorUserId: user.id as UUID,
-          actorRole: activeRole,
+          actorRole: activeRole ?? null,
           scope,
           patch: {
             baseline_spreadsheet_bucket: uploaded.bucket,
@@ -323,9 +337,10 @@ export function RiskAssessmentEditPage() {
       }
 
       clearDraft(draftKey);
-      navigate(`/risk-assessments/${id}`);
+      navigate(`/risk-assessments/${id}`, { state: { flash } });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save assessment');
+      console.error('Risk assessment save failed', e);
+      setError(friendlySaveError(e));
     } finally {
       setSaving(false);
     }
@@ -342,7 +357,58 @@ export function RiskAssessmentEditPage() {
     key: draftKey,
     enabled: Boolean(user?.id) && !readOnly,
     isDirty: () => hasDirtyDraft,
-    serialize: () => ({ header, rows, docUrl, status })
+    serialize: () => ({ header, rows, docUrl, status }),
+    flush: async () => {
+      if (!activeCompanyId || !user?.id || !activeRole) return;
+      if (!header.title?.trim()) return;
+
+      try {
+        // Best-effort autosave: update the record contents but avoid patching `status`
+        // to prevent repeatedly rewriting `submitted_at`.
+	        await updateRiskAssessment({
+	          companyId: activeCompanyId as UUID,
+	          assessmentId: id as UUID,
+	          actorUserId: user.id as UUID,
+	          actorRole: activeRole ?? null,
+	          scope,
+	          patch: {
+            type,
+            title: header.title.trim(),
+            heading: header.heading?.trim() || null,
+            area: header.area?.trim() || null,
+            activity: header.activity?.trim() || null,
+            risk_assessor_name: header.riskAssessorName?.trim() || null,
+            assessment_date: header.assessmentDate || null,
+            next_review_date: header.nextReviewDate || null,
+            reference: header.reference?.trim() || null,
+            doc_url: docUrl.trim() || null,
+            department_id: scope?.departmentId ?? null,
+            site_id: scope?.siteId ?? null
+          }
+        });
+
+	        await replaceRiskAssessmentRows({
+	          companyId: activeCompanyId as UUID,
+	          assessmentId: id as UUID,
+	          actorUserId: user.id as UUID,
+	          actorRole: activeRole ?? null,
+	          scope,
+	          rows: rows.map((r, idx) => ({
+            row_index: idx,
+            json_data: r.json_data,
+            severity: r.severity,
+            likelihood: r.likelihood,
+            residual_severity: r.residual_severity,
+            residual_likelihood: r.residual_likelihood,
+            responsible_person: r.responsible_person,
+            target_date: r.target_date,
+            completion_date: r.completion_date
+          }))
+        });
+      } catch {
+        // ignore: local drafts always protect the user
+      }
+    }
   });
 
   if (!loaded) {
