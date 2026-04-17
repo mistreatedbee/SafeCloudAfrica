@@ -1,10 +1,19 @@
 const LIVE_DATA_MUTATED_EVENT = 'sca:data-mutated';
+const BACKEND_UNAVAILABLE_EVENT = 'sca:backend-unavailable';
 
 export type LiveDataMutationDetail = {
   source: 'insforge';
   method: string;
   url: string;
   status: number;
+  at: number;
+  release: string;
+};
+
+export type BackendUnavailableDetail = {
+  source: 'insforge';
+  status: number | null;
+  url: string;
   at: number;
   release: string;
 };
@@ -53,11 +62,35 @@ export function emitLiveDataMutation(detail: Omit<LiveDataMutationDetail, 'at' |
   );
 }
 
+export function emitBackendUnavailable(detail: Omit<BackendUnavailableDetail, 'at' | 'release'>): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent<BackendUnavailableDetail>(BACKEND_UNAVAILABLE_EVENT, {
+      detail: {
+        ...detail,
+        at: Date.now(),
+        release: __APP_VERSION__ || 'dev'
+      }
+    })
+  );
+}
+
 export function subscribeToLiveDataMutations(listener: () => void): () => void {
   if (typeof window === 'undefined') return () => undefined;
   const handler = () => listener();
   window.addEventListener(LIVE_DATA_MUTATED_EVENT, handler as EventListener);
   return () => window.removeEventListener(LIVE_DATA_MUTATED_EVENT, handler as EventListener);
+}
+
+export function subscribeToBackendUnavailable(listener: (detail: BackendUnavailableDetail) => void): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+  const handler = (event: Event) => {
+    const ev = event as CustomEvent<BackendUnavailableDetail>;
+    if (!ev?.detail) return;
+    listener(ev.detail);
+  };
+  window.addEventListener(BACKEND_UNAVAILABLE_EVENT, handler as EventListener);
+  return () => window.removeEventListener(BACKEND_UNAVAILABLE_EVENT, handler as EventListener);
 }
 
 export function createFreshFetch(baseFetch: typeof fetch): typeof fetch {
@@ -71,9 +104,29 @@ export function createFreshFetch(baseFetch: typeof fetch): typeof fetch {
       headers
     };
 
-    const response = request
-      ? await baseFetch(new Request(request, nextInit))
-      : await baseFetch(input, nextInit);
+    let response: Response;
+    try {
+      response = request
+        ? await baseFetch(new Request(request, nextInit))
+        : await baseFetch(input, nextInit);
+    } catch (err: any) {
+      const url = request?.url ?? String(input);
+      emitBackendUnavailable({
+        source: 'insforge',
+        status: null,
+        url
+      });
+      throw err;
+    }
+
+    if (response.status === 502 || response.status === 503 || response.status === 504) {
+      const url = request?.url ?? String(input);
+      emitBackendUnavailable({
+        source: 'insforge',
+        status: response.status,
+        url
+      });
+    }
 
     if (response.ok && shouldEmitMutation(method)) {
       const url = request?.url ?? String(input);
