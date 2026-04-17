@@ -25,6 +25,17 @@ const DROP_RESPONSE_HEADERS = new Set([
   'connection'
 ]);
 
+function rewriteSetCookieHeader(cookie: string): string {
+  // Minimal, safe rewrite so InsForge cookies can be set on the Vercel domain when proxying.
+  // - Drop `Domain=` so the browser scopes it to the current host.
+  // - Keep Path/SameSite/Secure/HttpOnly as sent by upstream.
+  const parts = cookie.split(';').map((p) => p.trim()).filter(Boolean);
+  if (!parts.length) return cookie;
+  const first = parts[0];
+  const attrs = parts.slice(1).filter((p) => !p.toLowerCase().startsWith('domain='));
+  return [first, ...attrs].join('; ');
+}
+
 export type ProxyResult = {
   requestId: string;
   upstreamOrigin: string;
@@ -77,6 +88,11 @@ export function getProxyBody(req: any): BodyInit | undefined {
 
   const body = (req as any)?.body;
   if (body == null) return undefined;
+  // Vercel may parse an empty body as `{}`; avoid sending a synthetic `{}` payload.
+  if (typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 0) {
+    const contentType = String(req?.headers?.['content-type'] ?? '').toLowerCase();
+    if (!contentType || contentType === 'application/json') return undefined;
+  }
   if (typeof body === 'string') return body;
   // Vercel may provide Buffer for raw payloads.
   if (typeof Buffer !== 'undefined' && Buffer.isBuffer(body)) return body;
@@ -94,9 +110,21 @@ export async function writeUpstreamResponse(res: any, upstreamRes: Response, met
   upstreamRes.headers.forEach((value, key) => {
     const lowered = key.toLowerCase();
     if (DROP_RESPONSE_HEADERS.has(lowered)) return;
+    if (lowered === 'set-cookie') return;
     if (!res?.setHeader) return;
     res.setHeader(key, value);
   });
+
+  // Preserve multiple Set-Cookie headers if available (Node/undici) and rewrite Domain for proxying.
+  try {
+    const getSetCookie = (upstreamRes.headers as any)?.getSetCookie as undefined | (() => string[]);
+    const setCookies = typeof getSetCookie === 'function' ? getSetCookie.call(upstreamRes.headers) : [];
+    if (setCookies.length && res?.setHeader) {
+      res.setHeader('Set-Cookie', setCookies.map(rewriteSetCookieHeader));
+    }
+  } catch {
+    // best-effort
+  }
 
   applyNoStoreHeaders(res);
 
