@@ -112,6 +112,14 @@
       "destination": "/api/health/insforge-db"
     },
     {
+      "source": "/api/auth/refresh",
+      "destination": "/api/auth/refresh"
+    },
+    {
+      "source": "/api/auth/sessions/current",
+      "destination": "/api/auth/sessions/current"
+    },
+    {
       "source": "/api/_insforge-proxy/(.*)",
       "destination": "/api/_insforge-proxy"
     },
