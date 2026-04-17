@@ -96,9 +96,9 @@ export function getProxyBody(req: any): BodyInit | undefined {
   if (typeof body === 'string') return body;
   // Vercel may provide Buffer for raw payloads.
   if (typeof Buffer !== 'undefined' && Buffer.isBuffer(body)) {
-    // Prefer ArrayBuffer (definitely assignable to BodyInit) over Uint8Array to satisfy TS configs
-    // where `BodyInit` does not include `ArrayBufferView`.
-    return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
+    // Use Blob so Vercel's TS runtime accepts the payload as `BodyInit`
+    // without the ArrayBuffer/SharedArrayBuffer narrowing issues.
+    return new Blob([body]);
   }
   if (body instanceof ArrayBuffer) return body;
   if (ArrayBuffer.isView(body)) return body as any;
