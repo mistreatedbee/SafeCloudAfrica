@@ -44,6 +44,22 @@ export default async function handler(req: any, res: any) {
       signal: controller.signal
     });
 
+    // Some InsForge tenants/backends may not support the hosted cookie refresh endpoint.
+    // The JS SDK treats a 404 here as “fallback to storage mode”, but treats 405 as fatal.
+    if (method === 'POST' && joined === 'auth/refresh' && upstreamRes.status === 405) {
+      logStructuredLine({
+        module: MODULE,
+        level: 'warn',
+        message: 'Upstream does not allow auth refresh; mapping 405->404 for SDK fallback',
+        extra: { requestId: started.requestId, upstreamStatus: upstreamRes.status }
+      });
+      res.status(404).json({
+        error: 'not_found',
+        message: 'Refresh not supported'
+      });
+      return;
+    }
+
     if (method === 'HEAD' && upstreamRes.status === 405) {
       const getRes = await fetch(upstreamUrl, {
         method: 'GET',
@@ -87,4 +103,3 @@ export default async function handler(req: any, res: any) {
     clearTimeout(t);
   }
 }
-
