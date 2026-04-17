@@ -95,7 +95,9 @@ export function getProxyBody(req: any): BodyInit | undefined {
   }
   if (typeof body === 'string') return body;
   // Vercel may provide Buffer for raw payloads.
-  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(body)) return body;
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(body)) {
+    return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+  }
   if (body instanceof ArrayBuffer) return body;
   if (ArrayBuffer.isView(body)) return body as any;
   try {
