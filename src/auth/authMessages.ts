@@ -22,6 +22,9 @@ export function formatAuthError(err: unknown): string {
     return 'Incorrect email or password. Please check and try again.';
   }
   if (statusCode === 401) return 'You are not authorised. Please sign in again.';
+  if (statusCode === 502 || statusCode === 503 || statusCode === 504) {
+    return 'Service temporarily unavailable. Please try again.';
+  }
   if (statusCode === 429) return 'Too many attempts. Please wait a moment and try again.';
   if (statusCode === 400 && lowered.includes('email')) return 'Please enter a valid email address.';
 

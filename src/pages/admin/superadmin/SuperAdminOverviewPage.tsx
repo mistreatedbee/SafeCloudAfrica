@@ -13,8 +13,11 @@ type OverviewStats = {
 
 async function fetchOverviewStats(): Promise<OverviewStats> {
   const [companiesRes, membershipsRes] = await Promise.all([
-    insforge.database.from('companies').select('id', { count: 'exact', head: true }),
-    insforge.database.from('company_memberships').select('user_id', { count: 'exact', head: true })
+    // IMPORTANT: Avoid `count: 'exact'` on large tables in production.
+    // Exact counts translate to COUNT(*) queries that can be expensive and, under tight DB resource limits,
+    // have caused Postgres processes to be killed (signal 9) and trigger a cascading 503 outage.
+    insforge.database.from('companies').select('id', { count: 'planned', head: true }),
+    insforge.database.from('company_memberships').select('user_id', { count: 'planned', head: true })
   ]);
 
   const totalOrgs = companiesRes.count ?? 0;
