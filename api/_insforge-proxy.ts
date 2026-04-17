@@ -1,31 +1,33 @@
-import { logStructuredLine } from '../_observability.js';
+import { logStructuredLine } from './_observability.js';
 import {
   buildForwardHeaders,
   buildUpstreamUrl,
   getProxyBody,
   startProxy,
   writeUpstreamResponse
-} from '../_insforge-proxy/_shared.js';
+} from './_insforge-proxy/_shared.js';
 
-const MODULE = 'api.insforge-proxy.functions';
-const UPSTREAM_TIMEOUT_MS = 20_000;
+const MODULE = 'api.insforge-proxy.api';
+const UPSTREAM_TIMEOUT_MS = 15_000;
 
-function normalizePathParts(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.map((v) => String(v)).filter(Boolean);
-  if (raw == null) return [];
-  const s = String(raw).trim();
-  return s ? [s] : [];
+function parsePath(req: any): string {
+  const raw = req?.query?.path;
+  if (Array.isArray(raw)) return raw.map((p) => String(p)).filter(Boolean).join('/');
+  return String(raw ?? '')
+    .split('/')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .join('/');
 }
 
 export default async function handler(req: any, res: any) {
   const started = startProxy(req, res, MODULE);
   if (!started) return;
 
-  const method = String(req?.method ?? 'POST').toUpperCase();
-  const parts = normalizePathParts(req?.query?.path);
-  const joined = parts.join('/');
+  const method = String(req?.method ?? 'GET').toUpperCase();
+  const joined = parsePath(req);
 
-  const upstreamUrl = buildUpstreamUrl(started.upstreamOrigin, `/api/functions/invoke/${joined}`, req);
+  const upstreamUrl = buildUpstreamUrl(started.upstreamOrigin, `/api/${joined}`, req);
 
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
@@ -34,12 +36,23 @@ export default async function handler(req: any, res: any) {
     const headers = buildForwardHeaders(req, {
       'x-safecloud-request-id': started.requestId
     });
+
     const upstreamRes = await fetch(upstreamUrl, {
       method,
       headers,
       body: getProxyBody(req),
       signal: controller.signal
     });
+
+    if (method === 'HEAD' && upstreamRes.status === 405) {
+      const getRes = await fetch(upstreamUrl, {
+        method: 'GET',
+        headers,
+        signal: controller.signal
+      });
+      await writeUpstreamResponse(res, getRes, 'HEAD');
+      return;
+    }
 
     if (upstreamRes.status >= 500) {
       logStructuredLine({
@@ -74,3 +87,4 @@ export default async function handler(req: any, res: any) {
     clearTimeout(t);
   }
 }
+

@@ -113,19 +113,19 @@
     },
     {
       "source": "/api/_insforge-proxy/(.*)",
-      "destination": "/api/_insforge-proxy/$1"
+      "destination": "/api/_insforge-proxy"
     },
     {
       "source": "/api/_insforge-functions/(.*)",
-      "destination": "/api/_insforge-functions/$1"
+      "destination": "/api/_insforge-functions"
     },
     {
       "source": "/functions/(.*)",
-      "destination": "/api/_insforge-functions/$1"
+      "destination": "/api/_insforge-functions?path=$1"
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api/_insforge-proxy/$1"
+      "destination": "/api/_insforge-proxy?path=$1"
     },
     { "source": "/(.*)", "destination": "/" }
   ],
