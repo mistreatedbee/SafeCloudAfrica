@@ -83,11 +83,12 @@ export function WorkspaceOnboardingPage() {
   const navigate = useNavigate();
   const { user, isLoaded } = useUser();
   const { memberships, refreshTenant } = useTenant();
+  const membershipsList = Array.isArray(memberships) ? memberships : [];
 
   // If user already has a workspace, they shouldn't be here.
   useEffect(() => {
-    if (memberships.length > 0) navigate('/app', { replace: true });
-  }, [memberships.length, navigate]);
+    if (membershipsList.length > 0) navigate('/app', { replace: true });
+  }, [membershipsList.length, navigate]);
 
   const [licenseType, setLicenseType] = useState<LicenseType>('base');
   const [subscriptionDurationMonths, setSubscriptionDurationMonths] = useState<number>(12);

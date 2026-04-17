@@ -106,13 +106,14 @@ function Stat({ label, value, subtitle }: { label: string; value: string; subtit
 }
 
 function SimpleChart({ title, data }: { title: string; data: Array<[string, number]> }) {
-  const max = Math.max(...data.map(([, v]) => v), 1);
+  const rows = Array.isArray(data) ? data : [];
+  const max = Math.max(...rows.map(([, v]) => v), 1);
   return (
     <div className="bg-white rounded-xl border border-surface-300 p-4">
       <h3 className="text-sm font-semibold text-charcoal mb-3">{title}</h3>
       <div className="space-y-2">
-        {data.length === 0 && <p className="text-xs text-charcoal-500">No data</p>}
-        {data.map(([label, value]) => (
+        {rows.length === 0 && <p className="text-xs text-charcoal-500">No data</p>}
+        {rows.map(([label, value]) => (
           <div key={label} className="space-y-1">
             <div className="flex justify-between text-xs text-charcoal-500"><span>{label}</span><span>{value}</span></div>
             <div className="h-2 bg-surface-100 rounded">

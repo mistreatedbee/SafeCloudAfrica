@@ -12,6 +12,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 export function RequireWorkspace({ children }: { children: React.ReactElement }) {
   const { isLoaded, isSignedIn } = useAuth();
   const { memberships, isPlatformAdmin, isTenantLoaded } = useTenant();
+  const membershipsList = Array.isArray(memberships) ? memberships : [];
 
   if (!isLoaded) {
     return (
@@ -29,7 +30,7 @@ export function RequireWorkspace({ children }: { children: React.ReactElement })
     );
   }
   if (isPlatformAdmin) return <Navigate to="/super-admin/overview" replace />;
-  if (!memberships || memberships.length === 0) return <Navigate to="/activate?reason=no_org" replace />;
+  if (membershipsList.length === 0) return <Navigate to="/activate?reason=no_org" replace />;
 
   return children;
 }

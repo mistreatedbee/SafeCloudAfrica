@@ -43,6 +43,11 @@ function decodeTokenExpiryMs(token: string | null | undefined): number | null {
   }
 }
 
+function getAuthStatusCode(error: unknown): number {
+  const raw = Number((error as any)?.statusCode ?? (error as any)?.status ?? 0);
+  return Number.isFinite(raw) ? raw : 0;
+}
+
 export function SessionManagerProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -127,9 +132,19 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     let lastKnownExpiresAtMs: number | null = null;
     try {
       const current = await insforge.auth.getCurrentSession();
+      const currentError = current.error ?? null;
       const token = current.data?.session?.accessToken ?? null;
       lastKnownToken = token;
       lastKnownExpiresAtMs = decodeTokenExpiryMs(token);
+      if (currentError) {
+        const statusCode = getAuthStatusCode(currentError);
+        if (statusCode === 401 || statusCode === 403) {
+          insforge.getHttpClient().setAuthToken(null);
+          refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+          console.warn('[session] current session rejected', currentError);
+          return false;
+        }
+      }
       const now = Date.now();
       if (lastKnownExpiresAtMs && lastKnownExpiresAtMs - now > REFRESH_LEEWAY_MS) {
         refreshRetryCountRef.current = 0;
@@ -157,6 +172,13 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
             return true;
           }
         } catch (error) {
+          const statusCode = getAuthStatusCode(error);
+          if (statusCode === 401 || statusCode === 403) {
+            insforge.getHttpClient().setAuthToken(null);
+            refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+            console.warn('[session] refresh rejected', error);
+            return false;
+          }
           // If refresh fails but the existing token is still valid, don't force a logout.
           // Network hiccups should not interrupt the user session while the JWT is alive.
           const tokenStillValid = !!lastKnownExpiresAtMs && lastKnownExpiresAtMs > Date.now();
@@ -182,6 +204,13 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
 
       throw new Error('No session token available after refresh attempt.');
     } catch (error) {
+      const statusCode = getAuthStatusCode(error);
+      if (statusCode === 401 || statusCode === 403) {
+        insforge.getHttpClient().setAuthToken(null);
+        refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+        console.warn('[session] refresh rejected', error);
+        return false;
+      }
       // If we have enough info to tell the token hasn't expired yet, treat refresh errors as non-fatal.
       const tokenStillValid = !!lastKnownExpiresAtMs && lastKnownExpiresAtMs > Date.now();
       if (lastKnownToken && tokenStillValid) {

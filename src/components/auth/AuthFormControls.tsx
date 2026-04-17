@@ -71,7 +71,7 @@ export function AuthMessage(props: { tone: 'error' | 'success' | 'warning'; chil
 type AuthOAuthButtonsProps = {
   disabled?: boolean;
   loadingProvider?: string | null;
-  providers: string[];
+  providers?: string[] | null;
   onClick: (provider: string) => void;
 };
 
@@ -83,7 +83,8 @@ function labelForProvider(provider: string): string {
 }
 
 export function AuthOAuthButtons(props: AuthOAuthButtonsProps) {
-  if (!props.providers.length) return null;
+  const providers = Array.isArray(props.providers) ? props.providers : [];
+  if (providers.length === 0) return null;
 
   return (
     <div className="space-y-3">
@@ -94,7 +95,7 @@ export function AuthOAuthButtons(props: AuthOAuthButtonsProps) {
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        {props.providers.map((provider) => {
+        {providers.map((provider) => {
           const normalized = provider.toLowerCase();
           const isLoading = props.loadingProvider === normalized;
           return (

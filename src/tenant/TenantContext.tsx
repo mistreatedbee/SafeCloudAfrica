@@ -60,6 +60,11 @@ function isActiveMembership(row: { status?: string | null }): boolean {
   return s === 'ACTIVE' || s == null || s === '';
 }
 
+function getAuthStatusCode(error: unknown): number {
+  const raw = Number((error as any)?.statusCode ?? (error as any)?.status ?? 0);
+  return Number.isFinite(raw) ? raw : 0;
+}
+
 async function fetchMemberships(userId: UUID): Promise<MembershipWithCompany[]> {
   const { data, error } = await insforge.database
     .from('company_memberships')
@@ -152,7 +157,14 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
           }).catch(() => undefined);
         }
       }
-    } catch {
+    } catch (error) {
+      const statusCode = getAuthStatusCode(error);
+      if (statusCode === 401 || statusCode === 403) {
+        setMemberships([]);
+        setActiveCompanyIdState(null);
+        storeActiveCompanyId(null);
+        workspaceSessionLoggedRef.current = null;
+      }
       // Preserve existing memberships on transient failures to avoid redirect churn.
       try {
         const dbIsAdmin = await checkPlatformAdmin(user.id as UUID);
