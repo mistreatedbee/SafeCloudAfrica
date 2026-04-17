@@ -11,11 +11,11 @@ createRoot(document.getElementById('root')!).render(
     afterSignInUrl="/app"
     onSignIn={async (authToken) => {
       // Ensure all SDK database calls include the user's auth context for RLS.
-      insforge.getHttpClient().setAuthToken(authToken);
+      insforge.getHttpClient().setAuthToken(typeof authToken === 'string' && authToken ? authToken : null);
     }}
     onRefresh={async (authToken) => {
       // Keep token in sync across refreshes (magic links, session refresh, etc).
-      insforge.getHttpClient().setAuthToken(authToken);
+      insforge.getHttpClient().setAuthToken(typeof authToken === 'string' && authToken ? authToken : null);
     }}
     onSignOut={async () => {
       insforge.getHttpClient().setAuthToken(null);
