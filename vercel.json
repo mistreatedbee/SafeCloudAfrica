@@ -108,12 +108,24 @@
       "destination": "/api/cron/heartbeat"
     },
     {
+      "source": "/api/health/insforge-db",
+      "destination": "/api/health/insforge-db"
+    },
+    {
+      "source": "/api/_insforge-proxy/(.*)",
+      "destination": "/api/_insforge-proxy/$1"
+    },
+    {
+      "source": "/api/_insforge-functions/(.*)",
+      "destination": "/api/_insforge-functions/$1"
+    },
+    {
       "source": "/functions/(.*)",
-      "destination": "https://pas375jb.us-west.insforge.app/api/functions/invoke/$1"
+      "destination": "/api/_insforge-functions/$1"
     },
     {
       "source": "/api/(.*)",
-      "destination": "https://pas375jb.us-west.insforge.app/api/$1"
+      "destination": "/api/_insforge-proxy/$1"
     },
     { "source": "/(.*)", "destination": "/" }
   ],

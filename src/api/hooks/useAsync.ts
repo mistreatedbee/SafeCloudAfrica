@@ -41,6 +41,7 @@ function isBackendUnavailableError(error: unknown): boolean {
 export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsyncOptions = {}): AsyncState<T> {
   const [reloadToken, setReloadToken] = useState(0);
   const lastRefreshAtRef = useRef(0);
+  const backendUnavailableUntilRef = useRef(0);
   const [state, setState] = useState<AsyncState<T>>({
     data: null,
     error: null,
@@ -62,23 +63,36 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
 
   useEffect(() => {
     let cancelled = false;
-    setState((s) => ({ ...s, loading: true, error: null, retry, refetch: retry, refresh: retry, isBackendUnavailable: false }));
+    setState((s) => ({
+      ...s,
+      loading: true,
+      error: null,
+      retry,
+      refetch: retry,
+      refresh: retry,
+      isBackendUnavailable: false
+    }));
     fn()
       .then((data) => {
         if (cancelled) return;
+        backendUnavailableUntilRef.current = 0;
         setState({ data, error: null, loading: false, retry, refetch: retry, refresh: retry, isBackendUnavailable: false });
       })
       .catch((error) => {
         if (cancelled) return;
-        setState({
-          data: null,
+        const unavailable = isBackendUnavailableError(error);
+        // Back off auto-refresh for a short period when the backend is unavailable to avoid spamming requests.
+        if (unavailable) backendUnavailableUntilRef.current = Date.now() + 15_000;
+        setState((prev) => ({
+          // Preserve last-known-good data so dashboards/forms don’t clear during an outage.
+          data: prev.data,
           error: error as Error,
           loading: false,
           retry,
           refetch: retry,
           refresh: retry,
-          isBackendUnavailable: isBackendUnavailableError(error)
-        });
+          isBackendUnavailable: unavailable
+        }));
       });
     return () => {
       cancelled = true;
@@ -91,6 +105,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
 
     const maybeRefresh = () => {
       const now = Date.now();
+      if (now < backendUnavailableUntilRef.current) return;
       if (now - lastRefreshAtRef.current < 1500) return;
       retry();
     };

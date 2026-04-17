@@ -1,4 +1,5 @@
 import { createClient } from '@insforge/sdk';
+import { resolveInsforgeOrigin } from './_insforge-origin.js';
 
 type InsforgeClient = ReturnType<typeof createClient>;
 const NO_STORE_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0';
@@ -21,20 +22,13 @@ function getServerFetch(): typeof fetch {
 }
 
 function getBaseUrl(): string {
-  const raw =
-    process.env.INSFORGE_BASE_URL?.trim() ||
-    process.env.VITE_INSFORGE_BASE_URL?.trim() ||
-    '';
-  if (!raw) {
+  const origin = resolveInsforgeOrigin({ allowViteEnv: true, allowLinkedProjectFallback: true });
+  if (!origin) {
     throw new Error(
-      'InsForge base URL not configured. Set INSFORGE_BASE_URL or VITE_INSFORGE_BASE_URL (e.g. on Vercel serverless env).'
+      'InsForge base URL not configured. Set INSFORGE_BASE_URL (recommended) or VITE_INSFORGE_BASE_URL, or link the project to generate `.insforge/project.json`.'
     );
   }
-  try {
-    return new URL(raw).origin;
-  } catch {
-    return raw.replace(/\/+$/, '');
-  }
+  return origin;
 }
 
 function getAnonKey(): string {

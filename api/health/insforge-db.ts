@@ -1,19 +1,11 @@
 import { applyNoStoreHeaders } from '../_response.js';
 import { logStructuredLine, recordOperationalEvent } from '../_observability.js';
+import { resolveInsforgeOrigin } from '../_insforge-origin.js';
 
 const MODULE = 'api.health.insforge-db';
 
 function getUpstreamOrigin(): string {
-  const raw = process.env.INSFORGE_BASE_URL?.trim();
-  if (raw) {
-    try {
-      return new URL(raw).origin;
-    } catch {
-      return raw.replace(/\/+$/, '');
-    }
-  }
-  // Fallback: project is linked to `pas375jb.us-west.insforge.app` in this repo.
-  return 'https://pas375jb.us-west.insforge.app';
+  return resolveInsforgeOrigin({ allowViteEnv: false, allowLinkedProjectFallback: true });
 }
 
 function getAnonKey(): string {
@@ -29,6 +21,17 @@ export default async function handler(req: any, res: any) {
 
   const upstream = getUpstreamOrigin();
   const anonKey = getAnonKey();
+  if (!upstream) {
+    logStructuredLine({
+      module: MODULE,
+      level: 'warn',
+      message: 'Missing INSFORGE_BASE_URL and no linked InsForge project; cannot run DB health check'
+    });
+    return res.status(500).json({
+      ok: false,
+      error: 'Server configuration missing INSFORGE_BASE_URL'
+    });
+  }
   if (!anonKey) {
     logStructuredLine({
       module: MODULE,
@@ -104,4 +107,3 @@ export default async function handler(req: any, res: any) {
     return res.status(503).json({ ok: false, error: 'Service temporarily unavailable' });
   }
 }
-
