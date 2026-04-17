@@ -5,7 +5,7 @@ import { resolveInsforgeOrigin } from '../_insforge-origin.js';
 const MODULE = 'api.health.insforge-db';
 
 function getUpstreamOrigin(): string {
-  return resolveInsforgeOrigin({ allowViteEnv: false, allowLinkedProjectFallback: true });
+  return resolveInsforgeOrigin({ allowViteEnv: true, allowLinkedProjectFallback: true });
 }
 
 function getAnonKey(): string {

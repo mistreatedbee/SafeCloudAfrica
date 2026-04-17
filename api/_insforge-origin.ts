@@ -13,16 +13,26 @@ function normalizeOrigin(raw: string): string {
 }
 
 function readLinkedOrigin(): string {
-  try {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const projectPath = path.resolve(here, '..', '.insforge', 'project.json');
-    const text = fs.readFileSync(projectPath, 'utf8');
-    const json = JSON.parse(text) as { oss_host?: unknown };
-    const host = typeof json.oss_host === 'string' ? json.oss_host : '';
-    return normalizeOrigin(host);
-  } catch {
-    return '';
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.resolve(process.cwd(), '.insforge', 'project.json'),
+    path.resolve(here, '..', '.insforge', 'project.json'),
+    path.resolve(here, '.insforge', 'project.json')
+  ];
+
+  for (const projectPath of candidates) {
+    try {
+      const text = fs.readFileSync(projectPath, 'utf8');
+      const json = JSON.parse(text) as { oss_host?: unknown };
+      const host = typeof json.oss_host === 'string' ? json.oss_host : '';
+      const normalized = normalizeOrigin(host);
+      if (normalized) return normalized;
+    } catch {
+      // try the next candidate path
+    }
   }
+
+  return '';
 }
 
 export type ResolveInsforgeOriginOptions = {
@@ -51,4 +61,3 @@ export function resolveInsforgeOrigin(options: ResolveInsforgeOriginOptions = {}
 
   return '';
 }
-

@@ -56,7 +56,7 @@ function getQueryString(req: any): string {
 }
 
 export function getInsforgeUpstreamOrigin(): string {
-  return resolveInsforgeOrigin({ allowViteEnv: false, allowLinkedProjectFallback: true });
+  return resolveInsforgeOrigin({ allowViteEnv: true, allowLinkedProjectFallback: true });
 }
 
 export function buildUpstreamUrl(upstreamOrigin: string, upstreamPath: string, req: any): string {
@@ -161,7 +161,8 @@ export function startProxy(req: any, res: any, moduleName: string): ProxyResult 
     });
     res.status(500).json({
       ok: false,
-      error: 'Server misconfigured',
+      error: 'Backend service is temporarily unavailable.',
+      code: 'server_misconfigured',
       requestId
     });
     return null;
@@ -181,7 +182,8 @@ export function startProxy(req: any, res: any, moduleName: string): ProxyResult 
       });
       res.status(500).json({
         ok: false,
-        error: 'Server misconfigured',
+        error: 'Backend service is temporarily unavailable.',
+        code: 'server_misconfigured',
         requestId
       });
       return null;

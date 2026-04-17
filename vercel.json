@@ -116,24 +116,28 @@
       "destination": "/api/auth/refresh"
     },
     {
+      "source": "/api/auth/public-config",
+      "destination": "/api/auth/public-config"
+    },
+    {
       "source": "/api/auth/sessions/current",
       "destination": "/api/auth/sessions/current"
     },
     {
       "source": "/api/_insforge-proxy/(.*)",
-      "destination": "/api/_insforge-proxy"
+      "destination": "/api/insforge-proxy"
     },
     {
       "source": "/api/_insforge-functions/(.*)",
-      "destination": "/api/_insforge-functions"
+      "destination": "/api/insforge-functions"
     },
     {
       "source": "/functions/(.*)",
-      "destination": "/api/_insforge-functions?path=$1"
+      "destination": "/api/insforge-functions?path=$1"
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api/_insforge-proxy?path=$1"
+      "destination": "/api/insforge-proxy?path=$1"
     },
     { "source": "/(.*)", "destination": "/" }
   ],
