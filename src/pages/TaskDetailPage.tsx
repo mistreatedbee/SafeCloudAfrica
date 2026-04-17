@@ -9,6 +9,8 @@ import {
   MessageSquareIcon,
   ClockIcon,
   FileCheckIcon,
+  EyeIcon,
+  DownloadIcon,
   LinkIcon,
   PlayIcon,
   SquareIcon,
@@ -44,6 +46,7 @@ import { listApprovals, decideApproval } from '../api/services/approvalsService'
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
 import { TASK_CATEGORY_LABELS, TASK_TIME_STATUS_LABELS, TASK_SOURCE_ENTITY_LABELS } from '../api/constants/taskLabels';
 import type { Task, Approval, ActivityLog, EvidenceAttachment, TaskTimeLog, UUID } from '../api/models/entities';
+import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../api/services/documentsStorageService';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -94,6 +97,7 @@ export function TaskDetailPage() {
   const [manualMinutes, setManualMinutes] = useState('');
   const [effectivenessChecked, setEffectivenessChecked] = useState(false);
   const [effectivenessNotes, setEffectivenessNotes] = useState('');
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
   const { data: task, loading: taskLoading } = useAsync<Task | null>(
     async () => (activeCompanyId && taskId ? getTaskById(activeCompanyId, taskId as UUID) : null),
@@ -406,23 +410,71 @@ export function TaskDetailPage() {
         {/* Evidence */}
         <div className="bg-white rounded-xl border border-surface-300 p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-charcoal">Evidence</h2>
+            <h2 className="text-sm font-semibold text-charcoal">Attachments</h2>
             <button
               type="button"
               onClick={() => setEvidenceModalOpen(true)}
               className="text-sm text-teal font-medium hover:underline"
             >
-              Add evidence
+              Upload file
             </button>
           </div>
+          {attachmentError && (
+            <div className="mb-3 bg-critical/5 border border-critical/20 rounded-xl p-3">
+              <p className="text-sm font-semibold text-critical">Attachment failed</p>
+              <p className="text-sm text-charcoal-600 mt-1">{attachmentError}</p>
+            </div>
+          )}
           <ul className="space-y-1">
             {(evidenceList ?? []).map((e) => (
-              <li key={e.id} className="text-sm text-charcoal-600 flex items-center gap-2">
-                <FileCheckIcon className="w-4 h-4 text-charcoal-400" />
-                {e.title ?? e.storage_key}
+              <li key={e.id} className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex items-start gap-2">
+                  <FileCheckIcon className="w-4 h-4 text-charcoal-400 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-sm text-charcoal-700 truncate">{e.title ?? (e.storage_key.split('/').pop() ?? e.storage_key)}</p>
+                    <p className="text-xs text-charcoal-400 mt-0.5">
+                      {formatDateTime(e.created_at)} â€¢ Uploaded by User {shortId(e.created_by_user_id)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setAttachmentError(null);
+                      try {
+                        const blob = await downloadDocumentFile({ bucket: e.storage_bucket, key: e.storage_key });
+                        openBlobInNewTab(blob);
+                      } catch (err: any) {
+                        setAttachmentError(err?.message ? String(err.message) : 'Unable to open attachment.');
+                      }
+                    }}
+                    className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors"
+                    aria-label="Open attachment"
+                  >
+                    <EyeIcon className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setAttachmentError(null);
+                      try {
+                        const filename = e.storage_key.split('/').pop() ?? 'attachment';
+                        const blob = await downloadDocumentFile({ bucket: e.storage_bucket, key: e.storage_key });
+                        downloadBlob(blob, filename);
+                      } catch (err: any) {
+                        setAttachmentError(err?.message ? String(err.message) : 'Unable to download attachment.');
+                      }
+                    }}
+                    className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors"
+                    aria-label="Download attachment"
+                  >
+                    <DownloadIcon className="w-4 h-4" />
+                  </button>
+                </div>
               </li>
             ))}
-            {(evidenceList ?? []).length === 0 && <li className="text-charcoal-500 text-sm">No evidence attached.</li>}
+            {(evidenceList ?? []).length === 0 && <li className="text-charcoal-500 text-sm">No files attached.</li>}
           </ul>
         </div>
 
