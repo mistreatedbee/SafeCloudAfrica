@@ -12,15 +12,12 @@ function resolveBaseUrl(rawBaseUrl: string): string {
   if (typeof window === 'undefined') return rawBaseUrl;
   if (!rawBaseUrl) {
     // Prevent SDK fallback to localhost:7130 when env is missing in production.
-    // We have Vercel rewrites for /api/*, so same-origin works safely.
+    // Same-origin may work when the hosting platform proxies `/api/*` to InsForge,
+    // but the recommended setup is to provide the actual InsForge base URL.
     return window.location.origin;
   }
   try {
-    const targetOrigin = new URL(rawBaseUrl).origin;
-    // Use same-origin proxy in browser when target origin differs.
-    // InsForge SDK issues requests under /api/* (auth/database/storage/functions),
-    // so the base URL should be the same-origin root.
-    if (window.location.origin !== targetOrigin) return window.location.origin;
+    return new URL(rawBaseUrl).origin;
   } catch {
     // If base URL is relative, normalize to absolute.
     if (rawBaseUrl.startsWith('/')) return `${window.location.origin}${rawBaseUrl}`;
