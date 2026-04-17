@@ -178,7 +178,7 @@ export async function countActiveMembers(companyId: UUID): Promise<number> {
 export async function countPendingInvites(companyId: UUID): Promise<number> {
   const { count, error } = await insforge.database
     .from('company_invites')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .in('status', ['PENDING', 'SENT']);
   if (error) throw new Error(getErrorMessage(error));

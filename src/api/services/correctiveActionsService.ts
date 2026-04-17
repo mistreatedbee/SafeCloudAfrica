@@ -408,7 +408,7 @@ export async function getDueSoonActions(companyId: UUID, daysAhead = 7): Promise
 export async function countOpenCorrectiveActions(companyId: UUID, input?: { module?: ModuleKey }): Promise<number> {
   const base = insforge.database
     .from('corrective_actions')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .neq('status', 'closed');
   const q = input?.module ? base.eq('module', input.module) : base;
@@ -420,7 +420,7 @@ export async function countOpenCorrectiveActions(companyId: UUID, input?: { modu
 export async function countOverdueCorrectiveActions(companyId: UUID, input?: { module?: ModuleKey }): Promise<number> {
   const base = insforge.database
     .from('corrective_actions')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .neq('status', 'closed')
     .lt('due_date', new Date().toISOString());

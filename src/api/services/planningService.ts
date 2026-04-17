@@ -17,7 +17,7 @@ export async function listPlans(companyId: UUID): Promise<PlanningPlan[]> {
 export async function countKpis(companyId: UUID, planId: UUID): Promise<number> {
   const { count, error } = await insforge.database
     .from('planning_kpis')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('plan_id', planId);
   if (error) throw new Error(getErrorMessage(error));

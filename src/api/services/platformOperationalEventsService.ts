@@ -15,7 +15,7 @@ export async function countOperationalFailuresLast24h(): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { count, error } = await insforge.database
     .from('platform_operational_events')
-    .select('id', { count: 'exact', head: true })
+    .select('id', { count: 'planned', head: true })
     .eq('status', 'failure')
     .gte('created_at', since);
   if (error) throw error;

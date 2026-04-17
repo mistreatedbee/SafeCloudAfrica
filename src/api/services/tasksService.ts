@@ -173,7 +173,7 @@ export async function getTaskById(companyId: UUID, taskId: UUID): Promise<Task |
 export async function countTasksByAssignee(companyId: UUID, assigneeUserId: UUID, openOnly = true): Promise<number> {
   let q = insforge.database
     .from('tasks')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('assignee_user_id', assigneeUserId);
   if (openOnly) q = q.in('status', OPEN_STATUSES);
@@ -185,7 +185,7 @@ export async function countTasksByAssignee(companyId: UUID, assigneeUserId: UUID
 export async function countTasksByDepartment(companyId: UUID, departmentId: UUID, openOnly = true): Promise<number> {
   let q = insforge.database
     .from('tasks')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('department_id', departmentId);
   if (openOnly) q = q.in('status', OPEN_STATUSES);
@@ -201,7 +201,7 @@ export async function countTasksByRiskLevel(
 ): Promise<number> {
   let q = insforge.database
     .from('tasks')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('risk_level', riskLevel);
   if (openOnly) q = q.in('status', OPEN_STATUSES);
@@ -213,7 +213,7 @@ export async function countTasksByRiskLevel(
 export async function countMyPendingTasks(companyId: UUID, userId: UUID): Promise<number> {
   const { count, error } = await insforge.database
     .from('tasks')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('assignee_user_id', userId)
     .in('status', OPEN_STATUSES);
@@ -224,7 +224,7 @@ export async function countMyPendingTasks(companyId: UUID, userId: UUID): Promis
 export async function countCompanyPendingTasks(companyId: UUID): Promise<number> {
   const { count, error } = await insforge.database
     .from('tasks')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .in('status', OPEN_STATUSES);
   if (error) throw new Error(getErrorMessage(error));
@@ -234,7 +234,7 @@ export async function countCompanyPendingTasks(companyId: UUID): Promise<number>
 export async function countOverdueTasks(companyId: UUID): Promise<number> {
   const { count, error } = await insforge.database
     .from('tasks')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('status', 'overdue');
   if (error) throw new Error(getErrorMessage(error));
@@ -244,7 +244,7 @@ export async function countOverdueTasks(companyId: UUID): Promise<number> {
 export async function countPendingTasksByModule(companyId: UUID, module: ModuleKey): Promise<number> {
   const { count, error } = await insforge.database
     .from('tasks')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('module', module)
     .in('status', OPEN_STATUSES);
@@ -253,7 +253,7 @@ export async function countPendingTasksByModule(companyId: UUID, module: ModuleK
 }
 
 export async function countTasksByStatus(companyId: UUID, input: { module?: ModuleKey; status?: Task['status'] }): Promise<number> {
-  const base = insforge.database.from('tasks').select('*', { count: 'exact', head: true }).eq('company_id', companyId);
+  const base = insforge.database.from('tasks').select('*', { count: 'planned', head: true }).eq('company_id', companyId);
   const q1 = input.module ? base.eq('module', input.module) : base;
   const q2 = input.status ? q1.eq('status', input.status) : q1;
   const { count, error } = await q2;

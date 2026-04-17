@@ -142,7 +142,7 @@ export async function getLicenseInfo(companyId: UUID): Promise<LicenseInfo> {
   // Count members
   const { count: memberCount, error: countError } = await insforge.database
     .from('company_memberships')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId);
 
   if (countError) {

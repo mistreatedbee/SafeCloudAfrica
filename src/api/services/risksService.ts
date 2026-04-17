@@ -131,7 +131,7 @@ export async function countRisks(
   companyId: UUID,
   input?: { module?: ModuleKey; status?: Risk['status'] }
 ): Promise<number> {
-  const base = insforge.database.from('risks').select('*', { count: 'exact', head: true }).eq('company_id', companyId);
+  const base = insforge.database.from('risks').select('*', { count: 'planned', head: true }).eq('company_id', companyId);
   const q1 = input?.module ? base.eq('module', input.module) : base;
   const q2 = input?.status ? q1.eq('status', input.status) : q1;
   const { count, error } = await q2;

@@ -60,7 +60,7 @@ export async function listIncidentsWithFilters(input: ListIncidentsWithFiltersIn
 export async function countIncidentsByStatus(companyId: UUID, status: IncidentStatus): Promise<number> {
   const { count, error } = await insforge.database
     .from('incidents')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('status', status);
   if (error) throw new Error(getErrorMessage(error));
@@ -70,7 +70,7 @@ export async function countIncidentsByStatus(companyId: UUID, status: IncidentSt
 export async function countIncidentsByStatusForModule(companyId: UUID, module: ModuleKey, status: IncidentStatus): Promise<number> {
   const { count, error } = await insforge.database
     .from('incidents')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('module', module)
     .eq('status', status);
@@ -85,7 +85,7 @@ export async function countNearMissesThisMonth(companyId: UUID): Promise<number>
 
   const { count, error } = await insforge.database
     .from('incidents')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('category', 'Near Miss')
     .gte('occurred_at', start.toISOString());
@@ -97,7 +97,7 @@ export async function countNearMissesThisMonth(companyId: UUID): Promise<number>
 export async function countMyIncidents(companyId: UUID, userId: UUID): Promise<number> {
   const { count, error } = await insforge.database
     .from('incidents')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('created_by_user_id', userId);
   if (error) throw new Error(getErrorMessage(error));
@@ -476,13 +476,13 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
     const [{ count: openNcrCount, error: openNcrError }, { count: openActionCount, error: openActionError }] = await Promise.all([
       insforge.database
         .from('quality_ncrs')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'planned', head: true })
         .eq('source_entity_type', 'incident')
         .eq('source_entity_id', incidentId)
         .neq('status', 'closed'),
       insforge.database
         .from('incident_corrective_actions')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'planned', head: true })
         .eq('incident_id', incidentId)
         .neq('status', 'Closed')
     ]);
@@ -505,13 +505,13 @@ export async function syncIncidentClosureFromLinks(incidentId: UUID): Promise<vo
     insforge.database.from('incidents').select('id,company_id,status').eq('id', incidentId).maybeSingle(),
     insforge.database
       .from('quality_ncrs')
-      .select('*', { count: 'exact', head: true })
+      .select('*', { count: 'planned', head: true })
       .eq('source_entity_type', 'incident')
       .eq('source_entity_id', incidentId)
       .neq('status', 'closed'),
     insforge.database
       .from('incident_corrective_actions')
-      .select('*', { count: 'exact', head: true })
+      .select('*', { count: 'planned', head: true })
       .eq('incident_id', incidentId)
       .neq('status', 'Closed')
   ]);

@@ -68,7 +68,7 @@ export async function markNotificationRead(notificationId: UUID): Promise<void> 
 export async function getUnreadCount(companyId: UUID, userId: UUID): Promise<number> {
   const { count, error } = await insforge.database
     .from('notifications')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('user_id', userId)
     .eq('read', false);
@@ -134,4 +134,3 @@ export async function notifyIncidentCreated(
     { incidentId, action: 'investigate' }
   );
 }
-
