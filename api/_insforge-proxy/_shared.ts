@@ -82,6 +82,12 @@ export function buildForwardHeaders(req: any, extraHeaders?: Record<string, stri
   return headers;
 }
 
+function toPlainArrayBuffer(view: ArrayBufferView): ArrayBuffer {
+  const bytes = new Uint8Array(view.byteLength);
+  bytes.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+  return bytes.buffer;
+}
+
 export function getProxyBody(req: any): BodyInit | undefined {
   const method = String(req?.method ?? 'GET').toUpperCase();
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return undefined;
@@ -96,12 +102,11 @@ export function getProxyBody(req: any): BodyInit | undefined {
   if (typeof body === 'string') return body;
   // Vercel may provide Buffer for raw payloads.
   if (typeof Buffer !== 'undefined' && Buffer.isBuffer(body)) {
-    // Use Blob so Vercel's TS runtime accepts the payload as `BodyInit`
-    // without the ArrayBuffer/SharedArrayBuffer narrowing issues.
-    return new Blob([body]);
+    // Convert Node buffers into a plain ArrayBuffer before forwarding.
+    return toPlainArrayBuffer(body);
   }
   if (body instanceof ArrayBuffer) return body;
-  if (ArrayBuffer.isView(body)) return body as any;
+  if (ArrayBuffer.isView(body)) return toPlainArrayBuffer(body);
   try {
     return JSON.stringify(body);
   } catch {
@@ -147,7 +152,7 @@ export async function writeUpstreamResponse(res: any, upstreamRes: Response, met
   }
 
   const ab = await upstreamRes.arrayBuffer();
-  res.end(Buffer.from(ab));
+  res.end(new Uint8Array(ab));
 }
 
 export function startProxy(req: any, res: any, moduleName: string): ProxyResult | null {
