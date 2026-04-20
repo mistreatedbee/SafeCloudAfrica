@@ -7,7 +7,7 @@ import { formatAuthError } from '../../auth/authMessages';
 import { recoverAuthState } from '../../auth/recoverAuthState';
 import { useTenant } from '../../tenant/TenantContext';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getLoginRedirectPath } from '../../api/services/platformAdminService';
-import { insforge } from '../../api/insforge/client';
+import { insforge, insforgeReady } from '../../api/insforge/client';
 import type { UUID } from '../../api/models/entities';
 
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
@@ -133,6 +133,7 @@ export function LoginPage() {
     setRedirectError(null);
 
     try {
+      await insforgeReady;
       const { error } = await insforge.auth.signInWithPassword({
         email: normalizedEmail,
         password

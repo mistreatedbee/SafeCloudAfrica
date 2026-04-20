@@ -6,7 +6,7 @@ import { createFreshFetch, getNoStoreHeaders } from '../liveData';
 // - If baseUrl is empty, @insforge/sdk defaults to http://localhost:7130.
 const configuredBaseUrl =
   String(((import.meta as any)?.env?.VITE_INSFORGE_BASE_URL as string | undefined) ?? '').trim();
-const anonKey = ((import.meta as any)?.env?.VITE_INSFORGE_ANON_KEY as string | undefined) ?? '';
+const configuredAnonKey = ((import.meta as any)?.env?.VITE_INSFORGE_ANON_KEY as string | undefined) ?? '';
 
 function resolveBaseUrl(rawBaseUrl: string): string {
   if (typeof window === 'undefined') return rawBaseUrl;
@@ -27,7 +27,7 @@ function resolveBaseUrl(rawBaseUrl: string): string {
 
 export const insforge = createClient({
   baseUrl: resolveBaseUrl(configuredBaseUrl),
-  anonKey,
+  anonKey: configuredAnonKey,
   fetch: createFreshFetch(globalThis.fetch.bind(globalThis)),
   headers: Object.fromEntries(getNoStoreHeaders().entries()),
   // Use SDK-managed session persistence + refresh.
@@ -37,3 +37,43 @@ export const insforge = createClient({
   // a modal-only flow for the inactivity window (45 min warning / 60 min logout).
   autoRefreshToken: false
 });
+
+type RuntimeClientConfig = {
+  insforge?: {
+    baseUrl?: string;
+    anonKey?: string;
+  };
+};
+
+function applyRuntimeConfig(config: RuntimeClientConfig | null | undefined): void {
+  const runtimeBaseUrl = String(config?.insforge?.baseUrl ?? '').trim();
+  const runtimeAnonKey = String(config?.insforge?.anonKey ?? '').trim();
+  const httpClient = insforge.getHttpClient() as { baseUrl: string; anonKey?: string };
+
+  if (runtimeBaseUrl) {
+    httpClient.baseUrl = resolveBaseUrl(runtimeBaseUrl);
+  }
+
+  if (runtimeAnonKey) {
+    httpClient.anonKey = runtimeAnonKey;
+  }
+}
+
+export const insforgeReady: Promise<void> = (() => {
+  if (typeof window === 'undefined') return Promise.resolve();
+  if (configuredBaseUrl && configuredAnonKey) return Promise.resolve();
+
+  return fetch('/api/client-config', {
+    method: 'GET',
+    headers: Object.fromEntries(getNoStoreHeaders().entries()),
+    cache: 'no-store'
+  })
+    .then(async (response) => {
+      if (!response.ok) return;
+      const config = (await response.json()) as RuntimeClientConfig;
+      applyRuntimeConfig(config);
+    })
+    .catch(() => {
+      // Best-effort: leave existing config in place so proxy fallback can still try.
+    });
+})();
