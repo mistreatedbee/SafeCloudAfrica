@@ -53,17 +53,64 @@ type AuthSessionShape = {
   userId: string | null;
 };
 
+function readJwtSub(token: string | null | undefined): string | null {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
+    const parsed = JSON.parse(atob(padded)) as { sub?: string };
+    return typeof parsed.sub === 'string' && parsed.sub.trim() ? parsed.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+function readClientAuthToken(): string | null {
+  try {
+    const headers = insforge.getHttpClient().getHeaders();
+    const authHeader = String(headers.Authorization ?? headers.authorization ?? '').trim();
+    if (!authHeader) return null;
+    const [scheme, token] = authHeader.split(/\s+/, 2);
+    if (scheme?.toLowerCase() !== 'bearer') return null;
+    return token?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function readAuthSession(result: unknown): AuthSessionShape {
   const session = (result as any)?.data?.session;
+  const topLevelToken = (result as any)?.accessToken;
+  const topLevelUserId = (result as any)?.user?.id;
+  const accessToken =
+    typeof session?.accessToken === 'string' && session.accessToken.trim()
+      ? session.accessToken
+      : typeof topLevelToken === 'string' && topLevelToken.trim()
+        ? topLevelToken
+        : null;
+  const userId =
+    typeof session?.user?.id === 'string' && session.user.id.trim()
+      ? session.user.id
+      : typeof topLevelUserId === 'string' && topLevelUserId.trim()
+        ? topLevelUserId
+        : readJwtSub(accessToken);
   return {
-    accessToken: typeof session?.accessToken === 'string' && session.accessToken.trim() ? session.accessToken : null,
-    userId: typeof session?.user?.id === 'string' && session.user.id.trim() ? session.user.id : null
+    accessToken,
+    userId
   };
 }
 
 function hasMalformedAuthResponse(result: unknown): boolean {
   if (!result || typeof result !== 'object') return true;
-  if (!('data' in (result as Record<string, unknown>)) && !('error' in (result as Record<string, unknown>))) return true;
+  if (
+    !('data' in (result as Record<string, unknown>)) &&
+    !('error' in (result as Record<string, unknown>)) &&
+    !('accessToken' in (result as Record<string, unknown>))
+  ) {
+    return true;
+  }
   const data = (result as any)?.data;
   if (data == null) return false;
   return typeof data !== 'object';
@@ -204,6 +251,8 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     let lastKnownExpiresAtMs: number | null = null;
     try {
       const current = await insforge.auth.getCurrentSession();
+      const existingClientToken = readClientAuthToken();
+      const existingClientTokenExpiresAtMs = decodeTokenExpiryMs(existingClientToken);
       if (hasMalformedAuthResponse(current)) {
         refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
         console.warn('[session] malformed current session response', current);
@@ -220,8 +269,22 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
           console.warn('[session] current session rejected', currentError);
           return false;
         }
+        const existingTokenStillValid = !!existingClientToken && !!existingClientTokenExpiresAtMs && existingClientTokenExpiresAtMs > Date.now();
+        if (existingTokenStillValid) {
+          insforge.getHttpClient().setAuthToken(existingClientToken);
+          refreshRetryCountRef.current = 0;
+          console.warn('[session] current session unavailable; keeping existing client token', currentError);
+          return true;
+        }
       }
       if (!token || !currentUserId) {
+        const existingTokenStillValid = !!existingClientToken && !!existingClientTokenExpiresAtMs && existingClientTokenExpiresAtMs > Date.now();
+        if (existingTokenStillValid) {
+          insforge.getHttpClient().setAuthToken(existingClientToken);
+          refreshRetryCountRef.current = 0;
+          console.warn('[session] current session missing required data; keeping existing client token', current);
+          return true;
+        }
         refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
         console.warn('[session] current session missing required data', current);
         return false;
