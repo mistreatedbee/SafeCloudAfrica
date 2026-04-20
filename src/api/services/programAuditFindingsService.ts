@@ -3,6 +3,7 @@ import type { ProgramAuditFinding, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { createQualityNcr } from './qualityNcrsService';
+import { createTaskFromProgramAuditFinding } from './tasksService';
 
 export type ProgramAuditFindingStatus =
   | 'open'
@@ -66,7 +67,6 @@ export async function createProgramAuditFinding(
   });
 
   const created = data as ProgramAuditFinding;
-  const { createTaskFromProgramAuditFinding } = await import('./tasksService');
   await createTaskFromProgramAuditFinding({
     id: created.id,
     company_id: created.company_id,

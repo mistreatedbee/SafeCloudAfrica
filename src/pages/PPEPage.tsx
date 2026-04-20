@@ -37,7 +37,7 @@ import {
   getMonthRange,
   getYearRange
 } from '../api/services/ppeAnalyticsService';
-import { getMyProfile } from '../api/services/profilesService';
+import { getMyProfile, listUserProfiles } from '../api/services/profilesService';
 import {
   exportPpeIssueRegisterCSV,
   exportPpeCostSummaryCSV,
@@ -432,7 +432,6 @@ export function PPEPage() {
   const { data: profiles } = useAsync(
     async () => {
       if (!activeCompanyId) return [];
-      const { listUserProfiles } = await import('../api/services/profilesService');
       return await listUserProfiles(activeCompanyId);
     },
     [activeCompanyId]

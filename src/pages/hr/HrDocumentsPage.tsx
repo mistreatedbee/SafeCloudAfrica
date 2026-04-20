@@ -23,6 +23,7 @@ import { createEvidence, listEvidence } from '../../api/services/evidenceService
 import { uploadFile, getPublicUrl, type StorageBucket } from '../../api/services/storageService';
 import type { UUID, CompanyRole } from '../../api/models/core';
 import { downloadTextFile, toCsv } from '../../utils/csv';
+import { insforge } from '../../api/insforge/client';
 
 type Tab = 'personal' | 'acknowledgement';
 
@@ -175,14 +176,12 @@ export function HrDocumentsPage() {
           actorUserId: user.id as UUID,
           patch: {}
         });
-        await (async () => {
-          const { error: upErr } = await (await import('../../api/insforge/client')).insforge.database
-            .from('hr_employee_documents')
-            .update({ file_ids: [evidenceId], updated_at: new Date().toISOString() })
-            .eq('company_id', activeCompanyId)
-            .eq('id', created.id);
-          if (upErr) throw upErr;
-        })();
+        const { error: upErr } = await insforge.database
+          .from('hr_employee_documents')
+          .update({ file_ids: [evidenceId], updated_at: new Date().toISOString() })
+          .eq('company_id', activeCompanyId)
+          .eq('id', created.id);
+        if (upErr) throw upErr;
       }
       setDocName('');
       setDocType('');
@@ -216,7 +215,6 @@ export function HrDocumentsPage() {
       });
       if (ackFile) {
         const evidenceId = await uploadAndAttachEvidence('hr_ack_document', created.id as UUID, ackFile, ackTitle.trim());
-        const { insforge } = await import('../../api/insforge/client');
         const { error: patchError } = await insforge.database
           .from('hr_ack_documents')
           .update({ file_ids: [evidenceId], updated_at: new Date().toISOString() })

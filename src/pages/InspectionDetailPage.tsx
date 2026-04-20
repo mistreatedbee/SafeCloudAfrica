@@ -27,6 +27,8 @@ import {
 } from '../components/inspections/InspectionChecklistItemViews';
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { useDraftRegistration } from '../session/useDraftRegistration';
+import { insforge } from '../api/insforge/client';
+import { getErrorMessage } from '../api/insforge/errors';
 
 type RunWithItems = { run: InspectionRun; items: InspectionRunItem[] };
 
@@ -53,8 +55,6 @@ export function InspectionDetailPage() {
   const { data: latestRun, loading: runLoading, error: runError, refresh: refreshRun } = useAsync<RunWithItems | null>(
     async () => {
       if (!activeCompanyId || !inspectionId) return null;
-      const { insforge } = await import('../api/insforge/client');
-      const { getErrorMessage } = await import('../api/insforge/errors');
       const { data: runData, error } = await insforge.database
         .from('inspection_runs')
         .select('*')

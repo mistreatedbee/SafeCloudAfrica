@@ -9,6 +9,7 @@ import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { createEvidence, listEvidence } from './evidenceService';
 import { createNotification } from './notificationsService';
+import { createTaskFromPpeIssue } from './tasksService';
 
 export type PpeIssueTrackerFilters = {
   companyId: UUID;
@@ -275,7 +276,6 @@ export async function createPpeIssueTracker(
   });
 
   if (created.corrective_action_required) {
-    const { createTaskFromPpeIssue } = await import('./tasksService');
     await createTaskFromPpeIssue({
       id: created.id,
       company_id: created.company_id,

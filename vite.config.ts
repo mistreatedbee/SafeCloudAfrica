@@ -33,6 +33,49 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(String(releaseId).slice(0, 12)),
   },
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+
+          if (
+            id.includes('\\react\\') ||
+            id.includes('/react/') ||
+            id.includes('\\react-dom\\') ||
+            id.includes('/react-dom/') ||
+            id.includes('\\react-router\\') ||
+            id.includes('/react-router/') ||
+            id.includes('\\react-router-dom\\') ||
+            id.includes('/react-router-dom/')
+          ) {
+            return 'react-vendor';
+          }
+
+          if (id.includes('\\lucide-react\\') || id.includes('/lucide-react/')) {
+            return 'icons-vendor';
+          }
+
+          if (id.includes('\\recharts\\') || id.includes('/recharts/')) {
+            return 'charts-vendor';
+          }
+
+          if (id.includes('\\framer-motion\\') || id.includes('/framer-motion/')) {
+            return 'motion-vendor';
+          }
+
+          if (
+            id.includes('\\@insforge\\sdk\\') ||
+            id.includes('/@insforge/sdk/') ||
+            id.includes('\\@insforge\\react\\') ||
+            id.includes('/@insforge/react/')
+          ) {
+            return 'insforge-vendor';
+          }
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {

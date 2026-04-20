@@ -18,6 +18,7 @@ import {
 } from '../api/services/correctiveActionsService';
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { useDraftRegistration } from '../session/useDraftRegistration';
+import { listEvidence } from '../api/services/evidenceService';
 
 type CapaSourceType = 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation' | 'complaint' | 'pjo' | 'kpi' | 'audit_finding';
 
@@ -126,7 +127,6 @@ export function CapaDetailPage() {
   const { data: evidence } = useAsync(
     async () => {
       if (!activeCompanyId || isCreate || !capaId) return [];
-      const { listEvidence } = await import('../api/services/evidenceService');
       return await listEvidence(activeCompanyId, { entityType: 'corrective_action', entityId: capaId as UUID, limit: 50 });
     },
     [activeCompanyId, isCreate, capaId, evidenceOpen]

@@ -2,6 +2,7 @@ import { insforge } from '../insforge/client';
 import { getErrorMessage } from '../insforge/errors';
 import type { AuditFinding, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
+import { createTaskFromAuditFinding } from './tasksService';
 
 export async function listAuditFindings(companyId: UUID, inspectionId: UUID, limit = 200): Promise<AuditFinding[]> {
   const { data, error } = await insforge.database
@@ -50,7 +51,6 @@ export async function createAuditFinding(input: {
 
   const created = data as AuditFinding;
   if (input.nonconformance) {
-    const { createTaskFromAuditFinding } = await import('./tasksService');
     await createTaskFromAuditFinding({
       id: created.id,
       company_id: created.company_id,

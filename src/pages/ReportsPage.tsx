@@ -27,6 +27,8 @@ import { listAuditFindings } from '../api/services/auditFindingsService';
 import { isNearMiss } from '../api/utils/incidents';
 import { useIdentity } from '../hooks/useIdentity';
 import { checkCanExport } from '../api/services/licensingService';
+import { insforge } from '../api/insforge/client';
+import { getErrorMessage } from '../api/insforge/errors';
 
 type ReportTemplate = {
   id: 'compliance' | 'incidents' | 'training' | 'audits' | 'inspections' | 'pjo';
@@ -313,7 +315,6 @@ export function ReportsPage() {
 
     if (template.id === 'inspections') {
       const inspections = await listInspections({ companyId: activeCompanyId, limit: 2000 });
-      const { insforge } = await import('../api/insforge/client');
       const rows: Array<Record<string, unknown>> = [];
       for (const i of inspections) {
         const { data: runs } = await insforge.database
@@ -381,13 +382,13 @@ export function ReportsPage() {
         }
 
         for (const batch of batches) {
-          const { data, error } = await (await import('../api/insforge/client')).insforge.database
+          const { data, error } = await insforge.database
             .from('pjo_responses')
             .select('*')
             .eq('company_id', activeCompanyId)
             .in('pjo_id', batch);
           if (error) {
-            throw new Error((await import('../api/insforge/errors')).getErrorMessage(error));
+            throw new Error(getErrorMessage(error));
           }
           responses = responses.concat(data ?? []);
         }

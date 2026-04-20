@@ -12,8 +12,9 @@ import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import type { ModuleKey, Severity } from '../models/core';
 import { getMyProfile } from './profilesService';
-import { listEvidence } from './evidenceService';
-import { listApprovals } from './approvalsService';
+import { createEvidence, listEvidence } from './evidenceService';
+import { createApproval, listApprovals } from './approvalsService';
+import { notifyHighRiskTaskEscalation, notifyTaskAssigned } from './notificationsService';
 
 const OPEN_STATUSES: TaskStatus[] = [
   'draft',
@@ -340,7 +341,6 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   const created = applyTimeStatusIndicator(data as Task);
 
   if (created.assignee_user_id) {
-    const { notifyTaskAssigned } = await import('./notificationsService');
     await notifyTaskAssigned(
       input.companyId,
       created.assignee_user_id as UUID,
@@ -351,7 +351,6 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
 
   const risk = (created.risk_level ?? created.priority) as string;
   if (risk === 'high' || risk === 'critical') {
-    const { notifyHighRiskTaskEscalation } = await import('./notificationsService');
     await notifyHighRiskTaskEscalation(input.companyId, created).catch(() => undefined);
   }
 
@@ -843,7 +842,6 @@ export async function addTaskEvidenceFromUpload(input: {
   storageBucket: string;
   storageKey: string;
 }): Promise<void> {
-  const { createEvidence } = await import('./evidenceService');
   await createEvidence({
     companyId: input.companyId,
     entityType: 'task',
@@ -862,7 +860,6 @@ export async function requestTaskSupervisorApproval(input: {
   requestedByUserId: UUID;
   approverUserId: UUID;
 }): Promise<void> {
-  const { createApproval } = await import('./approvalsService');
   await createApproval({
     companyId: input.companyId,
     entityType: 'task_supervisor_review',
@@ -878,7 +875,6 @@ export async function requestTaskManagerApproval(input: {
   requestedByUserId: UUID;
   approverUserId: UUID;
 }): Promise<void> {
-  const { createApproval } = await import('./approvalsService');
   await createApproval({
     companyId: input.companyId,
     entityType: 'task_manager_approval',
@@ -894,7 +890,6 @@ export async function requestTaskAuditorVerification(input: {
   requestedByUserId: UUID;
   approverUserId: UUID;
 }): Promise<void> {
-  const { createApproval } = await import('./approvalsService');
   await createApproval({
     companyId: input.companyId,
     entityType: 'task_auditor_verification',

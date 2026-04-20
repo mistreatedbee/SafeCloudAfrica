@@ -17,6 +17,7 @@ import { createPpeIssueTracker } from './ppeIssueTrackerService';
 import { createCorrectiveAction } from './correctiveActionsService';
 import { createNotification } from './notificationsService';
 import { sendTemplatedEmail } from './emailService';
+import { createTaskFromInspectionItem } from './tasksService';
 
 export type ListInspectionsInput = {
   companyId: UUID;
@@ -651,7 +652,6 @@ export async function completeInspectionRun(input: {
 
     // Auto-create task from inspection NC item
     if (needsCapa) {
-      const { createTaskFromInspectionItem } = await import('./tasksService');
       await createTaskFromInspectionItem(
         { inspection_id: run.inspection_id, site_id: run.site_id ?? null, department_id: run.department_id ?? null, module: run.module },
         {

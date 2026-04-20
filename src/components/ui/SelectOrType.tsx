@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import type { OptionItem } from '../../api/services/dynamicOptionsService';
+import { upsertOption } from '../../api/services/dynamicOptionsService';
 
 const OTHER_VALUE = '__other__';
 const MIN_LENGTH = 2;
@@ -100,7 +101,6 @@ export function SelectOrType({
     else setError(null);
     if (allowCreate && trimmed.length >= minLength && companyId && moduleKey && fieldKey) {
       try {
-        const { upsertOption } = await import('../../api/services/dynamicOptionsService');
         await upsertOption({
           companyId,
           moduleKey,

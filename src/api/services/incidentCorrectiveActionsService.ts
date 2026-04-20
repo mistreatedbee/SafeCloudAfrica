@@ -1,6 +1,8 @@
 import { insforge } from '../insforge/client';
 import type { IncidentCorrectiveAction, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
+import { createActivityLog } from './activityLogService';
+import { syncIncidentClosureFromLinks } from './incidentsService';
 
 export type CreateIncidentCorrectiveActionInput = {
   incidentId: UUID;
@@ -57,7 +59,6 @@ export async function createIncidentCorrectiveAction(
   if (!data) throw new Error('Failed to create corrective action.');
 
   // Log activity
-  const { createActivityLog } = await import('./activityLogService');
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,
@@ -67,7 +68,6 @@ export async function createIncidentCorrectiveAction(
     metadata: { incidentId: input.incidentId }
   });
 
-  const { syncIncidentClosureFromLinks } = await import('./incidentsService');
   await syncIncidentClosureFromLinks((data as any).incident_id as UUID).catch((syncError) => {
     void syncError;
   });
@@ -112,7 +112,6 @@ export async function updateIncidentCorrectiveAction(
   if (!data) throw new Error('Failed to update corrective action.');
 
   // Log activity
-  const { createActivityLog } = await import('./activityLogService');
   await createActivityLog({
     companyId: (data as any).company_id,
     actorUserId: (data as any).created_by_user_id,
@@ -122,7 +121,6 @@ export async function updateIncidentCorrectiveAction(
     metadata: { incidentId: (data as any).incident_id, changes: patch }
   });
 
-  const { syncIncidentClosureFromLinks } = await import('./incidentsService');
   await syncIncidentClosureFromLinks((data as any).incident_id as UUID).catch((syncError) => {
     void syncError;
   });
@@ -165,7 +163,6 @@ export async function deleteIncidentCorrectiveAction(companyId: UUID, actionId: 
   if (error) throw new Error(getErrorMessage(error));
 
   if (existing?.incident_id) {
-    const { syncIncidentClosureFromLinks } = await import('./incidentsService');
     await syncIncidentClosureFromLinks(existing.incident_id).catch((syncError) => {
       void syncError;
     });

@@ -1,6 +1,8 @@
 import { insforge } from '../insforge/client';
 import { ensureInsforgeSession } from '../insforge/ensureSession';
+import type { Task } from '../models/entities';
 import type { Notification, UUID } from '../models/entities';
+import type { Severity } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 
 export async function listMyNotifications(companyId: UUID, userId: UUID, limit = 20): Promise<Notification[]> {
@@ -113,6 +115,53 @@ export async function notifyOverdueTask(
     'Overdue Task',
     `Task "${taskTitle}" is overdue and requires attention.`,
     { taskId, action: 'view_task' }
+  );
+}
+
+export async function notifyTaskAssigned(
+  companyId: UUID,
+  userId: UUID,
+  taskTitle: string,
+  priority: Severity
+): Promise<void> {
+  await createNotification(
+    companyId,
+    userId,
+    priority === 'critical' || priority === 'high' ? 'warning' : 'info',
+    'Task Assigned',
+    `You have been assigned "${taskTitle}".`,
+    { action: 'view_task', priority }
+  );
+}
+
+export async function notifyHighRiskTaskEscalation(companyId: UUID, task: Pick<Task, 'id' | 'title' | 'priority' | 'risk_level'>): Promise<void> {
+  const { data, error } = await insforge.database
+    .from('user_profiles')
+    .select('user_id, role')
+    .eq('company_id', companyId);
+
+  if (error) throw new Error(getErrorMessage(error));
+
+  const recipients = (data ?? []).filter((profile: any) =>
+    ['owner', 'admin', 'manager', 'supervisor', 'consultant'].includes(String(profile?.role ?? '').toLowerCase())
+  );
+
+  const level = String(task.risk_level ?? task.priority ?? 'high').toUpperCase();
+
+  await Promise.all(
+    recipients
+      .map((profile: any) => profile?.user_id as UUID | null)
+      .filter((userId): userId is UUID => Boolean(userId))
+      .map((userId) =>
+        createNotification(
+          companyId,
+          userId,
+          'warning',
+          'High Risk Task Escalation',
+          `Task "${task.title}" requires attention (${level}).`,
+          { action: 'view_task', taskId: task.id, riskLevel: task.risk_level ?? task.priority ?? 'high' }
+        )
+      )
   );
 }
 

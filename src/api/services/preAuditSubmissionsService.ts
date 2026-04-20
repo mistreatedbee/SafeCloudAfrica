@@ -2,6 +2,7 @@ import { insforge } from '../insforge/client';
 import type { PreAuditSubmission, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { updateAudit } from './auditsService';
 
 export async function getPreAuditSubmission(auditId: UUID): Promise<PreAuditSubmission | null> {
   const { data, error } = await insforge.database
@@ -94,7 +95,6 @@ export async function approvePreAuditSubmissionForAudit(
     approvedByUserId,
     actorUserId: approvedByUserId
   });
-  const { updateAudit } = await import('./auditsService');
   await updateAudit(auditId, companyId, { status: 'ready-for-audit' as any }, approvedByUserId);
   return sub;
 }
