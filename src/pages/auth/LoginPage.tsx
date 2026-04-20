@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { SignIn, useAuth, useUser } from '@insforge/react';
+import { useAuth, useUser } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY } from '../../auth/AuthSessionListener';
 import { formatAuthError } from '../../auth/authMessages';
 import { recoverAuthState } from '../../auth/recoverAuthState';
 import { useTenant } from '../../tenant/TenantContext';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getLoginRedirectPath } from '../../api/services/platformAdminService';
+import { insforge } from '../../api/insforge/client';
 import type { UUID } from '../../api/models/entities';
 
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
@@ -34,6 +35,9 @@ export function LoginPage() {
   const [redirecting, setRedirecting] = useState(false);
   const [redirectError, setRedirectError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [sessionExpiredMessage] = useState(() => {
     try {
       if (typeof sessionStorage === 'undefined') return null;
@@ -108,11 +112,41 @@ export function LoginPage() {
 
   const activated = searchParams.get('activated') === '1';
 
-  const handleSignInError = (error: Error) => {
+  const handleSignInError = (error: unknown) => {
     setRedirecting(false);
     setRedirectError(null);
-    void recoverAuthState(signOut, refreshTenant);
     setAuthError(`${LOGIN_FAILED_MESSAGE} ${formatAuthError(error)}`);
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (submitting) return;
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !password) {
+      setAuthError('Please enter your email address and password.');
+      return;
+    }
+
+    setSubmitting(true);
+    setAuthError(null);
+    setRedirectError(null);
+
+    try {
+      const { error } = await insforge.auth.signInWithPassword({
+        email: normalizedEmail,
+        password
+      });
+
+      if (error) {
+        handleSignInError(error);
+        return;
+      }
+    } catch (error) {
+      handleSignInError(error);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -145,7 +179,55 @@ export function LoginPage() {
         <p className="text-sm text-charcoal-500">Redirecting...</p>
       ) : (
         <>
-          <SignIn signUpUrl="/register" forgotPasswordUrl="/forgot-password" onError={handleSignInError} />
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="login-email" className="block text-sm font-medium text-charcoal mb-1">
+                Email
+              </label>
+              <input
+                id="login-email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus:border-teal focus:outline-none focus:ring-1 focus:ring-teal"
+                placeholder="you@company.com"
+                disabled={submitting}
+                required
+              />
+            </div>
+
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <label htmlFor="login-password" className="block text-sm font-medium text-charcoal">
+                  Password
+                </label>
+                <Link to="/forgot-password" className="text-xs font-semibold text-teal hover:text-teal-700">
+                  Forgot password?
+                </Link>
+              </div>
+              <input
+                id="login-password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus:border-teal focus:outline-none focus:ring-1 focus:ring-teal"
+                placeholder="Enter your password"
+                disabled={submitting}
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-lg bg-teal px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {submitting ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
+
           <p className="mt-1 text-xs text-charcoal-500">Use the same email and password you used to register.</p>
 
           <div className="mt-6 flex items-center justify-between text-sm">
