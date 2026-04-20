@@ -48,6 +48,27 @@ function getAuthStatusCode(error: unknown): number {
   return Number.isFinite(raw) ? raw : 0;
 }
 
+type AuthSessionShape = {
+  accessToken: string | null;
+  userId: string | null;
+};
+
+function readAuthSession(result: unknown): AuthSessionShape {
+  const session = (result as any)?.data?.session;
+  return {
+    accessToken: typeof session?.accessToken === 'string' && session.accessToken.trim() ? session.accessToken : null,
+    userId: typeof session?.user?.id === 'string' && session.user.id.trim() ? session.user.id : null
+  };
+}
+
+function hasMalformedAuthResponse(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return true;
+  if (!('data' in (result as Record<string, unknown>)) && !('error' in (result as Record<string, unknown>))) return true;
+  const data = (result as any)?.data;
+  if (data == null) return false;
+  return typeof data !== 'object';
+}
+
 function isInvalidSessionError(error: unknown): boolean {
   const statusCode = getAuthStatusCode(error);
   if (statusCode === 401 || statusCode === 403) return true;
@@ -183,8 +204,13 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     let lastKnownExpiresAtMs: number | null = null;
     try {
       const current = await insforge.auth.getCurrentSession();
+      if (hasMalformedAuthResponse(current)) {
+        refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+        console.warn('[session] malformed current session response', current);
+        return false;
+      }
       const currentError = current.error ?? null;
-      const token = current.data?.session?.accessToken ?? null;
+      const { accessToken: token, userId: currentUserId } = readAuthSession(current);
       lastKnownToken = token;
       lastKnownExpiresAtMs = decodeTokenExpiryMs(token);
       if (currentError) {
@@ -194,6 +220,11 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
           console.warn('[session] current session rejected', currentError);
           return false;
         }
+      }
+      if (!token || !currentUserId) {
+        refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+        console.warn('[session] current session missing required data', current);
+        return false;
       }
       const now = Date.now();
       if (lastKnownExpiresAtMs && lastKnownExpiresAtMs - now > REFRESH_LEEWAY_MS) {
@@ -214,8 +245,14 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         }
         try {
           const refreshed = await authApi.refreshSession();
-          const refreshedToken = refreshed?.data?.session?.accessToken ?? null;
-          if (refreshedToken) {
+          if (hasMalformedAuthResponse(refreshed)) {
+            insforge.getHttpClient().setAuthToken(null);
+            refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+            console.warn('[session] malformed refresh response', refreshed);
+            return false;
+          }
+          const { accessToken: refreshedToken, userId: refreshedUserId } = readAuthSession(refreshed);
+          if (refreshedToken && refreshedUserId) {
             insforge.getHttpClient().setAuthToken(refreshedToken);
             refreshRetryCountRef.current = 0;
             console.info('[session] refresh success');
@@ -227,6 +264,10 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
             console.warn('[session] refresh rejected', refreshed?.error);
             return false;
           }
+          insforge.getHttpClient().setAuthToken(null);
+          refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+          console.warn('[session] refresh returned no usable session', refreshed);
+          return false;
         } catch (error) {
           if (isInvalidSessionError(error)) {
             insforge.getHttpClient().setAuthToken(null);

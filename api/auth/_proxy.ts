@@ -133,8 +133,11 @@ export async function proxyAuthRequest(req: any, res: any, upstreamPath: string,
         extra: { requestId: started.requestId, upstreamStatus: upstreamRes.status }
       });
       res.status(404).json({
-        error: 'not_found',
-        message: 'Refresh not supported'
+        ok: false,
+        error: 'Refresh not supported',
+        code: 'refresh_not_supported',
+        data: {},
+        requestId: started.requestId
       });
       return;
     }

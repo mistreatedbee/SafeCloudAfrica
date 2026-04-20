@@ -8,7 +8,11 @@ import { insforge } from './client';
  * and RLS policies (correctly) reject inserts/updates.
  */
 export async function ensureInsforgeSession(): Promise<{ accessToken: string; userId: string }> {
-  const { data, error } = await insforge.auth.getCurrentSession();
+  const result = await insforge.auth.getCurrentSession();
+  if (!result || typeof result !== 'object') {
+    throw new Error('Your session is not available. Please sign in again.');
+  }
+  const { data, error } = result;
   if (error) throw error;
 
   const token = data?.session?.accessToken ?? null;

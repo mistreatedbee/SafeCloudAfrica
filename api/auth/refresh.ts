@@ -5,6 +5,12 @@ import { proxyAuthRequest } from './_proxy.js';
 
 const MODULE = 'api.auth.refresh';
 
+function getErrorDetails(error: unknown): string {
+  if ((error as any)?.message) return String((error as any).message);
+  if (typeof error === 'string') return error;
+  return 'Refresh request failed.';
+}
+
 function getRefreshConfigError(): string | null {
   const origin = resolveInsforgeOrigin({ allowViteEnv: true, allowLinkedProjectFallback: true });
   if (!origin) {
@@ -43,12 +49,16 @@ export default async function handler(req: any, res: any) {
     }
     return await proxyAuthRequest(req, res, '/api/auth/refresh', MODULE);
   } catch (error: any) {
-    const details = error?.message ? String(error.message) : 'Refresh request failed.';
+    const details = getErrorDetails(error);
     logStructuredLine({
       module: MODULE,
       level: 'error',
       message: 'Refresh handler failed',
-      extra: { details }
+      extra: {
+        details,
+        hasInsforgeBaseUrl: !!String(process.env.INSFORGE_BASE_URL ?? process.env.VITE_INSFORGE_BASE_URL ?? '').trim(),
+        hasInsforgeAnonKey: !!String(process.env.INSFORGE_ANON_KEY ?? process.env.VITE_INSFORGE_ANON_KEY ?? '').trim()
+      }
     });
     return res.status(503).json({
       ok: false,
