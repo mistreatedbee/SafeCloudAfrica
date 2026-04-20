@@ -103,6 +103,19 @@ export function EmployeeDashboardPage() {
           </div>
         )}
 
+        {loading && !summary && (
+          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <p className="text-sm text-charcoal-500">Loading dashboard...</p>
+          </div>
+        )}
+
+        {!loading && !error && !summary && (
+          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <p className="text-sm font-semibold text-charcoal">No employee data available</p>
+            <p className="text-sm text-charcoal-500 mt-1">Your session or HR profile may need to be refreshed before this dashboard can load.</p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <StatCard title="My pending tasks" value={summary?.myPendingTasks ?? 0} icon="ClipboardCheck" iconColor="#0FB9B1" variant="info" subtitle="Assigned to you" />
           <StatCard title="My incidents" value={summary?.myIncidents ?? 0} icon="AlertTriangle" iconColor="#E74C3C" variant="critical" subtitle="Reported by you" />
@@ -219,10 +232,7 @@ export function EmployeeDashboardPage() {
             <ArrowRightIcon className="w-5 h-5 text-charcoal-400" />
           </a>
         </div>
-
-        {loading && <p className="text-sm text-charcoal-500">Loading dashboard...</p>}
       </motion.div>
     </Layout>
   );
 }
-

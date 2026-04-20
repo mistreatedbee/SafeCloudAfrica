@@ -48,6 +48,25 @@ function getAuthStatusCode(error: unknown): number {
   return Number.isFinite(raw) ? raw : 0;
 }
 
+function isInvalidSessionError(error: unknown): boolean {
+  const statusCode = getAuthStatusCode(error);
+  if (statusCode === 401 || statusCode === 403) return true;
+  const message = String(
+    (error as any)?.code ??
+      (error as any)?.error ??
+      (error as any)?.message ??
+      ''
+  ).toLowerCase();
+  return (
+    message.includes('invalid or expired session') ||
+    message.includes('session expired') ||
+    message.includes('refresh_unauthorized') ||
+    message.includes('refresh_forbidden') ||
+    message.includes('refresh_upstream_error') ||
+    message.includes('missing_refresh_cookie')
+  );
+}
+
 export function SessionManagerProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -137,8 +156,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       lastKnownToken = token;
       lastKnownExpiresAtMs = decodeTokenExpiryMs(token);
       if (currentError) {
-        const statusCode = getAuthStatusCode(currentError);
-        if (statusCode === 401 || statusCode === 403) {
+        if (isInvalidSessionError(currentError)) {
           insforge.getHttpClient().setAuthToken(null);
           refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
           console.warn('[session] current session rejected', currentError);
@@ -171,9 +189,14 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
             console.info('[session] refresh success');
             return true;
           }
+          if (isInvalidSessionError(refreshed?.error)) {
+            insforge.getHttpClient().setAuthToken(null);
+            refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+            console.warn('[session] refresh rejected', refreshed?.error);
+            return false;
+          }
         } catch (error) {
-          const statusCode = getAuthStatusCode(error);
-          if (statusCode === 401 || statusCode === 403) {
+          if (isInvalidSessionError(error)) {
             insforge.getHttpClient().setAuthToken(null);
             refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
             console.warn('[session] refresh rejected', error);
@@ -204,8 +227,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
 
       throw new Error('No session token available after refresh attempt.');
     } catch (error) {
-      const statusCode = getAuthStatusCode(error);
-      if (statusCode === 401 || statusCode === 403) {
+      if (isInvalidSessionError(error)) {
         insforge.getHttpClient().setAuthToken(null);
         refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
         console.warn('[session] refresh rejected', error);

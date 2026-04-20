@@ -21,6 +21,12 @@ export function InspectionRunReportPage() {
     [activeCompanyId, runId]
   );
 
+  const findings = report?.findings ?? [];
+  const highRiskFindings = report?.highRiskFindings ?? [];
+  const nonConformances = report?.nonConformances ?? [];
+  const auditScoreHistory = report?.auditScoreHistory ?? [];
+  const evidenceByItemId = report?.evidenceByItemId ?? {};
+
   return (
     <Layout title="Inspection run report">
       <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
@@ -47,6 +53,13 @@ export function InspectionRunReportPage() {
           </div>
         )}
 
+        {!loading && !error && !report && (
+          <div className="bg-white rounded-xl border border-surface-300 p-6 shadow-card">
+            <p className="text-sm font-semibold text-charcoal">No report data available</p>
+            <p className="text-sm text-charcoal-500 mt-1">This inspection run has no report payload yet, or the session no longer has access to it.</p>
+          </div>
+        )}
+
         {report && (
           <div className="space-y-6">
             <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
@@ -69,11 +82,11 @@ export function InspectionRunReportPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <section className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
                 <h3 className="text-sm font-semibold text-charcoal mb-2">Inspection findings (PC / NC)</h3>
-                {report.findings.length === 0 ? (
+                {findings.length === 0 ? (
                   <p className="text-sm text-charcoal-500">No partially or non-compliant items.</p>
                 ) : (
                   <ul className="space-y-2 text-sm text-charcoal-700">
-                    {report.findings.map((i: any) => (
+                    {findings.map((i: any) => (
                       <li key={i.id} className="border border-surface-200 rounded-lg px-3 py-2">
                         <p className="font-medium">{i.question}</p>
                         <p className="text-xs text-charcoal-500 mt-0.5">
@@ -87,11 +100,11 @@ export function InspectionRunReportPage() {
 
               <section className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
                 <h3 className="text-sm font-semibold text-charcoal mb-2">High risk findings</h3>
-                {report.highRiskFindings.length === 0 ? (
+                {highRiskFindings.length === 0 ? (
                   <p className="text-sm text-charcoal-500">No high risk items.</p>
                 ) : (
                   <ul className="space-y-2 text-sm text-charcoal-700">
-                    {report.highRiskFindings.map((i: any) => (
+                    {highRiskFindings.map((i: any) => (
                       <li key={i.id} className="border border-critical/30 rounded-lg px-3 py-2 bg-critical/5">
                         <p className="font-medium">{i.question}</p>
                         <p className="text-xs text-charcoal-500 mt-0.5">
@@ -106,7 +119,7 @@ export function InspectionRunReportPage() {
 
             <section className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
               <h3 className="text-sm font-semibold text-charcoal mb-2">Non-conformance register</h3>
-              {report.nonConformances.length === 0 ? (
+              {nonConformances.length === 0 ? (
                 <p className="text-sm text-charcoal-500">No non-conformances recorded.</p>
               ) : (
                 <div className="overflow-x-auto">
@@ -119,7 +132,7 @@ export function InspectionRunReportPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {report.nonConformances.map((i: any) => (
+                      {nonConformances.map((i: any) => (
                         <tr key={i.id} className="border-b border-surface-100">
                           <td className="py-2 pr-3">{i.question}</td>
                           <td className="py-2 pr-3 text-xs">{i.inspection_rating}</td>
@@ -134,12 +147,12 @@ export function InspectionRunReportPage() {
 
             <section className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
               <h3 className="text-sm font-semibold text-charcoal mb-2">Evidence gallery (by item)</h3>
-              {Object.keys(report.evidenceByItemId || {}).length === 0 ? (
+              {Object.keys(evidenceByItemId).length === 0 ? (
                 <p className="text-sm text-charcoal-500">No evidence uploaded against checklist items.</p>
               ) : (
                 <div className="space-y-4">
-                  {report.nonConformances.map((item: any) => {
-                    const evidences = report.evidenceByItemId[item.id] || [];
+                  {nonConformances.map((item: any) => {
+                    const evidences = evidenceByItemId[item.id] || [];
                     if (evidences.length === 0) return null;
                     return (
                       <div key={item.id} className="border border-surface-200 rounded-lg px-3 py-2">
@@ -171,11 +184,11 @@ export function InspectionRunReportPage() {
 
             <section className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
               <h3 className="text-sm font-semibold text-charcoal mb-2">Audit score history</h3>
-              {report.auditScoreHistory.length === 0 ? (
+              {auditScoreHistory.length === 0 ? (
                 <p className="text-sm text-charcoal-500">No linked score history.</p>
               ) : (
                 <ul className="space-y-2 text-sm text-charcoal-700">
-                  {report.auditScoreHistory.map((h) => (
+                  {auditScoreHistory.map((h) => (
                     <li key={h.runId} className="border border-surface-200 rounded-lg px-3 py-2">
                       Run {String(h.runId).slice(0, 8)} - {h.compliancePercent.toFixed(1)}%
                     </li>

@@ -232,6 +232,8 @@ export function DashboardPage() {
   const moduleCardsWithScores = useMemo(() => {
     return moduleCards.map((m) => ({ ...m, score: moduleScoreByKey[m.id] ?? 0 }));
   }, [moduleScoreByKey]);
+  const recentTasks = summary?.tasks ?? [];
+  const recentIncidents = summary?.incidents ?? [];
 
   return (
     <Layout title="Dashboard">
@@ -277,6 +279,19 @@ export function DashboardPage() {
             >
               Try again
             </button>
+          </motion.div>
+        )}
+
+        {loading && !summary && (
+          <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <p className="text-sm text-charcoal-500">Loading dashboard data...</p>
+          </motion.div>
+        )}
+
+        {!loading && !error && !summary && (
+          <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <p className="text-sm font-semibold text-charcoal">No dashboard data available</p>
+            <p className="text-sm text-charcoal-500 mt-1">Sign in again or refresh the page if your workspace session has expired.</p>
           </motion.div>
         )}
 
@@ -415,7 +430,7 @@ export function DashboardPage() {
                 {activeRole === 'employee' ? 'My Tasks' : 'Company Tasks'}
               </h3>
               <span className="text-sm font-medium text-teal">
-                {summary?.tasks.length ?? 0}
+                {recentTasks.length}
               </span>
             </div>
             <div className="divide-y divide-surface-100">
@@ -424,7 +439,7 @@ export function DashboardPage() {
                   <p className="text-sm text-charcoal-500">Loading…</p>
                 </div>
               )}
-              {(summary?.tasks ?? []).map((task) =>
+              {recentTasks.map((task) =>
               <div
                 key={task.id}
                 onClick={() => navigate(`/dashboard/management/tasks/${task.id}`)}
@@ -441,6 +456,11 @@ export function DashboardPage() {
                     </div>
                     <StatusBadge status={task.status} size="sm" />
                   </div>
+                </div>
+              )}
+              {!loading && recentTasks.length === 0 && (
+                <div className="px-5 py-3">
+                  <p className="text-sm text-charcoal-500">No tasks available right now.</p>
                 </div>
               )}
             </div>
@@ -545,7 +565,7 @@ export function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-100">
-                  {(summary?.incidents ?? []).map((incident) =>
+                  {recentIncidents.map((incident) =>
                   <tr
                     key={incident.id}
                     className="hover:bg-surface-50 cursor-pointer transition-colors">
@@ -567,6 +587,13 @@ export function DashboardPage() {
                       </td>
                       <td className="px-5 py-3">
                         <StatusBadge status={incident.status as any} size="sm" />
+                      </td>
+                    </tr>
+                  )}
+                  {!loading && recentIncidents.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-4 text-sm text-charcoal-500">
+                        No incidents available yet.
                       </td>
                     </tr>
                   )}

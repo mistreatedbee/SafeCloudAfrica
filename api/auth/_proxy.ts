@@ -8,7 +8,7 @@ import {
 } from '../_insforge-proxy/_shared.js';
 
 const AUTH_PROXY_TIMEOUT_MS = 15_000;
-const REFRESH_SESSION_MESSAGE = 'Your session expired. Please log in again.';
+const REFRESH_SESSION_MESSAGE = 'Invalid or expired session';
 
 function getAuthStatusCode(error: unknown): number {
   const raw = Number((error as any)?.statusCode ?? (error as any)?.status ?? 0);
@@ -23,6 +23,16 @@ async function readResponseSnippet(response: Response): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function sendRefreshUnauthorized(res: any, requestId: string, code: string, statusCode = 401): void {
+  res.status(statusCode).json({
+    ok: false,
+    error: REFRESH_SESSION_MESSAGE,
+    code,
+    data: {},
+    requestId
+  });
 }
 
 export async function proxyAuthRequest(req: any, res: any, upstreamPath: string, moduleName: string): Promise<void> {
@@ -46,12 +56,7 @@ export async function proxyAuthRequest(req: any, res: any, upstreamPath: string,
         message: 'Refresh request missing auth cookies',
         extra: { requestId: started.requestId, hasCsrfHeader: !!csrfHeader }
       });
-      res.status(401).json({
-        ok: false,
-        error: REFRESH_SESSION_MESSAGE,
-        code: 'missing_refresh_cookie',
-        requestId: started.requestId
-      });
+      sendRefreshUnauthorized(res, started.requestId, 'missing_refresh_cookie');
       return;
     }
 
@@ -83,12 +88,11 @@ export async function proxyAuthRequest(req: any, res: any, upstreamPath: string,
           hasCsrfHeader: !!csrfHeader
         }
       });
-      res.status(upstreamRes.status).json({
-        ok: false,
-        error: REFRESH_SESSION_MESSAGE,
-        code: upstreamRes.status === 401 ? 'refresh_unauthorized' : 'refresh_forbidden',
-        requestId: started.requestId
-      });
+      sendRefreshUnauthorized(
+        res,
+        started.requestId,
+        upstreamRes.status === 401 ? 'refresh_unauthorized' : 'refresh_forbidden'
+      );
       return;
     }
 
@@ -106,12 +110,7 @@ export async function proxyAuthRequest(req: any, res: any, upstreamPath: string,
           upstreamSnippet: snippet
         }
       });
-      res.status(503).json({
-        ok: false,
-        error: 'Session refresh is temporarily unavailable. Please sign in again.',
-        code: 'refresh_upstream_error',
-        requestId: started.requestId
-      });
+      sendRefreshUnauthorized(res, started.requestId, 'refresh_upstream_error');
       return;
     }
 
@@ -140,12 +139,15 @@ export async function proxyAuthRequest(req: any, res: any, upstreamPath: string,
       extra: { requestId: started.requestId, method, error: message, upstreamPath, statusCode }
     });
     if (isRefreshRequest && (statusCode === 401 || statusCode === 403)) {
-      res.status(statusCode).json({
-        ok: false,
-        error: REFRESH_SESSION_MESSAGE,
-        code: statusCode === 401 ? 'refresh_unauthorized' : 'refresh_forbidden',
-        requestId: started.requestId
-      });
+      sendRefreshUnauthorized(
+        res,
+        started.requestId,
+        statusCode === 401 ? 'refresh_unauthorized' : 'refresh_forbidden'
+      );
+      return;
+    }
+    if (isRefreshRequest && err?.name !== 'AbortError') {
+      sendRefreshUnauthorized(res, started.requestId, 'refresh_failed');
       return;
     }
     res.status(503).json({

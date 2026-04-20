@@ -76,7 +76,15 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
       .then((data) => {
         if (cancelled) return;
         backendUnavailableUntilRef.current = 0;
-        setState({ data, error: null, loading: false, retry, refetch: retry, refresh: retry, isBackendUnavailable: false });
+        setState({
+          data: (data ?? null) as T | null,
+          error: null,
+          loading: false,
+          retry,
+          refetch: retry,
+          refresh: retry,
+          isBackendUnavailable: false
+        });
       })
       .catch((error) => {
         if (cancelled) return;

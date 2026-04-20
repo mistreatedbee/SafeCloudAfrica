@@ -20,6 +20,27 @@ export type InspectionRunReport = {
   evidenceByItemId: Record<string, InspectionItemEvidence[]>;
 };
 
+function normalizeInspectionRunReport(
+  input: Partial<InspectionRunReport> & Pick<InspectionRunReport, 'runId' | 'inspectionId'>
+): InspectionRunReport {
+  return {
+    runId: input.runId,
+    inspectionId: input.inspectionId,
+    checklistName: input.checklistName ?? null,
+    totalScore: Number(input.totalScore ?? 0),
+    maxScore: Number(input.maxScore ?? 0),
+    compliancePercent: Number(input.compliancePercent ?? 0),
+    departmentPerformanceScore: Number(input.departmentPerformanceScore ?? 0),
+    repeatFindingsCount: Number(input.repeatFindingsCount ?? 0),
+    repeatFindingsIndicator: input.repeatFindingsIndicator ?? 'none',
+    auditScoreHistory: Array.isArray(input.auditScoreHistory) ? input.auditScoreHistory : [],
+    findings: Array.isArray(input.findings) ? input.findings : [],
+    nonConformances: Array.isArray(input.nonConformances) ? input.nonConformances : [],
+    highRiskFindings: Array.isArray(input.highRiskFindings) ? input.highRiskFindings : [],
+    evidenceByItemId: input.evidenceByItemId && typeof input.evidenceByItemId === 'object' ? input.evidenceByItemId : {}
+  };
+}
+
 export async function getInspectionRunReport(companyId: UUID, runId: UUID): Promise<InspectionRunReport> {
   const { data: runData, error: runError } = await insforge.database
     .from('inspection_runs')
@@ -130,7 +151,7 @@ export async function getInspectionRunReport(companyId: UUID, runId: UUID): Prom
     }, {});
   }
 
-  return {
+  return normalizeInspectionRunReport({
     runId,
     inspectionId: (runData as any).inspection_id as UUID,
     checklistName: (runData as any).checklist_name ?? null,
@@ -145,5 +166,5 @@ export async function getInspectionRunReport(companyId: UUID, runId: UUID): Prom
     nonConformances,
     highRiskFindings,
     evidenceByItemId
-  };
+  });
 }
