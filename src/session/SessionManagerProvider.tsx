@@ -43,6 +43,129 @@ function decodeTokenExpiryMs(token: string | null | undefined): number | null {
   }
 }
 
+function getAuthStatusCode(error: unknown): number {
+  const raw = Number((error as any)?.statusCode ?? (error as any)?.status ?? 0);
+  return Number.isFinite(raw) ? raw : 0;
+}
+
+type AuthSessionShape = {
+  accessToken: string | null;
+  userId: string | null;
+};
+
+function readJwtSub(token: string | null | undefined): string | null {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
+    const parsed = JSON.parse(atob(padded)) as { sub?: string };
+    return typeof parsed.sub === 'string' && parsed.sub.trim() ? parsed.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+function readClientAuthToken(): string | null {
+  try {
+    const headers = insforge.getHttpClient().getHeaders();
+    const authHeader = String(headers.Authorization ?? headers.authorization ?? '').trim();
+    if (!authHeader) return null;
+    const [scheme, token] = authHeader.split(/\s+/, 2);
+    if (scheme?.toLowerCase() !== 'bearer') return null;
+    return token?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function readAuthSession(result: unknown): AuthSessionShape {
+  const session = (result as any)?.data?.session;
+  const topLevelToken = (result as any)?.accessToken;
+  const topLevelUserId = (result as any)?.user?.id;
+  const accessToken =
+    typeof session?.accessToken === 'string' && session.accessToken.trim()
+      ? session.accessToken
+      : typeof topLevelToken === 'string' && topLevelToken.trim()
+        ? topLevelToken
+        : null;
+  const userId =
+    typeof session?.user?.id === 'string' && session.user.id.trim()
+      ? session.user.id
+      : typeof topLevelUserId === 'string' && topLevelUserId.trim()
+        ? topLevelUserId
+        : readJwtSub(accessToken);
+  return {
+    accessToken,
+    userId
+  };
+}
+
+function hasMalformedAuthResponse(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return true;
+  if (
+    !('data' in (result as Record<string, unknown>)) &&
+    !('error' in (result as Record<string, unknown>)) &&
+    !('accessToken' in (result as Record<string, unknown>))
+  ) {
+    return true;
+  }
+  const data = (result as any)?.data;
+  if (data == null) return false;
+  return typeof data !== 'object';
+}
+
+function isInvalidSessionError(error: unknown): boolean {
+  const statusCode = getAuthStatusCode(error);
+  if (statusCode === 401 || statusCode === 403) return true;
+  const message = String(
+    (error as any)?.code ??
+      (error as any)?.error ??
+      (error as any)?.message ??
+      ''
+  ).toLowerCase();
+  return (
+    message.includes('invalid or expired session') ||
+    message.includes('session expired') ||
+    message.includes('refresh_unauthorized') ||
+    message.includes('refresh_forbidden') ||
+    message.includes('missing_refresh_cookie') ||
+    message.includes('invalid refresh token')
+  );
+}
+
+function clearClientSessionState(): void {
+  try {
+    insforge.getHttpClient().setAuthToken(null);
+  } catch {
+    // ignore client cleanup errors
+  }
+
+  try {
+    const localKeysToClear: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      const normalized = key.toLowerCase();
+      if (
+        normalized.includes('insforge') ||
+        normalized.includes('supabase') ||
+        normalized.includes('auth') ||
+        normalized.includes('token') ||
+        normalized.includes('session')
+      ) {
+        localKeysToClear.push(key);
+      }
+    }
+    for (const key of localKeysToClear) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // ignore storage cleanup errors
+  }
+}
+
 export function SessionManagerProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -102,6 +225,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     } catch {
       // ignore storage access errors
     }
+    clearClientSessionState();
     try {
       await flushAllDrafts();
     } catch {
@@ -127,9 +251,44 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     let lastKnownExpiresAtMs: number | null = null;
     try {
       const current = await insforge.auth.getCurrentSession();
-      const token = current.data?.session?.accessToken ?? null;
+      const existingClientToken = readClientAuthToken();
+      const existingClientTokenExpiresAtMs = decodeTokenExpiryMs(existingClientToken);
+      if (hasMalformedAuthResponse(current)) {
+        refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+        console.warn('[session] malformed current session response', current);
+        return false;
+      }
+      const currentError = current.error ?? null;
+      const { accessToken: token, userId: currentUserId } = readAuthSession(current);
       lastKnownToken = token;
       lastKnownExpiresAtMs = decodeTokenExpiryMs(token);
+      if (currentError) {
+        if (isInvalidSessionError(currentError)) {
+          insforge.getHttpClient().setAuthToken(null);
+          refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+          console.warn('[session] current session rejected', currentError);
+          return false;
+        }
+        const existingTokenStillValid = !!existingClientToken && !!existingClientTokenExpiresAtMs && existingClientTokenExpiresAtMs > Date.now();
+        if (existingTokenStillValid) {
+          insforge.getHttpClient().setAuthToken(existingClientToken);
+          refreshRetryCountRef.current = 0;
+          console.warn('[session] current session unavailable; keeping existing client token', currentError);
+          return true;
+        }
+      }
+      if (!token || !currentUserId) {
+        const existingTokenStillValid = !!existingClientToken && !!existingClientTokenExpiresAtMs && existingClientTokenExpiresAtMs > Date.now();
+        if (existingTokenStillValid) {
+          insforge.getHttpClient().setAuthToken(existingClientToken);
+          refreshRetryCountRef.current = 0;
+          console.warn('[session] current session missing required data; keeping existing client token', current);
+          return true;
+        }
+        refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+        console.warn('[session] current session missing required data', current);
+        return false;
+      }
       const now = Date.now();
       if (lastKnownExpiresAtMs && lastKnownExpiresAtMs - now > REFRESH_LEEWAY_MS) {
         refreshRetryCountRef.current = 0;
@@ -149,14 +308,36 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         }
         try {
           const refreshed = await authApi.refreshSession();
-          const refreshedToken = refreshed?.data?.session?.accessToken ?? null;
-          if (refreshedToken) {
+          if (hasMalformedAuthResponse(refreshed)) {
+            insforge.getHttpClient().setAuthToken(null);
+            refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+            console.warn('[session] malformed refresh response', refreshed);
+            return false;
+          }
+          const { accessToken: refreshedToken, userId: refreshedUserId } = readAuthSession(refreshed);
+          if (refreshedToken && refreshedUserId) {
             insforge.getHttpClient().setAuthToken(refreshedToken);
             refreshRetryCountRef.current = 0;
             console.info('[session] refresh success');
             return true;
           }
+          if (isInvalidSessionError(refreshed?.error)) {
+            insforge.getHttpClient().setAuthToken(null);
+            refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+            console.warn('[session] refresh rejected', refreshed?.error);
+            return false;
+          }
+          insforge.getHttpClient().setAuthToken(null);
+          refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+          console.warn('[session] refresh returned no usable session', refreshed);
+          return false;
         } catch (error) {
+          if (isInvalidSessionError(error)) {
+            insforge.getHttpClient().setAuthToken(null);
+            refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+            console.warn('[session] refresh rejected', error);
+            return false;
+          }
           // If refresh fails but the existing token is still valid, don't force a logout.
           // Network hiccups should not interrupt the user session while the JWT is alive.
           const tokenStillValid = !!lastKnownExpiresAtMs && lastKnownExpiresAtMs > Date.now();
@@ -182,6 +363,12 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
 
       throw new Error('No session token available after refresh attempt.');
     } catch (error) {
+      if (isInvalidSessionError(error)) {
+        insforge.getHttpClient().setAuthToken(null);
+        refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+        console.warn('[session] refresh rejected', error);
+        return false;
+      }
       // If we have enough info to tell the token hasn't expired yet, treat refresh errors as non-fatal.
       const tokenStillValid = !!lastKnownExpiresAtMs && lastKnownExpiresAtMs > Date.now();
       if (lastKnownToken && tokenStillValid) {
