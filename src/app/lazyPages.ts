@@ -32,6 +32,9 @@ export const DocumentsPage = lazy(() =>
   import('../pages/DocumentsPage').then((m) => ({ default: m.DocumentsPage }))
 );
 export const TasksPage = lazy(() => import('../pages/TasksPage').then((m) => ({ default: m.TasksPage })));
+export const TaskDetailPage = lazy(() =>
+  import('../pages/TaskDetailPage').then((m) => ({ default: m.TaskDetailPage }))
+);
 export const IncidentsPage = lazy(() =>
   import('../pages/IncidentsPage').then((m) => ({ default: m.IncidentsPage }))
 );
