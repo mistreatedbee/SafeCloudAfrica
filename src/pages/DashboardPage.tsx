@@ -228,6 +228,7 @@ export function DashboardPage() {
   const expiringTraining = summary?.expiringTraining ?? 0;
   const moduleScoreByKey = summary?.moduleScoreByKey ?? {};
   const overallScore = summary?.overallScore ?? 0;
+  const dashboardTasks = summary?.tasks ?? [];
 
   const moduleCardsWithScores = useMemo(() => {
     return moduleCards.map((m) => ({ ...m, score: moduleScoreByKey[m.id] ?? 0 }));
@@ -415,7 +416,7 @@ export function DashboardPage() {
                 {activeRole === 'employee' ? 'My Tasks' : 'Company Tasks'}
               </h3>
               <span className="text-sm font-medium text-teal">
-                {summary?.tasks.length ?? 0}
+                {dashboardTasks.length}
               </span>
             </div>
             <div className="divide-y divide-surface-100">
@@ -424,7 +425,7 @@ export function DashboardPage() {
                   <p className="text-sm text-charcoal-500">Loading…</p>
                 </div>
               )}
-              {(summary?.tasks ?? []).map((task) =>
+              {dashboardTasks.map((task) =>
               <div
                 key={task.id}
                 onClick={() => navigate(`/dashboard/management/tasks/${task.id}`)}
