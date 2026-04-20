@@ -1,3 +1,4 @@
+import React, { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { RequirePlatformAdmin } from './auth/RequirePlatformAdmin';
 import { RequireWorkspace } from './auth/RequireWorkspace';
@@ -10,119 +11,10 @@ import { OwnerOnboardingGate } from './auth/OwnerOnboardingGate';
 import { AuthSessionListener } from './auth/AuthSessionListener';
 import { TenantProvider } from './tenant/TenantContext';
 import { AppDashboardRedirect } from './components/AppDashboardRedirect';
-import { DashboardPage } from './pages/DashboardPage';
-import { SafetyPage } from './pages/SafetyPage';
-import { QualityPage } from './pages/QualityPage';
-import { EnvironmentPage } from './pages/EnvironmentPage';
-import { EnvironmentDashboardPage } from './pages/environment/EnvironmentDashboardPage';
-import { EnvironmentEiaPage } from './pages/environment/EnvironmentEiaPage';
-import { EnvironmentRiskOpportunityPage } from './pages/environment/EnvironmentRiskOpportunityPage';
-import { EnvironmentWastePage } from './pages/environment/EnvironmentWastePage';
-import { EnvironmentWaterPage } from './pages/environment/EnvironmentWaterPage';
-import { EnvironmentAirPage } from './pages/environment/EnvironmentAirPage';
-import { DocumentsPage } from './pages/DocumentsPage';
-import { TasksPage } from './pages/TasksPage';
-import { TaskDetailPage } from './pages/TaskDetailPage';
-import { IncidentsPage } from './pages/IncidentsPage';
-import { TrainingPage } from './pages/TrainingPage';
-import { AuditsPage } from './pages/AuditsPage';
-import { InspectionsPage } from './pages/InspectionsPage';
-import { InspectionDetailPage } from './pages/InspectionDetailPage';
-import { InspectionRunReportPage } from './pages/InspectionRunReportPage';
-import { ReportsPage } from './pages/ReportsPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { ProfilePage } from './pages/ProfilePage';
-import { HelpSupportPage } from './pages/HelpSupportPage';
-import NCRsPage from './pages/NCRsPage';
-import QualityCustomerComplaintsPage from './pages/QualityCustomerComplaintsPage';
-import QualityInternalExternalIssuesPage from './pages/QualityInternalExternalIssuesPage';
-import CalibrationPage from './pages/CalibrationPage';
-import { RisksPage } from './pages/RisksPage';
-import { RiskAssessmentCreatePage } from './pages/risks/RiskAssessmentCreatePage';
-import { RiskAssessmentDetailPage } from './pages/risks/RiskAssessmentDetailPage';
-import { RiskAssessmentEditPage } from './pages/risks/RiskAssessmentEditPage';
-import { PPEPage } from './pages/PPEPage';
-import { LegalRegisterPage } from './pages/LegalRegisterPage';
-import { LegalRequirementDetailPage } from './pages/LegalRequirementDetailPage';
-import { LegalUpdatesPage } from './pages/LegalUpdatesPage';
-import { UsersPage } from './pages/UsersPage';
-import { PlanningReviewPage } from './pages/PlanningReviewPage';
-import { ApprovalsPage } from './pages/ApprovalsPage';
-import { DocumentReviewsPage } from './pages/DocumentReviewsPage';
-import { ReviewMeetingDetailPage } from './pages/ReviewMeetingDetailPage';
-import { ReviewMeetingActionsBoardPage } from './pages/ReviewMeetingActionsBoardPage';
-import { ImprovementPage } from './pages/ImprovementPage';
-import { ImprovementDetailPage } from './pages/ImprovementDetailPage';
-import { CapaDetailPage } from './pages/CapaDetailPage';
-import { GeneralModulePage } from './pages/modules/GeneralModulePage';
-import { HealthDashboardPage } from './pages/health/HealthDashboardPage';
-import { HealthMedicalPage } from './pages/health/HealthMedicalPage';
-import { HealthHygienePage } from './pages/health/HealthHygienePage';
-import { HealthWellnessPage } from './pages/health/HealthWellnessPage';
-import { LegalModulePage } from './pages/modules/LegalModulePage';
-import { HrDashboardPage } from './pages/hr/HrDashboardPage';
-import { HrEmployeesPage } from './pages/hr/HrEmployeesPage';
-import { HrEmployeeProfilePage } from './pages/hr/HrEmployeeProfilePage';
-import { HrDocumentsPage } from './pages/hr/HrDocumentsPage';
-import { HrRecruitmentPage } from './pages/hr/HrRecruitmentPage';
-import { HrLabourPage } from './pages/hr/HrLabourPage';
-import { HrPerformancePage } from './pages/hr/HrPerformancePage';
-import { HrHoursPage } from './pages/hr/HrHoursPage';
-import { HrLeavePage } from './pages/hr/HrLeavePage';
-import { HrSettingsPage } from './pages/hr/HrSettingsPage';
-import { KPIModuleLayout } from './pages/kpi/KPIModuleLayout';
-import { KPIDashboardPage } from './pages/kpi/KPIDashboardPage';
-import { KPIAssessmentsListPage } from './pages/kpi/KPIAssessmentsListPage';
-import { KPIAssessmentCreatePage } from './pages/kpi/KPIAssessmentCreatePage';
-import { KPIAssessmentDetailPage } from './pages/kpi/KPIAssessmentDetailPage';
-import { KPILibraryPage } from './pages/kpi/KPILibraryPage';
-import { KPIFindingsListPage } from './pages/kpi/KPIFindingsListPage';
-import { KPIReportsPage } from './pages/kpi/KPIReportsPage';
-import { KPIAnalyticsPage } from './pages/kpi/KPIAnalyticsPage';
-import { SecurityModulePage } from './pages/modules/SecurityModulePage';
-import { SafetyManagementPage } from './pages/modules/SafetyManagementPage';
-import { IncidentAnalyticsPage } from './pages/IncidentAnalyticsPage';
-import { SafetyStatisticsPage } from './pages/analytics/SafetyStatisticsPage';
-import { ComplianceAnalyticsPage } from './pages/analytics/ComplianceAnalyticsPage';
-import { QualityAnalyticsPage } from './pages/analytics/QualityAnalyticsPage';
-import { HCSModulePage } from './pages/modules/HCSModulePage';
-import { PjoPage } from './pages/PjoPage';
-import { BBSPage } from './pages/features/BBSPage';
-import { ContractorsVisitorsPage } from './pages/features/ContractorsVisitorsPage';
-import { EmergencyPreparednessPage } from './pages/features/EmergencyPreparednessPage';
-import { TemplateLibraryPage } from './pages/features/TemplateLibraryPage';
-import { AssetManagementPage } from './pages/features/AssetManagementPage';
-import { HazardousChemicalManagementPage } from './pages/features/HazardousChemicalManagementPage';
-import { LogoutPage } from './pages/auth/LogoutPage';
-import { InviteAcceptPage } from './pages/auth/InviteAcceptPage';
-import { LoginPage } from './pages/auth/LoginPage';
-import { RegisterPage } from './pages/auth/RegisterPage';
-import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
-import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
-import { LandingPage } from './pages/marketing/LandingPage';
-import { SeedDemoPage } from './pages/admin/SeedDemoPage';
-import { AdminLicensePage } from './pages/admin/AdminLicensePage';
-import { SuperAdminLayout } from './components/layout/SuperAdminLayout';
-import { SuperAdminOverviewPage } from './pages/admin/superadmin/SuperAdminOverviewPage';
-import { SuperAdminOrganisationsPage } from './pages/admin/superadmin/SuperAdminOrganisationsPage';
-import { SuperAdminLicensesPage } from './pages/admin/superadmin/SuperAdminLicensesPage';
-import { SuperAdminModuleControlPage } from './pages/admin/superadmin/SuperAdminModuleControlPage';
-import { SuperAdminSellableFeaturesPage } from './pages/admin/superadmin/SuperAdminSellableFeaturesPage';
-import { SuperAdminAuditLogsPage } from './pages/admin/superadmin/SuperAdminAuditLogsPage';
-import { SuperAdminSupportModePage } from './pages/admin/superadmin/SuperAdminSupportModePage';
-import { OwnerDashboardPage } from './pages/owner/OwnerDashboardPage';
-import { OwnerOnboardingWizardPage } from './pages/owner/OwnerOnboardingWizardPage';
-import { EmployeeDashboardPage } from './pages/employee/EmployeeDashboardPage';
-import { ExternalDashboardPage } from './pages/external/ExternalDashboardPage';
-import { ActivateLicensePage } from './pages/activate/ActivateLicensePage';
-import { BillingStatusPage } from './pages/BillingStatusPage';
-import { AccessDeniedPage } from './pages/AccessDeniedPage';
-import { WorkspaceOnboardingPage } from './pages/onboarding/WorkspaceOnboardingPage';
-import { HoursWorkedPage } from './pages/management/HoursWorkedPage';
-import { OperationalInputsPage } from './pages/management/OperationalInputsPage';
 import { SELLABLE_FEATURE_ROUTE_PATHS } from './api/services/sellableFeaturesService';
 import { DraftManagerProvider } from './session/DraftManagerProvider';
 import { SessionManagerProvider } from './session/SessionManagerProvider';
+import * as LazyPages from './app/lazyPages';
 export function App() {
   return (
     <BrowserRouter>
@@ -130,88 +22,89 @@ export function App() {
         <DraftManagerProvider>
           <SessionManagerProvider>
             <AuthSessionListener />
-            <Routes>
-          {/* Public */}
-          <Route path="/" element={<LandingPage />} />
+            <Suspense fallback={<RouteLoadingFallback />}>
+              <Routes>
+                {/* Public */}
+                <Route path="/" element={<LazyPages.LandingPage />} />
 
-          {/* Auth */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/logout" element={<LogoutPage />} />
-          <Route path="/activate" element={<ActivateLicensePage />} />
+                {/* Auth */}
+                <Route path="/login" element={<LazyPages.LoginPage />} />
+                <Route path="/register" element={<LazyPages.RegisterPage />} />
+                <Route path="/forgot-password" element={<LazyPages.ForgotPasswordPage />} />
+                <Route path="/reset-password" element={<LazyPages.ResetPasswordPage />} />
+                <Route path="/logout" element={<LazyPages.LogoutPage />} />
+                <Route path="/activate" element={<LazyPages.ActivateLicensePage />} />
 
-          <Route
-            path="/billing"
-            element={
-              <RequireSignedIn>
-                <RequireWorkspace>
-                  <BillingStatusPage />
-                </RequireWorkspace>
-              </RequireSignedIn>
-            }
-          />
-          <Route
-            path="/billing/status"
-            element={
-              <RequireSignedIn>
-                <RequireWorkspace>
-                  <BillingStatusPage />
-                </RequireWorkspace>
-              </RequireSignedIn>
-            }
-          />
-          <Route
-            path="/access-denied"
-            element={
-              <RequireSignedIn>
-                <RequireWorkspace>
-                  <AccessDeniedPage />
-                </RequireWorkspace>
-              </RequireSignedIn>
-            }
-          />
+                <Route
+                  path="/billing"
+                  element={
+                    <RequireSignedIn>
+                      <RequireWorkspace>
+                        <LazyPages.BillingStatusPage />
+                      </RequireWorkspace>
+                    </RequireSignedIn>
+                  }
+                />
+                <Route
+                  path="/billing/status"
+                  element={
+                    <RequireSignedIn>
+                      <RequireWorkspace>
+                        <LazyPages.BillingStatusPage />
+                      </RequireWorkspace>
+                    </RequireSignedIn>
+                  }
+                />
+                <Route
+                  path="/access-denied"
+                  element={
+                    <RequireSignedIn>
+                      <RequireWorkspace>
+                        <LazyPages.AccessDeniedPage />
+                      </RequireWorkspace>
+                    </RequireSignedIn>
+                  }
+                />
 
-          {/* Post-login onboarding (create workspace) */}
-          <Route
-            path="/onboarding"
-            element={
-              <RequireSignedIn>
-                <WorkspaceOnboardingPage />
-              </RequireSignedIn>
-            }
-          />
+                {/* Post-login onboarding (create workspace) */}
+                <Route
+                  path="/onboarding"
+                  element={
+                    <RequireSignedIn>
+                      <LazyPages.WorkspaceOnboardingPage />
+                    </RequireSignedIn>
+                  }
+                />
 
-          {/* Demo seeding (disabled by default; env-gated) */}
-          <Route path="/seed-demo" element={<SeedDemoPage />} />
+                {/* Demo seeding (disabled by default; env-gated) */}
+                <Route path="/seed-demo" element={<LazyPages.SeedDemoPage />} />
 
-          {/* Invite acceptance */}
-          <Route path="/invite/accept" element={<InviteAcceptPage />} />
-          <Route path="/invite/:inviteId" element={<InviteAcceptPage />} />
-          <Route path="/accept-invite" element={<InviteAcceptPage />} />
+                {/* Invite acceptance */}
+                <Route path="/invite/accept" element={<LazyPages.InviteAcceptPage />} />
+                <Route path="/invite/:inviteId" element={<LazyPages.InviteAcceptPage />} />
+                <Route path="/accept-invite" element={<LazyPages.InviteAcceptPage />} />
 
-          {/* Super Admin (platform-wide) */}
-          <Route
-            path="/super-admin"
-            element={
-              <RequireSignedIn>
-                <RequirePlatformAdmin>
-                  <SuperAdminLayout />
-                </RequirePlatformAdmin>
-              </RequireSignedIn>
-            }
-          >
-            <Route index element={<Navigate to="overview" replace />} />
-            <Route path="overview" element={<SuperAdminOverviewPage />} />
-            <Route path="organisations" element={<SuperAdminOrganisationsPage />} />
-            <Route path="licenses" element={<SuperAdminLicensesPage />} />
-            <Route path="module-control" element={<SuperAdminModuleControlPage />} />
-            <Route path="sellable-features" element={<SuperAdminSellableFeaturesPage />} />
-            <Route path="audit-logs" element={<SuperAdminAuditLogsPage />} />
-            <Route path="support-mode" element={<SuperAdminSupportModePage />} />
-            <Route path="*" element={<Navigate to="overview" replace />} />
-          </Route>
+                {/* Super Admin (platform-wide) */}
+                <Route
+                  path="/super-admin"
+                  element={
+                    <RequireSignedIn>
+                      <RequirePlatformAdmin>
+                        <LazyPages.SuperAdminLayout />
+                      </RequirePlatformAdmin>
+                    </RequireSignedIn>
+                  }
+                >
+                  <Route index element={<Navigate to="overview" replace />} />
+                  <Route path="overview" element={<LazyPages.SuperAdminOverviewPage />} />
+                  <Route path="organisations" element={<LazyPages.SuperAdminOrganisationsPage />} />
+                  <Route path="licenses" element={<LazyPages.SuperAdminLicensesPage />} />
+                  <Route path="module-control" element={<LazyPages.SuperAdminModuleControlPage />} />
+                  <Route path="sellable-features" element={<LazyPages.SuperAdminSellableFeaturesPage />} />
+                  <Route path="audit-logs" element={<LazyPages.SuperAdminAuditLogsPage />} />
+                  <Route path="support-mode" element={<LazyPages.SuperAdminSupportModePage />} />
+                  <Route path="*" element={<Navigate to="overview" replace />} />
+                </Route>
 
           {/* Protected app */}
           <Route
@@ -234,7 +127,7 @@ export function App() {
                   <RequireActiveSubscription>
                     <RequireCompanyRole allowed={['owner']}>
                       <OwnerOnboardingGate>
-                        <OwnerDashboardPage />
+                        <LazyPages.OwnerDashboardPage />
                       </OwnerOnboardingGate>
                     </RequireCompanyRole>
                   </RequireActiveSubscription>
@@ -249,7 +142,7 @@ export function App() {
                 <RequireWorkspace>
                   <RequireActiveSubscription>
                     <RequireCompanyRole allowed={['owner']}>
-                      <OwnerOnboardingWizardPage />
+                      <LazyPages.OwnerOnboardingWizardPage />
                     </RequireCompanyRole>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
@@ -263,7 +156,7 @@ export function App() {
                 <RequireWorkspace>
                   <RequireActiveSubscription>
                     <RequireCompanyRole allowed={['admin']}>
-                      <DashboardPage />
+                      <LazyPages.DashboardPage />
                     </RequireCompanyRole>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
@@ -277,7 +170,7 @@ export function App() {
                 <RequireWorkspace>
                   <RequireActiveSubscription>
                     <RequireCompanyRole allowed={['manager']}>
-                      <DashboardPage />
+                      <LazyPages.DashboardPage />
                     </RequireCompanyRole>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
@@ -291,7 +184,7 @@ export function App() {
                 <RequireWorkspace>
                   <RequireActiveSubscription>
                     <RequireCompanyRole allowed={['supervisor']}>
-                      <DashboardPage />
+                      <LazyPages.DashboardPage />
                     </RequireCompanyRole>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
@@ -305,7 +198,7 @@ export function App() {
                 <RequireWorkspace>
                   <RequireActiveSubscription>
                     <RequireCompanyRole allowed={['employee']}>
-                      <EmployeeDashboardPage />
+                      <LazyPages.EmployeeDashboardPage />
                     </RequireCompanyRole>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
@@ -319,7 +212,7 @@ export function App() {
                 <RequireWorkspace>
                   <RequireActiveSubscription>
                     <RequireCompanyRole allowed={['consultant']}>
-                      <ExternalDashboardPage />
+                      <LazyPages.ExternalDashboardPage />
                     </RequireCompanyRole>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
@@ -333,7 +226,7 @@ export function App() {
                 <RequireWorkspace>
                   <RequireActiveSubscription>
                     <RequireCompanyRole allowed={['auditor']}>
-                      <ExternalDashboardPage />
+                      <LazyPages.ExternalDashboardPage />
                     </RequireCompanyRole>
                   </RequireActiveSubscription>
                 </RequireWorkspace>
@@ -353,7 +246,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="general">
-                    <GeneralModulePage />
+                    <LazyPages.GeneralModulePage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -365,7 +258,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="safety">
-                    <SafetyPage />
+                    <LazyPages.SafetyPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -376,7 +269,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <SafetyManagementPage />
+                  <LazyPages.SafetyManagementPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -386,7 +279,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <IncidentAnalyticsPage />
+                  <LazyPages.IncidentAnalyticsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -396,7 +289,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <SafetyStatisticsPage />
+                  <LazyPages.SafetyStatisticsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -406,7 +299,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ComplianceAnalyticsPage />
+                  <LazyPages.ComplianceAnalyticsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -416,7 +309,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <QualityAnalyticsPage />
+                  <LazyPages.QualityAnalyticsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -427,7 +320,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="quality">
-                    <QualityPage />
+                    <LazyPages.QualityPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -439,7 +332,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="environment">
-                    <EnvironmentPage />
+                    <LazyPages.EnvironmentPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -451,7 +344,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="environment">
-                    <EnvironmentDashboardPage />
+                    <LazyPages.EnvironmentDashboardPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -463,7 +356,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="environment">
-                    <EnvironmentEiaPage />
+                    <LazyPages.EnvironmentEiaPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -475,7 +368,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="environment">
-                    <EnvironmentRiskOpportunityPage />
+                    <LazyPages.EnvironmentRiskOpportunityPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -487,7 +380,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="environment">
-                    <EnvironmentWastePage />
+                    <LazyPages.EnvironmentWastePage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -499,7 +392,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="environment">
-                    <EnvironmentWaterPage />
+                    <LazyPages.EnvironmentWaterPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -511,7 +404,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="environment">
-                    <EnvironmentAirPage />
+                    <LazyPages.EnvironmentAirPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -535,7 +428,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="health">
-                    <HealthDashboardPage />
+                    <LazyPages.HealthDashboardPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -547,7 +440,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="health">
-                    <HealthMedicalPage />
+                    <LazyPages.HealthMedicalPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -559,7 +452,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="health">
-                    <HealthHygienePage />
+                    <LazyPages.HealthHygienePage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -571,7 +464,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="health">
-                    <HealthWellnessPage />
+                    <LazyPages.HealthWellnessPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -583,7 +476,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="legal">
-                    <LegalModulePage />
+                    <LazyPages.LegalModulePage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -607,7 +500,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrDashboardPage />
+                    <LazyPages.HrDashboardPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -619,7 +512,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrEmployeesPage />
+                    <LazyPages.HrEmployeesPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -631,7 +524,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrEmployeeProfilePage />
+                    <LazyPages.HrEmployeeProfilePage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -643,7 +536,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrDocumentsPage />
+                    <LazyPages.HrDocumentsPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -655,7 +548,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrRecruitmentPage />
+                    <LazyPages.HrRecruitmentPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -667,7 +560,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrLabourPage />
+                    <LazyPages.HrLabourPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -679,7 +572,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrPerformancePage />
+                    <LazyPages.HrPerformancePage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -691,7 +584,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrHoursPage />
+                    <LazyPages.HrHoursPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -703,7 +596,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrLeavePage />
+                    <LazyPages.HrLeavePage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -715,7 +608,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <HrSettingsPage />
+                    <LazyPages.HrSettingsPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -727,20 +620,20 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
-                    <KPIModuleLayout />
+                    <LazyPages.KPIModuleLayout />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
             }
           >
-            <Route index element={<KPIDashboardPage />} />
-            <Route path="assessments" element={<KPIAssessmentsListPage />} />
-            <Route path="assessments/new" element={<KPIAssessmentCreatePage />} />
-            <Route path="assessments/:assessmentId" element={<KPIAssessmentDetailPage />} />
-            <Route path="library" element={<KPILibraryPage />} />
-            <Route path="findings" element={<KPIFindingsListPage />} />
-            <Route path="reports" element={<KPIReportsPage />} />
-            <Route path="trends" element={<KPIAnalyticsPage />} />
+            <Route index element={<LazyPages.KPIDashboardPage />} />
+            <Route path="assessments" element={<LazyPages.KPIAssessmentsListPage />} />
+            <Route path="assessments/new" element={<LazyPages.KPIAssessmentCreatePage />} />
+            <Route path="assessments/:assessmentId" element={<LazyPages.KPIAssessmentDetailPage />} />
+            <Route path="library" element={<LazyPages.KPILibraryPage />} />
+            <Route path="findings" element={<LazyPages.KPIFindingsListPage />} />
+            <Route path="reports" element={<LazyPages.KPIReportsPage />} />
+            <Route path="trends" element={<LazyPages.KPIAnalyticsPage />} />
             <Route path="*" element={<Navigate to="/modules/hr/kpis" replace />} />
           </Route>
           <Route
@@ -749,7 +642,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="security">
-                    <SecurityModulePage />
+                    <LazyPages.SecurityModulePage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -760,7 +653,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <HCSModulePage />
+                  <LazyPages.HCSModulePage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -772,7 +665,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DocumentsPage />
+                  <LazyPages.DocumentsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -812,7 +705,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <TasksPage />
+                  <LazyPages.TasksPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -822,7 +715,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <TasksPage />
+                  <LazyPages.TasksPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -832,7 +725,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <IncidentsPage />
+                  <LazyPages.IncidentsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -842,7 +735,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <IncidentsPage />
+                  <LazyPages.IncidentsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -852,7 +745,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <IncidentAnalyticsPage />
+                  <LazyPages.IncidentAnalyticsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -873,7 +766,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="quality">
-                    <QualityCustomerComplaintsPage />
+                    <LazyPages.QualityCustomerComplaintsPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -885,7 +778,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="quality">
-                    <QualityInternalExternalIssuesPage />
+                    <LazyPages.QualityInternalExternalIssuesPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -897,7 +790,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="quality">
-                    <CalibrationPage title="Quality Calibration Register" defaultModuleTag="Quality" />
+                    <LazyPages.CalibrationPage title="Quality Calibration Register" defaultModuleTag="Quality" />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -908,7 +801,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <CalibrationPage title="Health Calibration Register" defaultModuleTag="Health" forceReadOnly />
+                  <LazyPages.CalibrationPage title="Health Calibration Register" defaultModuleTag="Health" forceReadOnly />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -918,7 +811,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <CalibrationPage title="Safety Calibration Register" defaultModuleTag="Safety" forceReadOnly />
+                  <LazyPages.CalibrationPage title="Safety Calibration Register" defaultModuleTag="Safety" forceReadOnly />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -928,7 +821,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <CalibrationPage title="Environment Calibration Register" defaultModuleTag="Environment" forceReadOnly />
+                  <LazyPages.CalibrationPage title="Environment Calibration Register" defaultModuleTag="Environment" forceReadOnly />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -938,7 +831,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <TrainingPage />
+                  <LazyPages.TrainingPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -948,7 +841,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <PjoPage />
+                  <LazyPages.PjoPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -958,7 +851,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <AuditsPage />
+                  <LazyPages.AuditsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -968,7 +861,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <AuditsPage />
+                  <LazyPages.AuditsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -978,7 +871,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <InspectionsPage />
+                  <LazyPages.InspectionsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -988,7 +881,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <InspectionsPage />
+                  <LazyPages.InspectionsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -998,7 +891,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <InspectionDetailPage />
+                  <LazyPages.InspectionDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1008,7 +901,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <InspectionRunReportPage />
+                  <LazyPages.InspectionRunReportPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1018,7 +911,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RisksPage />
+                  <LazyPages.RisksPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1028,7 +921,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RiskAssessmentCreatePage />
+                  <LazyPages.RiskAssessmentCreatePage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1038,7 +931,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RiskAssessmentDetailPage />
+                  <LazyPages.RiskAssessmentDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1048,7 +941,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RiskAssessmentEditPage />
+                  <LazyPages.RiskAssessmentEditPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1060,7 +953,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RiskAssessmentDetailPage />
+                  <LazyPages.RiskAssessmentDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1070,7 +963,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <RiskAssessmentEditPage />
+                  <LazyPages.RiskAssessmentEditPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1081,7 +974,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <PPEPage />
+                  <LazyPages.PPEPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1091,7 +984,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <PPEPage />
+                  <LazyPages.PPEPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1102,7 +995,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="legal">
-                    <LegalRegisterPage />
+                    <LazyPages.LegalRegisterPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1114,7 +1007,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="legal">
-                    <LegalRegisterPage />
+                    <LazyPages.LegalRegisterPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1126,7 +1019,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="legal">
-                    <LegalRequirementDetailPage />
+                    <LazyPages.LegalRequirementDetailPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1138,7 +1031,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireModuleEnabled module="legal">
-                    <LegalUpdatesPage />
+                    <LazyPages.LegalUpdatesPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1149,7 +1042,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <PlanningReviewPage />
+                  <LazyPages.PlanningReviewPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1159,7 +1052,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ApprovalsPage />
+                  <LazyPages.ApprovalsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1169,7 +1062,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DocumentReviewsPage />
+                  <LazyPages.DocumentReviewsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1179,7 +1072,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DocumentReviewsPage />
+                  <LazyPages.DocumentReviewsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1189,7 +1082,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ReviewMeetingDetailPage />
+                  <LazyPages.ReviewMeetingDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1199,7 +1092,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ReviewMeetingDetailPage />
+                  <LazyPages.ReviewMeetingDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1209,7 +1102,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ReviewMeetingActionsBoardPage />
+                  <LazyPages.ReviewMeetingActionsBoardPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1219,7 +1112,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ReviewMeetingActionsBoardPage />
+                  <LazyPages.ReviewMeetingActionsBoardPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1229,7 +1122,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ReviewMeetingDetailPage />
+                  <LazyPages.ReviewMeetingDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1239,7 +1132,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ReviewMeetingDetailPage />
+                  <LazyPages.ReviewMeetingDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1249,7 +1142,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ImprovementPage />
+                  <LazyPages.ImprovementPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1259,7 +1152,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ImprovementDetailPage />
+                  <LazyPages.ImprovementDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1269,7 +1162,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ImprovementDetailPage />
+                  <LazyPages.ImprovementDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1279,7 +1172,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <CapaDetailPage />
+                  <LazyPages.CapaDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1289,7 +1182,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <CapaDetailPage />
+                  <LazyPages.CapaDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1299,7 +1192,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ReportsPage />
+                  <LazyPages.ReportsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1331,7 +1224,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <IncidentsPage />
+                  <LazyPages.IncidentsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1341,7 +1234,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <IncidentsPage />
+                  <LazyPages.IncidentsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1351,7 +1244,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <IncidentAnalyticsPage />
+                  <LazyPages.IncidentAnalyticsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1361,7 +1254,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <TasksPage />
+                  <LazyPages.TasksPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1371,7 +1264,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <TasksPage />
+                  <LazyPages.TasksPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1381,7 +1274,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <TaskDetailPage />
+                  <LazyPages.TaskDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1391,7 +1284,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <TaskDetailPage />
+                  <LazyPages.TaskDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1401,7 +1294,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <TaskDetailPage />
+                  <LazyPages.TaskDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1411,7 +1304,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <NCRsPage />
+                  <LazyPages.NCRsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1421,7 +1314,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ApprovalsPage />
+                  <LazyPages.ApprovalsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1431,7 +1324,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <DocumentReviewsPage />
+                  <LazyPages.DocumentReviewsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1441,7 +1334,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ReviewMeetingDetailPage />
+                  <LazyPages.ReviewMeetingDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1451,7 +1344,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ReviewMeetingActionsBoardPage />
+                  <LazyPages.ReviewMeetingActionsBoardPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1461,7 +1354,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ReviewMeetingDetailPage />
+                  <LazyPages.ReviewMeetingDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1471,7 +1364,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ImprovementPage />
+                  <LazyPages.ImprovementPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1481,7 +1374,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ImprovementDetailPage />
+                  <LazyPages.ImprovementDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1491,7 +1384,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ImprovementDetailPage />
+                  <LazyPages.ImprovementDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1501,7 +1394,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <CapaDetailPage />
+                  <LazyPages.CapaDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1511,7 +1404,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <CapaDetailPage />
+                  <LazyPages.CapaDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1521,7 +1414,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ReportsPage />
+                  <LazyPages.ReportsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1531,7 +1424,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <PlanningReviewPage />
+                  <LazyPages.PlanningReviewPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1561,7 +1454,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <AuditsPage />
+                  <LazyPages.AuditsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1571,7 +1464,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <AuditsPage />
+                  <LazyPages.AuditsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1581,7 +1474,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <InspectionsPage />
+                  <LazyPages.InspectionsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1591,7 +1484,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <InspectionsPage />
+                  <LazyPages.InspectionsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1601,7 +1494,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <TrainingPage />
+                  <LazyPages.TrainingPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1611,7 +1504,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <PjoPage />
+                  <LazyPages.PjoPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1631,7 +1524,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <PPEPage />
+                  <LazyPages.PPEPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1644,7 +1537,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireSellableFeatureAccess featureKey="bbs">
-                    <BBSPage />
+                    <LazyPages.BBSPage />
                   </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1656,7 +1549,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireSellableFeatureAccess featureKey="contractorsVisitors">
-                    <ContractorsVisitorsPage />
+                    <LazyPages.ContractorsVisitorsPage />
                   </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1668,7 +1561,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireSellableFeatureAccess featureKey="emergencyPreparedness">
-                    <EmergencyPreparednessPage />
+                    <LazyPages.EmergencyPreparednessPage />
                   </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1680,7 +1573,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireSellableFeatureAccess featureKey="templateLibrary">
-                    <TemplateLibraryPage />
+                    <LazyPages.TemplateLibraryPage />
                   </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1692,7 +1585,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireSellableFeatureAccess featureKey="assetManagement">
-                    <AssetManagementPage />
+                    <LazyPages.AssetManagementPage />
                   </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1704,7 +1597,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireSellableFeatureAccess featureKey="hazardousChemicals">
-                    <HazardousChemicalManagementPage />
+                    <LazyPages.HazardousChemicalManagementPage />
                   </RequireSellableFeatureAccess>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1721,7 +1614,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireCompanyRole allowed={['owner', 'admin', 'manager']}>
-                    <SettingsPage />
+                    <LazyPages.SettingsPage />
                   </RequireCompanyRole>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1732,7 +1625,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <ProfilePage />
+                  <LazyPages.ProfilePage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1742,7 +1635,7 @@ export function App() {
             element={
               <RequireSignedIn>
                 <RequireWorkspace>
-                  <HelpSupportPage />
+                  <LazyPages.HelpSupportPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }
@@ -1753,7 +1646,7 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <RequireCompanyRole allowed={['owner', 'admin', 'manager']}>
-                    <UsersPage />
+                    <LazyPages.UsersPage />
                   </RequireCompanyRole>
                 </RequireWorkspace>
               </RequireSignedIn>
@@ -1772,12 +1665,28 @@ export function App() {
             }
           />
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+                {/* Fallback */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
           </SessionManagerProvider>
         </DraftManagerProvider>
       </TenantProvider>
-    </BrowserRouter>);
+    </BrowserRouter>
+  );
+}
 
+/**
+ * RouteLoadingFallback: Renders while lazy-loaded routes are loading.
+ * This provides visual feedback during code-splitting delays.
+ */
+function RouteLoadingFallback() {
+  return (
+    <div className="flex items-center justify-center w-full h-screen">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading...</p>
+      </div>
+    </div>
+  );
 }
