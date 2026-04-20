@@ -343,7 +343,7 @@ export function SafetyPage() {
                     <div>
                       <p className="text-sm font-medium text-charcoal">{a.action}</p>
                       <p className="text-sm text-charcoal-400 mt-0.5">
-                        {(a.entity_type ?? 'record')} • {(a.entity_id ? String(a.entity_id).slice(0, 8) : '—')}
+                        {(a.entity_type ?? 'record')} - {(a.entity_id ? String(a.entity_id).slice(0, 8) : '-')}
                       </p>
                     </div>
                     <span className="text-xs text-charcoal-400 whitespace-nowrap">{timeAgo(a.created_at)}</span>

@@ -34,36 +34,49 @@ export default async function handler(req: any, res: any) {
   const message = String(raw.message ?? '').trim() || 'Client error';
   const orgHint = raw.organization_id != null && String(raw.organization_id).trim() ? String(raw.organization_id).trim() : null;
 
-  const actor = await resolveRequestActor(req, orgHint ? { organizationId: orgHint } : {});
-  const organization_id = actor.organizationId ?? orgHint;
+  try {
+    const actor = await resolveRequestActor(req, orgHint ? { organizationId: orgHint } : {});
+    const organization_id = actor.organizationId ?? orgHint;
 
-  logStructuredLine({
-    module: MODULE,
-    level: 'error',
-    message,
-    user_id: actor.userId,
-    organization_id,
-    extra: {
-      clientModule,
-      stack: raw.stack ? String(raw.stack).slice(0, 8000) : undefined,
-      componentStack: raw.componentStack ? String(raw.componentStack).slice(0, 4000) : undefined,
-      url: raw.url ? String(raw.url).slice(0, 2000) : undefined,
-      userAgent: raw.userAgent ? String(raw.userAgent).slice(0, 500) : undefined
-    }
-  });
+    logStructuredLine({
+      module: MODULE,
+      level: 'error',
+      message,
+      user_id: actor.userId,
+      organization_id,
+      extra: {
+        clientModule,
+        stack: raw.stack ? String(raw.stack).slice(0, 8000) : undefined,
+        componentStack: raw.componentStack ? String(raw.componentStack).slice(0, 4000) : undefined,
+        url: raw.url ? String(raw.url).slice(0, 2000) : undefined,
+        userAgent: raw.userAgent ? String(raw.userAgent).slice(0, 500) : undefined
+      }
+    });
 
-  recordOperationalEvent({
-    event_type: 'client.error',
-    status: 'failure',
-    module: clientModule,
-    message,
-    user_id: actor.userId,
-    organization_id,
-    details: {
-      url: raw.url ?? null,
-      stack: raw.stack ? String(raw.stack).slice(0, 4000) : null
-    }
-  });
+    recordOperationalEvent({
+      event_type: 'client.error',
+      status: 'failure',
+      module: clientModule,
+      message,
+      user_id: actor.userId,
+      organization_id,
+      details: {
+        url: raw.url ?? null,
+        stack: raw.stack ? String(raw.stack).slice(0, 4000) : null
+      }
+    });
 
-  return res.status(200).json({ ok: true });
+    return res.status(200).json({ ok: true });
+  } catch (error: any) {
+    logStructuredLine({
+      module: MODULE,
+      level: 'error',
+      message: 'Client log handler failed',
+      extra: {
+        clientModule,
+        cause: error?.message ? String(error.message) : String(error)
+      }
+    });
+    return res.status(200).json({ ok: false, error: 'Client log handler failed' });
+  }
 }

@@ -143,7 +143,7 @@ export function HrLeavePage() {
 
   const { data: leaveTypes, refetch: refetchLeaveTypes } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return [];
-    await ensureDefaultHrLeaveTypes(activeCompanyId, user.id as UUID).catch(() => {});
+    await ensureDefaultHrLeaveTypes(activeCompanyId, user.id as UUID).catch(() => undefined);
     return listHrRecords(activeCompanyId, 'hr_leave_types');
   }, [activeCompanyId, user?.id]);
 

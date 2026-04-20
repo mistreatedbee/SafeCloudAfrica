@@ -293,14 +293,14 @@ export function HrRecruitmentPage() {
                 <div key={String(row.id)} className="border border-surface-200 rounded-lg p-3">
                   <p className="font-medium">{String(row.title ?? '')}</p>
                   <p className="text-charcoal-500">{String(row.competency_required ?? '-')} | {String(row.experience_required ?? '-')}</p>
-                  <p className="text-charcoal-500">Dept approval: {String(Boolean(row.department_manager_approved))} | Ref checks: {String(Boolean(row.reference_checks_done))}</p>
+                  <p className="text-charcoal-500">Dept approval: {String(!!row.department_manager_approved)} | Ref checks: {String(!!row.reference_checks_done)}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {canDepartmentManagerApprove && !row.department_manager_approved && (
                       <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void approveVacancyAsDepartmentManager(row.id as UUID)}>Approve (Department Manager)</button>
                     )}
                     {canWrite && (
-                      <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void setReferenceChecked(row.id as UUID, !Boolean(row.reference_checks_done))}>
-                        Reference checks: {Boolean(row.reference_checks_done) ? 'Yes' : 'No'}
+                      <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void setReferenceChecked(row.id as UUID, !row.reference_checks_done)}>
+                        Reference checks: {row.reference_checks_done ? 'Yes' : 'No'}
                       </button>
                     )}
                     {canWrite && (

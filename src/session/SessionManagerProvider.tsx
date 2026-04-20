@@ -62,10 +62,8 @@ function isInvalidSessionError(error: unknown): boolean {
     message.includes('session expired') ||
     message.includes('refresh_unauthorized') ||
     message.includes('refresh_forbidden') ||
-    message.includes('refresh_upstream_error') ||
     message.includes('missing_refresh_cookie') ||
-    message.includes('missing_refresh_config') ||
-    message.includes('refresh_handler_failed')
+    message.includes('invalid refresh token')
   );
 }
 

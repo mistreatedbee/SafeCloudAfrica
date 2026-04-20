@@ -80,6 +80,7 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
   const response = await fetch('/api/email/send', {
     method: 'POST',
     cache: 'no-store',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',

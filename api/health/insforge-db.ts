@@ -3,14 +3,14 @@ import { logStructuredLine, recordOperationalEvent } from '../_observability.js'
 import { resolveInsforgeOrigin } from '../_insforge-origin.js';
 
 const MODULE = 'api.health.insforge-db';
+const DB_HEALTH_TIMEOUT_MS = 8_000;
 
 function getUpstreamOrigin(): string {
   return resolveInsforgeOrigin({ allowViteEnv: true, allowLinkedProjectFallback: true });
 }
 
 function getAnonKey(): string {
-  // Prefer server-side env; do not rely on VITE_ vars here.
-  return (process.env.INSFORGE_ANON_KEY ?? '').trim();
+  return (process.env.INSFORGE_ANON_KEY ?? process.env.VITE_INSFORGE_ANON_KEY ?? '').trim();
 }
 
 export default async function handler(req: any, res: any) {
@@ -46,6 +46,8 @@ export default async function handler(req: any, res: any) {
 
   const startedAt = Date.now();
   const url = `${upstream}/api/database/records/companies?select=id&limit=1`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DB_HEALTH_TIMEOUT_MS);
 
   try {
     const upstreamRes = await fetch(url, {
@@ -53,7 +55,8 @@ export default async function handler(req: any, res: any) {
       headers: {
         Authorization: `Bearer ${anonKey}`,
         'Cache-Control': 'no-store'
-      }
+      },
+      signal: controller.signal
     });
 
     const elapsedMs = Date.now() - startedAt;
@@ -101,9 +104,14 @@ export default async function handler(req: any, res: any) {
       event_type: 'insforge.db.health',
       status: 'failure',
       module: MODULE,
-      message: 'Upstream request failed',
+      message: err?.name === 'AbortError' ? 'Upstream request timed out' : 'Upstream request failed',
       details: { elapsedMs }
     });
-    return res.status(503).json({ ok: false, error: 'Service temporarily unavailable' });
+    return res.status(503).json({
+      ok: false,
+      error: err?.name === 'AbortError' ? 'Service temporarily unavailable (timeout)' : 'Service temporarily unavailable'
+    });
+  } finally {
+    clearTimeout(timeout);
   }
 }

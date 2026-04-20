@@ -76,7 +76,7 @@ export function ApprovalsPage() {
         <motion.div variants={itemVariants} className="space-y-3">
           {loading && (
             <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-              <p className="text-sm text-charcoal-500">Loading approvals…</p>
+              <p className="text-sm text-charcoal-500">Loading approvals...</p>
             </div>
           )}
           {error && (
@@ -99,10 +99,10 @@ export function ApprovalsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium text-charcoal">
-                    {a.entity_type} • {String(a.entity_id).slice(0, 8)}
+                    {a.entity_type} - {String(a.entity_id).slice(0, 8)}
                   </p>
                   <p className="text-sm text-charcoal-400 mt-0.5">
-                    APR-{String(a.id).slice(0, 8)} • status: {a.status}
+                    APR-{String(a.id).slice(0, 8)} - status: {a.status}
                   </p>
                   {a.signature_note && <p className="text-sm text-charcoal-500 mt-2">{a.signature_note}</p>}
                 </div>

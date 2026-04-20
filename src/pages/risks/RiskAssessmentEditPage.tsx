@@ -365,13 +365,13 @@ export function RiskAssessmentEditPage() {
       try {
         // Best-effort autosave: update the record contents but avoid patching `status`
         // to prevent repeatedly rewriting `submitted_at`.
-	        await updateRiskAssessment({
-	          companyId: activeCompanyId as UUID,
-	          assessmentId: id as UUID,
-	          actorUserId: user.id as UUID,
-	          actorRole: activeRole ?? null,
-	          scope,
-	          patch: {
+          await updateRiskAssessment({
+            companyId: activeCompanyId as UUID,
+            assessmentId: id as UUID,
+            actorUserId: user.id as UUID,
+            actorRole: activeRole ?? null,
+            scope,
+            patch: {
             type,
             title: header.title.trim(),
             heading: header.heading?.trim() || null,
@@ -387,13 +387,13 @@ export function RiskAssessmentEditPage() {
           }
         });
 
-	        await replaceRiskAssessmentRows({
-	          companyId: activeCompanyId as UUID,
-	          assessmentId: id as UUID,
-	          actorUserId: user.id as UUID,
-	          actorRole: activeRole ?? null,
-	          scope,
-	          rows: rows.map((r, idx) => ({
+          await replaceRiskAssessmentRows({
+            companyId: activeCompanyId as UUID,
+            assessmentId: id as UUID,
+            actorUserId: user.id as UUID,
+            actorRole: activeRole ?? null,
+            scope,
+            rows: rows.map((r, idx) => ({
             row_index: idx,
             json_data: r.json_data,
             severity: r.severity,

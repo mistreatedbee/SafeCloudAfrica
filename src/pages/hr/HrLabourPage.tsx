@@ -164,7 +164,7 @@ export function HrLabourPage() {
             'Repeat offence flagged',
             `Employee ${employeeLabel.get(employeeId as UUID) ?? employeeId} has a repeat offence case logged.`,
             { module: 'hr', route: '/dashboard/hr/labour', caseId: created.id }
-          ).catch(() => {});
+          ).catch(() => undefined);
         }
       }
       setDescription('');
@@ -309,7 +309,7 @@ export function HrLabourPage() {
                   <td className="px-3 py-2">{String(row.offence_type ?? row.offence_category ?? '')}</td>
                   <td className="px-3 py-2">{String(row.offence_severity ?? '-')}</td>
                   <td className="px-3 py-2">
-                    {Boolean(row.repeat_offence_flag) ? (
+                    {row.repeat_offence_flag ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-critical/10 text-critical border border-critical/40 text-xs font-semibold">
                         Repeat offence
                       </span>

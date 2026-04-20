@@ -92,7 +92,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
         // Back off auto-refresh for a short period when the backend is unavailable to avoid spamming requests.
         if (unavailable) backendUnavailableUntilRef.current = Date.now() + 15_000;
         setState((prev) => ({
-          // Preserve last-known-good data so dashboards/forms don’t clear during an outage.
+          // Preserve last-known-good data so dashboards/forms do not clear during an outage.
           data: prev.data,
           error: error as Error,
           loading: false,

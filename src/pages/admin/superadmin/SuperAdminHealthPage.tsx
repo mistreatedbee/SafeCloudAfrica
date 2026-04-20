@@ -10,7 +10,7 @@ import {
 import type { PlatformOperationalEventRow } from '../../../api/models/entities';
 
 function formatDate(iso: string | null | undefined): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
@@ -57,7 +57,7 @@ function resolveBackupDisplay(
     source: 'none',
     label: 'Not declared',
     detail:
-      'Set VITE_PLATFORM_LAST_BACKUP_DECLARED_AT (redeploy) or insert a backup.verified row — see docs/BACKUP-AND-RESTORE.md.'
+      'Set VITE_PLATFORM_LAST_BACKUP_DECLARED_AT (redeploy) or insert a backup.verified row - see docs/BACKUP-AND-RESTORE.md.'
   };
 }
 
@@ -99,7 +99,7 @@ export function SuperAdminHealthPage() {
         <p className="text-sm text-critical">{String((loadError as Error)?.message || loadError)}</p>
       )}
 
-      {loading && <p className="text-sm text-charcoal-500">Loading…</p>}
+      {loading && <p className="text-sm text-charcoal-500">Loading...</p>}
 
       {!loading && (
         <div className="grid gap-4 md:grid-cols-2">

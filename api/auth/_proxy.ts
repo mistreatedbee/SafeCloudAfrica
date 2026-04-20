@@ -9,6 +9,7 @@ import {
 
 const AUTH_PROXY_TIMEOUT_MS = 15_000;
 const REFRESH_SESSION_MESSAGE = 'Invalid or expired session';
+const REFRESH_TEMPORARY_FAILURE_MESSAGE = 'Unable to refresh session right now. Please try again.';
 
 function getAuthStatusCode(error: unknown): number {
   const raw = Number((error as any)?.statusCode ?? (error as any)?.status ?? 0);
@@ -29,6 +30,16 @@ function sendRefreshUnauthorized(res: any, requestId: string, code: string, stat
   res.status(statusCode).json({
     ok: false,
     error: REFRESH_SESSION_MESSAGE,
+    code,
+    data: {},
+    requestId
+  });
+}
+
+function sendRefreshTemporaryFailure(res: any, requestId: string, code: string, statusCode = 503): void {
+  res.status(statusCode).json({
+    ok: false,
+    error: REFRESH_TEMPORARY_FAILURE_MESSAGE,
     code,
     data: {},
     requestId
@@ -110,7 +121,7 @@ export async function proxyAuthRequest(req: any, res: any, upstreamPath: string,
           upstreamSnippet: snippet
         }
       });
-      sendRefreshUnauthorized(res, started.requestId, 'refresh_upstream_error');
+      sendRefreshTemporaryFailure(res, started.requestId, 'refresh_upstream_error');
       return;
     }
 
@@ -146,8 +157,12 @@ export async function proxyAuthRequest(req: any, res: any, upstreamPath: string,
       );
       return;
     }
-    if (isRefreshRequest && err?.name !== 'AbortError') {
-      sendRefreshUnauthorized(res, started.requestId, 'refresh_failed');
+    if (isRefreshRequest) {
+      sendRefreshTemporaryFailure(
+        res,
+        started.requestId,
+        err?.name === 'AbortError' ? 'refresh_timeout' : 'refresh_failed'
+      );
       return;
     }
     res.status(503).json({

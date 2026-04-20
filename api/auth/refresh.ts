@@ -1,5 +1,6 @@
 import { applyNoStoreHeaders } from '../_response.js';
 import { resolveInsforgeOrigin } from '../_insforge-origin.js';
+import { logStructuredLine } from '../_observability.js';
 import { proxyAuthRequest } from './_proxy.js';
 
 const MODULE = 'api.auth.refresh';
@@ -27,6 +28,11 @@ export default async function handler(req: any, res: any) {
   try {
     const configError = getRefreshConfigError();
     if (configError) {
+      logStructuredLine({
+        module: MODULE,
+        level: 'error',
+        message: configError
+      });
       return res.status(500).json({
         ok: false,
         error: 'Refresh service misconfigured',
@@ -37,12 +43,19 @@ export default async function handler(req: any, res: any) {
     }
     return await proxyAuthRequest(req, res, '/api/auth/refresh', MODULE);
   } catch (error: any) {
-    return res.status(401).json({
+    const details = error?.message ? String(error.message) : 'Refresh request failed.';
+    logStructuredLine({
+      module: MODULE,
+      level: 'error',
+      message: 'Refresh handler failed',
+      extra: { details }
+    });
+    return res.status(503).json({
       ok: false,
-      error: 'Invalid or expired session',
+      error: 'Unable to refresh session right now. Please try again.',
       code: 'refresh_handler_failed',
       data: {},
-      details: error?.message ? String(error.message) : 'Refresh request failed.'
+      details
     });
   }
 }
