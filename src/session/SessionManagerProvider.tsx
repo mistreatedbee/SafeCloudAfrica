@@ -63,8 +63,41 @@ function isInvalidSessionError(error: unknown): boolean {
     message.includes('refresh_unauthorized') ||
     message.includes('refresh_forbidden') ||
     message.includes('refresh_upstream_error') ||
-    message.includes('missing_refresh_cookie')
+    message.includes('missing_refresh_cookie') ||
+    message.includes('missing_refresh_config') ||
+    message.includes('refresh_handler_failed')
   );
+}
+
+function clearClientSessionState(): void {
+  try {
+    insforge.getHttpClient().setAuthToken(null);
+  } catch {
+    // ignore client cleanup errors
+  }
+
+  try {
+    const localKeysToClear: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      const normalized = key.toLowerCase();
+      if (
+        normalized.includes('insforge') ||
+        normalized.includes('supabase') ||
+        normalized.includes('auth') ||
+        normalized.includes('token') ||
+        normalized.includes('session')
+      ) {
+        localKeysToClear.push(key);
+      }
+    }
+    for (const key of localKeysToClear) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // ignore storage cleanup errors
+  }
 }
 
 export function SessionManagerProvider({ children }: { children: React.ReactNode }) {
@@ -126,6 +159,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     } catch {
       // ignore storage access errors
     }
+    clearClientSessionState();
     try {
       await flushAllDrafts();
     } catch {
