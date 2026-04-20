@@ -1,4 +1,5 @@
 import { logStructuredLine } from './_observability.js';
+import { applyNoStoreHeaders } from './_response.js';
 import {
   buildForwardHeaders,
   buildUpstreamUrl,
@@ -36,13 +37,73 @@ export default async function handler(req: any, res: any) {
     const headers = buildForwardHeaders(req, {
       'x-safecloud-request-id': started.requestId
     });
+    const proxyBody = getProxyBody(req);
 
     const upstreamRes = await fetch(upstreamUrl, {
       method,
       headers,
-      body: getProxyBody(req),
+      body: proxyBody,
       signal: controller.signal
     });
+
+    const tryLegacyAuthFallback = async (): Promise<boolean> => {
+      const isMethodMismatch = upstreamRes.status === 405 || upstreamRes.status === 404;
+      if (!isMethodMismatch) return false;
+
+      if (method === 'POST' && joined === 'auth/sessions') {
+        const legacyUrl = buildUpstreamUrl(started.upstreamOrigin, '/api/auth/login', req);
+        const legacyRes = await fetch(legacyUrl, {
+          method: 'POST',
+          headers,
+          body: proxyBody,
+          signal: controller.signal
+        });
+        await writeUpstreamResponse(res, legacyRes, method);
+        return true;
+      }
+
+      if (method === 'GET' && joined === 'auth/sessions/current') {
+        const legacyUrl = buildUpstreamUrl(started.upstreamOrigin, '/api/auth/me', req);
+        const legacyRes = await fetch(legacyUrl, {
+          method: 'GET',
+          headers,
+          signal: controller.signal
+        });
+
+        if (legacyRes.ok) {
+          const contentType = legacyRes.headers.get('content-type') ?? '';
+          if (contentType.includes('application/json')) {
+            const payload = await legacyRes.json();
+            const normalized =
+              payload && typeof payload === 'object' && 'user' in payload ? payload : { user: payload };
+            applyNoStoreHeaders(res);
+            res.status(legacyRes.status).json(normalized);
+            return true;
+          }
+        }
+
+        await writeUpstreamResponse(res, legacyRes, method);
+        return true;
+      }
+
+      if (method === 'POST' && joined === 'auth/logout') {
+        const legacyUrl = buildUpstreamUrl(started.upstreamOrigin, '/api/auth/logout', req);
+        const legacyRes = await fetch(legacyUrl, {
+          method: 'POST',
+          headers,
+          body: proxyBody,
+          signal: controller.signal
+        });
+        await writeUpstreamResponse(res, legacyRes, method);
+        return true;
+      }
+
+      return false;
+    };
+
+    if (await tryLegacyAuthFallback()) {
+      return;
+    }
 
     // Some InsForge tenants/backends may not support the hosted cookie refresh endpoint.
     // The JS SDK treats a 404 here as “fallback to storage mode”, but treats 405 as fatal.
