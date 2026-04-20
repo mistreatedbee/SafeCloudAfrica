@@ -93,6 +93,16 @@ export function subscribeToBackendUnavailable(listener: (detail: BackendUnavaila
   return () => window.removeEventListener(BACKEND_UNAVAILABLE_EVENT, handler as EventListener);
 }
 
+async function readResponseErrorSnippet(response: Response): Promise<string | null> {
+  try {
+    const text = await response.clone().text();
+    const trimmed = text.trim();
+    return trimmed ? trimmed.slice(0, 300) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function createFreshFetch(baseFetch: typeof fetch): typeof fetch {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : null;
@@ -117,6 +127,17 @@ export function createFreshFetch(baseFetch: typeof fetch): typeof fetch {
         url
       });
       throw err;
+    }
+
+    if (response.status === 500) {
+      const url = request?.url ?? String(input);
+      const errorSnippet = await readResponseErrorSnippet(response);
+      console.error('[insforge] request returned 500', {
+        url,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorSnippet ?? 'No response body'
+      });
     }
 
     if (response.status === 502 || response.status === 503 || response.status === 504) {

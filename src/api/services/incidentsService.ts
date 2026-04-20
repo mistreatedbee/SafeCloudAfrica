@@ -3,6 +3,7 @@ import type { Incident, UUID } from '../models/entities';
 import type { IncidentCategory, IncidentStatus, ModuleKey, Severity, IncidentRiskCategory } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { createQualityNcr } from './qualityNcrsService';
 
 export type ListIncidentsInput = {
   companyId: UUID;
@@ -328,9 +329,6 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
 
   const data = await insertIncidentWithSchemaFallback(insertPayload);
 
-  // Lazy import to avoid circular dependency
-  const { createActivityLog } = await import('./activityLogService');
-  const { createQualityNcr } = await import('./qualityNcrsService');
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,

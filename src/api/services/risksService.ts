@@ -3,6 +3,7 @@ import type { Risk, UUID } from '../models/entities';
 import type { ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { createQualityNcr } from './qualityNcrsService';
 
 export type AssessmentType = 'baseline' | 'task' | 'critical_task' | 'pre_work';
 type LegacyAssessmentType = 'baseline' | 'task-based';
@@ -375,7 +376,6 @@ export async function addRiskAssessmentItem(input: AddRiskAssessmentItemInput): 
 
   // Authoritative NCR integration for risk deviations.
   if (riskLevel === 'high' || riskLevel === 'critical') {
-    const { createQualityNcr } = await import('./qualityNcrsService');
     await createQualityNcr({
       companyId: input.companyId,
       module: 'general',

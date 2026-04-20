@@ -6,6 +6,7 @@ import { createActivityLog } from './activityLogService';
 import { listEvidence } from './evidenceService';
 import { getPublicUrl } from './storageService';
 import { evaluateNcrTrigger } from './riskAssessmentTriggersService';
+import { syncIncidentClosureFromLinks } from './incidentsService';
 
 // Auto-generate NCR number
 function generateNCRNumber(): string {
@@ -223,7 +224,6 @@ export async function createQualityNcr(input: {
   }
 
   if (sourceType === 'incident' && input.source_entity_id) {
-    const { syncIncidentClosureFromLinks } = await import('./incidentsService');
     await syncIncidentClosureFromLinks(input.source_entity_id).catch((syncError) => {
       void syncError;
     });
@@ -634,7 +634,6 @@ async function syncLinkedEntitiesOnNcrClosed(
   }
 
   if (sourceType === 'incident') {
-    const { syncIncidentClosureFromLinks } = await import('./incidentsService');
     await syncIncidentClosureFromLinks(sourceId).catch((syncError) => {
       void syncError;
     });
