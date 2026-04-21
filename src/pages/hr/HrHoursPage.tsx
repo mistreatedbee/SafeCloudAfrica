@@ -7,6 +7,7 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { listDepartments } from '../../api/services/departmentsService';
 import {
   approveHrTimesheet,
+  getHrSettings,
   getHrEmployeeByUserId,
   listHrEmployees,
   listHrRecords,
@@ -29,8 +30,14 @@ export function HrHoursPage() {
   const [overtimeHours, setOvertimeHours] = useState('0');
   const [projectOrClient, setProjectOrClient] = useState('');
   const [comments, setComments] = useState('');
+  const [declineReasonByRow, setDeclineReasonByRow] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const { data: settings } = useAsync(async () => {
+    if (!activeCompanyId) return null;
+    return getHrSettings(activeCompanyId);
+  }, [activeCompanyId]);
 
   const { data: selfEmployee } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return null;
@@ -76,6 +83,16 @@ export function HrHoursPage() {
 
   const dailyTotal = Number(hoursWorked || 0) + Number(overtimeHours || 0);
   const canReopen = canApprove || isEmployee;
+  const workingDays = useMemo(() => {
+    const saved = Array.isArray(settings?.working_days) ? settings.working_days.map((day) => String(day).toUpperCase()) : [];
+    return saved.length ? saved : ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'];
+  }, [settings?.working_days]);
+  const selectedDayName = useMemo(() => {
+    const parsed = new Date(`${date}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][parsed.getDay()] ?? '';
+  }, [date]);
+  const selectedDayIsWorkingDay = !selectedDayName || workingDays.includes(selectedDayName);
 
   const byMonth = useMemo(() => {
     const map = new Map<string, number>();
@@ -126,7 +143,7 @@ export function HrHoursPage() {
       const d = new Date(row.date);
       await recalculateHrMonthlyHours(activeCompanyId, row.employee_id as UUID, d.getUTCFullYear(), d.getUTCMonth() + 1, user.id as UUID);
       await Promise.all([refetch(), refetchMonthly()]);
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to save hours worked right now. Please try again.'));
     }
@@ -139,7 +156,7 @@ export function HrHoursPage() {
     try {
       await approveHrTimesheet({ companyId: activeCompanyId, timesheetId: rowId, actorUserId: user.id as UUID, decision: 'APPROVED' });
       await Promise.all([refetch(), refetchMonthly()]);
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to approve this request right now.'));
     }
@@ -147,17 +164,17 @@ export function HrHoursPage() {
 
   async function onDecline(rowId: UUID) {
     if (!activeCompanyId || !user?.id) return;
-    const reason = window.prompt('Decline reason (required):', '');
-    if (!reason?.trim()) {
+    const reason = (declineReasonByRow[String(rowId)] ?? '').trim();
+    if (!reason) {
       setError('Decline reason is required.');
       return;
     }
     setError(null);
     setSuccess(null);
     try {
-      await approveHrTimesheet({ companyId: activeCompanyId, timesheetId: rowId, actorUserId: user.id as UUID, decision: 'DECLINED', declineReason: reason.trim() });
+      await approveHrTimesheet({ companyId: activeCompanyId, timesheetId: rowId, actorUserId: user.id as UUID, decision: 'DECLINED', declineReason: reason });
       await Promise.all([refetch(), refetchMonthly()]);
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to decline this request right now.'));
     }
@@ -221,10 +238,10 @@ export function HrHoursPage() {
                   activeEmployeeId
                     ? (() => {
                         const emp = (employees ?? []).find((e) => String(e.id) === String(activeEmployeeId));
-                        if (!emp?.department_id) return '';
+                        if (!emp?.department_id) return 'No department assigned';
                         return departmentLabel.get(emp.department_id as UUID) ?? '';
                       })()
-                    : ''
+                    : 'No department assigned'
                 }
               />
             </label>
@@ -242,6 +259,11 @@ export function HrHoursPage() {
             </label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Daily total</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2 bg-surface-50 font-semibold" readOnly value={dailyTotal.toFixed(2)} /></label>
           </div>
+          {!selectedDayIsWorkingDay && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {selectedDayName.charAt(0) + selectedDayName.slice(1).toLowerCase()} is not in the company working-days setting. You can still save this entry if overtime or special work was performed.
+            </div>
+          )}
           <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onSave()} disabled={!activeEmployeeId}>
             Save timesheet
           </button>
@@ -276,7 +298,14 @@ export function HrHoursPage() {
                   <td className="px-3 py-2 font-semibold">{(Number(row.hours_worked ?? 0) + Number(row.overtime_hours ?? 0)).toFixed(2)}</td>
                   <td className="px-3 py-2">{row.status}</td>
                   <td className="px-3 py-2">
-                    {row.status === 'DECLINED' ? (
+                    {canApprove && row.status === 'SUBMITTED' ? (
+                      <textarea
+                        className="w-48 border border-surface-300 rounded px-2 py-1 text-xs"
+                        value={declineReasonByRow[String(row.id)] ?? ''}
+                        onChange={(e) => setDeclineReasonByRow((prev) => ({ ...prev, [String(row.id)]: e.target.value }))}
+                        placeholder="Required if declining"
+                      />
+                    ) : row.status === 'DECLINED' ? (
                       <span className="text-critical text-xs">{row.decline_reason ? String(row.decline_reason) : 'No reason provided'}</span>
                     ) : (
                       '-'

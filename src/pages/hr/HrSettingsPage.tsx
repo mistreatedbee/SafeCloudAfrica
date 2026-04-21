@@ -61,7 +61,7 @@ export function HrSettingsPage() {
         working_days: workingDays
       });
       await refetch();
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to save HR settings right now. Please try again.'));
     }

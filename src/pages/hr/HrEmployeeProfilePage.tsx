@@ -294,7 +294,7 @@ export function HrEmployeeProfilePage() {
             onSaved={() => {
               setShowEdit(false);
               setRefreshKey((x) => x + 1);
-              setSuccessMessage('Employee saved successfully.');
+              setSuccessMessage('Employee saved successfully');
               window.setTimeout(() => {
                 setSuccessMessage(null);
               }, 4000);

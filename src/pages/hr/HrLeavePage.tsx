@@ -9,6 +9,7 @@ import {
   createHrLeaveRequest,
   ensureDefaultHrLeaveTypes,
   getHrEmployeeByUserId,
+  getHrSettings,
   getOrCreateHrLeaveTypeByName,
   listHrEmployees,
   listHrLeaveRequests,
@@ -134,6 +135,11 @@ export function HrLeavePage() {
     return getHrEmployeeByUserId(activeCompanyId, user.id as UUID);
   }, [activeCompanyId, user?.id]);
 
+  const { data: settings } = useAsync(async () => {
+    if (!activeCompanyId) return null;
+    return getHrSettings(activeCompanyId);
+  }, [activeCompanyId]);
+
   const activeEmployeeId = isEmployee ? (selfEmployee?.id ?? '') : employeeId;
 
   const { data: employees } = useAsync(async () => {
@@ -143,7 +149,7 @@ export function HrLeavePage() {
 
   const { data: leaveTypes, refetch: refetchLeaveTypes } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return [];
-    await ensureDefaultHrLeaveTypes(activeCompanyId, user.id as UUID).catch(() => {});
+    await ensureDefaultHrLeaveTypes(activeCompanyId, user.id as UUID).catch(() => undefined);
     return listHrRecords(activeCompanyId, 'hr_leave_types');
   }, [activeCompanyId, user?.id]);
 
@@ -210,7 +216,12 @@ export function HrLeavePage() {
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
     if (end.getTime() < start.getTime()) return 0;
 
-    // Count days inclusive, excluding Sundays.
+    const configuredWorkingDays = Array.isArray(settings?.working_days)
+      ? settings.working_days.map((day) => String(day).toUpperCase())
+      : ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'];
+    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+
+    // Count days inclusive using the company working-days setting.
     const cursor = new Date(start);
     cursor.setHours(0, 0, 0, 0);
     const endDay = new Date(end);
@@ -218,11 +229,11 @@ export function HrLeavePage() {
 
     let days = 0;
     while (cursor.getTime() <= endDay.getTime()) {
-      if (cursor.getDay() !== 0) days += 1; // 0 = Sunday
+      if (configuredWorkingDays.includes(dayNames[cursor.getDay()] ?? '')) days += 1;
       cursor.setDate(cursor.getDate() + 1);
     }
     return days;
-  }, [startDate, endDate]);
+  }, [endDate, settings?.working_days, startDate]);
 
   const selectedLeaveNameLower = trimmedLeaveTypeName.toLowerCase();
   const isOverdrawAllowedType = ['unpaid leave', 'special leave', 'occupational injury leave'].includes(selectedLeaveNameLower);
@@ -269,7 +280,7 @@ export function HrLeavePage() {
       const baseline: HrLeaveCreateDraft = { employeeId, leaveTypeValue, startDate, endDate, reason };
       setCreateBaseline(baseline);
       clearDraft(draftKeyCreate);
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to submit leave request right now. Please try again.'));
     }
@@ -287,7 +298,7 @@ export function HrLeavePage() {
         decision: isSupervisor ? 'SUPERVISOR_APPROVE' : 'HR_APPROVE'
       });
       await refetch();
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to approve this leave request right now.'));
     }
@@ -315,7 +326,7 @@ export function HrLeavePage() {
       const baseline: HrLeaveDeclineDraft = { ...declineReasonByRow };
       setDeclineBaseline(baseline);
       clearDraft(draftKeyDecline);
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to decline this leave request right now.'));
     }

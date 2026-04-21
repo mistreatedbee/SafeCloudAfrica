@@ -76,7 +76,7 @@ export function HrEmployeesPage() {
         employment_status: 'ONBOARDING'
       });
       await refetch();
-      setSuccess('Employee saved successfully.');
+      setSuccess('Employee saved successfully');
       setParams({ tab: 'directory' });
     } catch (err: any) {
       setError(toUserFacingError(err, 'Unable to save employee right now. Please try again.'));
@@ -107,7 +107,7 @@ export function HrEmployeesPage() {
         });
       }
       await refetch();
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
       setParams({ tab: 'directory' });
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to import employees right now. Please try again.'));

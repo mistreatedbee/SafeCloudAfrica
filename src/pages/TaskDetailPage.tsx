@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeftIcon,
   CalendarIcon,
@@ -47,6 +47,7 @@ import { EvidenceModal } from '../components/evidence/EvidenceModal';
 import { TASK_CATEGORY_LABELS, TASK_TIME_STATUS_LABELS, TASK_SOURCE_ENTITY_LABELS } from '../api/constants/taskLabels';
 import type { Task, Approval, ActivityLog, EvidenceAttachment, TaskTimeLog, UUID } from '../api/models/entities';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../api/services/documentsStorageService';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -86,6 +87,7 @@ const APPROVAL_LABELS: Record<string, string> = {
 export function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
   const canManageTasks = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant' || activeRole === 'auditor';
@@ -98,6 +100,14 @@ export function TaskDetailPage() {
   const [effectivenessChecked, setEffectivenessChecked] = useState(false);
   const [effectivenessNotes, setEffectivenessNotes] = useState('');
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [pageSuccess, setPageSuccess] = useState<string | null>(null);
+
+  const backTo = useMemo(() => {
+    if (location.pathname.startsWith('/tasks')) return '/tasks';
+    if (location.pathname.startsWith('/dashboard/tasks')) return '/dashboard/tasks';
+    return '/dashboard/management/tasks';
+  }, [location.pathname]);
 
   const { data: task, loading: taskLoading } = useAsync<Task | null>(
     async () => (activeCompanyId && taskId ? getTaskById(activeCompanyId, taskId as UUID) : null),
@@ -139,100 +149,183 @@ export function TaskDetailPage() {
 
   async function handleAccept() {
     if (!activeCompanyId || !taskId || !user?.id) return;
-    await acceptTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
-    refresh();
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await acceptTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
+      setPageSuccess('Saved successfully');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to accept this task right now.'));
+    }
   }
   async function handleStart() {
     if (!activeCompanyId || !taskId || !user?.id) return;
-    await startTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
-    refresh();
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await startTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
+      setPageSuccess('Saved successfully');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to update this task right now.'));
+    }
   }
   async function handleAwaitingEvidence() {
     if (!activeCompanyId || !taskId || !user?.id) return;
-    await markAwaitingEvidence({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
-    refresh();
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await markAwaitingEvidence({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
+      setPageSuccess('Saved successfully');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to move this task forward right now.'));
+    }
   }
   async function handleSubmitForReview() {
     if (!activeCompanyId || !taskId || !user?.id) return;
+    setPageError(null);
+    setPageSuccess(null);
     try {
       await submitForReview({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
+      setPageSuccess('Saved successfully');
       refresh();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Submit failed');
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to submit this task for review right now.'));
     }
   }
   async function handleApprove() {
     if (!activeCompanyId || !taskId || !user?.id) return;
-    await approveTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
-    refresh();
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await approveTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
+      setPageSuccess('Saved successfully');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to approve this task right now.'));
+    }
   }
   async function handleClose() {
     if (!activeCompanyId || !taskId || !user?.id) return;
+    setPageError(null);
+    setPageSuccess(null);
     try {
       await closeTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
+      setPageSuccess('Saved successfully');
       refresh();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Cannot close');
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to close this task right now.'));
     }
   }
 
   async function onAddComment() {
     if (!activeCompanyId || !taskId || !user?.id || !commentText.trim()) return;
-    await addTaskComment({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id, text: commentText.trim() });
-    setCommentText('');
-    refresh();
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await addTaskComment({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id, text: commentText.trim() });
+      setCommentText('');
+      setPageSuccess('Saved successfully');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to add your comment right now.'));
+    }
   }
 
   async function onAddProgressUpdate() {
     if (!activeCompanyId || !taskId || !user?.id || !progressNote.trim()) return;
-    await addTaskProgressUpdate({
-      companyId: activeCompanyId,
-      taskId: taskId as UUID,
-      actorUserId: user.id,
-      note: progressNote.trim(),
-      percentComplete: progressPercent === '' ? undefined : Number(progressPercent)
-    });
-    setProgressNote('');
-    setProgressPercent('');
-    refresh();
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await addTaskProgressUpdate({
+        companyId: activeCompanyId,
+        taskId: taskId as UUID,
+        actorUserId: user.id,
+        note: progressNote.trim(),
+        percentComplete: progressPercent === '' ? undefined : Number(progressPercent)
+      });
+      setProgressNote('');
+      setProgressPercent('');
+      setPageSuccess('Saved successfully');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to add a progress update right now.'));
+    }
   }
 
   async function onStartTime() {
     if (!activeCompanyId || !taskId || !user?.id) return;
-    await startTimeEntry({ companyId: activeCompanyId, taskId: taskId as UUID, createdByUserId: user.id });
-    refresh();
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await startTimeEntry({ companyId: activeCompanyId, taskId: taskId as UUID, createdByUserId: user.id });
+      setPageSuccess('Saved successfully');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to start the timer right now.'));
+    }
   }
 
   async function onStopTime(logId: UUID) {
     if (!activeCompanyId || !taskId || !user?.id) return;
-    await stopTimeEntry({ companyId: activeCompanyId, timeLogId: logId, taskId: taskId as UUID, actorUserId: user.id });
-    refresh();
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await stopTimeEntry({ companyId: activeCompanyId, timeLogId: logId, taskId: taskId as UUID, actorUserId: user.id });
+      setPageSuccess('Saved successfully');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to stop the timer right now.'));
+    }
   }
 
   async function onAddManualMinutes() {
     const mins = Number(manualMinutes);
     if (!activeCompanyId || !taskId || !user?.id || !Number.isFinite(mins) || mins <= 0) return;
-    await logTaskTimeIncrement({ companyId: activeCompanyId, taskId: taskId as UUID, minutes: mins, createdByUserId: user.id });
-    setManualMinutes('');
-    refresh();
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await logTaskTimeIncrement({ companyId: activeCompanyId, taskId: taskId as UUID, minutes: mins, createdByUserId: user.id });
+      setManualMinutes('');
+      setPageSuccess('Saved successfully');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to add time right now.'));
+    }
   }
 
   async function onSetEffectivenessCheck() {
     if (!activeCompanyId || !taskId || !user?.id) return;
-    await setTaskEffectivenessCheck({
-      companyId: activeCompanyId,
-      taskId: taskId as UUID,
-      actorUserId: user.id,
-      checked: effectivenessChecked,
-      notes: effectivenessNotes || undefined
-    });
-    refresh();
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await setTaskEffectivenessCheck({
+        companyId: activeCompanyId,
+        taskId: taskId as UUID,
+        actorUserId: user.id,
+        checked: effectivenessChecked,
+        notes: effectivenessNotes || undefined
+      });
+      setPageSuccess('Saved successfully');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to save the effectiveness check right now.'));
+    }
   }
 
   async function onDecideApproval(approvalId: UUID, decision: 'approved' | 'rejected') {
     if (!activeCompanyId || !user?.id) return;
-    await decideApproval({ companyId: activeCompanyId, approvalId, actorUserId: user.id, decision });
-    refresh();
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await decideApproval({ companyId: activeCompanyId, approvalId, actorUserId: user.id, decision });
+      setPageSuccess('Saved successfully');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to update this approval right now.'));
+    }
   }
 
   function sourceLink(): { label: string; path: string } | null {
@@ -265,7 +358,7 @@ export function TaskDetailPage() {
       <Layout>
         <div className="p-6">
           <p className="text-charcoal-500">Task not found.</p>
-          <button type="button" onClick={() => navigate('/dashboard/management/tasks')} className="mt-2 text-teal hover:underline">
+          <button type="button" onClick={() => navigate(backTo)} className="mt-2 text-teal hover:underline">
             Back to tasks
           </button>
         </div>
@@ -283,7 +376,7 @@ export function TaskDetailPage() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate('/dashboard/management/tasks')}
+            onClick={() => navigate(backTo)}
             className="p-2 rounded-lg border border-surface-300 text-charcoal hover:bg-surface-50"
           >
             <ArrowLeftIcon className="w-4 h-4" />
@@ -296,6 +389,9 @@ export function TaskDetailPage() {
           </div>
           <StatusBadge status={task.status as any} size="sm" />
         </div>
+
+        {pageError && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{pageError}</div>}
+        {pageSuccess && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700">{pageSuccess}</div>}
 
         {/* Meta row */}
         <div className="flex flex-wrap gap-4 text-sm text-charcoal-600">

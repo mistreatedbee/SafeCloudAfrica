@@ -127,6 +127,20 @@ export function HrLabourPage() {
     });
   }, [selectedCase]);
 
+  function openCaseDetails(row: Record<string, unknown>) {
+    setSelectedCaseId(row.id as UUID);
+    setSelectedCaseDraft({
+      status: String(row.status ?? 'OPEN'),
+      description: String(row.description ?? ''),
+      disciplinaryActionTaken: String(row.disciplinary_action_taken ?? ''),
+      repeatOffenceAction: String(row.repeat_offence_action ?? ''),
+      recommendedAction: String(row.recommended_action ?? ''),
+      offenceSeverity: String(row.offence_severity ?? '')
+    });
+    setError(null);
+    setSuccess(null);
+  }
+
   async function onCreate() {
     if (!activeCompanyId || !user?.id || !employeeId || !description.trim() || !offenceType.trim()) {
       setError('Employee, offence type, and offence description are required.');
@@ -164,14 +178,14 @@ export function HrLabourPage() {
             'Repeat offence flagged',
             `Employee ${employeeLabel.get(employeeId as UUID) ?? employeeId} has a repeat offence case logged.`,
             { module: 'hr', route: '/dashboard/hr/labour', caseId: created.id }
-          ).catch(() => {});
+          ).catch(() => undefined);
         }
       }
       setDescription('');
       setDisciplinaryActionTaken('');
       setRepeatOffenceAction('');
       await refetch();
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to save this labour case right now. Please try again.'));
     } finally {
@@ -198,7 +212,7 @@ export function HrLabourPage() {
         }
       });
       await refetch();
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to update this labour case right now.'));
     }
@@ -309,8 +323,8 @@ export function HrLabourPage() {
                   <td className="px-3 py-2">{String(row.offence_type ?? row.offence_category ?? '')}</td>
                   <td className="px-3 py-2">{String(row.offence_severity ?? '-')}</td>
                   <td className="px-3 py-2">
-                    {Boolean(row.repeat_offence_flag) ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-critical/10 text-critical border border-critical/40 text-xs font-semibold">
+                    {row.repeat_offence_flag ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-300 text-xs font-semibold shadow-sm">
                         Repeat offence
                       </span>
                     ) : (
@@ -319,7 +333,7 @@ export function HrLabourPage() {
                   </td>
                   <td className="px-3 py-2">{String(row.status ?? '')}</td>
                   <td className="px-3 py-2">
-                    <button className="text-teal" onClick={() => setSelectedCaseId(row.id as UUID)}>View details</button>
+                    <button className="text-teal font-medium hover:underline" onClick={() => openCaseDetails(row)}>View details</button>
                   </td>
                 </tr>
               ))}
@@ -328,7 +342,7 @@ export function HrLabourPage() {
         </div>
 
         {selectedCase && (
-          <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
+          <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3 overflow-hidden">
             <div className="flex items-center justify-between">
               <h4 className="font-semibold">Offence case details</h4>
               <button className="text-sm text-charcoal-500" onClick={() => setSelectedCaseId(null)}>Close</button>
@@ -336,6 +350,13 @@ export function HrLabourPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <p><span className="text-charcoal-500">Employee:</span> {employeeLabel.get(selectedCase.employee_id as UUID) ?? String(selectedCase.employee_id)}</p>
               <p><span className="text-charcoal-500">Offence:</span> {String(selectedCase.offence_type ?? selectedCase.offence_category ?? '')}</p>
+              {selectedCase.repeat_offence_flag && (
+                <div className="md:col-span-2">
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-300 text-xs font-semibold">
+                    Repeat offence
+                  </span>
+                </div>
+              )}
               <label className="md:col-span-2">
                 <span className="block text-xs text-charcoal-500 mb-1">Description</span>
                 <textarea

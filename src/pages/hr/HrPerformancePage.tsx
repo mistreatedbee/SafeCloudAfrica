@@ -9,6 +9,7 @@ import { createTask } from '../../api/services/tasksService';
 import type { UUID } from '../../api/models/core';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 export function HrPerformancePage() {
   const { activeCompanyId, activeRole } = useTenant();
@@ -241,7 +242,7 @@ export function HrPerformancePage() {
       }
       resetForm();
       clearDraft(draftKey);
-      setSuccess(editingReviewId ? 'Performance review updated successfully.' : 'Performance review saved successfully.');
+      setSuccess('Saved successfully');
       setDraftBaselineJson(
         JSON.stringify({
           employeeId: '',
@@ -259,7 +260,7 @@ export function HrPerformancePage() {
       );
       await refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save performance review.');
+      setError(toUserFacingError(err, 'Unable to save this performance review right now.'));
     }
   }
 
@@ -273,11 +274,11 @@ export function HrPerformancePage() {
         actorUserId: user.id as UUID
       });
       if (String(editingReviewId ?? '') === String(rowId)) resetForm();
-      setSuccess('Performance review deleted successfully.');
+      setSuccess('Saved successfully');
       setError(null);
       await refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete performance review.');
+      setError(toUserFacingError(err, 'Unable to delete this performance review right now.'));
     }
   }
 
@@ -340,7 +341,7 @@ export function HrPerformancePage() {
                   <td className="px-3 py-2">{String(row.cycle ?? '')}</td>
                   <td className="px-3 py-2">{String(row.overall_rating ?? '')} / {String(row.manager_rating ?? '')}</td>
                   <td className="px-3 py-2">{String(row.corrective_actions_required ?? '-')}<br /><span className="text-xs text-charcoal-500">Due: {String(row.corrective_due_date ?? '-')}</span></td>
-                  <td className="px-3 py-2">{row.linked_task_id ? <a className="text-teal underline" href={`/tasks/${row.linked_task_id}`}>Open task</a> : '-'}</td>
+                  <td className="px-3 py-2">{row.linked_task_id ? <a className="text-teal underline" href={`/dashboard/management/tasks/${row.linked_task_id}`}>Open task</a> : '-'}</td>
                   <td className="px-3 py-2">{String(row.status ?? '')}</td>
                   <td className="px-3 py-2">
                     {canManage && (

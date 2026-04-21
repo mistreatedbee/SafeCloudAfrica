@@ -69,7 +69,7 @@ export function HrRecruitmentPage() {
       setExperienceRequired('');
       setReferenceChecksDone(false);
       await refetchVacancies();
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to create vacancy right now. Please try again.'));
     }
@@ -102,7 +102,7 @@ export function HrRecruitmentPage() {
       setLeavingReason('');
       setCriminalRecord(null);
       await refetchApplicants();
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to create applicant right now. Please try again.'));
     }
@@ -124,7 +124,7 @@ export function HrRecruitmentPage() {
         }
       });
       await refetchVacancies();
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to approve this vacancy right now.'));
     }
@@ -142,7 +142,7 @@ export function HrRecruitmentPage() {
         patch: { reference_checks_done: value }
       });
       await refetchVacancies();
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to update reference checks right now.'));
     }
@@ -164,7 +164,7 @@ export function HrRecruitmentPage() {
         patch
       });
       await refetchApplicants();
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to approve this applicant right now.'));
     }
@@ -213,7 +213,7 @@ export function HrRecruitmentPage() {
         }
       });
       await refetchApplicants();
-      setSuccess('Employee saved successfully.');
+      setSuccess('Employee saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to convert applicant to employee right now.'));
     }
@@ -237,7 +237,7 @@ export function HrRecruitmentPage() {
       } else {
         await refetchApplicants();
       }
-      setSuccess('Saved successfully.');
+      setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to delete this record right now.'));
     }
@@ -299,8 +299,8 @@ export function HrRecruitmentPage() {
                       <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void approveVacancyAsDepartmentManager(row.id as UUID)}>Approve (Department Manager)</button>
                     )}
                     {canWrite && (
-                      <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void setReferenceChecked(row.id as UUID, !Boolean(row.reference_checks_done))}>
-                        Reference checks: {Boolean(row.reference_checks_done) ? 'Yes' : 'No'}
+                      <button className="text-xs px-2 py-1 rounded border border-surface-300" onClick={() => void setReferenceChecked(row.id as UUID, !row.reference_checks_done)}>
+                        Reference checks: {row.reference_checks_done ? 'Yes' : 'No'}
                       </button>
                     )}
                     {canWrite && (
