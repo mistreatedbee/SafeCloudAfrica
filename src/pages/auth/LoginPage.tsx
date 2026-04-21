@@ -13,6 +13,29 @@ import type { UUID } from '../../api/models/entities';
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
 const INVALID_REDIRECT_PREFIXES = ['/login', '/register', '/forgot-password', '/reset-password', '/logout'];
 const ACTIVE_COMPANY_KEY = 'sca_active_company_id_v3';
+const SESSION_RESOLVE_RETRIES = 4;
+const SESSION_RESOLVE_DELAY_MS = 200;
+const TENANT_REFRESH_MAX_WAIT_MS = 1500;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function readJwtSub(token: string | null | undefined): string | null {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
+    const parsed = JSON.parse(atob(padded)) as { sub?: string };
+    return typeof parsed.sub === 'string' && parsed.sub.trim() ? parsed.sub : null;
+  } catch {
+    return null;
+  }
+}
 
 function readAuthSession(result: unknown): { accessToken: string | null; userId: string | null } {
   const session = (result as any)?.data?.session;
@@ -29,7 +52,7 @@ function readAuthSession(result: unknown): { accessToken: string | null; userId:
       ? session.user.id
       : typeof topLevelUserId === 'string' && topLevelUserId.trim()
         ? topLevelUserId
-        : null;
+        : readJwtSub(accessToken);
   return { accessToken, userId };
 }
 
@@ -80,6 +103,26 @@ export function LoginPage() {
 
   const redirectParam = searchParams.get('redirect');
 
+  const resolveSignedInUserId = React.useCallback(async (initialResult: unknown): Promise<UUID | null> => {
+    const initialSession = readAuthSession(initialResult);
+    if (initialSession.accessToken) {
+      insforge.getHttpClient().setAuthToken(initialSession.accessToken);
+    }
+    if (initialSession.userId) return initialSession.userId as UUID;
+
+    for (let attempt = 0; attempt < SESSION_RESOLVE_RETRIES; attempt += 1) {
+      if (attempt > 0) await wait(SESSION_RESOLVE_DELAY_MS);
+      const currentSessionResult = await insforge.auth.getCurrentSession().catch(() => null);
+      const nextSession = readAuthSession(currentSessionResult);
+      if (nextSession.accessToken) {
+        insforge.getHttpClient().setAuthToken(nextSession.accessToken);
+      }
+      if (nextSession.userId) return nextSession.userId as UUID;
+    }
+
+    return null;
+  }, []);
+
   const redirectAfterLogin = React.useCallback(async (resolvedUserId: UUID) => {
     setAuthError(null);
     setRedirectError(null);
@@ -101,11 +144,14 @@ export function LoginPage() {
       })();
       const { path: defaultPath, organizationId, reason } = await getLoginRedirectPath(resolvedUserId, storedCompanyId);
       if (organizationId) setActiveCompanyId(organizationId);
-      await refreshTenant();
       const target = sanitizeRedirect(redirectParam, defaultPath);
       const pathWithReason = reason
         ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`)
         : target;
+      await Promise.race([
+        refreshTenant(),
+        wait(TENANT_REFRESH_MAX_WAIT_MS)
+      ]);
       navigate(pathWithReason, { replace: true });
     } catch {
       await recoverAuthState(signOut, refreshTenant);
@@ -165,22 +211,14 @@ export function LoginPage() {
         return;
       }
 
-      const { accessToken, userId } = readAuthSession(signInResult);
-      if (accessToken) {
-        insforge.getHttpClient().setAuthToken(accessToken);
-      }
-
-      const currentSessionResult = await insforge.auth.getCurrentSession().catch(() => null);
-      const resolvedSession = currentSessionResult ?? signInResult;
-      const nextSession = readAuthSession(resolvedSession);
-      if (nextSession.accessToken) {
-        insforge.getHttpClient().setAuthToken(nextSession.accessToken);
-      }
-
-      const resolvedUserId = (nextSession.userId ?? userId) as UUID | null;
+      const resolvedUserId = await resolveSignedInUserId(signInResult);
       if (resolvedUserId) {
         await redirectAfterLogin(resolvedUserId);
+        return;
       }
+
+      setRedirecting(true);
+      navigate(sanitizeRedirect(redirectParam, '/app'), { replace: true });
     } catch (error) {
       handleSignInError(error);
     } finally {
