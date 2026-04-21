@@ -7,6 +7,7 @@ import { createQualityNcr } from './qualityNcrsService';
 import { createTask } from './tasksService';
 import { getMyProfile } from './profilesService';
 import { sendEmail } from './emailService';
+import { resolveComplaintClosureFields } from './customerComplaintsService.helpers';
 
 export const CUSTOMER_COMPLAINT_STATUS_LABELS: Record<CustomerComplaintStatus, string> = {
   CLOSED: 'Closed',
@@ -26,6 +27,7 @@ type ComplaintBase = {
   dateReceived: string;
   description: string;
   actionTaken?: string | null;
+  closedAt?: string | null;
   status?: CustomerComplaintStatus;
   customerFeedback?: string | null;
   evidenceFileIds?: UUID[] | null;
@@ -262,8 +264,16 @@ export async function createCustomerComplaint(input: {
   };
 
   if (status === 'CLOSED') {
-    insertPayload.closed_at = nowIso;
-    insertPayload.closed_by_user_id = input.actorUserId;
+    const closure = resolveComplaintClosureFields({
+      nextStatus: status,
+      actorUserId: input.actorUserId,
+      actionTaken: input.actionTaken,
+      closedAt: input.closedAt,
+      nowIso
+    });
+    insertPayload.action_taken = closure.actionTaken;
+    insertPayload.closed_at = closure.closedAt;
+    insertPayload.closed_by_user_id = closure.closedByUserId;
   }
 
   const { data, error } = await insforge.database
@@ -347,17 +357,19 @@ export async function updateCustomerComplaint(input: {
   }
 
   const patch: Partial<QualityCustomerComplaint> = { ...input.patch };
-  if (nextStatus === 'CLOSED') {
-    const actionTaken = String((patch.action_taken ?? existing.action_taken) ?? '').trim();
-    if (!actionTaken) throw new Error('Action taken is required before closing a complaint.');
-    patch.action_taken = actionTaken;
-    patch.closed_at = patch.closed_at ?? new Date().toISOString();
-    patch.closed_by_user_id = patch.closed_by_user_id ?? input.actorUserId;
-  }
-  if (nextStatus !== 'CLOSED') {
-    patch.closed_at = null;
-    patch.closed_by_user_id = null;
-  }
+  const closure = resolveComplaintClosureFields({
+    nextStatus,
+    actorUserId: input.actorUserId,
+    actionTaken: patch.action_taken,
+    existingActionTaken: existing.action_taken,
+    closedAt: patch.closed_at,
+    existingClosedAt: existing.closed_at,
+    closedByUserId: patch.closed_by_user_id,
+    existingClosedByUserId: existing.closed_by_user_id
+  });
+  patch.action_taken = closure.actionTaken;
+  patch.closed_at = closure.closedAt;
+  patch.closed_by_user_id = closure.closedByUserId;
 
   const dbPatch: Record<string, unknown> = { ...patch, updated_at: new Date().toISOString() };
   if (typeof dbPatch.date_received === 'string') dbPatch.date_received = normalizeDateOnly(String(dbPatch.date_received));

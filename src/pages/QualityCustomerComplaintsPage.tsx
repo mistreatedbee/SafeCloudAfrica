@@ -18,24 +18,19 @@ import {
 import { downloadTextFile, toCsv } from '../utils/csv';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { HrEmployeeSelect } from '../components/ui/HrEmployeeSelect';
 import { MessageSquareWarningIcon } from 'lucide-react';
+import {
+  applyComplaintStatusChange,
+  getComplaintCloseWarningMessage,
+  hasDirtyComplaintForm,
+  serializeComplaintFormState,
+  type ComplaintFormDraft
+} from './qualityCustomerComplaints.helpers';
 
 type FormMode = 'create' | 'edit' | 'view';
 
-type ComplaintFormState = {
-  id?: UUID;
-  complaintRefNo: string;
-  customerName: string;
-  personHandlingUserId: UUID | '';
-  personHandlingNameSnapshot: string;
-  dateReceived: string;
-  description: string;
-  actionTaken: string;
-  status: CustomerComplaintStatus;
-  customerFeedback: string;
-  createLinkedTask: boolean;
-  linkedTaskAssigneeUserId: UUID | '';
-};
+type ComplaintFormState = ComplaintFormDraft;
 
 const STATUS_OPTIONS: CustomerComplaintStatus[] = ['CLOSED', 'MONITORING_REQUIRED', 'ESCALATED_TO_MANAGEMENT'];
 
@@ -82,6 +77,7 @@ function toForm(row?: QualityCustomerComplaint): ComplaintFormState {
     dateReceived: row?.date_received?.slice(0, 10) ?? dateOnly(new Date()),
     description: row?.description ?? '',
     actionTaken: row?.action_taken ?? '',
+    dateClosed: row?.closed_at?.slice(0, 10) ?? '',
     status: row?.status ?? 'MONITORING_REQUIRED',
     customerFeedback: row?.customer_feedback ?? '',
     createLinkedTask: false,
@@ -106,6 +102,7 @@ export default function QualityCustomerComplaintsPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState<ComplaintFormState>(toForm());
+  const [formBaselineJson, setFormBaselineJson] = useState(() => serializeComplaintFormState(toForm()));
   const [attachmentComplaint, setAttachmentComplaint] = useState<QualityCustomerComplaint | null>(null);
 
   const canWrite = roleCanWrite(activeRole ?? null);
@@ -113,6 +110,7 @@ export default function QualityCustomerComplaintsPage() {
   const canCloseEscalate = roleCanCloseEscalate(activeRole ?? null);
   const canEditRef = roleCanEditRef(activeRole ?? null);
   const readOnly = formMode === 'view' || (formMode === 'edit' && !canEdit);
+  const hasDirtyForm = formMode !== 'view' && hasDirtyComplaintForm(form, formBaselineJson);
 
   const { data: complaints, loading, error, refetch } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return [];
@@ -160,24 +158,35 @@ export default function QualityCustomerComplaintsPage() {
   }
 
   function openCreate() {
+    const nextForm = toForm();
     setFormMode('create');
-    setForm(toForm());
+    setForm(nextForm);
+    setFormBaselineJson(serializeComplaintFormState(nextForm));
     setFormError(null);
     setModalOpen(true);
   }
 
   function openView(row: QualityCustomerComplaint) {
+    const nextForm = toForm(row);
     setFormMode('view');
-    setForm(toForm(row));
+    setForm(nextForm);
+    setFormBaselineJson(serializeComplaintFormState(nextForm));
     setFormError(null);
     setModalOpen(true);
   }
 
   function openEdit(row: QualityCustomerComplaint) {
+    const nextForm = toForm(row);
     setFormMode('edit');
-    setForm(toForm(row));
+    setForm(nextForm);
+    setFormBaselineJson(serializeComplaintFormState(nextForm));
     setFormError(null);
     setModalOpen(true);
+  }
+
+  function handleRequestCloseModal() {
+    if (hasDirtyForm && !window.confirm(getComplaintCloseWarningMessage())) return;
+    setModalOpen(false);
   }
 
   async function handleSave() {
@@ -196,6 +205,7 @@ export default function QualityCustomerComplaintsPage() {
         dateReceived: form.dateReceived,
         description: form.description.trim(),
         actionTaken: form.actionTaken.trim() || null,
+        closedAt: form.status === 'CLOSED' ? form.dateClosed || null : null,
         status: form.status,
         customerFeedback: form.customerFeedback.trim() || null
       };
@@ -220,6 +230,7 @@ export default function QualityCustomerComplaintsPage() {
             date_received: form.dateReceived,
             description: form.description.trim(),
             action_taken: form.actionTaken.trim() || null,
+            closed_at: form.status === 'CLOSED' ? form.dateClosed || null : null,
             status: form.status,
             customer_feedback: form.customerFeedback.trim() || null
           }
@@ -280,6 +291,7 @@ export default function QualityCustomerComplaintsPage() {
       'Date Received': row.date_received,
       Description: row.description,
       'Action taken': row.action_taken ?? '',
+      'Date Closed': row.closed_at ? row.closed_at.slice(0, 10) : '',
       Status: CUSTOMER_COMPLAINT_STATUS_LABELS[row.status],
       'Customer feedback': row.customer_feedback ?? '',
       'Linked NCR ID': row.linked_ncr_id ?? '',
@@ -366,7 +378,7 @@ export default function QualityCustomerComplaintsPage() {
           {error && <p className="p-4 text-sm text-critical">{error.message}</p>}
           {loading && <p className="p-4 text-sm text-charcoal-500">Loading complaints...</p>}
           {!loading && !error && (
-            <table className="w-full min-w-[1400px] text-sm">
+            <table className="w-full min-w-[1520px] text-sm">
               <thead className="bg-surface-50">
                 <tr>
                   <th className="px-3 py-2 text-left">Complaint Ref. No#</th>
@@ -375,6 +387,7 @@ export default function QualityCustomerComplaintsPage() {
                   <th className="px-3 py-2 text-left">Date Received</th>
                   <th className="px-3 py-2 text-left">Description</th>
                   <th className="px-3 py-2 text-left">Action taken</th>
+                  <th className="px-3 py-2 text-left">Date Closed</th>
                   <th className="px-3 py-2 text-left">Status</th>
                   <th className="px-3 py-2 text-left">Customer feedback</th>
                   <th className="px-3 py-2 text-left">Actions</th>
@@ -389,6 +402,7 @@ export default function QualityCustomerComplaintsPage() {
                     <td className="px-3 py-2">{formatDate(row.date_received)}</td>
                     <td className="px-3 py-2">{row.description}</td>
                     <td className="px-3 py-2">{row.action_taken || '-'}</td>
+                    <td className="px-3 py-2">{formatDate(row.closed_at)}</td>
                     <td className="px-3 py-2">
                       <span className="inline-flex px-2 py-1 rounded bg-surface-100 text-xs font-semibold">
                         {CUSTOMER_COMPLAINT_STATUS_LABELS[row.status]}
@@ -458,7 +472,7 @@ export default function QualityCustomerComplaintsPage() {
                 ))}
                 {(complaints ?? []).length === 0 && (
                   <ListEmptyState
-                    tableColSpan={9}
+                    tableColSpan={10}
                     icon={MessageSquareWarningIcon}
                     title="No complaints match your filters"
                     description="Log customer feedback, actions, and closure evidence in one structured register."
@@ -473,7 +487,7 @@ export default function QualityCustomerComplaintsPage() {
 
       {modalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setModalOpen(false)} />
+          <div className="absolute inset-0 bg-black/40" onClick={handleRequestCloseModal} />
           <div className="relative w-full max-w-4xl bg-white rounded-2xl border border-surface-300 shadow-xl max-h-[90dvh] overflow-y-auto">
             <div className="sticky top-0 bg-white z-10 px-5 py-4 border-b border-surface-200 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-charcoal">
@@ -481,7 +495,7 @@ export default function QualityCustomerComplaintsPage() {
               </h2>
               <button
                 type="button"
-                onClick={() => setModalOpen(false)}
+                onClick={handleRequestCloseModal}
                 className="min-h-[44px] px-3 rounded-lg border border-surface-300 text-sm"
               >
                 Close
@@ -515,32 +529,22 @@ export default function QualityCustomerComplaintsPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1.5">Person Handling Complaint</label>
-                  <select
+                  <HrEmployeeSelect
+                    companyId={activeCompanyId}
                     value={form.personHandlingUserId}
                     disabled={readOnly}
-                    onChange={(e) => {
-                      const nextUserId = (e.target.value || '') as UUID | '';
-                      if (nextUserId) {
-                        const selected = handlers?.find((x) => x.userId === nextUserId);
-                        setForm((s) => ({
-                          ...s,
-                          personHandlingUserId: nextUserId,
-                          personHandlingNameSnapshot: selected?.displayName ?? s.personHandlingNameSnapshot,
-                          linkedTaskAssigneeUserId: nextUserId
-                        }));
-                      } else {
-                        setForm((s) => ({ ...s, personHandlingUserId: '' }));
-                      }
+                    label={undefined}
+                    placeholder="Select linked HR employee"
+                    onChange={(selectedValue, meta) => {
+                      setForm((s) => ({
+                        ...s,
+                        personHandlingUserId: selectedValue,
+                        personHandlingNameSnapshot: meta.nameSnapshot || s.personHandlingNameSnapshot,
+                        linkedTaskAssigneeUserId: selectedValue || s.linkedTaskAssigneeUserId
+                      }));
                     }}
-                    className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm disabled:opacity-70"
-                  >
-                    <option value="">Other (type)</option>
-                    {handlerOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <p className="mt-1 text-xs text-charcoal-500">Search HR employees here, or leave unselected and type a manual handler name below.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1.5">Date Received</label>
@@ -583,11 +587,24 @@ export default function QualityCustomerComplaintsPage() {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Date Closed</label>
+                  <input
+                    type="date"
+                    value={form.dateClosed}
+                    disabled={readOnly || form.status !== 'CLOSED' || !canCloseEscalate}
+                    onChange={(e) => setForm((s) => ({ ...s, dateClosed: e.target.value }))}
+                    className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm disabled:opacity-70"
+                  />
+                  <p className="mt-1 text-xs text-charcoal-500">Auto-filled when status changes to Closed. You can adjust it if needed.</p>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-charcoal mb-1.5">Status</label>
                   <select
                     value={form.status}
                     disabled={readOnly || !canCloseEscalate}
-                    onChange={(e) => setForm((s) => ({ ...s, status: e.target.value as CustomerComplaintStatus }))}
+                    onChange={(e) =>
+                      setForm((s) => applyComplaintStatusChange(s, e.target.value as CustomerComplaintStatus, dateOnly(new Date())))
+                    }
                     className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm disabled:opacity-70"
                   >
                     {STATUS_OPTIONS.map((status) => (
@@ -661,7 +678,7 @@ export default function QualityCustomerComplaintsPage() {
                           evidence_file_ids: null,
                           linked_ncr_id: null,
                           linked_task_id: null,
-                          closed_at: null,
+                          closed_at: form.dateClosed ? `${form.dateClosed}T00:00:00.000Z` : null,
                           closed_by_user_id: null,
                           created_by_user_id: user.id as UUID,
                           created_at: new Date().toISOString(),
@@ -695,7 +712,7 @@ export default function QualityCustomerComplaintsPage() {
               )}
             </div>
             <div className="px-5 py-4 border-t border-surface-200 flex items-center justify-end gap-2">
-              <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium">
+              <button type="button" onClick={handleRequestCloseModal} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium">
                 Cancel
               </button>
               {formMode !== 'view' && canWrite && (
