@@ -23,8 +23,9 @@ export function EvidenceModal(props: {
   entityType: string;
   entityId: UUID;
   title?: string;
+  onUploaded?: (items: EvidenceAttachment[]) => void;
 }) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [uploadTitle, setUploadTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,28 +38,37 @@ export function EvidenceModal(props: {
   );
   const evidence = data ?? [];
 
-  const canUpload = useMemo(() => !!file, [file]);
+  const canUpload = useMemo(() => files.length > 0, [files]);
 
   async function upload() {
-    if (!file) return;
+    if (files.length === 0) return;
     setError(null);
     try {
       setLoading(true);
-      const key = `${props.companyId}/${props.entityType}/${props.entityId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-      const { data: uploaded, error: upErr } = await insforge.storage.from(EVIDENCE_BUCKET).upload(key, file);
-      if (upErr) throw upErr;
-      await createEvidence({
-        companyId: props.companyId,
-        entityType: props.entityType,
-        entityId: props.entityId,
-        title: uploadTitle.trim() || file.name,
-        storageBucket: EVIDENCE_BUCKET,
-        storageKey: uploaded?.path ?? key,
-        createdByUserId: props.actorUserId
-      });
-      setFile(null);
+      const createdItems: EvidenceAttachment[] = [];
+      for (const file of files) {
+        const key = `${props.companyId}/${props.entityType}/${props.entityId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
+        const { data: uploaded, error: upErr } = await insforge.storage.from(EVIDENCE_BUCKET).upload(key, file);
+        if (upErr) throw upErr;
+        const created = await createEvidence({
+          companyId: props.companyId,
+          entityType: props.entityType,
+          entityId: props.entityId,
+          title: files.length === 1 ? uploadTitle.trim() || file.name : file.name,
+          displayTitle: files.length === 1 ? uploadTitle.trim() || file.name : file.name,
+          originalFilename: file.name,
+          fileKind: file.type.startsWith('image/') ? 'image' : 'document',
+          storageBucket: EVIDENCE_BUCKET,
+          storageKey: uploaded?.path ?? key,
+          createdByUserId: props.actorUserId
+        });
+        createdItems.push(created);
+      }
+      setFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setUploadTitle('');
       setRefreshKey((k) => k + 1);
+      props.onUploaded?.(createdItems);
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {
@@ -67,6 +77,8 @@ export function EvidenceModal(props: {
   }
 
   if (!props.open) return null;
+
+  const selectedFileNames = files.map((item) => item.name);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
@@ -110,7 +122,9 @@ export function EvidenceModal(props: {
               <input
                 ref={fileInputRef}
                 type="file"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp,.gif"
+                multiple
+                onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
                 className="w-full text-sm"
               />
             </div>
@@ -125,6 +139,11 @@ export function EvidenceModal(props: {
                 Upload evidence
               </button>
             </div>
+            {selectedFileNames.length > 0 && (
+              <div className="sm:col-span-3 rounded-lg border border-teal/20 bg-teal/5 px-3 py-2 text-xs text-teal-800">
+                Selected files: {selectedFileNames.join(', ')}
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-xl border border-surface-300 overflow-hidden">

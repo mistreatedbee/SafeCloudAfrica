@@ -14,6 +14,7 @@ import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { createTask } from './tasksService';
 import { createNotification } from './notificationsService';
+import { createHrRecord, getHrSettings, listHrRecords, recommendDisciplinaryAction, updateHrRecord } from './hrService';
 
 const OPEN_TASK_STATUSES = ['draft', 'assigned', 'accepted', 'in-progress', 'awaiting-evidence', 'under-review', 'approved', 'reopened', 'overdue'];
 const MEDICAL_RESTRICTED_VIEW_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
@@ -38,6 +39,141 @@ function daysUntil(dateText: string): number {
   const today = new Date(todayIsoDate());
   const target = new Date(dateText);
   return Math.floor((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function normalizeText(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function severityFromHistory(repeatCount: number, caseType: string): 'minor' | 'major' | 'repeat' {
+  if (repeatCount > 0) return 'repeat';
+  const lowered = caseType.trim().toLowerCase();
+  if (lowered.includes('final') || lowered.includes('dismiss') || lowered.includes('suspension') || lowered.includes('hearing')) return 'major';
+  return 'minor';
+}
+
+function extractHygieneEmployeeMeta(record: HealthHygieneRecord): {
+  employeeId: UUID | null;
+  employeeUserId: UUID | null;
+  employeeName: string | null;
+  employeeNumber: string | null;
+  offenceType: string | null;
+} {
+  const details = (record.result_details ?? {}) as Record<string, unknown>;
+  return {
+    employeeId: (details.employee_id as UUID | null) ?? null,
+    employeeUserId: (details.employee_user_id as UUID | null) ?? null,
+    employeeName: normalizeText(details.employee_name) || null,
+    employeeNumber: normalizeText(details.employee_number) || null,
+    offenceType: normalizeText(record.non_compliance_reason) || null
+  };
+}
+
+async function syncHygieneDisciplinaryCase(
+  companyId: UUID,
+  record: HealthHygieneRecord,
+  actorUserId: UUID
+): Promise<HealthHygieneRecord> {
+  if (record.compliance_status !== 'NON_COMPLIANT') return record;
+
+  const employee = extractHygieneEmployeeMeta(record);
+  if (!employee.employeeId || !employee.offenceType) return record;
+
+  const settings = await getHrSettings(companyId).catch(() => null);
+  const repeatWindowMonths = Number(settings?.repeat_offence_window_months ?? 6);
+  const disciplinaryCases = await listHrRecords(companyId, 'hr_disciplinary_cases').catch(() => []);
+  const details = ((record.result_details ?? {}) as Record<string, unknown>);
+  const currentCaseId = normalizeText(details.disciplinary_case_id) || null;
+  const offenceTypeLower = employee.offenceType.toLowerCase();
+
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - repeatWindowMonths);
+
+  const repeatCount = disciplinaryCases.filter((row) => {
+    if (String(row.employee_id ?? '') !== employee.employeeId) return false;
+    if (currentCaseId && String(row.id) === currentCaseId) return false;
+    const offence = normalizeText(row.offence_type ?? row.offence_category).toLowerCase();
+    if (offence !== offenceTypeLower) return false;
+    const issuedAt = String(row.date_issued ?? row.created_at ?? '');
+    const issuedDate = new Date(issuedAt);
+    return !Number.isNaN(issuedDate.getTime()) && issuedDate >= cutoff;
+  }).length;
+
+  const caseType = 'Hygiene survey';
+  const severity = severityFromHistory(repeatCount, caseType);
+  const recommendedAction = recommendDisciplinaryAction({ repeatCount, caseType });
+  const description = [
+    `Occupational hygiene non-compliance recorded for ${record.monitoring_type}.`,
+    record.site_location ? `Work area: ${record.site_location}.` : null,
+    record.non_compliance_reason ? `Offence: ${record.non_compliance_reason}.` : null,
+    employee.employeeName ? `Employee: ${employee.employeeName}.` : null
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  let disciplinaryCaseId = currentCaseId;
+  if (disciplinaryCaseId) {
+    await updateHrRecord('hr_disciplinary_cases', {
+      companyId,
+      rowId: disciplinaryCaseId as UUID,
+      actorUserId,
+      patch: {
+        employee_id: employee.employeeId,
+        case_type: caseType,
+        offence_type: employee.offenceType,
+        offence_category: 'Health',
+        description,
+        warning_level: 'Written Warning',
+        date_issued: record.monitored_on,
+        repeat_offence_flag: severity === 'repeat',
+        recommended_action: recommendedAction,
+        offence_severity: severity,
+        status: 'OPEN'
+      }
+    });
+  } else {
+    const created = await createHrRecord('hr_disciplinary_cases', {
+      company_id: companyId,
+      employee_id: employee.employeeId,
+      case_type: caseType,
+      warning_level: 'Written Warning',
+      offence_type: employee.offenceType,
+      offence_category: 'Health',
+      description,
+      date_issued: record.monitored_on,
+      evidence_file_ids: [],
+      repeat_offence_flag: severity === 'repeat',
+      recommended_action: recommendedAction,
+      offence_severity: severity,
+      status: 'OPEN',
+      created_by_user_id: actorUserId
+    });
+    disciplinaryCaseId = created.id;
+  }
+
+  const nextDetails = {
+    ...details,
+    employee_id: employee.employeeId,
+    employee_user_id: employee.employeeUserId,
+    employee_name: employee.employeeName,
+    employee_number: employee.employeeNumber,
+    disciplinary_case_id: disciplinaryCaseId,
+    repeat_count: repeatCount,
+    offence_type: employee.offenceType
+  };
+
+  const { data, error } = await insforge.database
+    .from('health_hygiene_records')
+    .update({
+      result_details: nextDetails,
+      updated_at: new Date().toISOString()
+    })
+    .eq('company_id', companyId)
+    .eq('id', record.id)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  return (data as HealthHygieneRecord) ?? record;
 }
 
 function maskMedicalRestrictedFields(record: HealthMedical, role: CompanyRole | null, isHrManager?: boolean): HealthMedical {
@@ -349,7 +485,8 @@ export async function createHealthHygieneRecord(input: {
     entityId: record.id
   }).catch(() => undefined);
   const actionPlanId = await autoCreateHygieneActionPlan(input.companyId, record, input.createdByUserId);
-  return actionPlanId ? { ...record, action_plan_id: actionPlanId } : record;
+  const syncedRecord = actionPlanId ? { ...record, action_plan_id: actionPlanId } : record;
+  return await syncHygieneDisciplinaryCase(input.companyId, syncedRecord, input.createdByUserId);
 }
 
 export async function updateHealthHygieneRecord(
@@ -377,7 +514,9 @@ export async function updateHealthHygieneRecord(
       metadata: { fields: Object.keys(patch) }
     }).catch(() => undefined);
   }
-  return data as HealthHygieneRecord;
+  const updatedRecord = data as HealthHygieneRecord;
+  if (!actorUserId) return updatedRecord;
+  return await syncHygieneDisciplinaryCase(companyId, updatedRecord, actorUserId);
 }
 
 export async function deleteHealthHygieneRecord(companyId: UUID, recordId: UUID, actorUserId?: UUID): Promise<void> {

@@ -34,6 +34,9 @@ export function HealthMedicalPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [editingMedicalId, setEditingMedicalId] = useState<string | null>(null);
   const [restrictedFilter, setRestrictedFilter] = useState<RestrictedTrackerStatusFilter>('all');
+  const [savingMedical, setSavingMedical] = useState(false);
+  const [medicalSuccess, setMedicalSuccess] = useState<string | null>(null);
+  const [medicalError, setMedicalError] = useState<string | null>(null);
   const [form, setForm] = useState({
     employeeId: '' as string,
     employeeUserId: '' as string,
@@ -90,65 +93,84 @@ export function HealthMedicalPage() {
 
   async function submitMedical(e: React.FormEvent) {
     e.preventDefault();
-    if (!activeCompanyId || !user?.id) return;
-    if (editingMedicalId) {
-      await updateHealthMedical(
-        activeCompanyId,
-        editingMedicalId as any,
-        {
-          employee_id: (form.employeeId || null) as any,
-          employee_user_id: (form.employeeUserId || null) as any,
-          employee_name: form.employeeName || null,
-          employee_number: form.employeeNumber || null,
-          medical_type: form.medicalType,
-          medical_date: form.medicalDate,
-          expiry_date: form.expiryDate || null,
-          conducted_by: form.conductedBy || null,
-          fitness_status: form.fitnessStatus,
-          medical_cost: form.medicalCost ? Number(form.medicalCost) : null,
-          restricted_duty_required: form.restrictedDutyRequired,
-          restricted_duty_details: form.restrictedDutyDetails || null
-        },
-        user.id
-      );
-    } else {
-      await createHealthMedical({
-        companyId: activeCompanyId,
-        employeeId: (form.employeeId || undefined) as any,
-        employeeUserId: form.employeeUserId || undefined,
-        employeeName: form.employeeName || undefined,
-        employeeNumber: form.employeeNumber || undefined,
-        medicalType: form.medicalType,
-        medicalDate: form.medicalDate,
-        expiryDate: form.expiryDate || null,
-        conductedBy: form.conductedBy || null,
-        fitnessStatus: form.fitnessStatus,
-        medicalCost: form.medicalCost ? Number(form.medicalCost) : null,
-        restrictedDutyRequired: form.restrictedDutyRequired,
-        restrictedDutyDetails: form.restrictedDutyDetails || null,
-        createdByUserId: user.id
-      });
+    if (!activeCompanyId || !user?.id || savingMedical) return;
+    setMedicalError(null);
+    setMedicalSuccess(null);
+    if (!form.employeeUserId) {
+      setMedicalError('Select a linked employee before saving.');
+      return;
     }
-    setRefreshKey((k) => k + 1);
+    if (form.employeeUserId && !form.employeeId) {
+      setMedicalError('Employee record not linked correctly; contact admin.');
+      return;
+    }
 
-    const nextForm = {
-      employeeId: '',
-      employeeUserId: '',
-      employeeName: '',
-      employeeNumber: '',
-      medicalType: 'PERIODIC' as HealthMedical['medical_type'],
-      medicalDate: '',
-      expiryDate: '',
-      medicalCost: '',
-      conductedBy: '',
-      fitnessStatus: 'FIT' as HealthMedical['fitness_status'],
-      restrictedDutyRequired: false,
-      restrictedDutyDetails: ''
-    };
-    setEditingMedicalId(null);
-    setForm(nextForm);
-    setMedicalBaseline(nextForm);
-    clearDraft(draftKeyMedicalCreate);
+    try {
+      setSavingMedical(true);
+      if (editingMedicalId) {
+        await updateHealthMedical(
+          activeCompanyId,
+          editingMedicalId as any,
+          {
+            employee_id: (form.employeeId || null) as any,
+            employee_user_id: (form.employeeUserId || null) as any,
+            employee_name: form.employeeName || null,
+            employee_number: form.employeeNumber || null,
+            medical_type: form.medicalType,
+            medical_date: form.medicalDate,
+            expiry_date: form.expiryDate || null,
+            conducted_by: form.conductedBy || null,
+            fitness_status: form.fitnessStatus,
+            medical_cost: form.medicalCost ? Number(form.medicalCost) : null,
+            restricted_duty_required: form.restrictedDutyRequired,
+            restricted_duty_details: form.restrictedDutyDetails || null
+          },
+          user.id
+        );
+      } else {
+        await createHealthMedical({
+          companyId: activeCompanyId,
+          employeeId: (form.employeeId || undefined) as any,
+          employeeUserId: form.employeeUserId || undefined,
+          employeeName: form.employeeName || undefined,
+          employeeNumber: form.employeeNumber || undefined,
+          medicalType: form.medicalType,
+          medicalDate: form.medicalDate,
+          expiryDate: form.expiryDate || null,
+          conductedBy: form.conductedBy || null,
+          fitnessStatus: form.fitnessStatus,
+          medicalCost: form.medicalCost ? Number(form.medicalCost) : null,
+          restrictedDutyRequired: form.restrictedDutyRequired,
+          restrictedDutyDetails: form.restrictedDutyDetails || null,
+          createdByUserId: user.id
+        });
+      }
+      setRefreshKey((k) => k + 1);
+
+      const nextForm = {
+        employeeId: '',
+        employeeUserId: '',
+        employeeName: '',
+        employeeNumber: '',
+        medicalType: 'PERIODIC' as HealthMedical['medical_type'],
+        medicalDate: '',
+        expiryDate: '',
+        medicalCost: '',
+        conductedBy: '',
+        fitnessStatus: 'FIT' as HealthMedical['fitness_status'],
+        restrictedDutyRequired: false,
+        restrictedDutyDetails: ''
+      };
+      setEditingMedicalId(null);
+      setForm(nextForm);
+      setMedicalBaseline(nextForm);
+      clearDraft(draftKeyMedicalCreate);
+      setMedicalSuccess('Saved successfully.');
+    } catch (error) {
+      setMedicalError(error instanceof Error ? error.message : 'Unable to save this medical record.');
+    } finally {
+      setSavingMedical(false);
+    }
   }
 
   function startEditMedical(medical: HealthMedical) {
@@ -169,6 +191,8 @@ export function HealthMedicalPage() {
     setEditingMedicalId(medical.id);
     setForm(nextForm);
     setMedicalBaseline(nextForm);
+    setMedicalError(null);
+    setMedicalSuccess(null);
   }
 
   function cancelMedicalEdit() {
@@ -190,6 +214,7 @@ export function HealthMedicalPage() {
     setForm(nextForm);
     setMedicalBaseline(nextForm);
     clearDraft(draftKeyMedicalCreate);
+    setMedicalError(null);
   }
 
   return (
@@ -208,10 +233,13 @@ export function HealthMedicalPage() {
               </button>
             )}
           </div>
+          {medicalSuccess && <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{medicalSuccess}</div>}
+          {medicalError && <div className="mb-3 rounded-lg border border-critical/20 bg-critical/5 px-3 py-2 text-sm text-critical">{medicalError}</div>}
           <form className="grid grid-cols-1 md:grid-cols-3 gap-3" onSubmit={submitMedical}>
             <HrEmployeeSelect
               companyId={activeCompanyId ?? null}
               value={form.employeeUserId as any}
+              valueField="user_id"
               label="Employee Name"
               placeholder="Select employee"
               onChange={(userId, meta) =>
@@ -223,6 +251,7 @@ export function HealthMedicalPage() {
                   employeeNumber: meta.employeeNumber ?? ''
                 }))
               }
+              disabled={savingMedical}
             />
             <input
               value={form.employeeNumber}
@@ -237,30 +266,31 @@ export function HealthMedicalPage() {
               value={form.medicalCost}
               onChange={(e) => setForm((s) => ({ ...s, medicalCost: e.target.value }))}
               placeholder="Medical cost (ZAR)"
+              disabled={savingMedical}
               className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
             />
-            <select value={form.medicalType} onChange={(e) => setForm((s) => ({ ...s, medicalType: e.target.value as HealthMedical['medical_type'] }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm">
+            <select value={form.medicalType} onChange={(e) => setForm((s) => ({ ...s, medicalType: e.target.value as HealthMedical['medical_type'] }))} disabled={savingMedical} className="px-3 py-2 border border-surface-300 rounded-lg text-sm">
               <option value="PRE_EMPLOYMENT">Pre-employment</option>
               <option value="PERIODIC">Periodic</option>
               <option value="EXIT">Exit</option>
             </select>
-            <input type="date" value={form.medicalDate} onChange={(e) => setForm((s) => ({ ...s, medicalDate: e.target.value }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" required />
-            <input type="date" value={form.expiryDate} onChange={(e) => setForm((s) => ({ ...s, expiryDate: e.target.value }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
-            <input value={form.conductedBy} onChange={(e) => setForm((s) => ({ ...s, conductedBy: e.target.value }))} placeholder="Conducted by" className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
-            <select value={form.fitnessStatus} onChange={(e) => setForm((s) => ({ ...s, fitnessStatus: e.target.value as HealthMedical['fitness_status'] }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm">
+            <input type="date" value={form.medicalDate} onChange={(e) => setForm((s) => ({ ...s, medicalDate: e.target.value }))} disabled={savingMedical} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" required />
+            <input type="date" value={form.expiryDate} onChange={(e) => setForm((s) => ({ ...s, expiryDate: e.target.value }))} disabled={savingMedical} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+            <input value={form.conductedBy} onChange={(e) => setForm((s) => ({ ...s, conductedBy: e.target.value }))} placeholder="Conducted by" disabled={savingMedical} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+            <select value={form.fitnessStatus} onChange={(e) => setForm((s) => ({ ...s, fitnessStatus: e.target.value as HealthMedical['fitness_status'] }))} disabled={savingMedical} className="px-3 py-2 border border-surface-300 rounded-lg text-sm">
               <option value="FIT">Fit</option>
               <option value="RESTRICTED">Restricted</option>
               <option value="UNFIT">Unfit</option>
             </select>
             <label className="flex items-center gap-2 text-sm text-charcoal">
-              <input type="checkbox" checked={form.restrictedDutyRequired} onChange={(e) => setForm((s) => ({ ...s, restrictedDutyRequired: e.target.checked }))} />
+              <input type="checkbox" checked={form.restrictedDutyRequired} onChange={(e) => setForm((s) => ({ ...s, restrictedDutyRequired: e.target.checked }))} disabled={savingMedical} />
               Restricted duty required
             </label>
             {form.restrictedDutyRequired && (
-              <input value={form.restrictedDutyDetails} onChange={(e) => setForm((s) => ({ ...s, restrictedDutyDetails: e.target.value }))} placeholder="Restricted duty details" className="px-3 py-2 border border-surface-300 rounded-lg text-sm md:col-span-2" />
+              <input value={form.restrictedDutyDetails} onChange={(e) => setForm((s) => ({ ...s, restrictedDutyDetails: e.target.value }))} placeholder="Restricted duty details" disabled={savingMedical} className="px-3 py-2 border border-surface-300 rounded-lg text-sm md:col-span-2" />
             )}
-            <button className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">
-              {editingMedicalId ? 'Update medical' : 'Save medical'}
+            <button disabled={savingMedical} className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-60">
+              {savingMedical ? 'Saving...' : editingMedicalId ? 'Update medical' : 'Save medical'}
             </button>
           </form>
         </div>
