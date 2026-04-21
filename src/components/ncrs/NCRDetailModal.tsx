@@ -400,6 +400,10 @@ export default function NCRDetailModal({
               <p className="text-sm text-gray-600">Closure evidence uploaded</p>
               <p className="font-medium text-gray-900">{evidenceAfter.length > 0 ? 'Yes' : 'No'}</p>
             </div>
+            <div>
+              <p className="text-sm text-gray-600">Date Closed</p>
+              <p className="font-medium text-gray-900">{ncr.date_closed ? new Date(ncr.date_closed).toLocaleString() : 'Not closed yet'}</p>
+            </div>
           </div>
           <div className="flex justify-end">
             <button

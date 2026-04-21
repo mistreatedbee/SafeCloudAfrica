@@ -3,7 +3,9 @@ import type { CompanyRole } from '../models/core';
 import type { UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { createEvidence } from './evidenceService';
 import { createQualityNcr } from './qualityNcrsService';
+import { uploadFile } from './storageService';
 
 export type EnvironmentAspectStatus = 'active' | 'closed';
 export type EnvironmentAspect = {
@@ -70,6 +72,135 @@ function rolling12Months(): string[] {
   });
 }
 
+const ENV_OPTIONAL_EMPLOYEE_FIELDS = [
+  'responsible_employee_id',
+  'responsible_name_snapshot',
+  'reviewed_by_employee_id',
+  'reviewed_by_name_snapshot',
+  'approved_by_employee_id',
+  'approved_by_name_snapshot'
+];
+const ENV_ATTACHMENTS_BUCKET = 'sca-evidence' as const;
+
+function isMissingColumnError(error: unknown, optionalFields: string[] = ENV_OPTIONAL_EMPLOYEE_FIELDS): boolean {
+  const message = String((error as any)?.message ?? '').toLowerCase();
+  return message.includes('column') && optionalFields.some((field) => message.includes(field));
+}
+
+function withoutOptionalEmployeeFields<T extends Record<string, unknown>>(payload: T): T {
+  const next = { ...payload };
+  for (const field of ENV_OPTIONAL_EMPLOYEE_FIELDS) delete (next as any)[field];
+  return next;
+}
+
+async function executeEnvMutationWithOptionalEmployeeFallback(
+  table: string,
+  companyId: UUID,
+  rowId: UUID | undefined,
+  payload: Record<string, unknown>,
+  actorUserId: UUID,
+  selectSingle = true
+): Promise<any> {
+  const run = async (body: Record<string, unknown>) => {
+    const query = rowId
+      ? insforge.database.from(table).update(body).eq('company_id', companyId).eq('id', rowId)
+      : insforge.database.from(table).insert({ ...body, created_by_user_id: actorUserId });
+    return selectSingle ? await query.select('*').single() : await query.select('*');
+  };
+
+  let { data, error } = await run(payload);
+  if (error && isMissingColumnError(error)) {
+    ({ data, error } = await run(withoutOptionalEmployeeFields(payload)));
+  }
+  if (error) throw new Error(getErrorMessage(error));
+  return data;
+}
+
+async function fetchEnvironmentRecordById(table: string, companyId: UUID, recordId: UUID): Promise<any | null> {
+  const { data, error } = await insforge.database
+    .from(table)
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('id', recordId)
+    .maybeSingle();
+  if (error) throw new Error(getErrorMessage(error));
+  return data ?? null;
+}
+
+type EnvironmentAttachmentGroup = {
+  field: string;
+  files?: File[];
+  fileKind: string;
+  titlePrefix: string;
+};
+
+export async function uploadEnvironmentAttachmentFiles(input: {
+  companyId: UUID;
+  table: 'env_waste_disposal' | 'env_water_monitoring' | 'env_air_quality';
+  entityType: 'env_waste_disposal' | 'env_water_monitoring' | 'env_air_quality';
+  recordId: UUID;
+  actorUserId: UUID;
+  groups: EnvironmentAttachmentGroup[];
+}): Promise<any> {
+  const existing = await fetchEnvironmentRecordById(input.table, input.companyId, input.recordId);
+  if (!existing) throw new Error('Environmental record not found.');
+
+  const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  let uploadedCount = 0;
+
+  for (const group of input.groups) {
+    const files = (group.files ?? []).filter(Boolean);
+    if (files.length === 0) continue;
+
+    const currentIds = Array.isArray(existing[group.field]) ? [...existing[group.field]] : [];
+    const nextIds = [...currentIds];
+
+    for (const file of files) {
+      const upload = await uploadFile(ENV_ATTACHMENTS_BUCKET, file, {
+        key: `${input.companyId}/${input.entityType}/${input.recordId}/${group.fileKind}-${Date.now()}-${file.name}`.replace(/\s+/g, '_')
+      });
+      const evidence = await createEvidence({
+        companyId: input.companyId,
+        entityType: input.entityType,
+        entityId: input.recordId,
+        storageBucket: upload.bucket,
+        storageKey: upload.key,
+        createdByUserId: input.actorUserId,
+        originalFilename: file.name,
+        displayTitle: `${group.titlePrefix}: ${file.name}`,
+        fileKind: group.fileKind
+      });
+      nextIds.push(evidence.id);
+      uploadedCount += 1;
+    }
+
+    updatePayload[group.field] = Array.from(new Set(nextIds));
+  }
+
+  if (uploadedCount === 0) return existing;
+
+  const { data, error } = await insforge.database
+    .from(input.table)
+    .update(updatePayload)
+    .eq('company_id', input.companyId)
+    .eq('id', input.recordId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update environmental attachments.');
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: `environment.attachments.${input.entityType}.update`,
+    entityType: input.entityType,
+    entityId: input.recordId,
+    metadata: { uploadedCount, fields: input.groups.map((group) => group.field) }
+  });
+
+  return data;
+}
+
 export async function listEnvironmentAspects(companyId: UUID): Promise<EnvironmentAspect[]> {
   const { data, error } = await insforge.database.from('environment_aspects').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(500);
   if (error) throw new Error(getErrorMessage(error));
@@ -122,12 +253,11 @@ export async function upsertEnvImpactAssessment(input: any): Promise<any> {
     environmental_aspect_cause: String(input.environmentalAspectCause ?? '').trim(), potential_impact_effect: String(input.potentialImpactEffect ?? '').trim(),
     legal_requirement_id: input.legalRequirementId ?? null, legal_requirement_label_snapshot: input.legalRequirementLabelSnapshot?.trim() || null, existing_controls: input.existingControls?.trim() || null,
     severity: score(input.severity, 'Severity'), likelihood: score(input.likelihood, 'Likelihood'), additional_controls: input.additionalControls?.trim() || null,
-    responsible_user_id: input.responsibleUserId ?? null, responsible_external_name: input.responsibleExternalName?.trim() || null, review_date: input.reviewDate || null,
+    responsible_user_id: input.responsibleUserId ?? null, responsible_employee_id: input.responsibleEmployeeId ?? null,
+    responsible_name_snapshot: input.responsibleNameSnapshot?.trim() || null, responsible_external_name: input.responsibleExternalName?.trim() || null, review_date: input.reviewDate || null,
     linked_risk_assessment_ids: input.linkedRiskAssessmentIds ?? []
   };
-  const query = input.id ? insforge.database.from('env_impact_assessments').update(payload).eq('company_id', input.companyId).eq('id', input.id) : insforge.database.from('env_impact_assessments').insert({ ...payload, created_by_user_id: input.actorUserId });
-  const { data, error } = await query.select('*').single();
-  if (error) throw new Error(getErrorMessage(error));
+  const data = await executeEnvMutationWithOptionalEmployeeFallback('env_impact_assessments', input.companyId, input.id, payload, input.actorUserId);
   if (!data) throw new Error('Failed to save EIA record.');
   await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: input.id ? 'environment.eia.update' : 'environment.eia.create', entityType: 'env_impact_assessment', entityId: (data as any).id as UUID });
   return data;
@@ -174,12 +304,11 @@ export async function upsertEnvRiskOpportunity(input: any): Promise<any> {
     type: input.type, risk_or_opportunity: String(input.riskOrOpportunity ?? '').trim(), description: input.description?.trim() || null, cause: input.cause?.trim() || null,
     potential_impact: input.potentialImpact?.trim() || null, likelihood: score(input.likelihood, 'Likelihood'), severity_or_benefit: score(input.severityOrBenefit, 'Severity/Benefit'),
     existing_controls: input.existingControls?.trim() || null, action_required: input.actionRequired?.trim() || null, responsible_user_id: input.responsibleUserId ?? null,
+    responsible_employee_id: input.responsibleEmployeeId ?? null, responsible_name_snapshot: input.responsibleNameSnapshot?.trim() || null,
     responsible_external_name: input.responsibleExternalName?.trim() || null, target_date: input.targetDate || null, status: input.status?.trim() || 'Open',
     linked_legal_requirement_id: input.linkedLegalRequirementId ?? null, linked_eia_id: input.linkedEiaId ?? null, linked_risk_assessment_ids: input.linkedRiskAssessmentIds ?? []
   };
-  const query = input.id ? insforge.database.from('env_risk_opportunity').update(payload).eq('company_id', input.companyId).eq('id', input.id) : insforge.database.from('env_risk_opportunity').insert({ ...payload, created_by_user_id: input.actorUserId });
-  const { data, error } = await query.select('*').single();
-  if (error) throw new Error(getErrorMessage(error));
+  const data = await executeEnvMutationWithOptionalEmployeeFallback('env_risk_opportunity', input.companyId, input.id, payload, input.actorUserId);
   if (!data) throw new Error('Failed to save environmental risk/opportunity record.');
   await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: input.id ? 'environment.risk_opportunity.update' : 'environment.risk_opportunity.create', entityType: 'env_risk_opportunity', entityId: (data as any).id as UUID });
   return data;
@@ -263,11 +392,17 @@ export async function upsertEnvWasteDisposal(input: any): Promise<any> {
     facility_permit_file_ids: input.facilityPermitFileIds ?? [],
     facility_permit_expiry_date: input.facilityPermitExpiryDate || null,
     responsible_user_id: input.responsibleUserId ?? null,
+    responsible_employee_id: input.responsibleEmployeeId ?? null,
+    responsible_name_snapshot: input.responsibleNameSnapshot?.trim() || null,
     responsible_external_name: input.responsibleExternalName?.trim() || null,
     remarks: input.remarks?.trim() || null,
     non_conformances_deviations: input.nonConformancesDeviations ?? [],
     reviewed_by_user_id: input.reviewedByUserId ?? null,
+    reviewed_by_employee_id: input.reviewedByEmployeeId ?? null,
+    reviewed_by_name_snapshot: input.reviewedByNameSnapshot?.trim() || null,
     approved_by_user_id: input.approvedByUserId ?? null,
+    approved_by_employee_id: input.approvedByEmployeeId ?? null,
+    approved_by_name_snapshot: input.approvedByNameSnapshot?.trim() || null,
     approved_at: input.approvedAt || null,
     status: input.status ?? 'Draft',
     escalation_flag: false,
@@ -275,11 +410,7 @@ export async function upsertEnvWasteDisposal(input: any): Promise<any> {
     disposal_status: disposalStatus,
     date_disposed: dateDisposed
   };
-  const query = input.id
-    ? insforge.database.from('env_waste_disposal').update(payload).eq('company_id', input.companyId).eq('id', input.id)
-    : insforge.database.from('env_waste_disposal').insert({ ...payload, created_by_user_id: input.actorUserId });
-  const { data, error } = await query.select('*').single();
-  if (error) throw new Error(getErrorMessage(error));
+  const data = await executeEnvMutationWithOptionalEmployeeFallback('env_waste_disposal', input.companyId, input.id, payload, input.actorUserId);
   if (!data) throw new Error('Failed to save waste disposal record.');
   await createActivityLog({
     companyId: input.companyId,
@@ -376,18 +507,18 @@ export async function upsertEnvWaterMonitoring(input: any): Promise<any> {
     overall_compliance_status: overall, breached_legislation_or_permit_reference: input.breachedLegislationOrPermitReference?.trim() || null,
     assessed_environmental_risk: input.assessedEnvironmentalRisk ?? null, potential_cause: input.potentialCause?.trim() || null,
     controls_effectiveness_review: input.controlsEffectivenessReview?.trim() || null, conclusion_compliance_statement: input.conclusionComplianceStatement?.trim() || null,
-    reviewed_by_user_id: input.reviewedByUserId ?? null, approved_by_user_id: input.approvedByUserId ?? null, approved_at: input.approvedAt || null,
+    reviewed_by_user_id: input.reviewedByUserId ?? null, reviewed_by_employee_id: input.reviewedByEmployeeId ?? null,
+    reviewed_by_name_snapshot: input.reviewedByNameSnapshot?.trim() || null, approved_by_user_id: input.approvedByUserId ?? null,
+    approved_by_employee_id: input.approvedByEmployeeId ?? null, approved_by_name_snapshot: input.approvedByNameSnapshot?.trim() || null, approved_at: input.approvedAt || null,
     laboratory_reports_file_ids: input.laboratoryReportsFileIds ?? [], calibration_certificates_file_ids: input.calibrationCertificatesFileIds ?? [],
     permits_licences_file_ids: input.permitsLicencesFileIds ?? [], sampling_locations_file_ids: input.samplingLocationsFileIds ?? []
   };
 
-  const query = input.id ? insforge.database.from('env_water_monitoring').update(payload).eq('company_id', input.companyId).eq('id', input.id) : insforge.database.from('env_water_monitoring').insert({ ...payload, created_by_user_id: input.actorUserId });
-  const { data, error } = await query.select('*').single();
-  if (error) throw new Error(getErrorMessage(error));
+  const data = await executeEnvMutationWithOptionalEmployeeFallback('env_water_monitoring', input.companyId, input.id, payload, input.actorUserId);
   if (!data) throw new Error('Failed to save water monitoring record.');
   const saved = data as any;
 
-  if (overall === 'Fail') {
+  if (overall === 'Fail' && !saved.system_generated_capa_id) {
     const failed = parameters.filter((p) => p.complianceStatus === 'Fail').map((p) => `${p.parameterName} ${p.resultValue} > ${p.complianceLimit}`).join('; ');
     const ncrId = await createNcrFromEnv({ companyId: input.companyId, actorUserId: input.actorUserId, source: 'env_water_monitoring', referenceId: saved.id, summary: `Water monitoring ${saved.reference_number} failed: ${failed}`, riskLevel: input.assessedEnvironmentalRisk, legalReference: input.legalReferenceSnapshot || input.breachedLegislationOrPermitReference });
     await insforge.database.from('env_water_monitoring').update({ system_generated_capa_id: ncrId, updated_at: new Date().toISOString() }).eq('company_id', input.companyId).eq('id', saved.id);
@@ -457,17 +588,19 @@ export async function upsertEnvAirQuality(input: any): Promise<any> {
     lab_accreditation_authority: input.labAccreditationAuthority?.trim() || null,
     lab_accreditation_certificate_file_ids: input.labAccreditationCertificateFileIds ?? [],
     reviewed_by_user_id: input.reviewedByUserId ?? null,
+    reviewed_by_employee_id: input.reviewedByEmployeeId ?? null,
+    reviewed_by_name_snapshot: input.reviewedByNameSnapshot?.trim() || null,
     approved_by_user_id: input.approvedByUserId ?? null,
+    approved_by_employee_id: input.approvedByEmployeeId ?? null,
+    approved_by_name_snapshot: input.approvedByNameSnapshot?.trim() || null,
     approved_at: input.approvedAt || null
   };
 
-  const query = input.id ? insforge.database.from('env_air_quality').update(payload).eq('company_id', input.companyId).eq('id', input.id) : insforge.database.from('env_air_quality').insert({ ...payload, created_by_user_id: input.actorUserId });
-  const { data, error } = await query.select('*').single();
-  if (error) throw new Error(getErrorMessage(error));
+  const data = await executeEnvMutationWithOptionalEmployeeFallback('env_air_quality', input.companyId, input.id, payload, input.actorUserId);
   if (!data) throw new Error('Failed to save air quality record.');
   const saved = data as any;
 
-  if (overall === 'Fail') {
+  if (overall === 'Fail' && !saved.system_generated_capa_id) {
     const failed = results.filter((r) => r.status === 'Fail').map((r) => `${r.parameter} ${r.resultValue} > ${r.limitValue}`).join('; ');
     const ncrId = await createNcrFromEnv({ companyId: input.companyId, actorUserId: input.actorUserId, source: 'env_air_quality', referenceId: saved.id, summary: `Air quality ${saved.reference_number} exceedances: ${failed}`, riskLevel: 'high', legalReference: (input.legalReferencesSnapshot ?? []).join('; ') });
     await insforge.database.from('env_air_quality').update({ system_generated_capa_id: ncrId, updated_at: new Date().toISOString() }).eq('company_id', input.companyId).eq('id', saved.id);

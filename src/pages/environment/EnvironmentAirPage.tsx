@@ -4,7 +4,7 @@ import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listUserProfiles } from '../../api/services/profilesService';
+import { listHrEmployees } from '../../api/services/hrService';
 import { deleteEnvAirQuality, listEnvAirQuality, upsertEnvAirQuality, listLegalRequirementOptions } from '../../api/services/environmentService';
 import { toCsv, downloadTextFile } from '../../utils/csv';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -12,6 +12,7 @@ import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import { WindIcon } from 'lucide-react';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 
 const currentYear = new Date().getFullYear();
 
@@ -34,6 +35,7 @@ export function EnvironmentAirPage() {
   const [search, setSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [editing, setEditing] = useState<any | null>(null);
+  const [message, setMessage] = useState('');
   const [form, setForm] = useState<any>({
     referenceNumber: '',
     emissionSourceCategories: ['Dust'],
@@ -58,8 +60,12 @@ export function EnvironmentAirPage() {
     results: [{ parameter: 'PM10', resultValue: '', limitValue: '', status: 'Pass' }],
     nonConformanceNotes: '',
     trendAnalysisNotes: '',
+    reviewedByEmployeeId: '',
     reviewedByUserId: '',
+    reviewedByNameSnapshot: '',
+    approvedByEmployeeId: '',
     approvedByUserId: '',
+    approvedByNameSnapshot: '',
     approvedAt: ''
   });
   const { restoreDraft, clearDraft } = useDraftManager();
@@ -94,36 +100,25 @@ export function EnvironmentAirPage() {
     setJustSaved(false);
   }, [form, justSaved]);
 
-  const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
+  const { data: employees } = useAsync(async () => (activeCompanyId ? await listHrEmployees(activeCompanyId) : []), [activeCompanyId]);
   const { data: legalOptions } = useAsync(async () => (activeCompanyId ? await listLegalRequirementOptions(activeCompanyId) : []), [activeCompanyId]);
   const { data: rows, loading, error, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listEnvAirQuality(activeCompanyId, { year, status, fromDate: fromDate || undefined, toDate: toDate || undefined, responsibleUserId: responsibleUserId || undefined, search });
   }, [activeCompanyId, year, status, fromDate, toDate, responsibleUserId, search, refreshKey]);
 
-  const userLabel = useMemo(() => new Map((profiles ?? []).map((p) => [p.user_id, p.full_name || p.email || p.user_id])), [profiles]);
+  const employeeNameById = useMemo(
+    () =>
+      new Map(
+        (employees ?? []).map((employee) => [
+          employee.id,
+          `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim() || employee.email || employee.employee_no
+        ])
+      ),
+    [employees]
+  );
 
-  async function onSave(e: React.FormEvent) {
-    e.preventDefault();
-    if (!activeCompanyId || !user?.id) return;
-    const keyToClear = draftKey;
-    await upsertEnvAirQuality({
-      companyId: activeCompanyId,
-      actorUserId: user.id,
-      actorRole: activeRole,
-      id: editing?.id,
-      ...form,
-      legalRequirementIds: form.legalRequirementIds,
-      monitoringTools: form.monitoringTools,
-      laboratoryResultsFileIds: form.laboratoryResultsFileIds,
-      labName: form.labName,
-      labAccreditationNumber: form.labAccreditationNumber,
-      labAccreditationAuthority: form.labAccreditationAuthority,
-      labAccreditationCertificateFileIds: form.labAccreditationCertificateFileIds,
-      reviewedByUserId: form.reviewedByUserId || null,
-      approvedByUserId: form.approvedByUserId || null,
-      approvedAt: form.approvedAt || null
-    });
+  function resetForm() {
     setEditing(null);
     setForm({
       referenceNumber: '',
@@ -149,10 +144,43 @@ export function EnvironmentAirPage() {
       results: [{ parameter: 'PM10', resultValue: '', limitValue: '', status: 'Pass' }],
       nonConformanceNotes: '',
       trendAnalysisNotes: '',
+      reviewedByEmployeeId: '',
       reviewedByUserId: '',
+      reviewedByNameSnapshot: '',
+      approvedByEmployeeId: '',
       approvedByUserId: '',
+      approvedByNameSnapshot: '',
       approvedAt: ''
     });
+  }
+
+  async function onSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!activeCompanyId || !user?.id) return;
+    const keyToClear = draftKey;
+    const saved = await upsertEnvAirQuality({
+      companyId: activeCompanyId,
+      actorUserId: user.id,
+      actorRole: activeRole,
+      id: editing?.id,
+      ...form,
+      legalRequirementIds: form.legalRequirementIds,
+      monitoringTools: form.monitoringTools,
+      laboratoryResultsFileIds: form.laboratoryResultsFileIds,
+      labName: form.labName,
+      labAccreditationNumber: form.labAccreditationNumber,
+      labAccreditationAuthority: form.labAccreditationAuthority,
+      labAccreditationCertificateFileIds: form.labAccreditationCertificateFileIds,
+      reviewedByEmployeeId: form.reviewedByEmployeeId || null,
+      reviewedByUserId: form.reviewedByUserId || null,
+      reviewedByNameSnapshot: form.reviewedByNameSnapshot || null,
+      approvedByEmployeeId: form.approvedByEmployeeId || null,
+      approvedByUserId: form.approvedByUserId || null,
+      approvedByNameSnapshot: form.approvedByNameSnapshot || null,
+      approvedAt: form.approvedAt || null
+    });
+    setMessage(editing ? `Air quality monitoring ${saved.reference_number} updated.` : `Air quality monitoring ${saved.reference_number} created.`);
+    resetForm();
     clearDraft(keyToClear);
     setJustSaved(true);
     setRefreshKey((k) => k + 1);
@@ -185,8 +213,12 @@ export function EnvironmentAirPage() {
       results: row.results ?? [],
       nonConformanceNotes: row.non_conformance_notes ?? '',
       trendAnalysisNotes: row.trend_analysis_notes ?? '',
+      reviewedByEmployeeId: row.reviewed_by_employee_id ?? '',
       reviewedByUserId: row.reviewed_by_user_id ?? '',
+      reviewedByNameSnapshot: row.reviewed_by_name_snapshot ?? '',
+      approvedByEmployeeId: row.approved_by_employee_id ?? '',
       approvedByUserId: row.approved_by_user_id ?? '',
+      approvedByNameSnapshot: row.approved_by_name_snapshot ?? '',
       approvedAt: row.approved_at?.slice(0, 16) ?? ''
     };
     setForm(nextForm);
@@ -206,18 +238,22 @@ export function EnvironmentAirPage() {
   return (
     <Layout title="Air Quality Monitoring">
       <div className="space-y-4">
+        {message && <div className="rounded-xl border border-success/30 bg-success/5 p-3 text-sm text-success">{message}</div>}
         <div className="bg-white border rounded-xl p-4 grid grid-cols-1 md:grid-cols-7 gap-2">
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" className="px-3 py-2 border rounded-lg text-sm" />
           <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value || currentYear))} className="px-3 py-2 border rounded-lg text-sm" />
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-3 py-2 border rounded-lg text-sm"><option value="all">All status</option><option value="Pass">Pass</option><option value="Fail">Fail</option></select>
           <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="px-3 py-2 border rounded-lg text-sm" />
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="px-3 py-2 border rounded-lg text-sm" />
-          <select value={responsibleUserId} onChange={(e) => setResponsibleUserId(e.target.value)} className="px-3 py-2 border rounded-lg text-sm"><option value="">All responsible</option>{(profiles ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id}</option>)}</select>
+          <select value={responsibleUserId} onChange={(e) => setResponsibleUserId(e.target.value)} className="px-3 py-2 border rounded-lg text-sm"><option value="">All responsible</option>{(employees ?? []).filter((employee) => !!employee.user_id).map((employee) => <option key={employee.id} value={employee.user_id ?? ''}>{employee.employee_no} - {`${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim()}</option>)}</select>
           <button type="button" onClick={() => downloadTextFile(`environment-air-${new Date().toISOString().slice(0, 10)}.csv`, toCsv((rows ?? []).map((r: any) => ({ reference_number: r.reference_number, monitoring_date: r.monitoring_date, monitoring_location: r.monitoring_location, overall_status: r.overall_status, system_generated_capa_id: r.system_generated_capa_id ?? '' }))), 'text/csv;charset=utf-8')} className="px-3 py-2 border rounded-lg text-sm hover:bg-surface-50">Export CSV</button>
         </div>
 
         <form id="env-air-quality-form" onSubmit={onSave} className="bg-white border rounded-xl p-4 space-y-3">
-          <p className="font-semibold text-sm">{editing ? 'Edit air quality monitoring' : 'Create air quality monitoring'}</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-semibold text-sm">{editing ? 'Edit air quality monitoring' : 'Create air quality monitoring'}</p>
+            <button type="button" onClick={resetForm} className="px-3 py-2 rounded-lg border text-sm hover:bg-surface-50">New Record</button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <input value={form.referenceNumber} onChange={(e) => setForm({ ...form, referenceNumber: e.target.value })} placeholder="Reference number" className="px-3 py-2 border rounded-lg text-sm" required />
             <input value={form.emissionSourceCategories.join(', ')} onChange={(e) => setForm({ ...form, emissionSourceCategories: e.target.value.split(',').map((x: string) => x.trim()).filter(Boolean) })} placeholder="Emission source categories (comma separated)" className="px-3 py-2 border rounded-lg text-sm" />
@@ -371,8 +407,8 @@ export function EnvironmentAirPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <input value={form.nonConformanceNotes} onChange={(e) => setForm({ ...form, nonConformanceNotes: e.target.value })} placeholder="Non-conformance notes" className="px-3 py-2 border rounded-lg text-sm" />
             <input value={form.trendAnalysisNotes} onChange={(e) => setForm({ ...form, trendAnalysisNotes: e.target.value })} placeholder="Trend analysis notes" className="px-3 py-2 border rounded-lg text-sm" />
-            <select value={form.reviewedByUserId} onChange={(e) => setForm({ ...form, reviewedByUserId: e.target.value })} className="px-3 py-2 border rounded-lg text-sm"><option value="">Reviewed by</option>{(profiles ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id}</option>)}</select>
-            <select value={form.approvedByUserId} onChange={(e) => setForm({ ...form, approvedByUserId: e.target.value })} className="px-3 py-2 border rounded-lg text-sm"><option value="">Approved by</option>{(profiles ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id}</option>)}</select>
+            <HrEmployeeSelect companyId={activeCompanyId} value={form.reviewedByEmployeeId} valueField="id" placeholder="Reviewed by" label="Reviewed by" onChange={(selectedValue, meta) => setForm((current: any) => ({ ...current, reviewedByEmployeeId: selectedValue, reviewedByUserId: meta.userId ?? '', reviewedByNameSnapshot: meta.nameSnapshot ?? '' }))} />
+            <HrEmployeeSelect companyId={activeCompanyId} value={form.approvedByEmployeeId} valueField="id" placeholder="Approved by" label="Approved by" onChange={(selectedValue, meta) => setForm((current: any) => ({ ...current, approvedByEmployeeId: selectedValue, approvedByUserId: meta.userId ?? '', approvedByNameSnapshot: meta.nameSnapshot ?? '' }))} />
             <input type="datetime-local" value={form.approvedAt} onChange={(e) => setForm({ ...form, approvedAt: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
           </div>
           <div className="flex gap-2"><button type="submit" className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold">{editing ? 'Update' : 'Create'}</button>{editing && <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 rounded-lg border text-sm">Cancel</button>}</div>
@@ -382,7 +418,7 @@ export function EnvironmentAirPage() {
 
         {error && <div className="text-sm text-critical">{String(error.message)}</div>}
         {loading ? <p className="text-sm text-charcoal-500">Loading...</p> : (
-          <div className="bg-white border rounded-xl overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Reference</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Location</th><th className="px-3 py-2 text-left">Method</th><th className="px-3 py-2 text-left">Overall</th><th className="px-3 py-2 text-left">Reviewer</th><th className="px-3 py-2 text-left">NCR</th><th className="px-3 py-2 text-left">Actions</th></tr></thead><tbody className="divide-y divide-surface-100">{(rows ?? []).map((r: any) => <tr key={r.id}><td className="px-3 py-2">{r.reference_number}</td><td className="px-3 py-2">{r.monitoring_date}</td><td className="px-3 py-2">{r.monitoring_location}</td><td className="px-3 py-2">{r.method_used}</td><td className="px-3 py-2">{r.overall_status}</td><td className="px-3 py-2">{r.reviewed_by_user_id ? (userLabel.get(r.reviewed_by_user_id) ?? r.reviewed_by_user_id) : '-'}</td><td className="px-3 py-2">{r.system_generated_capa_id ? <Link to="/dashboard/management/ncrs" className="text-teal hover:underline">View NCR</Link> : '-'}</td><td className="px-3 py-2"><div className="flex gap-2"><button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this air quality monitoring record?')) return; await deleteEnvAirQuality({ companyId: activeCompanyId, recordId: r.id, actorUserId: user.id, actorRole: activeRole }); if (String(editing?.id ?? '') === String(r.id)) setEditing(null); setRefreshKey((k) => k + 1); await refetch(); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}{(rows ?? []).length === 0 && (
+          <div className="bg-white border rounded-xl overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Reference</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Location</th><th className="px-3 py-2 text-left">Method</th><th className="px-3 py-2 text-left">Overall</th><th className="px-3 py-2 text-left">Reviewer</th><th className="px-3 py-2 text-left">NCR</th><th className="px-3 py-2 text-left">Actions</th></tr></thead><tbody className="divide-y divide-surface-100">{(rows ?? []).map((r: any) => <tr key={r.id}><td className="px-3 py-2">{r.reference_number}</td><td className="px-3 py-2">{r.monitoring_date}</td><td className="px-3 py-2">{r.monitoring_location}</td><td className="px-3 py-2">{r.method_used}</td><td className="px-3 py-2">{r.overall_status}</td><td className="px-3 py-2">{r.reviewed_by_name_snapshot || employeeNameById.get(r.reviewed_by_employee_id) || r.reviewed_by_user_id || '-'}</td><td className="px-3 py-2">{r.system_generated_capa_id ? <Link to="/dashboard/management/ncrs" className="text-teal hover:underline">View NCR</Link> : '-'}</td><td className="px-3 py-2"><div className="flex gap-2"><button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this air quality monitoring record?')) return; await deleteEnvAirQuality({ companyId: activeCompanyId, recordId: r.id, actorUserId: user.id, actorRole: activeRole }); if (String(editing?.id ?? '') === String(r.id)) resetForm(); setRefreshKey((k) => k + 1); await refetch(); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}{(rows ?? []).length === 0 && (
                     <ListEmptyState
                       tableColSpan={8}
                       icon={WindIcon}

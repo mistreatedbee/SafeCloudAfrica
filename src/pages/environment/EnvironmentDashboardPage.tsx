@@ -1,9 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { getEnvironmentDashboardStats, runEnvironmentReminderSweep } from '../../api/services/environmentService';
+import { createActivityLog } from '../../api/services/activityLogService';
+import { buildEnvironmentReportCsv, downloadEnvironmentReportCsv, loadEnvironmentReportDataset, printEnvironmentReportPdf, renderEnvironmentReportHtml, type EnvironmentReportType } from '../../api/services/environmentReportsService';
 import { StatCard } from '../../components/ui/StatCard';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
@@ -17,14 +20,43 @@ const quickLinks = [
   { to: '/dashboard/environment/air', label: 'Air Quality Monitoring' }
 ];
 
+const reportLinks: Array<{ type: EnvironmentReportType; label: string }> = [
+  { type: 'eia', label: 'EIA' },
+  { type: 'emp', label: 'EMP' },
+  { type: 'audit_summary', label: 'Audit Summary' },
+  { type: 'risk_opportunity', label: 'Risk Register' },
+  { type: 'waste', label: 'Waste' },
+  { type: 'water', label: 'Water' },
+  { type: 'air', label: 'Air' }
+];
+
 export function EnvironmentDashboardPage() {
   const { activeCompanyId } = useTenant();
+  const { user } = useUser();
 
   const { data, loading, error } = useAsync(async () => {
     if (!activeCompanyId) return null;
     await runEnvironmentReminderSweep(activeCompanyId).catch(() => undefined);
     return await getEnvironmentDashboardStats(activeCompanyId);
   }, [activeCompanyId]);
+
+  async function exportReport(type: EnvironmentReportType, mode: 'csv' | 'pdf') {
+    if (!activeCompanyId || !user?.id) return;
+    const dataset = await loadEnvironmentReportDataset(activeCompanyId);
+    const version = 1;
+    if (mode === 'csv') {
+      downloadEnvironmentReportCsv(`environment-${type}-${new Date().toISOString().slice(0, 10)}.csv`, buildEnvironmentReportCsv(type, dataset, version));
+    } else {
+      printEnvironmentReportPdf(renderEnvironmentReportHtml(type, dataset, version));
+    }
+    await createActivityLog({
+      companyId: activeCompanyId,
+      actorUserId: user.id,
+      action: `reports.generate.environment.${type}.${mode}`,
+      entityType: 'report',
+      metadata: { reportType: type, format: mode.toUpperCase(), version }
+    });
+  }
 
   return (
     <Layout title="Environment Dashboard">
@@ -48,6 +80,24 @@ export function EnvironmentDashboardPage() {
               <StatCard title="Latest water compliance" value={data.latestWaterComplianceStatus} icon="Droplet" iconColor={data.latestWaterComplianceStatus === 'Fail' ? '#E74C3C' : '#2ECC71'} />
               <StatCard title="Latest air compliance" value={data.latestAirComplianceStatus} icon="Wind" iconColor={data.latestAirComplianceStatus === 'Fail' ? '#E74C3C' : '#2ECC71'} />
               <StatCard title="Waste entries this month" value={data.wasteDisposalEntriesThisMonth} icon="Trash2" iconColor="#1ABC9C" />
+            </div>
+
+            <div className="bg-white rounded-xl border border-surface-300 p-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="font-semibold text-charcoal">Environmental Reports</h3>
+                <p className="text-xs text-charcoal-500">PDF and Excel-compatible CSV</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                {reportLinks.map((report) => (
+                  <div key={report.type} className="rounded-lg border border-surface-200 p-3">
+                    <p className="text-sm font-medium text-charcoal">{report.label}</p>
+                    <div className="mt-2 flex gap-2">
+                      <button type="button" onClick={() => void exportReport(report.type, 'csv')} className="px-3 py-2 rounded-lg border text-xs hover:bg-surface-50">Excel/CSV</button>
+                      <button type="button" onClick={() => void exportReport(report.type, 'pdf')} className="px-3 py-2 rounded-lg border text-xs hover:bg-surface-50">PDF</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

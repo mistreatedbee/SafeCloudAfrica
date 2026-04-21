@@ -4,7 +4,7 @@ import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listUserProfiles } from '../../api/services/profilesService';
+import { listHrEmployees } from '../../api/services/hrService';
 import { deleteEnvWaterMonitoring, listEnvWaterMonitoring, upsertEnvWaterMonitoring, listLegalRequirementOptions } from '../../api/services/environmentService';
 import { toCsv, downloadTextFile } from '../../utils/csv';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
@@ -13,6 +13,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { EvidenceModal } from '../../components/evidence/EvidenceModal';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 
 const currentYear = new Date().getFullYear();
 
@@ -38,6 +39,7 @@ export function EnvironmentWaterPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [editing, setEditing] = useState<any | null>(null);
   const [showEvidenceForId, setShowEvidenceForId] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
   const [form, setForm] = useState<any>({
     referenceNumber: '',
     siteFacilityName: '',
@@ -81,8 +83,12 @@ export function EnvironmentWaterPage() {
     calibrationCertificatesFileIds: [] as string[],
     permitsLicencesFileIds: [] as string[],
     samplingLocationsFileIds: [] as string[],
+    reviewedByEmployeeId: '',
     reviewedByUserId: '',
+    reviewedByNameSnapshot: '',
+    approvedByEmployeeId: '',
     approvedByUserId: '',
+    approvedByNameSnapshot: '',
     approvedAt: ''
   });
   const { restoreDraft, clearDraft } = useDraftManager();
@@ -117,30 +123,25 @@ export function EnvironmentWaterPage() {
     setJustSaved(false);
   }, [form, justSaved]);
 
-  const { data: profiles } = useAsync(async () => (activeCompanyId ? await listUserProfiles(activeCompanyId) : []), [activeCompanyId]);
+  const { data: employees } = useAsync(async () => (activeCompanyId ? await listHrEmployees(activeCompanyId) : []), [activeCompanyId]);
   const { data: legalOptions } = useAsync(async () => (activeCompanyId ? await listLegalRequirementOptions(activeCompanyId) : []), [activeCompanyId]);
   const { data: rows, loading, error, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listEnvWaterMonitoring(activeCompanyId, { year, status, fromDate: fromDate || undefined, toDate: toDate || undefined, responsibleUserId: responsibleUserId || undefined, search });
   }, [activeCompanyId, year, status, fromDate, toDate, responsibleUserId, search, refreshKey]);
 
-  const userLabel = useMemo(() => new Map((profiles ?? []).map((p) => [p.user_id, p.full_name || p.email || p.user_id])), [profiles]);
+  const employeeNameById = useMemo(
+    () =>
+      new Map(
+        (employees ?? []).map((employee) => [
+          employee.id,
+          `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim() || employee.email || employee.employee_no
+        ])
+      ),
+    [employees]
+  );
 
-  async function onSave(e: React.FormEvent) {
-    e.preventDefault();
-    if (!activeCompanyId || !user?.id) return;
-    const keyToClear = draftKey;
-    await upsertEnvWaterMonitoring({
-      companyId: activeCompanyId,
-      actorUserId: user.id,
-      actorRole: activeRole,
-      id: editing?.id,
-      ...form,
-      legalRequirementId: form.legalRequirementId || null,
-      reviewedByUserId: form.reviewedByUserId || null,
-      approvedByUserId: form.approvedByUserId || null,
-      approvedAt: form.approvedAt || null
-    });
+  function resetForm() {
     setEditing(null);
     setForm({
       referenceNumber: '',
@@ -166,16 +167,7 @@ export function EnvironmentWaterPage() {
       sedimentPresence: '',
       blockedDrainsOrOverflows: '',
       equipmentUsed: [],
-      parameters: [
-        {
-          parameterName: 'pH',
-          unitOfMeasure: '',
-          testMethodOrStandard: '',
-          resultValue: '',
-          complianceLimit: '',
-          complianceStatus: 'Pass'
-        }
-      ],
+      parameters: [{ parameterName: 'pH', unitOfMeasure: '', testMethodOrStandard: '', resultValue: '', complianceLimit: '', complianceStatus: 'Pass' }],
       breachedLegislationOrPermitReference: '',
       assessedEnvironmentalRisk: 'Medium',
       potentialCause: '',
@@ -185,10 +177,37 @@ export function EnvironmentWaterPage() {
       calibrationCertificatesFileIds: [],
       permitsLicencesFileIds: [],
       samplingLocationsFileIds: [],
+      reviewedByEmployeeId: '',
       reviewedByUserId: '',
+      reviewedByNameSnapshot: '',
+      approvedByEmployeeId: '',
       approvedByUserId: '',
+      approvedByNameSnapshot: '',
       approvedAt: ''
     });
+  }
+
+  async function onSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!activeCompanyId || !user?.id) return;
+    const keyToClear = draftKey;
+    const saved = await upsertEnvWaterMonitoring({
+      companyId: activeCompanyId,
+      actorUserId: user.id,
+      actorRole: activeRole,
+      id: editing?.id,
+      ...form,
+      legalRequirementId: form.legalRequirementId || null,
+      reviewedByEmployeeId: form.reviewedByEmployeeId || null,
+      reviewedByUserId: form.reviewedByUserId || null,
+      reviewedByNameSnapshot: form.reviewedByNameSnapshot || null,
+      approvedByEmployeeId: form.approvedByEmployeeId || null,
+      approvedByUserId: form.approvedByUserId || null,
+      approvedByNameSnapshot: form.approvedByNameSnapshot || null,
+      approvedAt: form.approvedAt || null
+    });
+    setMessage(editing ? `Water monitoring ${saved.reference_number} updated.` : `Water monitoring ${saved.reference_number} created.`);
+    resetForm();
     clearDraft(keyToClear);
     setJustSaved(true);
     setRefreshKey((k) => k + 1);
@@ -231,8 +250,12 @@ export function EnvironmentWaterPage() {
       calibrationCertificatesFileIds: row.calibration_certificates_file_ids ?? [],
       permitsLicencesFileIds: row.permits_licences_file_ids ?? [],
       samplingLocationsFileIds: row.sampling_locations_file_ids ?? [],
+      reviewedByEmployeeId: row.reviewed_by_employee_id ?? '',
       reviewedByUserId: row.reviewed_by_user_id ?? '',
+      reviewedByNameSnapshot: row.reviewed_by_name_snapshot ?? '',
+      approvedByEmployeeId: row.approved_by_employee_id ?? '',
       approvedByUserId: row.approved_by_user_id ?? '',
+      approvedByNameSnapshot: row.approved_by_name_snapshot ?? '',
       approvedAt: row.approved_at?.slice(0, 16) ?? ''
     };
     setForm(nextForm);
@@ -252,18 +275,22 @@ export function EnvironmentWaterPage() {
   return (
     <Layout title="Water Monitoring">
       <div className="space-y-4">
+        {message && <div className="rounded-xl border border-success/30 bg-success/5 p-3 text-sm text-success">{message}</div>}
         <div className="bg-white border rounded-xl p-4 grid grid-cols-1 md:grid-cols-7 gap-2">
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" className="px-3 py-2 border rounded-lg text-sm" />
           <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value || currentYear))} className="px-3 py-2 border rounded-lg text-sm" />
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-3 py-2 border rounded-lg text-sm"><option value="all">All status</option><option value="Pass">Pass</option><option value="Fail">Fail</option></select>
           <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="px-3 py-2 border rounded-lg text-sm" />
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="px-3 py-2 border rounded-lg text-sm" />
-          <select value={responsibleUserId} onChange={(e) => setResponsibleUserId(e.target.value)} className="px-3 py-2 border rounded-lg text-sm"><option value="">All responsible</option>{(profiles ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id}</option>)}</select>
+          <select value={responsibleUserId} onChange={(e) => setResponsibleUserId(e.target.value)} className="px-3 py-2 border rounded-lg text-sm"><option value="">All responsible</option>{(employees ?? []).filter((employee) => !!employee.user_id).map((employee) => <option key={employee.id} value={employee.user_id ?? ''}>{employee.employee_no} - {`${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim()}</option>)}</select>
           <button type="button" onClick={() => downloadTextFile(`environment-water-${new Date().toISOString().slice(0, 10)}.csv`, toCsv((rows ?? []).map((r: any) => ({ reference_number: r.reference_number, sampling_date: r.sampling_date, site_facility_name: r.site_facility_name, overall_compliance_status: r.overall_compliance_status, system_generated_capa_id: r.system_generated_capa_id ?? '' }))), 'text/csv;charset=utf-8')} className="px-3 py-2 border rounded-lg text-sm hover:bg-surface-50">Export CSV</button>
         </div>
 
         <form id="env-water-monitoring-form" onSubmit={onSave} className="bg-white border rounded-xl p-4 space-y-3">
-          <p className="font-semibold text-sm">{editing ? 'Edit water monitoring' : 'Create water monitoring'}</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-semibold text-sm">{editing ? 'Edit water monitoring' : 'Create water monitoring'}</p>
+            <button type="button" onClick={resetForm} className="px-3 py-2 rounded-lg border text-sm hover:bg-surface-50">New Record</button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <input value={form.referenceNumber} onChange={(e) => setForm({ ...form, referenceNumber: e.target.value })} placeholder="Reference number" className="px-3 py-2 border rounded-lg text-sm" required />
             <input value={form.siteFacilityName} onChange={(e) => setForm({ ...form, siteFacilityName: e.target.value })} placeholder="Site/facility" className="px-3 py-2 border rounded-lg text-sm" required />
@@ -339,8 +366,8 @@ export function EnvironmentWaterPage() {
           </div>
           <textarea value={form.conclusionComplianceStatement} onChange={(e) => setForm({ ...form, conclusionComplianceStatement: e.target.value })} placeholder="Conclusion / compliance statement" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <select value={form.reviewedByUserId} onChange={(e) => setForm({ ...form, reviewedByUserId: e.target.value })} className="px-3 py-2 border rounded-lg text-sm"><option value="">Reviewed by</option>{(profiles ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id}</option>)}</select>
-            <select value={form.approvedByUserId} onChange={(e) => setForm({ ...form, approvedByUserId: e.target.value })} className="px-3 py-2 border rounded-lg text-sm"><option value="">Approved by</option>{(profiles ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id}</option>)}</select>
+            <HrEmployeeSelect companyId={activeCompanyId} value={form.reviewedByEmployeeId} valueField="id" placeholder="Reviewed by" label="Reviewed by" onChange={(selectedValue, meta) => setForm((current: any) => ({ ...current, reviewedByEmployeeId: selectedValue, reviewedByUserId: meta.userId ?? '', reviewedByNameSnapshot: meta.nameSnapshot ?? '' }))} />
+            <HrEmployeeSelect companyId={activeCompanyId} value={form.approvedByEmployeeId} valueField="id" placeholder="Approved by" label="Approved by" onChange={(selectedValue, meta) => setForm((current: any) => ({ ...current, approvedByEmployeeId: selectedValue, approvedByUserId: meta.userId ?? '', approvedByNameSnapshot: meta.nameSnapshot ?? '' }))} />
             <input type="datetime-local" value={form.approvedAt} onChange={(e) => setForm({ ...form, approvedAt: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
           </div>
 
@@ -406,7 +433,7 @@ export function EnvironmentWaterPage() {
                     <td className="px-3 py-2">{r.site_facility_name}</td>
                     <td className="px-3 py-2">{r.gps_location_or_sampling_point_id}</td>
                     <td className="px-3 py-2">{r.overall_compliance_status}</td>
-                    <td className="px-3 py-2">{r.reviewed_by_user_id ? (userLabel.get(r.reviewed_by_user_id) ?? r.reviewed_by_user_id) : '-'}</td>
+                    <td className="px-3 py-2">{r.reviewed_by_name_snapshot || employeeNameById.get(r.reviewed_by_employee_id) || r.reviewed_by_user_id || '-'}</td>
                     <td className="px-3 py-2">{r.system_generated_capa_id ? <Link to={`/dashboard/management/ncrs`} className="text-teal hover:underline">View NCR</Link> : '-'}</td>
                     <td className="px-3 py-2">
                       <button
@@ -431,7 +458,7 @@ export function EnvironmentWaterPage() {
                               actorUserId: user.id,
                               actorRole: activeRole
                             });
-                            if (String(editing?.id ?? '') === String(r.id)) setEditing(null);
+                            if (String(editing?.id ?? '') === String(r.id)) resetForm();
                             setRefreshKey((k) => k + 1);
                             await refetch();
                           }}
