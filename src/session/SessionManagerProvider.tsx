@@ -5,9 +5,11 @@ import { insforge } from '../api/insforge/client';
 import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY, USER_SIGNED_OUT_KEY } from '../auth/AuthSessionListener';
 import { useDraftManager } from './DraftManagerProvider';
 import { computeInactivityDecision } from './inactivityDecision';
+import { useTenant } from '../tenant/TenantContext';
+import { getSessionTimeoutMinutes } from '../api/services/securityService';
 
-const WARNING_TIMEOUT_MS = 45 * 60 * 1000;
-const LOGOUT_TIMEOUT_MS = 60 * 60 * 1000;
+const DEFAULT_LOGOUT_TIMEOUT_MS = 8 * 60 * 60 * 1000;
+const MIN_LOGOUT_TIMEOUT_MINUTES = 120;
 const CHECK_INTERVAL_MS = 15 * 1000;
 const REFRESH_LEEWAY_MS = 5 * 60 * 1000;
 const REFRESH_RETRY_MS = 12 * 1000;
@@ -170,9 +172,11 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoaded, isSignedIn, signOut } = useAuth();
+  const { activeCompanyId } = useTenant();
   const { flushAllDrafts } = useDraftManager();
   const [showWarning, setShowWarning] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
+  const [logoutTimeoutMs, setLogoutTimeoutMs] = useState(DEFAULT_LOGOUT_TIMEOUT_MS);
   const lastActivityRef = useRef<number>(Date.now());
   const showWarningRef = useRef(false);
   const refreshInFlightRef = useRef(false);
@@ -180,31 +184,61 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   const lastExpiresParseFallbackAttemptRef = useRef<number>(0);
   const isLoggingOutRef = useRef(false);
   const hasNavigatedToLoginRef = useRef(false);
+  const warningTimeoutMs = useMemo(() => {
+    const warningLeadMs = Math.min(15 * 60 * 1000, Math.max(60 * 1000, Math.floor(logoutTimeoutMs / 4)));
+    return Math.max(60 * 1000, logoutTimeoutMs - warningLeadMs);
+  }, [logoutTimeoutMs]);
 
   useEffect(() => {
     showWarningRef.current = showWarning;
   }, [showWarning]);
 
   useEffect(() => {
+    let cancelled = false;
+    if (!isSignedIn || !activeCompanyId) {
+      setLogoutTimeoutMs(DEFAULT_LOGOUT_TIMEOUT_MS);
+      return;
+    }
+    void (async () => {
+      try {
+        const minutes = await getSessionTimeoutMinutes(activeCompanyId);
+        if (!cancelled) {
+          const safeMinutes = Math.max(MIN_LOGOUT_TIMEOUT_MINUTES, Number(minutes) || 480);
+          setLogoutTimeoutMs(safeMinutes * 60 * 1000);
+        }
+      } catch {
+        if (!cancelled) setLogoutTimeoutMs(DEFAULT_LOGOUT_TIMEOUT_MS);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCompanyId, isSignedIn]);
+
+  useEffect(() => {
     if (!isSignedIn) return;
     isLoggingOutRef.current = false;
     hasNavigatedToLoginRef.current = false;
-  }, [isSignedIn]);
+    lastActivityRef.current = Date.now();
+    setRemainingMs(logoutTimeoutMs);
+    setShowWarning(false);
+    refreshRetryCountRef.current = 0;
+  }, [isSignedIn, logoutTimeoutMs]);
 
   // Passive activity should not dismiss the inactivity warning modal; users must explicitly choose "Continue Session".
   const registerPassiveActivity = useCallback(() => {
     if (isLoggingOutRef.current) return;
     if (showWarningRef.current) return;
     lastActivityRef.current = Date.now();
-    setRemainingMs(LOGOUT_TIMEOUT_MS);
-  }, []);
+    setRemainingMs(logoutTimeoutMs);
+  }, [logoutTimeoutMs]);
 
   const registerActivity = useCallback(() => {
     if (isLoggingOutRef.current) return;
     lastActivityRef.current = Date.now();
-    setRemainingMs(LOGOUT_TIMEOUT_MS);
+    setRemainingMs(logoutTimeoutMs);
     if (showWarningRef.current) setShowWarning(false);
-  }, []);
+  }, [logoutTimeoutMs]);
 
   const markSessionExpiredAndLogout = useCallback(async (reason: 'inactivity' | 'refresh_failure') => {
     if (isLoggingOutRef.current) return;
@@ -428,10 +462,10 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         const idleMs = Date.now() - lastActivityRef.current;
         const { shouldShowWarning, shouldLogout } = computeInactivityDecision({
           idleMs,
-          warningTimeoutMs: WARNING_TIMEOUT_MS,
-          logoutTimeoutMs: LOGOUT_TIMEOUT_MS
+          warningTimeoutMs,
+          logoutTimeoutMs
         });
-        const remaining = Math.max(0, LOGOUT_TIMEOUT_MS - idleMs);
+        const remaining = Math.max(0, logoutTimeoutMs - idleMs);
         setRemainingMs(remaining);
 
         if (shouldLogout) {
@@ -457,20 +491,28 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       }
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [isLoaded, isSignedIn, registerPassiveActivity, markSessionExpiredAndLogout, refreshSessionIfNeeded]);
+  }, [
+    isLoaded,
+    isSignedIn,
+    logoutTimeoutMs,
+    markSessionExpiredAndLogout,
+    refreshSessionIfNeeded,
+    registerPassiveActivity,
+    warningTimeoutMs
+  ]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     const interval = window.setInterval(() => {
       if (isLoggingOutRef.current) return;
-      const idleMs = Date.now() - lastActivityRef.current;
-      const { shouldShowWarning, shouldLogout } = computeInactivityDecision({
-        idleMs,
-        warningTimeoutMs: WARNING_TIMEOUT_MS,
-        logoutTimeoutMs: LOGOUT_TIMEOUT_MS
-      });
-      const remaining = Math.max(0, LOGOUT_TIMEOUT_MS - idleMs);
-      setRemainingMs(remaining);
+        const idleMs = Date.now() - lastActivityRef.current;
+        const { shouldShowWarning, shouldLogout } = computeInactivityDecision({
+          idleMs,
+          warningTimeoutMs,
+          logoutTimeoutMs
+        });
+        const remaining = Math.max(0, logoutTimeoutMs - idleMs);
+        setRemainingMs(remaining);
 
       if (shouldLogout) {
         void markSessionExpiredAndLogout('inactivity');
@@ -498,7 +540,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       })();
     }, CHECK_INTERVAL_MS);
     return () => window.clearInterval(interval);
-  }, [isLoaded, isSignedIn, markSessionExpiredAndLogout, refreshSessionIfNeeded]);
+  }, [isLoaded, isSignedIn, logoutTimeoutMs, markSessionExpiredAndLogout, refreshSessionIfNeeded, warningTimeoutMs]);
 
   const value = useMemo<SessionManagerContextValue>(
     () => ({

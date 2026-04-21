@@ -14,6 +14,25 @@ const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact
 const INVALID_REDIRECT_PREFIXES = ['/login', '/register', '/forgot-password', '/reset-password', '/logout'];
 const ACTIVE_COMPANY_KEY = 'sca_active_company_id_v3';
 
+function readAuthSession(result: unknown): { accessToken: string | null; userId: string | null } {
+  const session = (result as any)?.data?.session;
+  const topLevelToken = (result as any)?.accessToken;
+  const topLevelUserId = (result as any)?.user?.id;
+  const accessToken =
+    typeof session?.accessToken === 'string' && session.accessToken.trim()
+      ? session.accessToken
+      : typeof topLevelToken === 'string' && topLevelToken.trim()
+        ? topLevelToken
+        : null;
+  const userId =
+    typeof session?.user?.id === 'string' && session.user.id.trim()
+      ? session.user.id
+      : typeof topLevelUserId === 'string' && topLevelUserId.trim()
+        ? topLevelUserId
+        : null;
+  return { accessToken, userId };
+}
+
 function sanitizeRedirect(raw: string | null, fallback: string): string {
   if (!raw) return fallback;
   try {
@@ -42,7 +61,7 @@ export function LoginPage() {
     try {
       if (typeof sessionStorage === 'undefined') return null;
       if (sessionStorage.getItem(SESSION_EXPIRED_KEY) !== '1') return null;
-      return sessionStorage.getItem(SESSION_EXPIRED_MESSAGE_KEY) || 'Your session expired due to inactivity. Please log in again.';
+      return sessionStorage.getItem(SESSION_EXPIRED_MESSAGE_KEY) || 'Your session expired. Please log in again.';
     } catch {
       return null;
     }
@@ -61,54 +80,55 @@ export function LoginPage() {
 
   const redirectParam = searchParams.get('redirect');
 
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn || !user?.id) return;
-    let cancelled = false;
+  const redirectAfterLogin = React.useCallback(async (resolvedUserId: UUID) => {
     setAuthError(null);
     setRedirectError(null);
     setRedirecting(true);
+    try {
+      await ensureMeAsSuperAdmin();
+      const isSA = await isPlatformAdmin(resolvedUserId);
+      if (isSA) {
+        await refreshTenant();
+        navigate('/super-admin/overview', { replace: true });
+        return;
+      }
+      const storedCompanyId = (() => {
+        try {
+          return (localStorage.getItem(ACTIVE_COMPANY_KEY) as UUID | null) ?? null;
+        } catch {
+          return null;
+        }
+      })();
+      const { path: defaultPath, organizationId, reason } = await getLoginRedirectPath(resolvedUserId, storedCompanyId);
+      if (organizationId) setActiveCompanyId(organizationId);
+      await refreshTenant();
+      const target = sanitizeRedirect(redirectParam, defaultPath);
+      const pathWithReason = reason
+        ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`)
+        : target;
+      navigate(pathWithReason, { replace: true });
+    } catch {
+      await recoverAuthState(signOut, refreshTenant);
+      setRedirectError(LOGIN_FAILED_MESSAGE);
+      setRedirecting(false);
+    }
+  }, [navigate, redirectParam, refreshTenant, setActiveCompanyId, signOut]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !user?.id) return;
+    let cancelled = false;
     (async () => {
       try {
-        await ensureMeAsSuperAdmin();
         if (cancelled) return;
-        const isSA = await isPlatformAdmin(user.id as UUID);
-        if (cancelled) return;
-        if (isSA) {
-          await refreshTenant();
-          if (cancelled) return;
-          navigate('/super-admin/overview', { replace: true });
-          return;
-        }
-        const storedCompanyId = (() => {
-          try {
-            return (localStorage.getItem(ACTIVE_COMPANY_KEY) as UUID | null) ?? null;
-          } catch {
-            return null;
-          }
-        })();
-        const { path: defaultPath, organizationId, reason } = await getLoginRedirectPath(user.id as UUID, storedCompanyId);
-        if (organizationId) setActiveCompanyId(organizationId);
-        await refreshTenant();
-        if (cancelled) return;
-        const target = sanitizeRedirect(redirectParam, defaultPath);
-        const pathWithReason = reason
-          ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`)
-          : target;
-        navigate(pathWithReason, { replace: true });
-      } catch {
-        if (!cancelled) {
-          await recoverAuthState(signOut, refreshTenant);
-          setRedirectError(LOGIN_FAILED_MESSAGE);
-          setRedirecting(false);
-        }
+        await redirectAfterLogin(user.id as UUID);
       } finally {
-        if (!cancelled) setRedirecting(false);
+        if (!cancelled && !isSignedIn) setRedirecting(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, user?.id, navigate, redirectParam, setActiveCompanyId, refreshTenant, signOut]);
+  }, [isLoaded, isSignedIn, redirectAfterLogin, user?.id]);
 
   const activated = searchParams.get('activated') === '1';
 
@@ -134,14 +154,32 @@ export function LoginPage() {
 
     try {
       await insforgeReady;
-      const { error } = await insforge.auth.signInWithPassword({
+      const signInResult = await insforge.auth.signInWithPassword({
         email: normalizedEmail,
         password
       });
+      const { error } = signInResult;
 
       if (error) {
         handleSignInError(error);
         return;
+      }
+
+      const { accessToken, userId } = readAuthSession(signInResult);
+      if (accessToken) {
+        insforge.getHttpClient().setAuthToken(accessToken);
+      }
+
+      const currentSessionResult = await insforge.auth.getCurrentSession().catch(() => null);
+      const resolvedSession = currentSessionResult ?? signInResult;
+      const nextSession = readAuthSession(resolvedSession);
+      if (nextSession.accessToken) {
+        insforge.getHttpClient().setAuthToken(nextSession.accessToken);
+      }
+
+      const resolvedUserId = (nextSession.userId ?? userId) as UUID | null;
+      if (resolvedUserId) {
+        await redirectAfterLogin(resolvedUserId);
       }
     } catch (error) {
       handleSignInError(error);

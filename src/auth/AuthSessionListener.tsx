@@ -43,7 +43,7 @@ export function AuthSessionListener() {
           if (!existingMessage) {
             sessionStorage.setItem(
               SESSION_EXPIRED_MESSAGE_KEY,
-              'Your session expired due to inactivity. Please log in again.'
+              'Your session expired. Please log in again.'
             );
           }
         })();
