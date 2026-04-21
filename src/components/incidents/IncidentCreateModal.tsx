@@ -401,7 +401,14 @@ export function IncidentCreateModal(props: {
 
   useDraftRegistration({
     key: draftKey,
+    label: isEditing ? 'Incident Edit Form' : 'Incident Form',
     enabled: props.open && !isEditing,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: 'incidents',
+      formType: isEditing ? 'incident-edit' : 'incident-create',
+      linkedRecordId: editingIncident?.id ?? null
+    },
     isDirty: () => hasDirtyDraft,
     serialize: () => ({
       module,
@@ -463,7 +470,11 @@ export function IncidentCreateModal(props: {
         originalFileName: u.originalFileName,
         kind: u.kind
       }))
-    })
+    }),
+    hasPendingUploads: () =>
+      evidenceUploads.some((upload) => Boolean(upload.file)) ||
+      investigationUploads.some((upload) => Boolean(upload.file)),
+    pendingUploadsMessage: () => 'Re-select draft attachments if you restore this incident on another session.'
   });
 
   function releasePreviews(items: UploadDraft[]) {

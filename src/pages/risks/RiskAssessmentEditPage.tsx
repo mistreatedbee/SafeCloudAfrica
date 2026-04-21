@@ -355,7 +355,14 @@ export function RiskAssessmentEditPage() {
 
   useDraftRegistration({
     key: draftKey,
+    label: 'Risk Assessment',
     enabled: Boolean(user?.id) && !readOnly,
+    metadata: {
+      organizationId: activeCompanyId ?? null,
+      moduleName: 'risks',
+      formType: 'risk-assessment-edit',
+      linkedRecordId: id ?? null
+    },
     isDirty: () => hasDirtyDraft,
     serialize: () => ({ header, rows, docUrl, status }),
     flush: async () => {

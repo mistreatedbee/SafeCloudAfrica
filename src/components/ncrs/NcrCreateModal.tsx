@@ -6,6 +6,8 @@ import type { UUID, Severity } from '../../api/models/core';
 import { createQualityNcr, syncNcrEvidenceFromAttachments } from '../../api/services/qualityNcrsService';
 import { createEvidence } from '../../api/services/evidenceService';
 import { insforge } from '../../api/insforge/client';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type NcrSource = 'audit' | 'audit_finding' | 'incident' | 'complaint' | 'risk' | 'inspection' | 'pjo';
 type LinkedRequirementType = 'STANDARD' | 'POLICY' | 'PROCEDURE';
@@ -22,6 +24,8 @@ export function NcrCreateModal(props: {
   linkedSource?: { type: NcrSource; id?: string };
   onCreated?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `ncr-create:${props.companyId}:${props.createdByUserId}:${props.linkedSource?.id ?? 'new'}`;
   const [ncrNumber, setNcrNumber] = useState('');
   const [ncrDate, setNcrDate] = useState(new Date().toISOString().slice(0, 10));
   const [ncrTime, setNcrTime] = useState(new Date().toTimeString().slice(0, 5));
@@ -42,6 +46,8 @@ export function NcrCreateModal(props: {
   const [severity, setSeverity] = useState<Severity>('medium');
   const [evidenceBeforeFiles, setEvidenceBeforeFiles] = useState<File[]>([]);
   const [evidenceAfterFiles, setEvidenceAfterFiles] = useState<File[]>([]);
+  const [evidenceBeforeDraftNames, setEvidenceBeforeDraftNames] = useState<string[]>([]);
+  const [evidenceAfterDraftNames, setEvidenceAfterDraftNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,6 +99,8 @@ export function NcrCreateModal(props: {
     setter: React.Dispatch<React.SetStateAction<File[]>>
   ) => {
     if (!files) return;
+    if (setter === setEvidenceBeforeFiles) setEvidenceBeforeDraftNames([]);
+    if (setter === setEvidenceAfterFiles) setEvidenceAfterDraftNames([]);
     setter((prev) => [...prev, ...Array.from(files)]);
   };
 
@@ -101,7 +109,138 @@ export function NcrCreateModal(props: {
     setter: React.Dispatch<React.SetStateAction<File[]>>
   ) => {
     setter((prev) => prev.filter((_, i) => i !== index));
+    if (setter === setEvidenceBeforeFiles) setEvidenceBeforeDraftNames((prev) => prev.filter((_, i) => i !== index));
+    if (setter === setEvidenceAfterFiles) setEvidenceAfterDraftNames((prev) => prev.filter((_, i) => i !== index));
   };
+
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (ncrNumber.trim().length > 0 ||
+        title.trim().length > 0 ||
+        location.trim().length > 0 ||
+        department.trim().length > 0 ||
+        process.trim().length > 0 ||
+        activity.trim().length > 0 ||
+        responsibleRole.trim().length > 0 ||
+        linkedRequirement.trim().length > 0 ||
+        rootCause.trim().length > 0 ||
+        correctiveActions.trim().length > 0 ||
+        responsiblePerson.trim().length > 0 ||
+        evidenceBeforeFiles.length > 0 ||
+        evidenceAfterFiles.length > 0 ||
+        evidenceBeforeDraftNames.length > 0 ||
+        evidenceAfterDraftNames.length > 0),
+    [
+      activity,
+      correctiveActions,
+      department,
+      evidenceAfterDraftNames.length,
+      evidenceAfterFiles.length,
+      evidenceBeforeDraftNames.length,
+      evidenceBeforeFiles.length,
+      linkedRequirement,
+      location,
+      ncrNumber,
+      process,
+      props.open,
+      responsiblePerson,
+      responsibleRole,
+      rootCause,
+      title
+    ]
+  );
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'NCR Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: 'quality',
+      formType: 'ncr-create',
+      linkedRecordId: props.linkedSource?.id ?? null
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      ncrNumber,
+      ncrDate,
+      ncrTime,
+      location,
+      department,
+      process,
+      activity,
+      responsibleRole,
+      linkedRequirementType,
+      linkedRequirement,
+      riskClassification,
+      rootCause,
+      rootCauseSelections,
+      correctiveActions,
+      responsiblePerson,
+      source,
+      title,
+      severity,
+      evidenceBeforeDraftNames: evidenceBeforeFiles.map((file) => file.name),
+      evidenceAfterDraftNames: evidenceAfterFiles.map((file) => file.name)
+    }),
+    hasPendingUploads: () =>
+      evidenceBeforeFiles.length > 0 ||
+      evidenceAfterFiles.length > 0 ||
+      evidenceBeforeDraftNames.length > 0 ||
+      evidenceAfterDraftNames.length > 0,
+    pendingUploadsMessage: () => 'Re-select evidence files if you restore this draft on another session.'
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      ncrNumber?: string;
+      ncrDate?: string;
+      ncrTime?: string;
+      location?: string;
+      department?: string;
+      process?: string;
+      activity?: string;
+      responsibleRole?: string;
+      linkedRequirementType?: LinkedRequirementType;
+      linkedRequirement?: string;
+      riskClassification?: RiskClassification;
+      rootCause?: string;
+      rootCauseSelections?: Record<string, string>;
+      correctiveActions?: string;
+      responsiblePerson?: string;
+      source?: NcrSource;
+      title?: string;
+      severity?: Severity;
+      evidenceBeforeDraftNames?: string[];
+      evidenceAfterDraftNames?: string[];
+    }>(draftKey);
+
+    if (!restored) return;
+    if (typeof restored.ncrNumber === 'string') setNcrNumber(restored.ncrNumber);
+    if (typeof restored.ncrDate === 'string') setNcrDate(restored.ncrDate);
+    if (typeof restored.ncrTime === 'string') setNcrTime(restored.ncrTime);
+    if (typeof restored.location === 'string') setLocation(restored.location);
+    if (typeof restored.department === 'string') setDepartment(restored.department);
+    if (typeof restored.process === 'string') setProcess(restored.process);
+    if (typeof restored.activity === 'string') setActivity(restored.activity);
+    if (typeof restored.responsibleRole === 'string') setResponsibleRole(restored.responsibleRole);
+    if (restored.linkedRequirementType) setLinkedRequirementType(restored.linkedRequirementType);
+    if (typeof restored.linkedRequirement === 'string') setLinkedRequirement(restored.linkedRequirement);
+    if (restored.riskClassification) setRiskClassification(restored.riskClassification);
+    if (typeof restored.rootCause === 'string') setRootCause(restored.rootCause);
+    if (restored.rootCauseSelections) setRootCauseSelections(restored.rootCauseSelections);
+    if (typeof restored.correctiveActions === 'string') setCorrectiveActions(restored.correctiveActions);
+    if (typeof restored.responsiblePerson === 'string') setResponsiblePerson(restored.responsiblePerson);
+    if (restored.source) setSource(restored.source);
+    if (typeof restored.title === 'string') setTitle(restored.title);
+    if (restored.severity) setSeverity(restored.severity);
+    setEvidenceBeforeFiles([]);
+    setEvidenceAfterFiles([]);
+    setEvidenceBeforeDraftNames(restored.evidenceBeforeDraftNames ?? []);
+    setEvidenceAfterDraftNames(restored.evidenceAfterDraftNames ?? []);
+  }, [draftKey, props.open, restoreDraft]);
 
   async function uploadEvidenceFiles(ncrId: UUID, files: File[], kind: 'BEFORE' | 'AFTER') {
     for (const file of files) {
@@ -192,6 +331,7 @@ export function NcrCreateModal(props: {
       await syncNcrEvidenceFromAttachments(props.companyId, created.id);
 
       props.onCreated?.();
+      clearDraft(draftKey);
       props.onClose();
       resetForm();
     } catch (err: any) {
@@ -222,6 +362,8 @@ export function NcrCreateModal(props: {
     setSeverity('medium');
     setEvidenceBeforeFiles([]);
     setEvidenceAfterFiles([]);
+    setEvidenceBeforeDraftNames([]);
+    setEvidenceAfterDraftNames([]);
   }
 
   if (!props.open) return null;
@@ -550,6 +692,11 @@ export function NcrCreateModal(props: {
                   ))}
                 </div>
               )}
+              {evidenceBeforeFiles.length === 0 && evidenceBeforeDraftNames.length > 0 && (
+                <div className="mt-2 rounded-lg border border-warning/30 bg-warning/5 p-2 text-xs text-warning">
+                  Re-select these draft files before submitting: {evidenceBeforeDraftNames.join(', ')}.
+                </div>
+              )}
             </div>
 
             <div>
@@ -578,6 +725,11 @@ export function NcrCreateModal(props: {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+              {evidenceAfterFiles.length === 0 && evidenceAfterDraftNames.length > 0 && (
+                <div className="mt-2 rounded-lg border border-warning/30 bg-warning/5 p-2 text-xs text-warning">
+                  Re-select these draft files before submitting: {evidenceAfterDraftNames.join(', ')}.
                 </div>
               )}
             </div>

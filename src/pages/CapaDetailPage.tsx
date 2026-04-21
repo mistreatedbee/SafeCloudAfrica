@@ -105,7 +105,14 @@ export function CapaDetailPage() {
 
   useDraftRegistration({
     key: draftKey,
+    label: 'CAPA Form',
     enabled: Boolean(user?.id) && editable,
+    metadata: {
+      organizationId: activeCompanyId ?? null,
+      moduleName: 'quality',
+      formType: isCreate ? 'capa-create' : 'capa-edit',
+      linkedRecordId: capaId ?? null
+    },
     isDirty: () => hasDirtyDraft,
     serialize: () => form
   });

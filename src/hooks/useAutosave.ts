@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AutosaveEngine } from '../services/autosave/AutosaveEngine';
 import { stableStringify } from '../services/autosave/stableStringify';
 
-export type AutosaveStatus = 'idle' | 'saving' | 'error';
+export type AutosaveStatus = 'idle' | 'pending' | 'saving' | 'error';
 
 export type UseAutosaveArgs<S> = {
   enabled: boolean;
@@ -90,6 +90,7 @@ export function useAutosave<S>(args: UseAutosaveArgs<S>) {
     if (prevKeyRef.current === snapshotKey) return;
     prevKeyRef.current = snapshotKey;
 
+    setStatus((current) => (current === 'saving' ? current : 'pending'));
     engine.schedule(snapshotKey, snapshot);
   }, [enabled, snapshotKey, snapshot]);
 

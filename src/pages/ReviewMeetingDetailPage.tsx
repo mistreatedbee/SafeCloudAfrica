@@ -284,7 +284,14 @@ export function ReviewMeetingDetailPage() {
 
   useDraftRegistration({
     key: draftKey,
+    label: 'Management Review Meeting',
     enabled: Boolean(user?.id) && !isLocked,
+    metadata: {
+      organizationId: activeCompanyId ?? null,
+      moduleName: 'quality',
+      formType: isCreate ? 'review-meeting-create' : 'review-meeting-edit',
+      linkedRecordId: meetingId ?? null
+    },
     isDirty: () => hasDirtyDraft,
     serialize: () => ({
       title,

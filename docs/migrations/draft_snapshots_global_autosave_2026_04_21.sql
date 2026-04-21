@@ -1,11 +1,5 @@
--- Global form draft persistence for autosave + recovery
---
--- This schema supports the platform-wide hybrid autosave flow:
--- - local draft snapshots for immediate crash/refresh protection
--- - server-side draft persistence for recovery after session expiry and cross-device continuity
---
--- The frontend can fall back to a smaller legacy row shape when these extra columns are
--- not yet present, but production should run this script so every draft has full metadata.
+-- Global autosave draft model upgrade
+-- Mirrors docs/draft-snapshots.sql so draft persistence can carry richer metadata.
 
 create table if not exists public.draft_snapshots (
   user_id uuid not null,
@@ -71,8 +65,3 @@ create policy draft_snapshots_delete_own
   on public.draft_snapshots
   for delete
   using (auth.uid() = user_id);
-
--- Optional cleanup task:
--- delete from public.draft_snapshots
--- where draft_status in ('submitted', 'discarded')
---    or last_saved_at < now() - interval '30 days';

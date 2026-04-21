@@ -143,7 +143,14 @@ export function RiskAssessmentCreatePage() {
 
   useDraftRegistration({
     key: draftKey,
+    label: 'Risk Assessment',
     enabled: Boolean(user?.id),
+    metadata: {
+      organizationId: activeCompanyId ?? null,
+      moduleName: 'risks',
+      formType: 'risk-assessment-create',
+      linkedRecordId: serverDraftAssessmentIdRef.current
+    },
     isDirty: () => hasDirtyDraft,
     serialize: () => ({ header, rows, docUrl }),
     flush: async () => {

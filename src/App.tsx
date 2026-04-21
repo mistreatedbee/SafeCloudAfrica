@@ -122,6 +122,7 @@ import { HoursWorkedPage } from './pages/management/HoursWorkedPage';
 import { OperationalInputsPage } from './pages/management/OperationalInputsPage';
 import { SELLABLE_FEATURE_ROUTE_PATHS } from './api/services/sellableFeaturesService';
 import { DraftManagerProvider } from './session/DraftManagerProvider';
+import { DraftExperience } from './session/DraftExperience';
 import { SessionManagerProvider } from './session/SessionManagerProvider';
 export function App() {
   return (
@@ -130,6 +131,7 @@ export function App() {
         <DraftManagerProvider>
           <SessionManagerProvider>
             <AuthSessionListener />
+            <DraftExperience />
             <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
