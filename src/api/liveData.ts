@@ -100,6 +100,7 @@ export function createFreshFetch(baseFetch: typeof fetch): typeof fetch {
     const headers = getNoStoreHeaders(init?.headers ?? request?.headers);
     const nextInit: RequestInit = {
       ...init,
+      credentials: init?.credentials ?? request?.credentials ?? 'include',
       cache: 'no-store',
       headers
     };
