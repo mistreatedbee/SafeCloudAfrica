@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useBeforeUnload, useBlocker } from 'react-router-dom';
+import React, { useMemo } from 'react';
+import { useBeforeUnload } from 'react-router-dom';
 import { useDraftManager } from './DraftManagerProvider';
 
 function formatSavedTime(value: number | null): string | null {
@@ -28,11 +28,15 @@ function getStatusCopy(input: {
 
   switch (input.status) {
     case 'pending':
-      return { title: 'Changes pending…', detail: 'Autosave will run in a moment.', tone: 'neutral' };
+      return { title: 'Changes pending...', detail: 'Autosave will run in a moment.', tone: 'neutral' };
     case 'saving-local':
-      return { title: 'Saving draft…', detail: 'Your latest changes are being protected locally.', tone: 'neutral' };
+      return { title: 'Saving draft...', detail: 'Your latest changes are being protected locally.', tone: 'neutral' };
     case 'syncing-server':
-      return { title: 'Syncing draft…', detail: savedTime ? `Last local save ${savedTime}.` : 'Saving to the server in the background.', tone: 'neutral' };
+      return {
+        title: 'Syncing draft...',
+        detail: savedTime ? `Last local save ${savedTime}.` : 'Saving to the server in the background.',
+        tone: 'neutral'
+      };
     case 'saved-server':
       return { title: 'Draft saved', detail: savedTime ? `Last saved at ${savedTime}.` : 'Draft saved successfully.', tone: 'success' };
     case 'saved-local':
@@ -65,7 +69,6 @@ function toneClasses(tone: 'neutral' | 'success' | 'warning' | 'danger'): string
 
 export function DraftExperience() {
   const { pendingPrompt, resolvePendingPrompt, primaryDraftState, shouldWarnOnNavigation } = useDraftManager();
-  const [showLeaveModal, setShowLeaveModal] = useState(false);
 
   useBeforeUnload(
     React.useCallback(
@@ -77,12 +80,6 @@ export function DraftExperience() {
       [shouldWarnOnNavigation]
     )
   );
-
-  const blocker = useBlocker(shouldWarnOnNavigation);
-
-  useEffect(() => {
-    if (blocker.state === 'blocked') setShowLeaveModal(true);
-  }, [blocker.state]);
 
   const copy = useMemo(() => {
     if (!primaryDraftState) return null;
@@ -131,45 +128,6 @@ export function DraftExperience() {
                 className="min-h-[44px] rounded-lg bg-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-600"
               >
                 Restore Draft
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showLeaveModal && blocker.state === 'blocked' && (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/45" />
-          <div className="relative w-full max-w-md rounded-2xl border border-surface-300 bg-white p-5 shadow-2xl">
-            <h2 className="text-lg font-semibold text-charcoal">Leave This Form?</h2>
-            <p className="mt-2 text-sm text-charcoal-600">
-              Your latest changes are still being saved. Are you sure you want to leave this page?
-            </p>
-            {primaryDraftState?.hasPendingUploads && (
-              <p className="mt-2 text-sm text-warning">
-                Selected files are not fully protected until upload completes.
-              </p>
-            )}
-            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  blocker.reset();
-                  setShowLeaveModal(false);
-                }}
-                className="min-h-[44px] rounded-lg border border-surface-300 px-4 py-2 text-sm font-medium text-charcoal hover:bg-surface-50"
-              >
-                Stay Here
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  blocker.proceed();
-                  setShowLeaveModal(false);
-                }}
-                className="min-h-[44px] rounded-lg bg-critical px-4 py-2 text-sm font-semibold text-white hover:bg-critical-600"
-              >
-                Leave Page
               </button>
             </div>
           </div>
