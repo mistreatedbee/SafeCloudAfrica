@@ -69,7 +69,7 @@ function sanitizeRedirect(raw: string | null, fallback: string): string {
 }
 
 export function LoginPage() {
-  const { isLoaded, isSignedIn, signOut } = useAuth();
+  const { isLoaded, isSignedIn, signIn, signOut } = useAuth();
   const { user } = useUser();
   const { setActiveCompanyId, refreshTenant } = useTenant();
   const [searchParams] = useSearchParams();
@@ -200,11 +200,8 @@ export function LoginPage() {
 
     try {
       await insforgeReady;
-      const signInResult = await insforge.auth.signInWithPassword({
-        email: normalizedEmail,
-        password
-      });
-      const { error } = signInResult;
+      const signInResult = await signIn(normalizedEmail, password);
+      const error = (signInResult as any)?.error ?? null;
 
       if (error) {
         handleSignInError(error);
