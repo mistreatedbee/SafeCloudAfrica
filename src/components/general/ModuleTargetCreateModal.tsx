@@ -4,6 +4,8 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { ModuleKey, UUID } from '../../api/models/core';
 import { createModuleTarget } from '../../api/services/moduleTargetsService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function ModuleTargetCreateModal(props: {
   open: boolean;
@@ -13,6 +15,8 @@ export function ModuleTargetCreateModal(props: {
   module: ModuleKey;
   onCreated?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `module-target-create:${props.companyId}:${props.module}:${props.createdByUserId}`;
   const [name, setName] = useState('');
   const [currentValue, setCurrentValue] = useState('0');
   const [targetValue, setTargetValue] = useState('0');
@@ -22,6 +26,57 @@ export function ModuleTargetCreateModal(props: {
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => name.trim().length > 2, [name]);
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (name.trim().length > 0 || currentValue !== '0' || targetValue !== '0' || unit !== '%' || achieved),
+    [achieved, currentValue, name, props.open, targetValue, unit]
+  );
+
+  function resetForm() {
+    setName('');
+    setCurrentValue('0');
+    setTargetValue('0');
+    setUnit('%');
+    setAchieved(false);
+  }
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'Module Target Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: props.module,
+      formType: 'module-target-create'
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      name,
+      currentValue,
+      targetValue,
+      unit,
+      achieved
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      name?: string;
+      currentValue?: string;
+      targetValue?: string;
+      unit?: string;
+      achieved?: boolean;
+    }>(draftKey);
+
+    if (!restored) return;
+    setName(restored.name ?? '');
+    setCurrentValue(restored.currentValue ?? '0');
+    setTargetValue(restored.targetValue ?? '0');
+    setUnit(restored.unit ?? '%');
+    setAchieved(restored.achieved ?? false);
+  }, [draftKey, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,13 +94,10 @@ export function ModuleTargetCreateModal(props: {
         achieved,
         createdByUserId: props.createdByUserId
       });
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
-      setName('');
-      setCurrentValue('0');
-      setTargetValue('0');
-      setUnit('%');
-      setAchieved(false);
+      resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

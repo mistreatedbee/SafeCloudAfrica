@@ -6,6 +6,8 @@ import type { UUID } from '../../api/models/core';
 import type { PjoChecklistTemplate } from '../../api/models/entities';
 import { createPjo, listPjoTemplates } from '../../api/services/pjoService';
 import { useAsync } from '../../api/hooks/useAsync';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const REASONS = [
   'Effectiveness of training',
@@ -23,6 +25,8 @@ export function PjoCreateModal(props: {
   actorUserId: UUID;
   onCreated?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `pjo-create:${props.companyId}:${props.actorUserId}`;
   const [employeeName, setEmployeeName] = useState('');
   const [reasonPreset, setReasonPreset] = useState<(typeof REASONS)[number]>('Effectiveness of training');
   const [reasonOther, setReasonOther] = useState('');
@@ -59,6 +63,83 @@ export function PjoCreateModal(props: {
   const canSubmit = useMemo(() => {
     return employeeName.trim().length > 2 && reason.trim().length > 2 && jobObserved.trim().length > 2;
   }, [employeeName, jobObserved, reason]);
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (
+        employeeName.trim().length > 0 ||
+        reasonPreset !== 'Effectiveness of training' ||
+        reasonOther.trim().length > 0 ||
+        department.trim().length > 0 ||
+        site.trim().length > 0 ||
+        jobObserved.trim().length > 0 ||
+        templateId.length > 0 ||
+        nextPreset !== '3m' ||
+        observedAt !== new Date().toISOString().slice(0, 10)
+      ),
+    [department, employeeName, jobObserved, nextPreset, observedAt, props.open, reasonOther, reasonPreset, site, templateId]
+  );
+
+  function resetForm() {
+    setEmployeeName('');
+    setReasonPreset('Effectiveness of training');
+    setReasonOther('');
+    setDepartment('');
+    setSite('');
+    setJobObserved('');
+    setObservedAt(new Date().toISOString().slice(0, 10));
+    setNextPreset('3m');
+    setTemplateId('');
+  }
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'PJO Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: 'safety',
+      formType: 'pjo-create'
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      employeeName,
+      reasonPreset,
+      reasonOther,
+      department,
+      site,
+      jobObserved,
+      observedAt,
+      nextPreset,
+      templateId
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      employeeName?: string;
+      reasonPreset?: (typeof REASONS)[number];
+      reasonOther?: string;
+      department?: string;
+      site?: string;
+      jobObserved?: string;
+      observedAt?: string;
+      nextPreset?: '3m' | '6m' | '12m';
+      templateId?: string;
+    }>(draftKey);
+
+    if (!restored) return;
+    setEmployeeName(restored.employeeName ?? '');
+    setReasonPreset(restored.reasonPreset ?? 'Effectiveness of training');
+    setReasonOther(restored.reasonOther ?? '');
+    setDepartment(restored.department ?? '');
+    setSite(restored.site ?? '');
+    setJobObserved(restored.jobObserved ?? '');
+    setObservedAt(restored.observedAt ?? new Date().toISOString().slice(0, 10));
+    setNextPreset(restored.nextPreset ?? '3m');
+    setTemplateId(restored.templateId ?? '');
+  }, [draftKey, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -79,17 +160,10 @@ export function PjoCreateModal(props: {
         createdByUserId: props.actorUserId,
         templateId: templateId ? (templateId as UUID) : null
       });
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
-      setEmployeeName('');
-      setReasonPreset('Effectiveness of training');
-      setReasonOther('');
-      setDepartment('');
-      setSite('');
-      setJobObserved('');
-      setObservedAt(new Date().toISOString().slice(0, 10));
-      setNextPreset('3m');
-      setTemplateId('');
+      resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

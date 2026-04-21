@@ -4,6 +4,8 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { ModuleKey, UUID } from '../../api/models/core';
 import { createRisk } from '../../api/services/risksService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function RiskCreateModal(props: {
   open: boolean;
@@ -13,6 +15,8 @@ export function RiskCreateModal(props: {
   defaultModule?: ModuleKey;
   onCreated?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `risk-create:${props.companyId}:${props.createdByUserId}:${props.defaultModule ?? 'all'}`;
   const [module, setModule] = useState<ModuleKey>(props.defaultModule ?? 'safety');
   const [title, setTitle] = useState('');
   const [hazard, setHazard] = useState('');
@@ -23,6 +27,68 @@ export function RiskCreateModal(props: {
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => title.trim().length > 2, [title]);
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (
+        module !== (props.defaultModule ?? 'safety') ||
+        title.trim().length > 0 ||
+        hazard.trim().length > 0 ||
+        controls.trim().length > 0 ||
+        likelihood !== 3 ||
+        consequence !== 3
+      ),
+    [consequence, controls, hazard, likelihood, module, props.defaultModule, props.open, title]
+  );
+
+  function resetForm() {
+    setModule(props.defaultModule ?? 'safety');
+    setTitle('');
+    setHazard('');
+    setControls('');
+    setLikelihood(3);
+    setConsequence(3);
+  }
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'Risk Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: module,
+      formType: 'risk-create'
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      module,
+      title,
+      hazard,
+      controls,
+      likelihood,
+      consequence
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      module?: ModuleKey;
+      title?: string;
+      hazard?: string;
+      controls?: string;
+      likelihood?: number;
+      consequence?: number;
+    }>(draftKey);
+
+    if (!restored) return;
+    setModule(restored.module ?? (props.defaultModule ?? 'safety'));
+    setTitle(restored.title ?? '');
+    setHazard(restored.hazard ?? '');
+    setControls(restored.controls ?? '');
+    setLikelihood(restored.likelihood ?? 3);
+    setConsequence(restored.consequence ?? 3);
+  }, [draftKey, props.defaultModule, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -40,13 +106,10 @@ export function RiskCreateModal(props: {
         consequence,
         createdByUserId: props.createdByUserId
       });
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
-      setTitle('');
-      setHazard('');
-      setControls('');
-      setLikelihood(3);
-      setConsequence(3);
+      resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

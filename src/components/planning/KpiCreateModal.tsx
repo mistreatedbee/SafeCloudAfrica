@@ -4,6 +4,8 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { PlanningKpi, UUID } from '../../api/models/entities';
 import { createKpi } from '../../api/services/planningService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function KpiCreateModal(props: {
   open: boolean;
@@ -13,6 +15,8 @@ export function KpiCreateModal(props: {
   actorUserId: UUID;
   onCreated?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `kpi-create:${props.companyId}:${props.planId}:${props.actorUserId}`;
   const [name, setName] = useState('');
   const [currentValue, setCurrentValue] = useState('0');
   const [targetValue, setTargetValue] = useState('0');
@@ -22,6 +26,58 @@ export function KpiCreateModal(props: {
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => name.trim().length > 2, [name]);
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (name.trim().length > 0 || currentValue !== '0' || targetValue !== '0' || unit !== '%' || status !== 'on-track'),
+    [currentValue, name, props.open, status, targetValue, unit]
+  );
+
+  function resetForm() {
+    setName('');
+    setCurrentValue('0');
+    setTargetValue('0');
+    setUnit('%');
+    setStatus('on-track');
+  }
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'KPI Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: 'planning',
+      formType: 'kpi-create',
+      linkedRecordId: props.planId
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      name,
+      currentValue,
+      targetValue,
+      unit,
+      status
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      name?: string;
+      currentValue?: string;
+      targetValue?: string;
+      unit?: string;
+      status?: PlanningKpi['status'];
+    }>(draftKey);
+
+    if (!restored) return;
+    setName(restored.name ?? '');
+    setCurrentValue(restored.currentValue ?? '0');
+    setTargetValue(restored.targetValue ?? '0');
+    setUnit(restored.unit ?? '%');
+    setStatus(restored.status ?? 'on-track');
+  }, [draftKey, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,13 +95,10 @@ export function KpiCreateModal(props: {
         status,
         actorUserId: props.actorUserId
       });
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
-      setName('');
-      setCurrentValue('0');
-      setTargetValue('0');
-      setUnit('%');
-      setStatus('on-track');
+      resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

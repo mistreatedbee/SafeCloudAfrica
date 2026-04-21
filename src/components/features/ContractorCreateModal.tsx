@@ -4,6 +4,8 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { Contractor, UUID } from '../../api/models/entities';
 import { createContractor } from '../../api/services/contractorsService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function ContractorCreateModal(props: {
   open: boolean;
@@ -12,12 +14,51 @@ export function ContractorCreateModal(props: {
   createdByUserId: UUID;
   onCreated?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `contractor-create:${props.companyId}:${props.createdByUserId}`;
   const [name, setName] = useState('');
   const [status, setStatus] = useState<Contractor['status']>('pending');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => name.trim().length > 2, [name]);
+  const hasDirtyDraft = useMemo(
+    () => props.open && (name.trim().length > 0 || status !== 'pending'),
+    [name, props.open, status]
+  );
+
+  function resetForm() {
+    setName('');
+    setStatus('pending');
+  }
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'Contractor Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: 'general',
+      formType: 'contractor-create'
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      name,
+      status
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      name?: string;
+      status?: Contractor['status'];
+    }>(draftKey);
+
+    if (!restored) return;
+    setName(restored.name ?? '');
+    setStatus(restored.status ?? 'pending');
+  }, [draftKey, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,10 +72,10 @@ export function ContractorCreateModal(props: {
         status,
         createdByUserId: props.createdByUserId
       });
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
-      setName('');
-      setStatus('pending');
+      resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

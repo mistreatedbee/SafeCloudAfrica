@@ -4,6 +4,8 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { BbsObservation, UUID } from '../../api/models/entities';
 import { createBbsObservation } from '../../api/services/bbsService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function BbsObservationCreateModal(props: {
   open: boolean;
@@ -12,6 +14,8 @@ export function BbsObservationCreateModal(props: {
   createdByUserId: UUID;
   onCreated?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `bbs-observation-create:${props.companyId}:${props.createdByUserId}`;
   const [type, setType] = useState<BbsObservation['type']>('positive');
   const [title, setTitle] = useState('');
   const [area, setArea] = useState('');
@@ -20,6 +24,53 @@ export function BbsObservationCreateModal(props: {
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => title.trim().length > 2, [title]);
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (type !== 'positive' || title.trim().length > 0 || area.trim().length > 0 || status !== 'logged'),
+    [area, props.open, status, title, type]
+  );
+
+  function resetForm() {
+    setTitle('');
+    setArea('');
+    setType('positive');
+    setStatus('logged');
+  }
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'BBS Observation Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: 'safety',
+      formType: 'bbs-observation-create'
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      type,
+      title,
+      area,
+      status
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      type?: BbsObservation['type'];
+      title?: string;
+      area?: string;
+      status?: BbsObservation['status'];
+    }>(draftKey);
+
+    if (!restored) return;
+    setType(restored.type ?? 'positive');
+    setTitle(restored.title ?? '');
+    setArea(restored.area ?? '');
+    setStatus(restored.status ?? 'logged');
+  }, [draftKey, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,12 +86,10 @@ export function BbsObservationCreateModal(props: {
         status,
         createdByUserId: props.createdByUserId
       });
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
-      setTitle('');
-      setArea('');
-      setType('positive');
-      setStatus('logged');
+      resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

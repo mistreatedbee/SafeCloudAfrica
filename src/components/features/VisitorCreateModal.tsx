@@ -4,6 +4,8 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { Visitor, UUID } from '../../api/models/entities';
 import { createVisitor } from '../../api/services/visitorsService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function VisitorCreateModal(props: {
   open: boolean;
@@ -12,6 +14,8 @@ export function VisitorCreateModal(props: {
   createdByUserId: UUID;
   onCreated?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `visitor-create:${props.companyId}:${props.createdByUserId}`;
   const [name, setName] = useState('');
   const [status, setStatus] = useState<Visitor['status']>('scheduled');
   const [briefing, setBriefing] = useState<Visitor['briefing']>('pending');
@@ -19,6 +23,47 @@ export function VisitorCreateModal(props: {
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => name.trim().length > 2, [name]);
+  const hasDirtyDraft = useMemo(
+    () => props.open && (name.trim().length > 0 || status !== 'scheduled' || briefing !== 'pending'),
+    [briefing, name, props.open, status]
+  );
+
+  function resetForm() {
+    setName('');
+    setStatus('scheduled');
+    setBriefing('pending');
+  }
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'Visitor Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: 'security',
+      formType: 'visitor-create'
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      name,
+      status,
+      briefing
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      name?: string;
+      status?: Visitor['status'];
+      briefing?: Visitor['briefing'];
+    }>(draftKey);
+
+    if (!restored) return;
+    setName(restored.name ?? '');
+    setStatus(restored.status ?? 'scheduled');
+    setBriefing(restored.briefing ?? 'pending');
+  }, [draftKey, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,11 +78,10 @@ export function VisitorCreateModal(props: {
         briefing,
         createdByUserId: props.createdByUserId
       });
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
-      setName('');
-      setStatus('scheduled');
-      setBriefing('pending');
+      resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

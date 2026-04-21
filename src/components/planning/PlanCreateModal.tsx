@@ -4,6 +4,8 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { PlanningPlan, UUID } from '../../api/models/entities';
 import { createPlan } from '../../api/services/planningService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function PlanCreateModal(props: {
   open: boolean;
@@ -12,6 +14,8 @@ export function PlanCreateModal(props: {
   createdByUserId: UUID;
   onCreated?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `plan-create:${props.companyId}:${props.createdByUserId}`;
   const [name, setName] = useState('');
   const [period, setPeriod] = useState<PlanningPlan['period']>('monthly');
   const [status, setStatus] = useState<PlanningPlan['status']>('draft');
@@ -19,6 +23,47 @@ export function PlanCreateModal(props: {
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => name.trim().length > 2, [name]);
+  const hasDirtyDraft = useMemo(
+    () => props.open && (name.trim().length > 0 || period !== 'monthly' || status !== 'draft'),
+    [name, period, props.open, status]
+  );
+
+  function resetForm() {
+    setName('');
+    setPeriod('monthly');
+    setStatus('draft');
+  }
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'Planning Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: 'planning',
+      formType: 'plan-create'
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      name,
+      period,
+      status
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      name?: string;
+      period?: PlanningPlan['period'];
+      status?: PlanningPlan['status'];
+    }>(draftKey);
+
+    if (!restored) return;
+    setName(restored.name ?? '');
+    setPeriod(restored.period ?? 'monthly');
+    setStatus(restored.status ?? 'draft');
+  }, [draftKey, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,11 +78,10 @@ export function PlanCreateModal(props: {
         status,
         createdByUserId: props.createdByUserId
       });
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
-      setName('');
-      setPeriod('monthly');
-      setStatus('draft');
+      resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

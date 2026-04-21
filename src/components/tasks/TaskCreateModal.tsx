@@ -11,6 +11,8 @@ import { listCompanyMemberships } from '../../api/services/tenantService';
 import type { UserProfile } from '../../api/models/entities';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { TASK_SOURCE_ENTITY_LABELS } from '../../api/constants/taskLabels';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 const SOURCE_ENTITY_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'None' },
@@ -30,6 +32,8 @@ export function TaskCreateModal(props: {
   defaultModule?: ModuleKey;
   onCreated?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `task-create:${props.companyId}:${props.createdByUserId}:${props.defaultModule ?? 'all'}`;
   const [module, setModule] = useState<ModuleKey>(props.defaultModule ?? 'safety');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -109,6 +113,131 @@ export function TaskCreateModal(props: {
   }, [assigneeTasks]);
 
   const canSubmit = useMemo(() => title.trim().length > 2, [title]);
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (
+        title.trim().length > 0 ||
+        description.trim().length > 0 ||
+        category.length > 0 ||
+        riskLevel.length > 0 ||
+        plannedStartDate.length > 0 ||
+        plannedCompletionDate.length > 0 ||
+        estimatedHours.length > 0 ||
+        dueAt.length > 0 ||
+        assigneeUserId.length > 0 ||
+        taskOwnerUserId.length > 0 ||
+        supportingTeamUserIds.length > 0 ||
+        sourceEntityType.length > 0 ||
+        sourceEntityId.trim().length > 0 ||
+        module !== (props.defaultModule ?? 'safety') ||
+        priority !== 'medium'
+      ),
+    [
+      assigneeUserId,
+      category,
+      description,
+      dueAt,
+      estimatedHours,
+      module,
+      plannedCompletionDate,
+      plannedStartDate,
+      priority,
+      props.defaultModule,
+      props.open,
+      riskLevel,
+      sourceEntityId,
+      sourceEntityType,
+      supportingTeamUserIds.length,
+      taskOwnerUserId,
+      title
+    ]
+  );
+
+  function resetForm() {
+    setTitle('');
+    setDescription('');
+    setPriority('medium');
+    setCategory('');
+    setRiskLevel('');
+    setPlannedStartDate('');
+    setPlannedCompletionDate('');
+    setEstimatedHours('');
+    setDueAt('');
+    setAssigneeUserId('');
+    setTaskOwnerUserId('');
+    setSupportingTeamUserIds([]);
+    setSourceEntityType('');
+    setSourceEntityId('');
+    setModule(props.defaultModule ?? 'safety');
+  }
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'Task Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: module,
+      formType: 'task-create'
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      module,
+      title,
+      description,
+      priority,
+      category,
+      riskLevel,
+      plannedStartDate,
+      plannedCompletionDate,
+      estimatedHours,
+      dueAt,
+      assigneeUserId,
+      taskOwnerUserId,
+      supportingTeamUserIds,
+      sourceEntityType,
+      sourceEntityId
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      module?: ModuleKey;
+      title?: string;
+      description?: string;
+      priority?: Severity;
+      category?: typeof category;
+      riskLevel?: typeof riskLevel;
+      plannedStartDate?: string;
+      plannedCompletionDate?: string;
+      estimatedHours?: string;
+      dueAt?: string;
+      assigneeUserId?: UUID | '';
+      taskOwnerUserId?: UUID | '';
+      supportingTeamUserIds?: UUID[];
+      sourceEntityType?: string;
+      sourceEntityId?: string;
+    }>(draftKey);
+
+    if (!restored) return;
+    setModule(restored.module ?? (props.defaultModule ?? 'safety'));
+    setTitle(restored.title ?? '');
+    setDescription(restored.description ?? '');
+    setPriority(restored.priority ?? 'medium');
+    setCategory(restored.category ?? '');
+    setRiskLevel(restored.riskLevel ?? '');
+    setPlannedStartDate(restored.plannedStartDate ?? '');
+    setPlannedCompletionDate(restored.plannedCompletionDate ?? '');
+    setEstimatedHours(restored.estimatedHours ?? '');
+    setDueAt(restored.dueAt ?? '');
+    setAssigneeUserId(restored.assigneeUserId ?? '');
+    setTaskOwnerUserId(restored.taskOwnerUserId ?? '');
+    setSupportingTeamUserIds(restored.supportingTeamUserIds ?? []);
+    setSourceEntityType(restored.sourceEntityType ?? '');
+    setSourceEntityId(restored.sourceEntityId ?? '');
+  }, [draftKey, props.defaultModule, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -136,23 +265,10 @@ export function TaskCreateModal(props: {
         sourceEntityId: sourceEntityId.trim() ? (sourceEntityId.trim() as UUID) : undefined,
         createdByUserId: props.createdByUserId
       });
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
-      setTitle('');
-      setDescription('');
-      setPriority('medium');
-      setCategory('');
-      setRiskLevel('');
-      setPlannedStartDate('');
-      setPlannedCompletionDate('');
-      setEstimatedHours('');
-      setDueAt('');
-      setAssigneeUserId('');
-      setTaskOwnerUserId('');
-      setSupportingTeamUserIds([]);
-      setSourceEntityType('');
-      setSourceEntityId('');
-      setModule(props.defaultModule ?? 'safety');
+      resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

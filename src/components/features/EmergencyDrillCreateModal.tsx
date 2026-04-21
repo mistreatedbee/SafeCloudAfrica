@@ -4,6 +4,8 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { EmergencyDrill, UUID } from '../../api/models/entities';
 import { createEmergencyDrill } from '../../api/services/emergencyDrillsService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function EmergencyDrillCreateModal(props: {
   open: boolean;
@@ -12,6 +14,8 @@ export function EmergencyDrillCreateModal(props: {
   createdByUserId: UUID;
   onCreated?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `emergency-drill-create:${props.companyId}:${props.createdByUserId}`;
   const [name, setName] = useState('');
   const [drillDate, setDrillDate] = useState('');
   const [status, setStatus] = useState<EmergencyDrill['status']>('scheduled');
@@ -20,6 +24,53 @@ export function EmergencyDrillCreateModal(props: {
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => name.trim().length > 2 && !!drillDate, [drillDate, name]);
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (name.trim().length > 0 || drillDate.length > 0 || status !== 'scheduled' || notes.trim().length > 0),
+    [drillDate, name, notes, props.open, status]
+  );
+
+  function resetForm() {
+    setName('');
+    setDrillDate('');
+    setStatus('scheduled');
+    setNotes('');
+  }
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'Emergency Drill Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: 'safety',
+      formType: 'emergency-drill-create'
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      name,
+      drillDate,
+      status,
+      notes
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      name?: string;
+      drillDate?: string;
+      status?: EmergencyDrill['status'];
+      notes?: string;
+    }>(draftKey);
+
+    if (!restored) return;
+    setName(restored.name ?? '');
+    setDrillDate(restored.drillDate ?? '');
+    setStatus(restored.status ?? 'scheduled');
+    setNotes(restored.notes ?? '');
+  }, [draftKey, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,12 +86,10 @@ export function EmergencyDrillCreateModal(props: {
         notes: notes.trim() || undefined,
         createdByUserId: props.createdByUserId
       });
+      clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
-      setName('');
-      setDrillDate('');
-      setStatus('scheduled');
-      setNotes('');
+      resetForm();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {

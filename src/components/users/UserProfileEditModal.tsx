@@ -7,6 +7,8 @@ import { adminUpdateEmployeeNumber, upsertUserProfileAsManager } from '../../api
 import { useAsync } from '../../api/hooks/useAsync';
 import { listSites } from '../../api/services/sitesService';
 import { listDepartments } from '../../api/services/departmentsService';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 export function UserProfileEditModal(props: {
   open: boolean;
@@ -17,6 +19,8 @@ export function UserProfileEditModal(props: {
   canEditEmployeeId?: boolean;
   onSaved?: () => void;
 }) {
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `user-profile-edit:${props.companyId}:${props.userId}`;
   const [fullName, setFullName] = useState(props.initial?.full_name ?? '');
   const [email, setEmail] = useState(props.initial?.email ?? '');
   const [phone, setPhone] = useState(props.initial?.phone ?? '');
@@ -35,6 +39,107 @@ export function UserProfileEditModal(props: {
 
   const canSubmit = useMemo(() => fullName.trim().length > 1 || email.trim().length > 3, [email, fullName]);
   const canSubmitEmployeeNumber = !!(props.canEditEmployeeId && editEmployeeNumber && employeeNumberDraft.trim());
+  const hasDirtyDraft = useMemo(
+    () =>
+      props.open &&
+      (
+        fullName !== (props.initial?.full_name ?? '') ||
+        email !== (props.initial?.email ?? '') ||
+        phone !== (props.initial?.phone ?? '') ||
+        department !== (props.initial?.department ?? '') ||
+        site !== (props.initial?.site ?? '') ||
+        siteId !== String(props.initial?.site_id ?? '') ||
+        departmentId !== String(props.initial?.department_id ?? '') ||
+        employeeNumberDraft !== (props.initial?.employee_number ?? '') ||
+        editEmployeeNumber
+      ),
+    [
+      department,
+      departmentId,
+      editEmployeeNumber,
+      email,
+      employeeNumberDraft,
+      fullName,
+      phone,
+      props.initial?.department,
+      props.initial?.department_id,
+      props.initial?.email,
+      props.initial?.employee_number,
+      props.initial?.full_name,
+      props.initial?.phone,
+      props.initial?.site,
+      props.initial?.site_id,
+      props.open,
+      site,
+      siteId
+    ]
+  );
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'User Profile Form',
+    enabled: props.open,
+    metadata: {
+      organizationId: props.companyId,
+      moduleName: 'hr',
+      formType: 'user-profile-edit',
+      linkedRecordId: props.userId
+    },
+    isDirty: () => hasDirtyDraft,
+    serialize: () => ({
+      fullName,
+      email,
+      phone,
+      department,
+      site,
+      siteId,
+      departmentId,
+      employeeNumber,
+      employeeNumberDraft,
+      editEmployeeNumber
+    })
+  });
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const restored = restoreDraft<{
+      fullName?: string;
+      email?: string;
+      phone?: string;
+      department?: string;
+      site?: string;
+      siteId?: string;
+      departmentId?: string;
+      employeeNumber?: string;
+      employeeNumberDraft?: string;
+      editEmployeeNumber?: boolean;
+    }>(draftKey);
+
+    if (restored) {
+      setFullName(restored.fullName ?? '');
+      setEmail(restored.email ?? '');
+      setPhone(restored.phone ?? '');
+      setDepartment(restored.department ?? '');
+      setSite(restored.site ?? '');
+      setSiteId(restored.siteId ?? '');
+      setDepartmentId(restored.departmentId ?? '');
+      setEmployeeNumber(restored.employeeNumber ?? (props.initial?.employee_number ?? ''));
+      setEmployeeNumberDraft(restored.employeeNumberDraft ?? (props.initial?.employee_number ?? ''));
+      setEditEmployeeNumber(restored.editEmployeeNumber ?? false);
+      return;
+    }
+
+    setFullName(props.initial?.full_name ?? '');
+    setEmail(props.initial?.email ?? '');
+    setPhone(props.initial?.phone ?? '');
+    setDepartment(props.initial?.department ?? '');
+    setSite(props.initial?.site ?? '');
+    setSiteId(String(props.initial?.site_id ?? ''));
+    setDepartmentId(String(props.initial?.department_id ?? ''));
+    setEmployeeNumber(props.initial?.employee_number ?? '');
+    setEmployeeNumberDraft(props.initial?.employee_number ?? '');
+    setEditEmployeeNumber(false);
+  }, [draftKey, props.initial, props.open, restoreDraft]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +170,7 @@ export function UserProfileEditModal(props: {
         department: department.trim() || null,
         site: site.trim() || null
       });
+      clearDraft(draftKey);
       props.onSaved?.();
       props.onClose();
     } catch (err: any) {
