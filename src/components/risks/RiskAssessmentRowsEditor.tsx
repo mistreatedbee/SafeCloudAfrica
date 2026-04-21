@@ -23,6 +23,8 @@ export type RiskDraftRow = {
 const inputTable = 'px-2 py-1 border border-surface-300 rounded text-sm';
 const inputCard = 'w-full min-h-[44px] px-3 py-2 border border-surface-300 rounded-lg text-sm bg-white';
 const labelCard = 'text-xs font-medium text-charcoal-500 mb-1';
+const tableHeaderCell = 'px-3 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase align-top whitespace-normal min-w-[120px]';
+const tableDataCell = 'px-3 py-3 align-top whitespace-normal';
 
 type Props = {
   type: RiskAssessmentType;
@@ -47,12 +49,12 @@ function JsonCellTable(props: {
   const { type, col, row, readOnly, onUpdateRow } = props;
   if (type === 'prework' && col.key === 'quick_rating') {
     return (
-      <td className="px-3 py-2">
+      <td className={tableDataCell}>
         <select
           disabled={readOnly}
           value={String(row.json_data.quick_rating ?? 'Medium')}
           onChange={(e) => onUpdateRow(row.localId, { json_data: { ...row.json_data, quick_rating: e.target.value } })}
-          className={inputTable}
+          className={`${inputTable} w-full min-w-[160px]`}
         >
           <option>Low</option>
           <option>Medium</option>
@@ -63,13 +65,13 @@ function JsonCellTable(props: {
   }
 
   return (
-    <td className="px-3 py-2">
+    <td className={tableDataCell}>
       <input
         disabled={readOnly}
         type={col.kind === 'date' ? 'date' : 'text'}
         value={String(row.json_data[col.key] ?? '')}
         onChange={(e) => onUpdateRow(row.localId, { json_data: { ...row.json_data, [col.key]: e.target.value } })}
-        className={`${inputTable} md:min-w-[180px]`}
+        className={`${inputTable} w-full min-w-[160px]`}
       />
     </td>
   );
@@ -133,7 +135,7 @@ function ResidualCellTable(props: {
   const { row, readOnly, allowResidualEditing, onUpdateRow } = props;
   if (allowResidualEditing) {
     return (
-      <td className="px-3 py-2">
+      <td className={tableDataCell}>
         <div className="flex items-center gap-1 text-sm flex-wrap">
           <input
             disabled={readOnly}
@@ -167,7 +169,7 @@ function ResidualCellTable(props: {
   }
 
   return (
-    <td className="px-3 py-2">
+    <td className={tableDataCell}>
       <span className="text-sm">
         {`${row.residual_severity ?? '-'} / ${row.residual_likelihood ?? '-'} / ${row.residual_rr ?? '-'} / ${row.residual_index ?? '-'}`}
       </span>
@@ -236,18 +238,18 @@ function RawScoringHeaders(props: { variant: 'compact' | 'separate' }) {
   if (props.variant === 'compact') {
     return (
       <>
-        <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">SL</th>
-        <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">RR</th>
-        <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Index</th>
+        <th className={tableHeaderCell}>SL</th>
+        <th className={tableHeaderCell}>RR</th>
+        <th className={tableHeaderCell}>Index</th>
       </>
     );
   }
   return (
     <>
-      <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">S</th>
-      <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">L</th>
-      <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">S*L</th>
-      <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Index</th>
+      <th className={tableHeaderCell}>S</th>
+      <th className={tableHeaderCell}>L</th>
+      <th className={tableHeaderCell}>S*L</th>
+      <th className={tableHeaderCell}>Index</th>
     </>
   );
 }
@@ -262,7 +264,7 @@ function RawScoringCellsTable(props: {
   if (variant === 'compact') {
     return (
       <>
-        <td className="px-3 py-2">
+        <td className={tableDataCell}>
           <div className="flex items-center gap-1">
             <input
               disabled={readOnly}
@@ -288,15 +290,15 @@ function RawScoringCellsTable(props: {
             />
           </div>
         </td>
-        <td className="px-3 py-2 text-sm">{row.raw_rr ?? '-'}</td>
-        <td className="px-3 py-2 text-sm">{row.raw_index ?? '-'}</td>
+        <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_rr ?? '-'}</td>
+        <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_index ?? '-'}</td>
       </>
     );
   }
 
   return (
     <>
-      <td className="px-3 py-2">
+      <td className={tableDataCell}>
         <input
           disabled={readOnly}
           type="number"
@@ -307,7 +309,7 @@ function RawScoringCellsTable(props: {
           className="w-14 px-2 py-1 border border-surface-300 rounded text-sm"
         />
       </td>
-      <td className="px-3 py-2">
+      <td className={tableDataCell}>
         <input
           disabled={readOnly}
           type="number"
@@ -318,8 +320,8 @@ function RawScoringCellsTable(props: {
           className="w-14 px-2 py-1 border border-surface-300 rounded text-sm"
         />
       </td>
-      <td className="px-3 py-2 text-sm">{row.raw_rr ?? '-'}</td>
-      <td className="px-3 py-2 text-sm">{row.raw_index ?? '-'}</td>
+      <td className={`${tableDataCell} text-sm min-w-[88px]`}>{row.raw_rr ?? '-'}</td>
+      <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_index ?? '-'}</td>
     </>
   );
 }
@@ -413,14 +415,14 @@ export function RiskAssessmentRowsEditor(props: Props) {
       </div>
 
       <div className="hidden md:block overflow-x-auto">
-        <table className="min-w-full divide-y divide-surface-200">
+        <table className="min-w-full w-max table-auto divide-y divide-surface-200">
           <thead className="bg-surface-50">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">#</th>
+              <th className={`${tableHeaderCell} min-w-[64px]`}>#</th>
               {layout.map((item, idx) => {
                 if (item.kind === 'data') {
                   return (
-                    <th key={item.col.key} className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">
+                    <th key={item.col.key} className={tableHeaderCell}>
                       {item.col.label}
                     </th>
                   );
@@ -434,20 +436,20 @@ export function RiskAssessmentRowsEditor(props: Props) {
                 }
                 if (item.kind === 'residual' && showResidualCol) {
                   return (
-                    <th key={`residual-${idx}`} className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">
+                    <th key={`residual-${idx}`} className={tableHeaderCell}>
                       Residual
                     </th>
                   );
                 }
                 return null;
               })}
-              <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Row Actions</th>
+              <th className={`${tableHeaderCell} min-w-[172px]`}>Row Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-200">
             {rows.map((row, idx) => (
               <tr key={row.localId}>
-                <td className="px-3 py-2 text-sm">{idx + 1}</td>
+                <td className={`${tableDataCell} text-sm font-medium text-charcoal`}>{idx + 1}</td>
                 {layout.map((item, itemIdx) => {
                   if (item.kind === 'data') {
                     return (
@@ -481,7 +483,7 @@ export function RiskAssessmentRowsEditor(props: Props) {
                   }
                   return null;
                 })}
-                <td className="px-3 py-2">
+                <td className={tableDataCell}>
                   {!readOnly && (
                     <div className="flex flex-col items-start gap-1 text-xs">
                       <div className="flex flex-wrap gap-1">
@@ -525,7 +527,7 @@ export function RiskAssessmentRowsEditor(props: Props) {
 
       <div className="md:hidden p-4 space-y-4">
         {rows.map((row, idx) => (
-          <div key={row.localId} className="rounded-xl border border-surface-200 p-4 space-y-4 bg-surface-50/30">
+          <div key={row.localId} className="rounded-xl border border-surface-200 p-4 space-y-4 bg-surface-50/30 overflow-hidden">
             <p className="text-sm font-semibold text-charcoal">Row {idx + 1}</p>
             <div className="space-y-3">
               {layout.map((item, itemIdx) => {

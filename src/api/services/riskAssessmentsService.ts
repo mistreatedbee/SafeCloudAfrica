@@ -2,6 +2,7 @@ import { insforge } from '../insforge/client';
 import { getErrorMessage } from '../insforge/errors';
 import type { CompanyRole, UUID } from '../models/core';
 import { createActivityLog } from './activityLogService';
+import { mapTypeToLegacyAssessmentType } from '../../utils/riskAssessmentLegacy';
 
 export type RiskAssessmentType = 'baseline' | 'task' | 'critical' | 'prework';
 export type RiskAssessmentStatus = 'draft' | 'submitted' | 'closed';
@@ -333,7 +334,7 @@ export async function createRiskAssessment(input: {
     .insert({
       company_id: input.companyId,
       type: input.type,
-      assessment_type: input.type === 'baseline' ? 'baseline' : 'task-based',
+      assessment_type: mapTypeToLegacyAssessmentType(input.type),
       is_critical: input.type === 'critical',
       is_prework: input.type === 'prework',
       title: input.title,
@@ -412,7 +413,7 @@ export async function updateRiskAssessment(input: {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.patch.type !== undefined) {
     patch.type = input.patch.type;
-    patch.assessment_type = input.patch.type === 'baseline' ? 'baseline' : 'task-based';
+    patch.assessment_type = mapTypeToLegacyAssessmentType(input.patch.type);
     patch.is_critical = input.patch.type === 'critical';
     patch.is_prework = input.patch.type === 'prework';
   }

@@ -16,7 +16,7 @@ export function columnsForType(type: RiskAssessmentType): RiskTableColumn[] {
       { key: 'activity_process_operation', label: 'Activity/Process/Operation' },
       { key: 'aspect_hazard_flaw', label: 'Aspect/Hazard/Flaw' },
       { key: 'potential_risk', label: 'Potential Risk' },
-      { key: 'risk_type', label: 'Type of Risk' },
+      { key: 'risk_type', label: 'Risk Type' },
       { key: 'existing_controls', label: 'Existing Controls' },
       { key: 'current_year_nonconformances', label: 'Current Year Non-conformances' },
       { key: 'additional_controls', label: 'Additional Controls' },
@@ -30,7 +30,7 @@ export function columnsForType(type: RiskAssessmentType): RiskTableColumn[] {
     return [
       { key: 'hazard', label: 'Hazard' },
       { key: 'risk', label: 'Risk' },
-      { key: 'at_risk_person', label: 'At-risk Person' },
+      { key: 'at_risk_person', label: 'At Risk Person' },
       { key: 'existing_controls', label: 'Existing Controls' },
       { key: 'additional_controls', label: 'Additional Controls' },
       { key: 'by_who', label: 'By Who' },
@@ -51,6 +51,7 @@ export function columnsForType(type: RiskAssessmentType): RiskTableColumn[] {
   return [
     { key: 'hazard', label: 'Hazard' },
     { key: 'risk', label: 'Risk' },
+    { key: 'risk_type', label: 'Risk Type' },
     { key: 'quick_rating', label: 'Risk Rating (L/M/H)' },
     { key: 'control_measures', label: 'Control Measures' }
   ];

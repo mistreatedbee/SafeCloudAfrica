@@ -28,6 +28,9 @@ import { getPublicUrl } from '../../api/services/storageService';
 import { columnsForType, typeLabel } from './riskTemplates';
 import { buildRiskTableLayout } from '../../utils/riskTableLayout';
 
+const tableHeaderCell = 'px-3 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase align-top whitespace-normal min-w-[120px]';
+const tableDataCell = 'px-3 py-3 align-top whitespace-normal';
+
 function getScopeForActiveMembership(
   memberships: Array<{ company_id: UUID; site_id?: UUID | null; department_id?: UUID | null; consultant_scope?: any }> | undefined,
   companyId: UUID | null
@@ -349,14 +352,14 @@ export function RiskAssessmentDetailPage() {
 	            <div className="p-4 text-sm text-charcoal-500">No rows captured.</div>
 	          ) : (
 	            <div className="overflow-x-auto">
-	              <table className="min-w-full divide-y divide-surface-200">
+	              <table className="min-w-full w-max table-auto divide-y divide-surface-200">
 	                <thead className="bg-surface-50">
 	                  <tr>
-	                    <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">#</th>
+	                    <th className={`${tableHeaderCell} min-w-[64px]`}>#</th>
 	                    {tableLayout.map((item, idx) => {
 	                      if (item.kind === 'data') {
 	                        return (
-	                          <th key={item.col.key} className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">
+	                          <th key={item.col.key} className={tableHeaderCell}>
 	                            {item.col.label}
 	                          </th>
 	                        );
@@ -365,24 +368,24 @@ export function RiskAssessmentDetailPage() {
 	                        if (rawVariant === 'compact') {
 	                          return (
 	                            <React.Fragment key={`raw-${idx}`}>
-	                              <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">SL</th>
-	                              <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">RR</th>
-	                              <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Index</th>
+	                              <th className={tableHeaderCell}>SL</th>
+	                              <th className={tableHeaderCell}>RR</th>
+	                              <th className={tableHeaderCell}>Index</th>
 	                            </React.Fragment>
 	                          );
 	                        }
 	                        return (
 	                          <React.Fragment key={`raw-${idx}`}>
-	                            <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">S</th>
-	                            <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">L</th>
-	                            <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">S*L</th>
-	                            <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">Index</th>
+	                            <th className={tableHeaderCell}>S</th>
+	                            <th className={tableHeaderCell}>L</th>
+	                            <th className={tableHeaderCell}>S*L</th>
+	                            <th className={tableHeaderCell}>Index</th>
 	                          </React.Fragment>
 	                        );
 	                      }
 	                      if (item.kind === 'residual' && showResidualCol) {
 	                        return (
-	                          <th key={`residual-${idx}`} className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase">
+	                          <th key={`residual-${idx}`} className={tableHeaderCell}>
 	                            Residual
 	                          </th>
 	                        );
@@ -394,11 +397,11 @@ export function RiskAssessmentDetailPage() {
 	                <tbody className="divide-y divide-surface-200">
 	                  {rows.map((row, idx) => (
 	                    <tr key={row.id}>
-	                      <td className="px-3 py-2 text-sm">{idx + 1}</td>
+	                      <td className={`${tableDataCell} text-sm font-medium text-charcoal`}>{idx + 1}</td>
 	                      {tableLayout.map((item, itemIdx) => {
 	                        if (item.kind === 'data') {
 	                          return (
-	                            <td key={`${row.id}-${item.col.key}`} className="px-3 py-2 text-sm text-charcoal">
+	                            <td key={`${row.id}-${item.col.key}`} className={`${tableDataCell} text-sm text-charcoal min-w-[160px]`}>
 	                              {String(row.json_data?.[item.col.key] ?? '-')}
 	                            </td>
 	                          );
@@ -407,24 +410,24 @@ export function RiskAssessmentDetailPage() {
 	                          if (rawVariant === 'compact') {
 	                            return (
 	                              <React.Fragment key={`${row.id}-raw-${itemIdx}`}>
-	                                <td className="px-3 py-2 text-sm">{row.severity ?? '-'} / {row.likelihood ?? '-'}</td>
-	                                <td className="px-3 py-2 text-sm">{row.raw_rr ?? '-'}</td>
-	                                <td className="px-3 py-2 text-sm">{row.raw_index ?? '-'}</td>
+	                                <td className={`${tableDataCell} text-sm min-w-[120px]`}>{row.severity ?? '-'} / {row.likelihood ?? '-'}</td>
+	                                <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_rr ?? '-'}</td>
+	                                <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_index ?? '-'}</td>
 	                              </React.Fragment>
 	                            );
 	                          }
 	                          return (
 	                            <React.Fragment key={`${row.id}-raw-${itemIdx}`}>
-	                              <td className="px-3 py-2 text-sm">{row.severity ?? '-'}</td>
-	                              <td className="px-3 py-2 text-sm">{row.likelihood ?? '-'}</td>
-	                              <td className="px-3 py-2 text-sm">{row.raw_rr ?? '-'}</td>
-	                              <td className="px-3 py-2 text-sm">{row.raw_index ?? '-'}</td>
+	                              <td className={`${tableDataCell} text-sm min-w-[88px]`}>{row.severity ?? '-'}</td>
+	                              <td className={`${tableDataCell} text-sm min-w-[88px]`}>{row.likelihood ?? '-'}</td>
+	                              <td className={`${tableDataCell} text-sm min-w-[88px]`}>{row.raw_rr ?? '-'}</td>
+	                              <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_index ?? '-'}</td>
 	                            </React.Fragment>
 	                          );
 	                        }
 	                        if (item.kind === 'residual' && showResidualCol) {
 	                          return (
-	                            <td key={`${row.id}-residual-${itemIdx}`} className="px-3 py-2 text-sm">
+	                            <td key={`${row.id}-residual-${itemIdx}`} className={`${tableDataCell} text-sm min-w-[120px]`}>
 	                              {row.residual_rr ?? '-'} / {row.residual_index ?? '-'}
 	                            </td>
 	                          );

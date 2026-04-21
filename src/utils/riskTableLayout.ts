@@ -9,7 +9,12 @@ export type RiskTableLayoutItem =
 
 export function buildRiskTableLayout(type: RiskAssessmentType, columns: RiskTableColumnLike[]): RiskTableLayoutItem[] {
   const showResidual = type !== 'critical' && type !== 'prework';
-  const rawAfterKey = type === 'baseline' ? 'risk_type' : type === 'task' ? 'at_risk_person' : null;
+  const rawAfterKey =
+    type === 'baseline' || type === 'prework'
+      ? 'risk_type'
+      : type === 'task'
+        ? 'at_risk_person'
+        : null;
   const residualAfterKey = showResidual ? 'existing_controls' : null;
 
   const items: RiskTableLayoutItem[] = [];

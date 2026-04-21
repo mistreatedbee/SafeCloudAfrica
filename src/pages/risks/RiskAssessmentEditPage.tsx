@@ -532,7 +532,7 @@ export function RiskAssessmentEditPage() {
               onClick={() => void save('draft')}
               className="min-h-[44px] inline-flex items-center justify-center px-4 rounded-lg border border-charcoal-300 text-sm w-full sm:w-auto"
             >
-              {saving ? 'Saving...' : 'Save Draft'}
+              {saving ? 'Saving...' : 'Save as Draft'}
             </button>
           )}
           {!readOnly && (
