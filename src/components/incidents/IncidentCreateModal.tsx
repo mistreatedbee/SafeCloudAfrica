@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { XIcon, FileTextIcon, ImageIcon, Trash2Icon, ExternalLinkIcon, DownloadIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
@@ -23,7 +23,7 @@ import { createIncidentCorrectiveAction } from '../../api/services/incidentCorre
 import { createEvidence } from '../../api/services/evidenceService';
 import { uploadFile } from '../../api/services/storageService';
 import { AffectedPersonSelector } from './AffectedPersonSelector';
-import type { TimelineEvent } from './IncidentTimelineBuilder';
+import { IncidentTimelineBuilder, type TimelineEvent } from './IncidentTimelineBuilder';
 import { UserMultiSelect } from '../ui/UserMultiSelect';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
@@ -153,6 +153,16 @@ function makeCauseKey(group: string, item: string): string {
   return `${group}::${item}`;
 }
 
+function riskIndicatorClasses(level: 'Low' | 'Medium' | 'High'): string {
+  if (level === 'Low') return 'border-success/30 bg-success/10 text-success';
+  if (level === 'High') return 'border-critical/30 bg-critical/10 text-critical';
+  return 'border-warning/30 bg-warning/15 text-charcoal';
+}
+
+function incidentCloseWarningMessage(): string {
+  return 'You have unsaved changes. Are you sure you want to close?';
+}
+
 export function IncidentCreateModal(props: {
   open: boolean;
   onClose: () => void;
@@ -223,7 +233,9 @@ export function IncidentCreateModal(props: {
   const [rootCauseWorkplace, setRootCauseWorkplace] = useState<Record<string, CauseDetailEntry>>({});
   const [systemFailures, setSystemFailures] = useState<Record<string, CauseDetailEntry>>({});
   const [incidentTimelineEvents, setIncidentTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [riskProfile, setRiskProfile] = useState('');
   const [potentialConsequence, setPotentialConsequence] = useState('');
+  const [additionalImmediateCauseDetails, setAdditionalImmediateCauseDetails] = useState('');
   const [contributingFactors, setContributingFactors] = useState('');
   const [lessonsLearned, setLessonsLearned] = useState('');
   const [investigationTeam, setInvestigationTeam] = useState('');
@@ -238,6 +250,9 @@ export function IncidentCreateModal(props: {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const restoredDraftAppliedRef = useRef(false);
 
   const availableSubcategories = useMemo(() => {
     const baseCategories = (selectedCategories.length > 0 ? selectedCategories : [category]) as IncidentCategory[];
@@ -335,7 +350,9 @@ export function IncidentCreateModal(props: {
         Object.keys(rootCauseWorkplace).length > 0 ||
         Object.keys(systemFailures).length > 0 ||
         incidentTimelineEvents.length > 0 ||
+        riskProfile.trim().length > 0 ||
         potentialConsequence.trim().length > 0 ||
+        additionalImmediateCauseDetails.trim().length > 0 ||
         contributingFactors.trim().length > 0 ||
         lessonsLearned.trim().length > 0 ||
         investigationTeam.trim().length > 0 ||
@@ -377,6 +394,7 @@ export function IncidentCreateModal(props: {
       natureOfIncident,
       preparedBy,
       projectClient,
+      riskProfile,
       potentialConsequence,
       props.open,
       reportedBy,
@@ -395,6 +413,7 @@ export function IncidentCreateModal(props: {
       rootCauseHuman,
       rootCauseWorkplace,
       copyTo,
+      additionalImmediateCauseDetails,
       generateNcr
     ]
   );
@@ -402,7 +421,7 @@ export function IncidentCreateModal(props: {
   useDraftRegistration({
     key: draftKey,
     label: isEditing ? 'Incident Edit Form' : 'Incident Form',
-    enabled: props.open && !isEditing,
+    enabled: props.open,
     metadata: {
       organizationId: props.companyId,
       moduleName: 'incidents',
@@ -449,7 +468,9 @@ export function IncidentCreateModal(props: {
       rootCauseWorkplace,
       systemFailures,
       incidentTimelineEvents,
+      riskProfile,
       potentialConsequence,
+      additionalImmediateCauseDetails,
       contributingFactors,
       lessonsLearned,
       investigationTeam,
@@ -533,7 +554,9 @@ export function IncidentCreateModal(props: {
     setRootCauseWorkplace({});
     setSystemFailures({});
     setIncidentTimelineEvents([]);
+    setRiskProfile('');
     setPotentialConsequence('');
+    setAdditionalImmediateCauseDetails('');
     setContributingFactors('');
     setLessonsLearned('');
     setInvestigationTeam('');
@@ -545,10 +568,12 @@ export function IncidentCreateModal(props: {
     setEvidenceUploads([]);
     setInvestigationUploads([]);
     setError(null);
+    setSaveSuccess(null);
   }
 
   useEffect(() => {
     if (!props.open) return;
+    restoredDraftAppliedRef.current = false;
     if (!editingIncident) {
       const restored = restoreDraft<{
         module?: ModuleKey;
@@ -589,7 +614,9 @@ export function IncidentCreateModal(props: {
         rootCauseWorkplace?: Record<string, CauseDetailEntry>;
         systemFailures?: Record<string, CauseDetailEntry>;
         incidentTimelineEvents?: TimelineEvent[];
+        riskProfile?: string;
         potentialConsequence?: string;
+        additionalImmediateCauseDetails?: string;
         contributingFactors?: string;
         lessonsLearned?: string;
         investigationTeam?: string;
@@ -603,6 +630,7 @@ export function IncidentCreateModal(props: {
       }>(draftKey);
       resetForm();
       if (restored) {
+        restoredDraftAppliedRef.current = true;
         setModule(restored.module ?? (props.defaultModule ?? 'safety'));
 
         const nextTypeSelections =
@@ -667,7 +695,9 @@ export function IncidentCreateModal(props: {
         setSystemFailures(restored.systemFailures ?? {});
 
         setIncidentTimelineEvents(Array.isArray(restored.incidentTimelineEvents) ? restored.incidentTimelineEvents : []);
+        setRiskProfile(restored.riskProfile ?? '');
         setPotentialConsequence(restored.potentialConsequence ?? '');
+        setAdditionalImmediateCauseDetails(restored.additionalImmediateCauseDetails ?? '');
         setContributingFactors(restored.contributingFactors ?? '');
         setLessonsLearned(restored.lessonsLearned ?? '');
         setInvestigationTeam(restored.investigationTeam ?? '');
@@ -764,8 +794,8 @@ export function IncidentCreateModal(props: {
     setLocation(editingIncident.location ?? '');
     setNatureOfIncident((editingIncident as any).nature_of_incident ?? '');
     setCauseOfIncident((editingIncident as any).cause_of_incident ?? (editingIncident as any).cause ?? '');
-    setAffectedPersonId((editingIncident as any).affected_person_id ?? null);
-    setAffectedPersonName((editingIncident as any).affected_person ?? '');
+    setAffectedPersonId((editingIncident as any).affected_user_id ?? null);
+    setAffectedPersonName((editingIncident as any).affected_person_name ?? (editingIncident as any).affected_person ?? '');
     // Keep the primary HR employee reference separate so we can persist both employee_id and user_id consistently.
     setAffectedEmployeeId((editingIncident as any).affected_person_id ?? null);
     const metadataPersons = Array.isArray(metadata?.affectedPersons) ? metadata.affectedPersons : null;
@@ -786,7 +816,7 @@ export function IncidentCreateModal(props: {
         {
           id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
           personId: (editingIncident as any).affected_person_id ?? null,
-          personName: (editingIncident as any).affected_person ?? '',
+          personName: (editingIncident as any).affected_person_name ?? (editingIncident as any).affected_person ?? '',
           role: '',
           department: '',
           injuryType: '',
@@ -828,7 +858,9 @@ export function IncidentCreateModal(props: {
     setRootCauseWorkplace({});
     setSystemFailures({});
     setIncidentTimelineEvents([]);
+    setRiskProfile(String((editingIncident as any).risk_profile ?? metadata?.riskProfile ?? ''));
     setPotentialConsequence('');
+    setAdditionalImmediateCauseDetails(String(metadata?.additionalImmediateCauseDetails ?? ''));
     setContributingFactors('');
     setLessonsLearned('');
     setInvestigationTeam('');
@@ -845,15 +877,133 @@ export function IncidentCreateModal(props: {
     setEvidenceUploads([]);
     setInvestigationUploads([]);
     setError(null);
+    setSaveSuccess(null);
+
+    const restored = restoreDraft<{
+      module?: ModuleKey;
+      incidentTypeSelections?: Record<string, boolean>;
+      incidentTypeOther?: string;
+      category?: IncidentCategory;
+      selectedCategories?: IncidentCategory[];
+      subcategory?: string;
+      selectedSubcategories?: string[];
+      subcategoryManual?: string;
+      useManualSubcategory?: boolean;
+      title?: string;
+      projectClient?: string;
+      briefDescription?: string;
+      occurredAtInput?: string;
+      location?: string;
+      natureOfIncident?: string;
+      causeOfIncident?: string;
+      affectedPersonId?: UUID | null;
+      affectedEmployeeId?: UUID | null;
+      affectedPersonName?: string;
+      affectedPersons?: AffectedPersonEntry[];
+      reportedBy?: string;
+      reportedTo?: string;
+      copyTo?: string;
+      riskCategorySimple?: 'Low' | 'Medium' | 'High';
+      riskLikelihood?: 1 | 2 | 3 | 4 | 5;
+      riskSeverity?: 1 | 2 | 3 | 4 | 5;
+      investigationRequired?: boolean;
+      generateNcr?: boolean;
+      actualOutcome?: string;
+      lossTypes?: string[];
+      lossOther?: string;
+      lossNotes?: string;
+      unsafeActs?: Record<string, UnsafeCauseEntry>;
+      unsafeConditions?: Record<string, UnsafeCauseEntry>;
+      rootCauseHuman?: Record<string, CauseDetailEntry>;
+      rootCauseWorkplace?: Record<string, CauseDetailEntry>;
+      systemFailures?: Record<string, CauseDetailEntry>;
+      incidentTimelineEvents?: TimelineEvent[];
+      riskProfile?: string;
+      potentialConsequence?: string;
+      additionalImmediateCauseDetails?: string;
+      contributingFactors?: string;
+      lessonsLearned?: string;
+      investigationTeam?: string;
+      conclusion?: string;
+      preparedBy?: string;
+      distributionList?: string;
+      investigationSections?: Record<InvestigationSectionKey, boolean>;
+      correctiveActionDrafts?: CorrectiveActionDraft[];
+      evidenceUploadsMeta?: Array<{ id: string; displayName: string; originalFileName: string; kind: 'image' | 'document' }>;
+      investigationUploadsMeta?: Array<{ id: string; displayName: string; originalFileName: string; kind: 'image' | 'document' }>;
+    }>(draftKey);
+
+    if (restored) {
+      restoredDraftAppliedRef.current = true;
+      if (restored.module) setModule(restored.module);
+      if (restored.incidentTypeSelections) setIncidentTypeSelections(restored.incidentTypeSelections);
+      if (restored.incidentTypeOther !== undefined) setIncidentTypeOther(restored.incidentTypeOther);
+      if (Array.isArray(restored.selectedCategories) && restored.selectedCategories.length > 0) {
+        setSelectedCategories(restored.selectedCategories);
+        setCategory(restored.selectedCategories[0] ?? INCIDENT_CATEGORIES[0]);
+      }
+      if (restored.category) setCategory(restored.category);
+      if (Array.isArray(restored.selectedSubcategories)) setSelectedSubcategories(restored.selectedSubcategories);
+      if (restored.subcategory !== undefined) setSubcategory(restored.subcategory);
+      if (restored.subcategoryManual !== undefined) setSubcategoryManual(restored.subcategoryManual);
+      if (restored.useManualSubcategory !== undefined) setUseManualSubcategory(Boolean(restored.useManualSubcategory));
+      if (restored.title !== undefined) setTitle(restored.title);
+      if (restored.projectClient !== undefined) setProjectClient(restored.projectClient);
+      if (restored.briefDescription !== undefined) setBriefDescription(restored.briefDescription);
+      if (restored.occurredAtInput) setOccurredAtInput(restored.occurredAtInput);
+      if (restored.location !== undefined) setLocation(restored.location);
+      if (restored.natureOfIncident !== undefined) setNatureOfIncident(restored.natureOfIncident);
+      if (restored.causeOfIncident !== undefined) setCauseOfIncident(restored.causeOfIncident);
+      if (restored.affectedPersonId !== undefined) setAffectedPersonId(restored.affectedPersonId);
+      if (restored.affectedEmployeeId !== undefined) setAffectedEmployeeId(restored.affectedEmployeeId);
+      if (restored.affectedPersonName !== undefined) setAffectedPersonName(restored.affectedPersonName);
+      if (Array.isArray(restored.affectedPersons) && restored.affectedPersons.length > 0) setAffectedPersons(restored.affectedPersons);
+      if (restored.reportedBy !== undefined) setReportedBy(restored.reportedBy);
+      if (restored.reportedTo !== undefined) setReportedTo(restored.reportedTo);
+      if (restored.copyTo !== undefined) setCopyTo(restored.copyTo);
+      if (restored.riskCategorySimple) setRiskCategorySimple(restored.riskCategorySimple);
+      if (restored.riskLikelihood) setRiskLikelihood(restored.riskLikelihood);
+      if (restored.riskSeverity) setRiskSeverity(restored.riskSeverity);
+      if (restored.investigationRequired !== undefined) setInvestigationRequired(Boolean(restored.investigationRequired));
+      if (restored.generateNcr !== undefined) setGenerateNcr(Boolean(restored.generateNcr));
+      if (restored.actualOutcome !== undefined) setActualOutcome(restored.actualOutcome);
+      if (Array.isArray(restored.lossTypes)) setLossTypes(restored.lossTypes);
+      if (restored.lossOther !== undefined) setLossOther(restored.lossOther);
+      if (restored.lossNotes !== undefined) setLossNotes(restored.lossNotes);
+      if (restored.unsafeActs) setUnsafeActs(restored.unsafeActs);
+      if (restored.unsafeConditions) setUnsafeConditions(restored.unsafeConditions);
+      if (restored.rootCauseHuman) setRootCauseHuman(restored.rootCauseHuman);
+      if (restored.rootCauseWorkplace) setRootCauseWorkplace(restored.rootCauseWorkplace);
+      if (restored.systemFailures) setSystemFailures(restored.systemFailures);
+      if (Array.isArray(restored.incidentTimelineEvents)) setIncidentTimelineEvents(restored.incidentTimelineEvents);
+      if (restored.riskProfile !== undefined) setRiskProfile(restored.riskProfile);
+      if (restored.potentialConsequence !== undefined) setPotentialConsequence(restored.potentialConsequence);
+      if (restored.additionalImmediateCauseDetails !== undefined) setAdditionalImmediateCauseDetails(restored.additionalImmediateCauseDetails);
+      if (restored.contributingFactors !== undefined) setContributingFactors(restored.contributingFactors);
+      if (restored.lessonsLearned !== undefined) setLessonsLearned(restored.lessonsLearned);
+      if (restored.investigationTeam !== undefined) setInvestigationTeam(restored.investigationTeam);
+      if (restored.conclusion !== undefined) setConclusion(restored.conclusion);
+      if (restored.preparedBy !== undefined) setPreparedBy(restored.preparedBy);
+      if (restored.distributionList !== undefined) setDistributionList(restored.distributionList);
+      if (restored.investigationSections) {
+        setInvestigationSections({
+          ...emptyInvestigationSectionSelection(),
+          ...restored.investigationSections
+        });
+      }
+      if (Array.isArray(restored.correctiveActionDrafts)) setCorrectiveActionDrafts(restored.correctiveActionDrafts);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey, props.open, editingIncident?.id, restoreDraft]);
 
   useEffect(() => {
     if (!props.open || !editingIncident?.id) return;
+    if (restoredDraftAppliedRef.current) return;
     (async () => {
       try {
         const inv = await getIncidentInvestigation(props.companyId, editingIncident.id);
         if (!inv) return;
+        setRiskProfile(inv.risk_profile ?? '');
         setPotentialConsequence(inv.potential_consequence ?? '');
         setContributingFactors(inv.contributing_factors ?? '');
         setLessonsLearned(inv.lessons_learnt ?? '');
@@ -938,11 +1088,25 @@ export function IncidentCreateModal(props: {
 
   useEffect(() => {
     return () => {
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
       releasePreviews(evidenceUploads);
       releasePreviews(investigationUploads);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!props.open) {
+      setSaveSuccess(null);
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    }
+  }, [props.open]);
 
   function addUploads(files: FileList | null, section: 'evidence' | 'investigation', displayPrefix?: string) {
     if (!files) return;
@@ -1104,6 +1268,31 @@ export function IncidentCreateModal(props: {
     }
   }
 
+  function finishSuccessfulSave() {
+    setSaveSuccess('Incident saved successfully.');
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      props.onClose();
+      resetForm();
+      setSaveSuccess(null);
+    }, 1100);
+  }
+
+  function handleRequestClose() {
+    if (loading) return;
+    if (saveSuccess) {
+      props.onClose();
+      resetForm();
+      setSaveSuccess(null);
+      return;
+    }
+    if (hasDirtyDraft && !window.confirm(incidentCloseWarningMessage())) {
+      return;
+    }
+    props.onClose();
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
@@ -1191,7 +1380,10 @@ export function IncidentCreateModal(props: {
             ...(editingIncident as any)?.metadata,
             affectedPersons: affectedPersonsPayload,
             categories: selectedCategories,
-            subcategories: subcategoriesForMetadata
+            subcategories: subcategoriesForMetadata,
+            actualOutcome: actualOutcome.trim() || null,
+            riskProfile: riskProfile.trim() || null,
+            additionalImmediateCauseDetails: additionalImmediateCauseDetails.trim() || null
           }
         } as any);
         await uploadEvidenceForIncident(updated.id, evidenceUploads, 'incident');
@@ -1208,6 +1400,7 @@ export function IncidentCreateModal(props: {
                 .map((event) => `${event.timestamp} - ${event.notes}`.trim())
                 .join('\n') || null,
               risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
+              risk_profile: riskProfile.trim() || null,
               potential_consequence: potentialConsequence.trim() || null,
               immediate_causes: buildImmediateCausesPayload(),
               root_causes_human: Object.values(rootCauseHuman),
@@ -1281,7 +1474,10 @@ export function IncidentCreateModal(props: {
           metadata: {
             affectedPersons: affectedPersonsPayload,
             categories: selectedCategories,
-            subcategories: subcategoriesForMetadata
+            subcategories: subcategoriesForMetadata,
+            actualOutcome: actualOutcome.trim() || null,
+            riskProfile: riskProfile.trim() || null,
+            additionalImmediateCauseDetails: additionalImmediateCauseDetails.trim() || null
           }
         });
 
@@ -1299,6 +1495,7 @@ export function IncidentCreateModal(props: {
                 .map((event) => `${event.timestamp} - ${event.notes}`.trim())
                 .join('\n') || null,
               risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
+              risk_profile: riskProfile.trim() || null,
               potential_consequence: potentialConsequence.trim() || null,
               immediate_causes: buildImmediateCausesPayload(),
               root_causes_human: Object.values(rootCauseHuman),
@@ -1322,8 +1519,7 @@ export function IncidentCreateModal(props: {
         props.onCreated?.();
         clearDraft(draftKey);
       }
-      props.onClose();
-      resetForm();
+      finishSuccessfulSave();
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {
@@ -1527,7 +1723,7 @@ export function IncidentCreateModal(props: {
   if (!props.open) return null;
   return createPortal(
     <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-3 pt-16 sm:p-6 sm:pt-20">
-      <div className="absolute inset-0 bg-black/45" onClick={props.onClose} />
+      <div className="absolute inset-0 bg-black/45" onClick={handleRequestClose} />
       <div className="relative w-full max-w-6xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-surface-200 px-4 py-4 sm:px-6 flex items-center justify-between z-10">
           <div>
@@ -1536,7 +1732,7 @@ export function IncidentCreateModal(props: {
           </div>
           <button
             type="button"
-            onClick={props.onClose}
+            onClick={handleRequestClose}
             className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 shrink-0"
             aria-label="Close"
           >
@@ -1549,6 +1745,11 @@ export function IncidentCreateModal(props: {
             <div className="bg-critical/5 border border-critical/20 rounded-xl p-3">
               <p className="text-sm font-semibold text-critical">Could not create incident</p>
               <p className="text-sm text-charcoal-600 mt-1">{error}</p>
+            </div>
+          )}
+          {saveSuccess && (
+            <div className="bg-success/5 border border-success/20 rounded-xl p-3">
+              <p className="text-sm font-semibold text-success">{saveSuccess}</p>
             </div>
           )}
 
@@ -1785,7 +1986,7 @@ export function IncidentCreateModal(props: {
                         </label>
                         <AffectedPersonSelector
                           companyId={props.companyId}
-                          selectedPersonId={entry.personId}
+                          selectedPersonId={index === 0 ? (affectedEmployeeId ?? entry.personId) : entry.personId}
                           selectedPersonName={entry.personName}
                           onChange={(personId, personName, employeeId) => {
                             if (index === 0) {
@@ -1798,7 +1999,7 @@ export function IncidentCreateModal(props: {
                                 p.id === entry.id
                                   ? {
                                       ...p,
-                                      personId,
+                                      personId: employeeId,
                                       personName: personName ?? ''
                                     }
                                   : p
@@ -2075,25 +2276,108 @@ export function IncidentCreateModal(props: {
                 <div className="pt-3">{renderUploadSection('Upload investigation files', 'investigation', investigationUploads)}</div>
               </details>
             )}
-            {(investigationRequired || riskSeverity >= 4) && (
-              <details>
-                <summary className="cursor-pointer text-sm font-semibold text-charcoal">Risk & Consequence</summary>
-                <div className="pt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Risk rating</label>
-                    <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm bg-surface-50">{calculatedRiskCategory} ({calculatedRisk})</div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Potential consequence</label>
-                    <textarea value={potentialConsequence} onChange={(e) => setPotentialConsequence(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">Actual outcome</label>
-                    <textarea value={actualOutcome} onChange={(e) => setActualOutcome(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+            <div className="rounded-xl border border-surface-200 p-4 space-y-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-charcoal">Risk Rating</p>
+                  <p className="text-xs text-charcoal-500">Severity × Likelihood auto-calculates in real time.</p>
+                </div>
+                <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] ${riskIndicatorClasses(calculatedRiskCategory)}`}>
+                  <span>{calculatedRiskCategory}</span>
+                  <span>{calculatedRisk}</span>
+                </div>
+              </div>
+
+              <IncidentTimelineBuilder
+                events={incidentTimelineEvents}
+                onChange={setIncidentTimelineEvents}
+                disabled={loading}
+              />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Likelihood (1-5)</label>
+                  <select
+                    value={riskLikelihood}
+                    onChange={(e) => setRiskLikelihood(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
+                    className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                  >
+                    <option value={1}>1 - Rare</option>
+                    <option value={2}>2 - Unlikely</option>
+                    <option value={3}>3 - Possible</option>
+                    <option value={4}>4 - Likely</option>
+                    <option value={5}>5 - Almost Certain</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Severity (1-5)</label>
+                  <select
+                    value={riskSeverity}
+                    onChange={(e) => setRiskSeverity(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
+                    className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                  >
+                    <option value={1}>1 - Minor</option>
+                    <option value={2}>2 - Moderate</option>
+                    <option value={3}>3 - Serious</option>
+                    <option value={4}>4 - Major</option>
+                    <option value={5}>5 - Severe</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated risk</label>
+                  <div className="w-full px-4 py-2.5 rounded-lg border border-surface-300 text-sm bg-surface-50 font-semibold text-charcoal">
+                    {calculatedRisk}
                   </div>
                 </div>
-              </details>
-            )}
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Calculated category</label>
+                  <div className={`w-full px-4 py-2.5 rounded-lg border text-sm font-semibold ${riskIndicatorClasses(calculatedRiskCategory)}`}>
+                    {calculatedRiskCategory}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Risk profile (Hazards)</label>
+                <textarea
+                  value={riskProfile}
+                  onChange={(e) => setRiskProfile(e.target.value)}
+                  rows={2}
+                  className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Consequence / Potential consequence</label>
+                  <textarea
+                    value={potentialConsequence}
+                    onChange={(e) => setPotentialConsequence(e.target.value)}
+                    rows={3}
+                    className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-1.5">Actual outcome</label>
+                  <textarea
+                    value={actualOutcome}
+                    onChange={(e) => setActualOutcome(e.target.value)}
+                    rows={3}
+                    className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Additional immediate cause details</label>
+                <textarea
+                  value={additionalImmediateCauseDetails}
+                  onChange={(e) => setAdditionalImmediateCauseDetails(e.target.value)}
+                  rows={3}
+                  className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+                />
+              </div>
+            </div>
 
             {investigationRequired && (
               <div className="space-y-5">
@@ -2266,7 +2550,7 @@ export function IncidentCreateModal(props: {
           <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-4 border-t border-surface-200">
             <button
               type="button"
-              onClick={props.onClose}
+              onClick={handleRequestClose}
               className="min-h-[44px] inline-flex items-center justify-center px-4 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
             >
               Cancel

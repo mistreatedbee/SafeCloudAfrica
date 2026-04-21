@@ -64,8 +64,10 @@ export function AffectedPersonSelector({
       <HrEmployeeSelect
         companyId={companyId}
         value={(selectedPersonId ?? '') as UUID | ''}
+        valueField="id"
+        includeUnlinked
         onChange={(userId, meta) => {
-          onChange((userId || null) as UUID | null, meta.nameSnapshot || null, (meta.employeeId ?? null) as UUID | null);
+          onChange((meta.userId ?? null) as UUID | null, meta.nameSnapshot || null, (meta.employeeId ?? null) as UUID | null);
         }}
         placeholder="Select affected employee"
         disabled={disabled}
