@@ -125,7 +125,8 @@ async function createInviteFallback(input: {
     token: rawToken,
     token_hash: tokenHash,
     expires_at: expiresAt,
-    status: 'FAILED',
+    // Manual-link fallback remains an active invite; delivery outcome is tracked separately.
+    status: 'PENDING',
     sent_at: null,
     last_sent_at: null,
     send_count: 0,
@@ -209,7 +210,8 @@ async function resendInviteFallback(input: { inviteId: UUID; actorUserId: UUID }
       expires_at: expiresAt,
       accepted_at: null,
       accepted_user_id: null,
-      status: 'FAILED',
+      // Keep the invite active for manual-link validation/acceptance.
+      status: 'PENDING',
       error_message: 'Invite email unavailable in this environment. Copy link and send manually.'
     })
     .eq('id', input.inviteId)
