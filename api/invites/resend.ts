@@ -1,4 +1,4 @@
-import { addDaysIso, getServerInsforge, nowIso, readBearerToken } from '../_insforge.js';
+import { addDaysIso, getServerInsforge, nowIso, readBearerToken, resolveServerUser } from '../_insforge.js';
 import { logStructuredLine, sendAlertWebhook } from '../_observability.js';
 import { applyNoStoreHeaders } from '../_response.js';
 import { sendTransactionalEmail } from '../email/_shared.js';
@@ -37,9 +37,9 @@ export default async function handler(req: any, res: any) {
 
   try {
     const insforge = getServerInsforge(authToken);
-    const session = await insforge.auth.getCurrentSession();
-    const userId = session.data?.session?.user?.id;
-    const userEmail = session.data?.session?.user?.email || 'no-reply@safecloudafrica.com';
+    const actor = await resolveServerUser(insforge, authToken);
+    const userId = actor.userId;
+    const userEmail = actor.email || 'no-reply@safecloudafrica.com';
     if (!userId) return res.status(401).json({ ok: false, error: 'Unauthorized' });
 
     logUserId = String(userId);

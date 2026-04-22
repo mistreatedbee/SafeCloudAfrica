@@ -88,6 +88,44 @@ export function readBearerToken(req: any): string | null {
   return token.trim() || null;
 }
 
+type BearerJwtClaims = {
+  sub?: string;
+  email?: string;
+};
+
+function decodeBearerJwtClaims(token: string | null | undefined): BearerJwtClaims | null {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = `${normalized}${'='.repeat((4 - (normalized.length % 4)) % 4)}`;
+    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as BearerJwtClaims;
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveServerUser(insforge: InsforgeClient, authToken: string): Promise<{ userId: string | null; email: string | null }> {
+  try {
+    const sessionResult = await insforge.auth.getCurrentSession();
+    const sessionUser = sessionResult.data?.session?.user;
+    const userId = sessionUser?.id ? String(sessionUser.id) : null;
+    const email = sessionUser?.email ? String(sessionUser.email).trim().toLowerCase() : null;
+    if (userId) {
+      return { userId, email };
+    }
+  } catch {
+    // Fall through to JWT claim decoding.
+  }
+
+  const claims = decodeBearerJwtClaims(authToken);
+  return {
+    userId: claims?.sub ? String(claims.sub) : null,
+    email: claims?.email ? String(claims.email).trim().toLowerCase() : null
+  };
+}
+
 export function nowIso(): string {
   return new Date().toISOString();
 }
@@ -116,9 +154,8 @@ export async function resolveRequestActor(req: any, body?: Record<string, unknow
   }
   try {
     const insforge = getServerInsforge(token);
-    const sessionResult = await insforge.auth.getCurrentSession();
-    const uid = sessionResult.data?.session?.user?.id;
-    return { userId: uid ? String(uid) : null, organizationId };
+    const actor = await resolveServerUser(insforge, token);
+    return { userId: actor.userId ? String(actor.userId) : null, organizationId };
   } catch {
     return { userId: null, organizationId };
   }

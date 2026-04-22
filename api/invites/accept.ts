@@ -1,4 +1,4 @@
-import { getServerInsforge, nowIso, readBearerToken } from '../_insforge.js';
+import { getServerInsforge, nowIso, readBearerToken, resolveServerUser } from '../_insforge.js';
 import { logStructuredLine, sendAlertWebhook } from '../_observability.js';
 import { applyNoStoreHeaders } from '../_response.js';
 import {
@@ -61,9 +61,9 @@ export default async function handler(req: any, res: any) {
 
   try {
     const insforge = getServerInsforge(authToken);
-    const session = await insforge.auth.getCurrentSession();
-    const userId = session.data?.session?.user?.id;
-    const userEmail = String(session.data?.session?.user?.email || '').trim().toLowerCase();
+    const actor = await resolveServerUser(insforge, authToken);
+    const userId = actor.userId;
+    const userEmail = String(actor.email || '').trim().toLowerCase();
     if (!userId || !userEmail) return res.status(401).json({ ok: false, error: 'Unauthorized' });
 
     logUserId = String(userId);
