@@ -5,8 +5,8 @@ import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listContractors } from '../../api/services/contractorsService';
-import { listVisitors } from '../../api/services/visitorsService';
+import { getContractorPortalSummary, listContractors } from '../../api/services/contractorsService';
+import { listVisitorQrSessions, listVisitors } from '../../api/services/visitorsService';
 import type { Contractor, Visitor } from '../../api/models/entities';
 import { ContractorCreateModal } from '../../components/features/ContractorCreateModal';
 import { VisitorCreateModal } from '../../components/features/VisitorCreateModal';
@@ -38,6 +38,20 @@ export function ContractorsVisitorsPage() {
     async () => {
       if (!activeCompanyId) return [];
       return await listVisitors(activeCompanyId);
+    },
+    [activeCompanyId, refreshKey]
+  );
+  const { data: contractorSummary } = useAsync(
+    async () => {
+      if (!activeCompanyId) return null;
+      return getContractorPortalSummary(activeCompanyId);
+    },
+    [activeCompanyId, refreshKey]
+  );
+  const { data: qrSessions } = useAsync(
+    async () => {
+      if (!activeCompanyId) return [];
+      return listVisitorQrSessions(activeCompanyId);
     },
     [activeCompanyId, refreshKey]
   );
@@ -100,6 +114,20 @@ export function ContractorsVisitorsPage() {
           <p className="text-sm text-charcoal-500 mt-2">
             Track contractors and visitors per company, with onboarding readiness and basic status tracking.
           </p>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+            <div className="rounded-lg bg-surface-50 px-3 py-2">
+              <p className="text-charcoal-500">Pending documents</p>
+              <p className="text-xl font-semibold text-charcoal">{contractorSummary?.pendingDocuments ?? 0}</p>
+            </div>
+            <div className="rounded-lg bg-surface-50 px-3 py-2">
+              <p className="text-charcoal-500">Completed inductions</p>
+              <p className="text-xl font-semibold text-charcoal">{contractorSummary?.completedInductions ?? 0}</p>
+            </div>
+            <div className="rounded-lg bg-surface-50 px-3 py-2">
+              <p className="text-charcoal-500">QR sessions</p>
+              <p className="text-xl font-semibold text-charcoal">{qrSessions?.length ?? 0}</p>
+            </div>
+          </div>
         </motion.div>
 
         <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-6">

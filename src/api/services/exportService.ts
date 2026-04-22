@@ -7,6 +7,7 @@
 
 import type { UUID } from '../models/core';
 import type { Incident, QualityNcr, Audit, PPEIssue } from '../models/entities';
+import type { ComplianceDashboardData } from './complianceScoringService';
 
 export interface ExportOptions {
   includeEvidence?: boolean;
@@ -666,4 +667,108 @@ export function exportPpeAnalyticsReportCSV(input: {
     .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
     .join('\n');
   return new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+}
+
+export function exportComplianceDashboardCSV(data: ComplianceDashboardData): Blob {
+  const rows: string[][] = [
+    ['Compliance Intelligence Report'],
+    ['Generated At', data.overall.generatedAt],
+    ['Overall Score', String(data.overall.scorePercentage)],
+    ['RAG Status', data.overall.ragStatus],
+    ['AI Deterioration Risk', String(data.aiInsight.predictedDeteriorationRisk)],
+    [''],
+    ['Domains'],
+    ['Domain', 'Score %', 'RAG', 'Total', 'Compliant', 'Overdue', 'Attention']
+  ];
+
+  for (const domain of data.domains) {
+    rows.push([
+      domain.label,
+      String(domain.scorePercentage),
+      domain.ragStatus,
+      String(domain.totalCount),
+      String(domain.compliantCount),
+      String(domain.overdueCount),
+      String(domain.attentionCount)
+    ]);
+  }
+
+  rows.push(['']);
+  rows.push(['ISO Summary']);
+  rows.push(['Standard', 'Score %', 'Total Links', 'Compliant Links']);
+  for (const standard of data.isoSummary) {
+    rows.push([
+      standard.standard,
+      String(standard.scorePercentage),
+      String(standard.totalLinks),
+      String(standard.compliantLinks)
+    ]);
+  }
+
+  rows.push(['']);
+  rows.push(['Overdue Actions']);
+  rows.push(['Title', 'Due Date', 'Priority']);
+  for (const action of data.overdueActions) {
+    rows.push([
+      String(action.title ?? action.id ?? ''),
+      String(action.due_date ?? ''),
+      String(action.priority ?? '')
+    ]);
+  }
+
+  const csv = rows
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  return new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+}
+
+export async function exportComplianceDashboardPDF(data: ComplianceDashboardData): Promise<Blob> {
+  const html = `
+    <html>
+      <body style="font-family: Arial, sans-serif; color: #1f2937;">
+        <h1>Compliance Intelligence Report</h1>
+        <p>Generated: ${new Date(data.overall.generatedAt).toLocaleString()}</p>
+        <p><strong>Overall Score:</strong> ${data.overall.scorePercentage.toFixed(2)}%</p>
+        <p><strong>RAG Status:</strong> ${data.overall.ragStatus}</p>
+        <h2>Domain Breakdown</h2>
+        <table border="1" cellspacing="0" cellpadding="6">
+          <thead>
+            <tr>
+              <th>Domain</th>
+              <th>Score %</th>
+              <th>RAG</th>
+              <th>Total</th>
+              <th>Compliant</th>
+              <th>Overdue</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.domains
+              .map(
+                (domain) => `
+                  <tr>
+                    <td>${domain.label}</td>
+                    <td>${domain.scorePercentage.toFixed(2)}</td>
+                    <td>${domain.ragStatus}</td>
+                    <td>${domain.totalCount}</td>
+                    <td>${domain.compliantCount}</td>
+                    <td>${domain.overdueCount}</td>
+                  </tr>
+                `
+              )
+              .join('')}
+          </tbody>
+        </table>
+        <h2>Top Risks</h2>
+        <ul>
+          ${data.topRisks.map((risk) => `<li>${String(risk.title ?? risk.id ?? 'Risk')}</li>`).join('')}
+        </ul>
+        <h2>Overdue Actions</h2>
+        <ul>
+          ${data.overdueActions.map((action) => `<li>${String(action.title ?? action.id ?? 'Action')}</li>`).join('')}
+        </ul>
+      </body>
+    </html>
+  `;
+  return new Blob([html], { type: 'text/html' });
 }

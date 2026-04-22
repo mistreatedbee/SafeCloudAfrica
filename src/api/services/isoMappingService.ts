@@ -9,7 +9,9 @@
  * Maps system entities (incidents, NCRs, risks, audits) to ISO clauses
  */
 
-import type { UUID } from '../models/core';
+import { insforge } from '../insforge/client';
+import { getErrorMessage } from '../insforge/errors';
+import type { ComplianceIsoRecordLink, UUID } from '../models/entities';
 
 export type ISOStandard = 'iso45001' | 'iso14001' | 'iso9001';
 export type ComplianceStatus = 'compliant' | 'non-compliant' | 'not-applicable' | 'under-review';
@@ -502,5 +504,75 @@ export function getComplianceSummary(
     underReview: filtered.filter((m) => m.status === 'under-review').length,
     notApplicable: filtered.filter((m) => m.status === 'not-applicable').length,
     highRiskItems: filtered.filter((m) => m.riskLevel === 'high' || m.riskLevel === 'critical').length,
+  };
+}
+
+export async function listPersistedIsoLinks(companyId: UUID): Promise<ComplianceIsoRecordLink[]> {
+  const { data, error } = await insforge.database
+    .from('compliance_iso_record_links')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('standard_key', { ascending: true })
+    .order('clause_number', { ascending: true });
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as ComplianceIsoRecordLink[];
+}
+
+export async function upsertPersistedIsoLink(input: {
+  companyId: UUID;
+  standard: ISOStandard;
+  clauseNumber: string;
+  clauseTitle: string;
+  moduleKey?: string | null;
+  sourceTable: string;
+  sourceRecordId: UUID;
+  complianceStatus: ComplianceStatus;
+  evidenceDocumentIds?: UUID[] | null;
+  evidenceLinks?: Array<Record<string, unknown>>;
+  notes?: string | null;
+  linkedByUserId?: UUID | null;
+}): Promise<ComplianceIsoRecordLink> {
+  const { data, error } = await insforge.database
+    .from('compliance_iso_record_links')
+    .upsert(
+      {
+        company_id: input.companyId,
+        standard_key: input.standard,
+        clause_number: input.clauseNumber,
+        clause_title: input.clauseTitle,
+        module_key: input.moduleKey ?? null,
+        source_table: input.sourceTable,
+        source_record_id: input.sourceRecordId,
+        compliance_status: input.complianceStatus,
+        evidence_document_ids: input.evidenceDocumentIds ?? null,
+        evidence_links: input.evidenceLinks ?? [],
+        notes: input.notes ?? null,
+        linked_by_user_id: input.linkedByUserId ?? null,
+        updated_at: new Date().toISOString()
+      },
+      {
+        onConflict: 'company_id,standard_key,clause_number,source_table,source_record_id'
+      }
+    )
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to upsert ISO compliance link.');
+  return data as ComplianceIsoRecordLink;
+}
+
+export async function getPersistedIsoSummary(companyId: UUID, standard?: ISOStandard) {
+  const rows = await listPersistedIsoLinks(companyId);
+  const filtered = standard ? rows.filter((row) => row.standard_key === standard) : rows;
+  const compliant = filtered.filter((row) => row.compliance_status === 'compliant').length;
+  const underReview = filtered.filter((row) => row.compliance_status === 'under-review').length;
+
+  return {
+    total: filtered.length,
+    compliant,
+    nonCompliant: filtered.filter((row) => row.compliance_status === 'non-compliant').length,
+    underReview,
+    notApplicable: filtered.filter((row) => row.compliance_status === 'not-applicable').length,
+    scorePercentage: filtered.length === 0 ? 0 : Math.round(((compliant + underReview * 0.5) / filtered.length) * 100)
   };
 }

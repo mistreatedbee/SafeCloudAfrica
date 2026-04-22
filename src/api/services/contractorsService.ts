@@ -19,7 +19,13 @@ export async function listContractors(companyId: UUID, limit = 200): Promise<Con
 export async function createContractor(input: {
   companyId: UUID;
   name: string;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
   status?: Contractor['status'];
+  documentsStatus?: Contractor['documents_status'];
+  inductionStatus?: Contractor['induction_status'];
+  portalExpiresAt?: string | null;
+  notes?: string | null;
   createdByUserId: UUID;
 }): Promise<Contractor> {
   await requireSellableFeatureAccess(input.companyId, 'contractorsVisitors');
@@ -29,6 +35,12 @@ export async function createContractor(input: {
       company_id: input.companyId,
       name: input.name,
       status: input.status ?? 'pending',
+      contact_email: input.contactEmail ?? null,
+      contact_phone: input.contactPhone ?? null,
+      documents_status: input.documentsStatus ?? 'pending',
+      induction_status: input.inductionStatus ?? 'pending',
+      portal_expires_at: input.portalExpiresAt ?? null,
+      notes: input.notes ?? null,
       created_by_user_id: input.createdByUserId
     })
     .select('*')
@@ -45,5 +57,18 @@ export async function createContractor(input: {
   });
 
   return data as Contractor;
+}
+
+export async function getContractorPortalSummary(companyId: UUID): Promise<{
+  total: number;
+  pendingDocuments: number;
+  completedInductions: number;
+}> {
+  const rows = await listContractors(companyId, 500);
+  return {
+    total: rows.length,
+    pendingDocuments: rows.filter((row) => row.documents_status !== 'approved').length,
+    completedInductions: rows.filter((row) => row.induction_status === 'completed').length
+  };
 }
 

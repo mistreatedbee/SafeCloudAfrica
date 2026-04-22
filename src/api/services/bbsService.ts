@@ -21,7 +21,14 @@ export async function createBbsObservation(input: {
   type: BbsObservation['type'];
   title: string;
   area?: string;
+  behaviourCategory?: string;
+  observationOutcome?: string;
   status?: BbsObservation['status'];
+  linkedTrainingRecordId?: UUID | null;
+  linkedNcrId?: UUID | null;
+  ownerUserId?: UUID | null;
+  dueDate?: string | null;
+  notes?: string | null;
   createdByUserId: UUID;
 }): Promise<BbsObservation> {
   await requireSellableFeatureAccess(input.companyId, 'bbs');
@@ -32,7 +39,14 @@ export async function createBbsObservation(input: {
       type: input.type,
       title: input.title,
       area: input.area ?? null,
+      behaviour_category: input.behaviourCategory ?? null,
+      observation_outcome: input.observationOutcome ?? null,
       status: input.status ?? 'logged',
+      linked_training_record_id: input.linkedTrainingRecordId ?? null,
+      linked_ncr_id: input.linkedNcrId ?? null,
+      owner_user_id: input.ownerUserId ?? null,
+      due_date: input.dueDate ?? null,
+      notes: input.notes ?? null,
       created_by_user_id: input.createdByUserId
     })
     .select('*')
@@ -49,5 +63,22 @@ export async function createBbsObservation(input: {
   });
 
   return data as BbsObservation;
+}
+
+export async function getBbsTrendSummary(companyId: UUID): Promise<{
+  total: number;
+  positive: number;
+  unsafeActs: number;
+  nearMisses: number;
+  actionRequired: number;
+}> {
+  const rows = await listBbsObservations(companyId, 500);
+  return {
+    total: rows.length,
+    positive: rows.filter((row) => row.type === 'positive').length,
+    unsafeActs: rows.filter((row) => row.type === 'unsafe_act').length,
+    nearMisses: rows.filter((row) => row.type === 'near_miss').length,
+    actionRequired: rows.filter((row) => row.status === 'action_required').length
+  };
 }
 

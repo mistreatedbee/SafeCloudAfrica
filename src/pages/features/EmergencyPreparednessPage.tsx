@@ -5,7 +5,7 @@ import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listEmergencyDrills } from '../../api/services/emergencyDrillsService';
+import { getEmergencyPreparednessSummary, listEmergencyDrills } from '../../api/services/emergencyDrillsService';
 import { listDocuments } from '../../api/services/documentsService';
 import type { EmergencyDrill, Document } from '../../api/models/entities';
 import { EmergencyDrillCreateModal } from '../../components/features/EmergencyDrillCreateModal';
@@ -39,6 +39,13 @@ export function EmergencyPreparednessPage() {
       return await listDocuments(activeCompanyId);
     },
     [activeCompanyId]
+  );
+  const { data: preparednessSummary } = useAsync(
+    async () => {
+      if (!activeCompanyId) return null;
+      return getEmergencyPreparednessSummary(activeCompanyId);
+    },
+    [activeCompanyId, refreshKey]
   );
 
   const openDrills = useMemo(() => (drills ?? []).filter((d) => d.status === 'scheduled').length, [drills]);
@@ -89,7 +96,7 @@ export function EmergencyPreparednessPage() {
           </div>
         </motion.div>
 
-        <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Open drills</p>
             <p className="text-2xl font-bold text-warning mt-1">{openDrills}</p>
@@ -97,6 +104,10 @@ export function EmergencyPreparednessPage() {
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Completed drills</p>
             <p className="text-2xl font-bold text-success mt-1">{(drills ?? []).filter((d) => d.status === 'completed').length}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <p className="text-sm text-charcoal-500">Average score</p>
+            <p className="text-2xl font-bold text-charcoal mt-1">{preparednessSummary?.averagePerformanceScore ?? 0}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Plans updated</p>

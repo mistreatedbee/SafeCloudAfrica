@@ -1,17 +1,31 @@
 import { insforge } from '../insforge/client';
-import type { UUID } from '../models/entities';
-import type { ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
+import type {
+  ComplianceDomainKey,
+  ComplianceIsoRecordLink,
+  ComplianceScoreRun,
+  ComplianceScoreRunDomain,
+  MonthlyComplianceReport,
+  UUID
+} from '../models/entities';
 import { createActivityLog } from './activityLogService';
-import { listCorrectiveActions } from './correctiveActionsService';
-import { listIncidents } from './incidentsService';
-import { listAudits } from './auditsService';
-import { listRiskAssessments } from './risksService';
+import { getRolling12Period } from './kpiFormulasService';
+import { getISOClauses, type ISOStandard } from './isoMappingService';
 
-export interface ComplianceScore {
+export const COMPLIANCE_DOMAIN_WEIGHTS: Record<ComplianceDomainKey, number> = {
+  documents: 20,
+  training: 20,
+  risks: 20,
+  incidents: 20,
+  audits: 20
+};
+
+export type ComplianceRagStatus = 'green' | 'yellow' | 'red';
+
+export type ComplianceScore = {
   id: UUID;
   company_id: UUID;
-  module: ModuleKey | 'overall';
+  module: ComplianceDomainKey | 'overall';
   score: number;
   percentage_complete: number;
   total_items: number;
@@ -20,21 +34,146 @@ export interface ComplianceScore {
   high_priority_items: number;
   last_calculated_at: string;
   updated_at: string;
+};
+
+export type ComplianceDomainSummary = {
+  domainKey: ComplianceDomainKey;
+  label: string;
+  weight: number;
+  scorePercentage: number;
+  ragStatus: ComplianceRagStatus;
+  totalCount: number;
+  compliantCount: number;
+  overdueCount: number;
+  attentionCount: number;
+  trendDelta: number;
+  drilldownRecords: Array<Record<string, unknown>>;
+};
+
+export type ComplianceAiInsight = {
+  predictedDeteriorationRisk: number;
+  nextMonthRiskFlag: 'low' | 'medium' | 'high' | 'critical';
+  topGaps: Array<{ domain: ComplianceDomainKey; label: string; impact: number }>;
+  recommendations: Array<{ title: string; reason: string; action: string }>;
+};
+
+export type ComplianceDashboardData = {
+  overall: {
+    scorePercentage: number;
+    ragStatus: ComplianceRagStatus;
+    weightedScore: number;
+    generatedAt: string;
+  };
+  domains: ComplianceDomainSummary[];
+  aiInsight: ComplianceAiInsight;
+  trendHistory: Array<{ month: string; scorePercentage: number; ragStatus: ComplianceRagStatus }>;
+  isoSummary: Array<{
+    standard: ISOStandard;
+    scorePercentage: number;
+    totalLinks: number;
+    compliantLinks: number;
+    byClause: Array<{
+      clauseNumber: string;
+      clauseTitle: string;
+      scorePercentage: number;
+      recordCount: number;
+    }>;
+  }>;
+  topRisks: Array<Record<string, unknown>>;
+  overdueActions: Array<Record<string, unknown>>;
+};
+
+type DomainMetricAccumulator = {
+  totalCount: number;
+  compliantCount: number;
+  overdueCount: number;
+  attentionCount: number;
+  drilldownRecords: Array<Record<string, unknown>>;
+};
+
+function toIsoMonth(date: Date): string {
+  return date.toISOString().slice(0, 7);
 }
 
-export async function getComplianceScore(companyId: UUID, module: ModuleKey | 'overall'): Promise<ComplianceScore | null> {
+function toMonthDate(date = new Date()): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-01`;
+}
+
+export function calculateComplianceRagStatus(scorePercentage: number): ComplianceRagStatus {
+  if (scorePercentage >= 85) return 'green';
+  if (scorePercentage >= 70) return 'yellow';
+  return 'red';
+}
+
+function safePercentage(numerator: number, denominator: number): number {
+  if (denominator <= 0) return 100;
+  return Math.max(0, Math.min(100, Math.round((numerator / denominator) * 10000) / 100));
+}
+
+function sanitizeArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function buildAiInsight(domains: ComplianceDomainSummary[]): ComplianceAiInsight {
+  const orderedGaps = [...domains]
+    .map((domain) => ({
+      domain: domain.domainKey,
+      label: domain.label,
+      impact: Number((100 - domain.scorePercentage).toFixed(2))
+    }))
+    .sort((a, b) => b.impact - a.impact);
+
+  const averageGap =
+    orderedGaps.length > 0
+      ? orderedGaps.reduce((sum, item) => sum + item.impact, 0) / orderedGaps.length
+      : 0;
+
+  const predictedDeteriorationRisk = Math.min(
+    100,
+    Math.round(
+      averageGap +
+        domains.reduce((sum, domain) => sum + domain.overdueCount * 2 + domain.attentionCount, 0) /
+          Math.max(domains.length, 1)
+    )
+  );
+
+  const nextMonthRiskFlag =
+    predictedDeteriorationRisk >= 75 ? 'critical' :
+    predictedDeteriorationRisk >= 55 ? 'high' :
+    predictedDeteriorationRisk >= 30 ? 'medium' :
+    'low';
+
+  return {
+    predictedDeteriorationRisk,
+    nextMonthRiskFlag,
+    topGaps: orderedGaps.slice(0, 3),
+    recommendations: orderedGaps.slice(0, 3).map((gap) => ({
+      title: `Improve ${gap.label}`,
+      reason: `${gap.label} is contributing a ${gap.impact.toFixed(1)} point compliance gap.`,
+      action:
+        gap.domain === 'documents' ? 'Review overdue documents and publish approvals.' :
+        gap.domain === 'training' ? 'Complete expired or overdue employee training assignments.' :
+        gap.domain === 'risks' ? 'Close overdue risk actions and schedule pending reviews.' :
+        gap.domain === 'incidents' ? 'Close aged incidents and linked corrective actions.' :
+        'Respond to overdue audit findings and finalize scheduled audits.'
+    }))
+  };
+}
+
+async function getComplianceScoreTableRow(companyId: UUID, module: ComplianceDomainKey | 'overall'): Promise<ComplianceScore | null> {
   const { data, error } = await insforge.database
     .from('compliance_scores')
     .select('*')
     .eq('company_id', companyId)
     .eq('module', module)
-    .single();
-  
-  if (error && error.code !== 'PGRST116') {
-    throw new Error(getErrorMessage(error));
-  }
-  
+    .maybeSingle();
+
+  if (error) throw new Error(getErrorMessage(error));
   return (data ?? null) as ComplianceScore | null;
+}
+
+export async function getComplianceScore(companyId: UUID, module: ComplianceDomainKey | 'overall'): Promise<ComplianceScore | null> {
+  return getComplianceScoreTableRow(companyId, module);
 }
 
 export async function listComplianceScores(companyId: UUID): Promise<ComplianceScore[]> {
@@ -43,279 +182,809 @@ export async function listComplianceScores(companyId: UUID): Promise<ComplianceS
     .select('*')
     .eq('company_id', companyId)
     .order('module', { ascending: true });
-  
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as ComplianceScore[];
 }
 
-interface ScoringItem {
-  status: string;
-  priority?: string;
-  due_date?: string;
-  completed_date?: string;
+async function listRecentComplianceScoreRuns(companyId: UUID, limit = 12): Promise<ComplianceScoreRun[]> {
+  const { data, error } = await insforge.database
+    .from('compliance_score_runs')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('effective_month', { ascending: false })
+    .order('generated_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as ComplianceScoreRun[];
 }
 
-function countScoringItems(items: ScoringItem[]): {
-  total: number;
-  completed: number;
-  overdue: number;
-  high_priority: number;
-} {
-  const today = new Date().toISOString().split('T')[0];
-  let completed = 0;
-  let overdue = 0;
-  let high_priority = 0;
+async function listComplianceScoreRunDomains(runId: UUID): Promise<ComplianceScoreRunDomain[]> {
+  const { data, error } = await insforge.database
+    .from('compliance_score_run_domains')
+    .select('*')
+    .eq('run_id', runId)
+    .order('domain_key', { ascending: true });
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as ComplianceScoreRunDomain[];
+}
 
-  for (const item of items) {
-    // Count completed
-    if (item.status === 'closed' || item.status === 'completed' || item.status === 'verified' || item.completed_date) {
-      completed++;
-    }
+export async function listComplianceIsoLinks(companyId: UUID): Promise<ComplianceIsoRecordLink[]> {
+  const { data, error } = await insforge.database
+    .from('compliance_iso_record_links')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('standard_key', { ascending: true })
+    .order('clause_number', { ascending: true });
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as ComplianceIsoRecordLink[];
+}
 
-    // Count overdue (has due_date in past and not completed)
-    if (item.due_date && item.due_date < today && (!item.completed_date && item.status !== 'closed' && item.status !== 'completed' && item.status !== 'verified')) {
-      overdue++;
-    }
+export async function upsertComplianceIsoLink(input: {
+  companyId: UUID;
+  standardKey: ISOStandard;
+  clauseNumber: string;
+  clauseTitle: string;
+  moduleKey?: string | null;
+  sourceTable: string;
+  sourceRecordId: UUID;
+  complianceStatus: ComplianceIsoRecordLink['compliance_status'];
+  evidenceDocumentIds?: UUID[] | null;
+  evidenceLinks?: Array<Record<string, unknown>>;
+  notes?: string | null;
+  linkedByUserId?: UUID | null;
+}): Promise<ComplianceIsoRecordLink> {
+  const { data, error } = await insforge.database
+    .from('compliance_iso_record_links')
+    .upsert(
+      {
+        company_id: input.companyId,
+        standard_key: input.standardKey,
+        clause_number: input.clauseNumber,
+        clause_title: input.clauseTitle,
+        module_key: input.moduleKey ?? null,
+        source_table: input.sourceTable,
+        source_record_id: input.sourceRecordId,
+        compliance_status: input.complianceStatus,
+        evidence_document_ids: input.evidenceDocumentIds ?? null,
+        evidence_links: input.evidenceLinks ?? [],
+        notes: input.notes ?? null,
+        linked_by_user_id: input.linkedByUserId ?? null,
+        updated_at: new Date().toISOString()
+      },
+      {
+        onConflict: 'company_id,standard_key,clause_number,source_table,source_record_id'
+      }
+    )
+    .select('*')
+    .single();
 
-    // Count high priority
-    if (item.priority === 'high' || item.priority === 'urgent') {
-      high_priority++;
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to upsert ISO compliance link.');
+  return data as ComplianceIsoRecordLink;
+}
+
+async function collectDomainMetrics(companyId: UUID): Promise<Record<ComplianceDomainKey, ComplianceDomainSummary>> {
+  const period = getRolling12Period();
+  const todayIso = new Date().toISOString();
+  const todayDate = todayIso.slice(0, 10);
+
+  const [
+    documentsResult,
+    trainingResult,
+    risksResult,
+    incidentsResult,
+    correctiveActionsResult,
+    auditsResult,
+    auditQuestionsResult,
+    auditResponsesResult
+  ] = await Promise.all([
+    insforge.database
+      .from('documents')
+      .select('id,title,status,review_due_at,updated_at,module')
+      .eq('company_id', companyId)
+      .limit(1000),
+    insforge.database
+      .from('training_records')
+      .select('id,user_id,status,completed_at,expires_at,course_id')
+      .eq('company_id', companyId)
+      .limit(2000),
+    insforge.database
+      .from('risk_assessments')
+      .select('id,title,status,assessment_date,review_due_at,high_risks,total_risks,updated_at')
+      .eq('company_id', companyId)
+      .limit(1000),
+    insforge.database
+      .from('incidents')
+      .select('id,title,status,severity,occurred_at,updated_at')
+      .eq('company_id', companyId)
+      .limit(1000),
+    insforge.database
+      .from('corrective_actions')
+      .select('id,title,status,source_type,source_id,due_date,completed_date,priority')
+      .eq('company_id', companyId)
+      .limit(2000),
+    insforge.database
+      .from('audits')
+      .select('id,title,objectives,status,selected_date,proposed_dates,created_at,report_submitted_at,findings_count,nonconformances_count')
+      .eq('company_id', companyId)
+      .limit(1000),
+    insforge.database
+      .from('audit_questions')
+      .select('id,audit_id,allocated_score')
+      .limit(4000),
+    insforge.database
+      .from('audit_responses')
+      .select('id,audit_question_id,is_compliant,achieved_score')
+      .limit(4000)
+  ]);
+
+  for (const result of [
+    documentsResult,
+    trainingResult,
+    risksResult,
+    incidentsResult,
+    correctiveActionsResult,
+    auditsResult,
+    auditQuestionsResult,
+    auditResponsesResult
+  ]) {
+    if (result.error) throw new Error(getErrorMessage(result.error));
+  }
+
+  const documents = sanitizeArray(documentsResult.data as Array<any>);
+  const trainingRecords = sanitizeArray(trainingResult.data as Array<any>);
+  const risks = sanitizeArray(risksResult.data as Array<any>);
+  const incidents = sanitizeArray(incidentsResult.data as Array<any>);
+  const correctiveActions = sanitizeArray(correctiveActionsResult.data as Array<any>);
+  const audits = sanitizeArray(auditsResult.data as Array<any>);
+  const auditQuestions = sanitizeArray(auditQuestionsResult.data as Array<any>);
+  const auditResponses = sanitizeArray(auditResponsesResult.data as Array<any>);
+
+  const metricAccumulators: Record<ComplianceDomainKey, DomainMetricAccumulator> = {
+    documents: { totalCount: 0, compliantCount: 0, overdueCount: 0, attentionCount: 0, drilldownRecords: [] },
+    training: { totalCount: 0, compliantCount: 0, overdueCount: 0, attentionCount: 0, drilldownRecords: [] },
+    risks: { totalCount: 0, compliantCount: 0, overdueCount: 0, attentionCount: 0, drilldownRecords: [] },
+    incidents: { totalCount: 0, compliantCount: 0, overdueCount: 0, attentionCount: 0, drilldownRecords: [] },
+    audits: { totalCount: 0, compliantCount: 0, overdueCount: 0, attentionCount: 0, drilldownRecords: [] }
+  };
+
+  for (const document of documents) {
+    metricAccumulators.documents.totalCount += 1;
+    const isApproved = document.status === 'approved';
+    const isOverdue = Boolean(document.review_due_at) && String(document.review_due_at).slice(0, 10) < todayDate;
+    if (isApproved && !isOverdue) metricAccumulators.documents.compliantCount += 1;
+    if (isOverdue) metricAccumulators.documents.overdueCount += 1;
+    if (!isApproved) metricAccumulators.documents.attentionCount += 1;
+    metricAccumulators.documents.drilldownRecords.push({
+      id: document.id,
+      label: document.title,
+      status: document.status,
+      dueDate: document.review_due_at,
+      module: document.module
+    });
+  }
+
+  for (const record of trainingRecords) {
+    metricAccumulators.training.totalCount += 1;
+    const isCompleted = record.status === 'COMPLETED';
+    const isExpired = Boolean(record.expires_at) && String(record.expires_at) < todayIso;
+    const needsAttention = record.status === 'REQUIRED' || record.status === 'OVERDUE' || isExpired;
+    if (isCompleted && !isExpired) metricAccumulators.training.compliantCount += 1;
+    if (isExpired || record.status === 'OVERDUE') metricAccumulators.training.overdueCount += 1;
+    if (needsAttention) metricAccumulators.training.attentionCount += 1;
+    metricAccumulators.training.drilldownRecords.push({
+      id: record.id,
+      label: record.course_id ?? record.id,
+      status: record.status,
+      userId: record.user_id,
+      expiresAt: record.expires_at
+    });
+  }
+
+  for (const risk of risks) {
+    metricAccumulators.risks.totalCount += 1;
+    const overdue = Boolean(risk.review_due_at) && String(risk.review_due_at) < todayIso;
+    const compliant = ['approved', 'closed'].includes(String(risk.status)) && Number(risk.high_risks ?? 0) === 0;
+    if (compliant) metricAccumulators.risks.compliantCount += 1;
+    if (overdue) metricAccumulators.risks.overdueCount += 1;
+    if (Number(risk.high_risks ?? 0) > 0 || !compliant) metricAccumulators.risks.attentionCount += 1;
+    metricAccumulators.risks.drilldownRecords.push({
+      id: risk.id,
+      label: risk.title,
+      status: risk.status,
+      highRisks: risk.high_risks,
+      reviewDueAt: risk.review_due_at
+    });
+  }
+
+  const incidentActionsBySource = new Map<string, Array<any>>();
+  for (const action of correctiveActions) {
+    const key = `${action.source_type}:${action.source_id}`;
+    const list = incidentActionsBySource.get(key) ?? [];
+    list.push(action);
+    incidentActionsBySource.set(key, list);
+  }
+
+  for (const incident of incidents) {
+    metricAccumulators.incidents.totalCount += 1;
+    const linkedActions = incidentActionsBySource.get(`incident:${incident.id}`) ?? [];
+    const overdueLinkedActions = linkedActions.filter(
+      (action) =>
+        action.due_date &&
+        String(action.due_date).slice(0, 10) < todayDate &&
+        !['completed', 'verified', 'closed'].includes(String(action.status))
+    );
+    const compliant = incident.status === 'closed' && overdueLinkedActions.length === 0;
+    if (compliant) metricAccumulators.incidents.compliantCount += 1;
+    if (overdueLinkedActions.length > 0) metricAccumulators.incidents.overdueCount += overdueLinkedActions.length;
+    if (incident.status !== 'closed' || overdueLinkedActions.length > 0) metricAccumulators.incidents.attentionCount += 1;
+    metricAccumulators.incidents.drilldownRecords.push({
+      id: incident.id,
+      label: incident.title,
+      status: incident.status,
+      severity: incident.severity,
+      occurredAt: incident.occurred_at,
+      overdueActionCount: overdueLinkedActions.length
+    });
+  }
+
+  const questionsByAuditId = new Map<UUID, Array<any>>();
+  for (const question of auditQuestions) {
+    const list = questionsByAuditId.get(question.audit_id) ?? [];
+    list.push(question);
+    questionsByAuditId.set(question.audit_id, list);
+  }
+
+  const responseByQuestionId = new Map<UUID, any>();
+  for (const response of auditResponses) {
+    if (!responseByQuestionId.has(response.audit_question_id)) {
+      responseByQuestionId.set(response.audit_question_id, response);
     }
   }
 
+  for (const audit of audits) {
+    metricAccumulators.audits.totalCount += 1;
+    const selectedDate = audit.selected_date ? String(audit.selected_date).slice(0, 10) : null;
+    const overdue = selectedDate ? selectedDate < todayDate && !['completed', 'archived'].includes(String(audit.status)) : false;
+    const questions = questionsByAuditId.get(audit.id) ?? [];
+    const totalPossibleScore = questions.reduce((sum, question) => sum + (Number(question.allocated_score) || 1), 0);
+    const achievedScore = questions.reduce((sum, question) => {
+      const response = responseByQuestionId.get(question.id);
+      if (!response) return sum;
+      if (response.achieved_score != null) return sum + Number(response.achieved_score || 0);
+      return sum + (response.is_compliant ? Number(question.allocated_score) || 1 : 0);
+    }, 0);
+    const auditScore = totalPossibleScore > 0 ? achievedScore / totalPossibleScore : (audit.status === 'completed' ? 1 : 0);
+    const compliant = audit.status === 'completed' && Number(audit.nonconformances_count ?? 0) === 0 && auditScore >= 0.85;
+    if (compliant) metricAccumulators.audits.compliantCount += 1;
+    if (overdue) metricAccumulators.audits.overdueCount += 1;
+    if (!compliant || Number(audit.findings_count ?? 0) > 0) metricAccumulators.audits.attentionCount += 1;
+    metricAccumulators.audits.drilldownRecords.push({
+      id: audit.id,
+      label: audit.title ?? audit.objectives ?? audit.id,
+      status: audit.status,
+      selectedDate,
+      findingsCount: audit.findings_count,
+      nonconformancesCount: audit.nonconformances_count,
+      scorePercentage: Number((auditScore * 100).toFixed(2))
+    });
+  }
+
+  const recentRuns = await listRecentComplianceScoreRuns(companyId, 2).catch(() => []);
+  const previousRun = recentRuns.length > 0 ? recentRuns[0] : null;
+  const previousDomains = previousRun ? await listComplianceScoreRunDomains(previousRun.id).catch(() => []) : [];
+  const previousScoreByDomain = new Map(
+    previousDomains.map((domain) => [domain.domain_key as ComplianceDomainKey, Number(domain.score_percentage || 0)])
+  );
+
   return {
-    total: items.length,
-    completed,
-    overdue,
-    high_priority
+    documents: {
+      domainKey: 'documents',
+      label: 'Documents',
+      weight: COMPLIANCE_DOMAIN_WEIGHTS.documents,
+      scorePercentage: safePercentage(
+        metricAccumulators.documents.compliantCount,
+        metricAccumulators.documents.totalCount
+      ),
+      ragStatus: 'red',
+      totalCount: metricAccumulators.documents.totalCount,
+      compliantCount: metricAccumulators.documents.compliantCount,
+      overdueCount: metricAccumulators.documents.overdueCount,
+      attentionCount: metricAccumulators.documents.attentionCount,
+      trendDelta: 0,
+      drilldownRecords: metricAccumulators.documents.drilldownRecords.slice(0, 25)
+    },
+    training: {
+      domainKey: 'training',
+      label: 'Training',
+      weight: COMPLIANCE_DOMAIN_WEIGHTS.training,
+      scorePercentage: safePercentage(metricAccumulators.training.compliantCount, metricAccumulators.training.totalCount),
+      ragStatus: 'red',
+      totalCount: metricAccumulators.training.totalCount,
+      compliantCount: metricAccumulators.training.compliantCount,
+      overdueCount: metricAccumulators.training.overdueCount,
+      attentionCount: metricAccumulators.training.attentionCount,
+      trendDelta: 0,
+      drilldownRecords: metricAccumulators.training.drilldownRecords.slice(0, 25)
+    },
+    risks: {
+      domainKey: 'risks',
+      label: 'Risks',
+      weight: COMPLIANCE_DOMAIN_WEIGHTS.risks,
+      scorePercentage: safePercentage(metricAccumulators.risks.compliantCount, metricAccumulators.risks.totalCount),
+      ragStatus: 'red',
+      totalCount: metricAccumulators.risks.totalCount,
+      compliantCount: metricAccumulators.risks.compliantCount,
+      overdueCount: metricAccumulators.risks.overdueCount,
+      attentionCount: metricAccumulators.risks.attentionCount,
+      trendDelta: 0,
+      drilldownRecords: metricAccumulators.risks.drilldownRecords.slice(0, 25)
+    },
+    incidents: {
+      domainKey: 'incidents',
+      label: 'Incidents',
+      weight: COMPLIANCE_DOMAIN_WEIGHTS.incidents,
+      scorePercentage: safePercentage(
+        metricAccumulators.incidents.compliantCount,
+        metricAccumulators.incidents.totalCount
+      ),
+      ragStatus: 'red',
+      totalCount: metricAccumulators.incidents.totalCount,
+      compliantCount: metricAccumulators.incidents.compliantCount,
+      overdueCount: metricAccumulators.incidents.overdueCount,
+      attentionCount: metricAccumulators.incidents.attentionCount,
+      trendDelta: 0,
+      drilldownRecords: metricAccumulators.incidents.drilldownRecords.slice(0, 25)
+    },
+    audits: {
+      domainKey: 'audits',
+      label: 'Audits',
+      weight: COMPLIANCE_DOMAIN_WEIGHTS.audits,
+      scorePercentage: safePercentage(metricAccumulators.audits.compliantCount, metricAccumulators.audits.totalCount),
+      ragStatus: 'red',
+      totalCount: metricAccumulators.audits.totalCount,
+      compliantCount: metricAccumulators.audits.compliantCount,
+      overdueCount: metricAccumulators.audits.overdueCount,
+      attentionCount: metricAccumulators.audits.attentionCount,
+      trendDelta: 0,
+      drilldownRecords: metricAccumulators.audits.drilldownRecords.slice(0, 25)
+    }
+  } satisfies Record<ComplianceDomainKey, ComplianceDomainSummary>;
+}
+
+function finalizeDomains(domains: Record<ComplianceDomainKey, ComplianceDomainSummary>): ComplianceDomainSummary[] {
+  return (Object.keys(domains) as ComplianceDomainKey[]).map((key) => {
+    const previousScore = 0;
+    const domain = domains[key];
+    const scorePercentage = Number(domain.scorePercentage.toFixed(2));
+    return {
+      ...domain,
+      scorePercentage,
+      ragStatus: calculateComplianceRagStatus(scorePercentage),
+      trendDelta: Number((scorePercentage - previousScore).toFixed(2))
+    };
+  });
+}
+
+async function upsertLegacyComplianceRow(
+  companyId: UUID,
+  module: ComplianceDomainKey | 'overall',
+  scorePercentage: number,
+  totals: { totalCount: number; compliantCount: number; overdueCount: number; attentionCount: number }
+): Promise<ComplianceScore> {
+  const existing = await getComplianceScoreTableRow(companyId, module);
+  const payload = {
+    company_id: companyId,
+    module,
+    score: scorePercentage,
+    percentage_complete: scorePercentage,
+    total_items: totals.totalCount,
+    completed_items: totals.compliantCount,
+    overdue_items: totals.overdueCount,
+    high_priority_items: totals.attentionCount,
+    last_calculated_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
   };
+
+  const query = existing
+    ? insforge.database.from('compliance_scores').update(payload).eq('id', existing.id)
+    : insforge.database.from('compliance_scores').insert(payload);
+
+  const { data, error } = await query.select('*').single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to persist legacy compliance score row.');
+  return data as ComplianceScore;
 }
 
 export async function calculateComplianceScore(
   companyId: UUID,
-  module: ModuleKey,
+  module: ComplianceDomainKey,
   updatedByUserId: UUID
 ): Promise<ComplianceScore> {
-  let items: ScoringItem[] = [];
+  const domains = finalizeDomains(await collectDomainMetrics(companyId));
+  const selected = domains.find((domain) => domain.domainKey === module);
+  if (!selected) throw new Error(`Unsupported compliance domain: ${module}`);
 
-  // Gather items based on module
-  switch (module) {
-    case 'safety': {
-      const incidents = await listIncidents({ companyId, limit: 500 });
-      const risks = await listRiskAssessments({ companyId, limit: 500 });
-      items = [
-        ...incidents.map(i => ({ status: i.status, due_date: i.created_at?.split('T')[0], priority: i.priority })),
-        ...risks.map(r => ({ status: r.status, due_date: r.assessment_date }))
-      ];
-      break;
-    }
-
-    case 'quality': {
-      const ncrs = await insforge.database
-        .from('quality_ncrs')
-        .select('*')
-        .eq('company_id', companyId);
-      if (ncrs.error) throw new Error(getErrorMessage(ncrs.error));
-      items = (ncrs.data ?? []).map(n => ({
-        status: n.status,
-        due_date: n.due_date,
-        priority: n.priority,
-        completed_date: n.closed_date
-      }));
-      break;
-    }
-
-    case 'environment':
-    case 'health':
-    case 'legal':
-    case 'hr': {
-      // Gather from audits and compliance items for these modules
-      const audits = await listAudits({ companyId, module, limit: 500 });
-      items = audits.map(a => ({
-        status: a.status,
-        due_date: a.audit_date,
-        priority: 'medium'
-      }));
-      break;
-    }
-    default:
-      items = [];
-      break;
-  }
-
-  // Count items
-  const counts = countScoringItems(items);
-  
-  // Calculate score (0-100)
-  const score = counts.total === 0 ? 100 : Math.round((counts.completed / counts.total) * 100);
-  const percentageComplete = counts.total === 0 ? 100 : Math.round((counts.completed / counts.total) * 100);
-
-  // Upsert compliance score
-  const existingScore = await getComplianceScore(companyId, module);
-
-  let result: ComplianceScore;
-
-  if (existingScore) {
-    const { data, error } = await insforge.database
-      .from('compliance_scores')
-      .update({
-        score,
-        percentage_complete: percentageComplete,
-        total_items: counts.total,
-        completed_items: counts.completed,
-        overdue_items: counts.overdue,
-        high_priority_items: counts.high_priority,
-        last_calculated_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', existingScore.id)
-      .select('*')
-      .single();
-
-    if (error) throw new Error(getErrorMessage(error));
-    if (!data) throw new Error('Failed to update compliance score');
-    result = data as ComplianceScore;
-  } else {
-    const { data, error } = await insforge.database
-      .from('compliance_scores')
-      .insert({
-        company_id: companyId,
-        module,
-        score,
-        percentage_complete: percentageComplete,
-        total_items: counts.total,
-        completed_items: counts.completed,
-        overdue_items: counts.overdue,
-        high_priority_items: counts.high_priority
-      })
-      .select('*')
-      .single();
-
-    if (error) throw new Error(getErrorMessage(error));
-    if (!data) throw new Error('Failed to create compliance score');
-    result = data as ComplianceScore;
-  }
+  const legacyRow = await upsertLegacyComplianceRow(companyId, module, selected.scorePercentage, {
+    totalCount: selected.totalCount,
+    compliantCount: selected.compliantCount,
+    overdueCount: selected.overdueCount,
+    attentionCount: selected.attentionCount
+  });
 
   await createActivityLog({
     companyId,
     actorUserId: updatedByUserId,
-    action: 'compliance_scores.calculate',
+    action: 'compliance_scores.calculate_domain',
     entityType: 'compliance_score',
-    entityId: result.id,
-    details: { module, score, percentageComplete }
+    entityId: legacyRow.id,
+    metadata: {
+      module,
+      scorePercentage: selected.scorePercentage,
+      ragStatus: selected.ragStatus
+    }
   });
 
-  return result;
+  return legacyRow;
 }
 
 export async function calculateOverallScore(companyId: UUID, updatedByUserId: UUID): Promise<ComplianceScore> {
-  // Get all module scores
-  const modules: ModuleKey[] = ['safety', 'quality', 'environment', 'health', 'legal', 'hr'];
-  
-  // Recalculate all module scores first
-  for (const module of modules) {
-    try {
-      await calculateComplianceScore(companyId, module, updatedByUserId);
-    } catch (e) {
-      console.error(`Failed to calculate score for ${module}:`, e);
-    }
-  }
+  const rawDomains = await collectDomainMetrics(companyId);
+  const domains = finalizeDomains(rawDomains);
+  const weightedScore = Number(
+    domains
+      .reduce((sum, domain) => sum + domain.scorePercentage * (domain.weight / 100), 0)
+      .toFixed(2)
+  );
+  const ragStatus = calculateComplianceRagStatus(weightedScore);
+  const aiInsight = buildAiInsight(domains);
+  const effectiveMonth = toMonthDate();
 
-  // Get all scores
-  const allScores = await listComplianceScores(companyId);
-  const moduleScores = allScores.filter(s => s.module !== 'overall');
+  const { data: runData, error: runError } = await insforge.database
+    .from('compliance_score_runs')
+    .insert({
+      company_id: companyId,
+      score_kind: 'overall',
+      score_percentage: weightedScore,
+      rag_status: ragStatus,
+      weighted_score: weightedScore,
+      generated_by_user_id: updatedByUserId === 'system' ? null : updatedByUserId,
+      effective_month: effectiveMonth,
+      ai_predicted_deterioration_risk: aiInsight.predictedDeteriorationRisk,
+      ai_next_month_risk_flag: aiInsight.nextMonthRiskFlag,
+      ai_recommendations: aiInsight.recommendations,
+      ai_top_gaps: aiInsight.topGaps,
+      metadata: {
+        domainCount: domains.length
+      }
+    })
+    .select('*')
+    .single();
+  if (runError) throw new Error(getErrorMessage(runError));
+  if (!runData) throw new Error('Failed to create compliance score run.');
 
-  // Calculate weighted average
-  const totalItems = moduleScores.reduce((sum, s) => sum + s.total_items, 0);
-  const totalCompleted = moduleScores.reduce((sum, s) => sum + s.completed_items, 0);
-  const totalOverdue = moduleScores.reduce((sum, s) => sum + s.overdue_items, 0);
-  const totalHighPriority = moduleScores.reduce((sum, s) => sum + s.high_priority_items, 0);
+  const run = runData as ComplianceScoreRun;
 
-  const overallScore = totalItems === 0 ? 100 : Math.round((totalCompleted / totalItems) * 100);
-  const percentageComplete = totalItems === 0 ? 100 : Math.round((totalCompleted / totalItems) * 100);
-
-  // Upsert overall score
-  const existingOverall = await getComplianceScore(companyId, 'overall');
-
-  let result: ComplianceScore;
-
-  if (existingOverall) {
-    const { data, error } = await insforge.database
-      .from('compliance_scores')
-      .update({
-        score: overallScore,
-        percentage_complete: percentageComplete,
-        total_items: totalItems,
-        completed_items: totalCompleted,
-        overdue_items: totalOverdue,
-        high_priority_items: totalHighPriority,
-        last_calculated_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', existingOverall.id)
-      .select('*')
-      .single();
-
-    if (error) throw new Error(getErrorMessage(error));
-    if (!data) throw new Error('Failed to update overall compliance score');
-    result = data as ComplianceScore;
-  } else {
-    const { data, error } = await insforge.database
-      .from('compliance_scores')
-      .insert({
+  for (const domain of domains) {
+    const { error } = await insforge.database.from('compliance_score_run_domains').upsert(
+      {
+        run_id: run.id,
         company_id: companyId,
-        module: 'overall',
-        score: overallScore,
-        percentage_complete: percentageComplete,
-        total_items: totalItems,
-        completed_items: totalCompleted,
-        overdue_items: totalOverdue,
-        high_priority_items: totalHighPriority
-      })
-      .select('*')
-      .single();
-
+        domain_key: domain.domainKey,
+        domain_label: domain.label,
+        weight: domain.weight,
+        score_percentage: domain.scorePercentage,
+        rag_status: domain.ragStatus,
+        total_count: domain.totalCount,
+        compliant_count: domain.compliantCount,
+        overdue_count: domain.overdueCount,
+        attention_count: domain.attentionCount,
+        trend_delta: domain.trendDelta,
+        drilldown_records: domain.drilldownRecords
+      },
+      { onConflict: 'run_id,domain_key' }
+    );
     if (error) throw new Error(getErrorMessage(error));
-    if (!data) throw new Error('Failed to create overall compliance score');
-    result = data as ComplianceScore;
+
+    await upsertLegacyComplianceRow(companyId, domain.domainKey, domain.scorePercentage, {
+      totalCount: domain.totalCount,
+      compliantCount: domain.compliantCount,
+      overdueCount: domain.overdueCount,
+      attentionCount: domain.attentionCount
+    });
   }
 
-  await createActivityLog({
-    companyId,
-    actorUserId: updatedByUserId,
-    action: 'compliance_scores.calculate_overall',
-    entityType: 'compliance_score',
-    entityId: result.id,
-    details: { score: overallScore, percentageComplete }
+  const totalCount = domains.reduce((sum, domain) => sum + domain.totalCount, 0);
+  const compliantCount = domains.reduce((sum, domain) => sum + domain.compliantCount, 0);
+  const overdueCount = domains.reduce((sum, domain) => sum + domain.overdueCount, 0);
+  const attentionCount = domains.reduce((sum, domain) => sum + domain.attentionCount, 0);
+
+  const legacyOverall = await upsertLegacyComplianceRow(companyId, 'overall', weightedScore, {
+    totalCount,
+    compliantCount,
+    overdueCount,
+    attentionCount
   });
 
-  return result;
+  if (updatedByUserId !== 'system') {
+    await createActivityLog({
+      companyId,
+      actorUserId: updatedByUserId,
+      action: 'compliance_scores.calculate_overall',
+      entityType: 'compliance_score',
+      entityId: run.id,
+      metadata: {
+        weightedScore,
+        ragStatus,
+        effectiveMonth,
+        predictedDeteriorationRisk: aiInsight.predictedDeteriorationRisk
+      }
+    });
+  }
+
+  return legacyOverall;
+}
+
+function mapRunDomainToSummary(domain: ComplianceScoreRunDomain): ComplianceDomainSummary {
+  return {
+    domainKey: domain.domain_key as ComplianceDomainKey,
+    label: domain.domain_label,
+    weight: Number(domain.weight ?? COMPLIANCE_DOMAIN_WEIGHTS[domain.domain_key as ComplianceDomainKey] ?? 20),
+    scorePercentage: Number(domain.score_percentage ?? 0),
+    ragStatus: (domain.rag_status as ComplianceRagStatus) ?? 'red',
+    totalCount: Number(domain.total_count ?? 0),
+    compliantCount: Number(domain.compliant_count ?? 0),
+    overdueCount: Number(domain.overdue_count ?? 0),
+    attentionCount: Number(domain.attention_count ?? 0),
+    trendDelta: Number(domain.trend_delta ?? 0),
+    drilldownRecords: sanitizeArray(domain.drilldown_records as Array<Record<string, unknown>>)
+  };
+}
+
+async function getIsoSummary(companyId: UUID): Promise<ComplianceDashboardData['isoSummary']> {
+  const links = await listComplianceIsoLinks(companyId).catch(() => []);
+  const standards: ISOStandard[] = ['iso45001', 'iso9001', 'iso14001'];
+
+  return standards.map((standard) => {
+    const standardLinks = links.filter((link) => link.standard_key === standard);
+    const compliantLinks = standardLinks.filter((link) => link.compliance_status === 'compliant').length;
+    const clauses = getISOClauses(standard);
+    const byClause = Object.values(clauses).map((clause) => {
+      const clauseLinks = standardLinks.filter((link) => link.clause_number === clause.clauseNumber);
+      const clauseCompliant = clauseLinks.filter((link) => link.compliance_status === 'compliant').length;
+      return {
+        clauseNumber: clause.clauseNumber,
+        clauseTitle: clause.title,
+        scorePercentage: safePercentage(clauseCompliant, clauseLinks.length),
+        recordCount: clauseLinks.length
+      };
+    });
+
+    return {
+      standard,
+      scorePercentage: safePercentage(compliantLinks, standardLinks.length),
+      totalLinks: standardLinks.length,
+      compliantLinks,
+      byClause
+    };
+  });
+}
+
+async function getTopRisks(companyId: UUID): Promise<Array<Record<string, unknown>>> {
+  const { data, error } = await insforge.database
+    .from('risk_assessments')
+    .select('id,title,high_risks,total_risks,status,review_due_at')
+    .eq('company_id', companyId)
+    .order('high_risks', { ascending: false })
+    .order('updated_at', { ascending: false })
+    .limit(5);
+  if (error) throw new Error(getErrorMessage(error));
+  return sanitizeArray(data as Array<Record<string, unknown>>);
+}
+
+async function getOverdueActions(companyId: UUID): Promise<Array<Record<string, unknown>>> {
+  const { data, error } = await insforge.database
+    .from('corrective_actions')
+    .select('id,title,status,due_date,priority,source_type')
+    .eq('company_id', companyId)
+    .lt('due_date', new Date().toISOString().slice(0, 10))
+    .not('status', 'in', '("completed","verified","closed")')
+    .order('due_date', { ascending: true })
+    .limit(10);
+  if (error) throw new Error(getErrorMessage(error));
+  return sanitizeArray(data as Array<Record<string, unknown>>);
+}
+
+export async function getComplianceDashboardData(companyId: UUID): Promise<ComplianceDashboardData> {
+  let latestRun = (await listRecentComplianceScoreRuns(companyId, 1))[0] ?? null;
+  if (!latestRun) {
+    // System-generated run to guarantee dashboard availability.
+    await calculateOverallScore(companyId, 'system');
+    latestRun = (await listRecentComplianceScoreRuns(companyId, 1))[0] ?? null;
+  }
+  if (!latestRun) {
+    throw new Error('Unable to generate compliance dashboard data.');
+  }
+
+  const [runDomains, recentRuns, isoSummary, topRisks, overdueActions] = await Promise.all([
+    listComplianceScoreRunDomains(latestRun.id),
+    listRecentComplianceScoreRuns(companyId, 12),
+    getIsoSummary(companyId),
+    getTopRisks(companyId),
+    getOverdueActions(companyId)
+  ]);
+
+  const domains = runDomains.map(mapRunDomainToSummary);
+  const aiInsight: ComplianceAiInsight = {
+    predictedDeteriorationRisk: Number(latestRun.ai_predicted_deterioration_risk ?? 0),
+    nextMonthRiskFlag: (latestRun.ai_next_month_risk_flag as ComplianceAiInsight['nextMonthRiskFlag']) ?? 'low',
+    topGaps: sanitizeArray(latestRun.ai_top_gaps as ComplianceAiInsight['topGaps']),
+    recommendations: sanitizeArray(latestRun.ai_recommendations as ComplianceAiInsight['recommendations'])
+  };
+
+  return {
+    overall: {
+      scorePercentage: Number(latestRun.score_percentage ?? 0),
+      ragStatus: (latestRun.rag_status as ComplianceRagStatus) ?? 'red',
+      weightedScore: Number(latestRun.weighted_score ?? latestRun.score_percentage ?? 0),
+      generatedAt: latestRun.generated_at
+    },
+    domains,
+    aiInsight,
+    trendHistory: recentRuns
+      .slice()
+      .reverse()
+      .map((run) => ({
+        month: toIsoMonth(new Date(run.effective_month)),
+        scorePercentage: Number(run.score_percentage ?? 0),
+        ragStatus: (run.rag_status as ComplianceRagStatus) ?? 'red'
+      })),
+    isoSummary,
+    topRisks,
+    overdueActions
+  };
+}
+
+export async function generateMonthlyComplianceReport(input: {
+  companyId: UUID;
+  reportMonth?: string;
+  recipientEmails: string[];
+  createdByUserId?: UUID | null;
+}): Promise<MonthlyComplianceReport> {
+  const dashboard = await getComplianceDashboardData(input.companyId);
+  const existingRun = (await listRecentComplianceScoreRuns(input.companyId, 1))[0] ?? null;
+  const reportMonth = input.reportMonth ?? toMonthDate();
+
+  const { data, error } = await insforge.database
+    .from('monthly_compliance_reports')
+    .upsert(
+      {
+        company_id: input.companyId,
+        report_month: reportMonth,
+        generated_from_run_id: existingRun?.id ?? null,
+        recipient_emails: input.recipientEmails,
+        status: 'queued',
+        summary: {
+          overall: dashboard.overall,
+          topRisks: dashboard.topRisks,
+          overdueActions: dashboard.overdueActions,
+          topGaps: dashboard.aiInsight.topGaps
+        },
+        created_by_user_id: input.createdByUserId ?? null,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'company_id,report_month' }
+    )
+    .select('*')
+    .single();
+
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to create monthly compliance report.');
+  return data as MonthlyComplianceReport;
+}
+
+export async function markMonthlyComplianceReportSent(input: {
+  reportId: UUID;
+  status: 'sent' | 'failed';
+  deliveryError?: string | null;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('monthly_compliance_reports')
+    .update({
+      status: input.status,
+      sent_at: input.status === 'sent' ? new Date().toISOString() : null,
+      delivery_error: input.deliveryError ?? null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', input.reportId);
+  if (error) throw new Error(getErrorMessage(error));
 }
 
 export async function getComplianceSummary(companyId: UUID): Promise<{
   overallScore: ComplianceScore | null;
   moduleScores: ComplianceScore[];
   statusByModule: Record<string, { score: number; status: string }>;
+  latestRun: ComplianceScoreRun | null;
+  domains: ComplianceDomainSummary[];
+  aiInsight: ComplianceAiInsight | null;
 }> {
-  const allScores = await listComplianceScores(companyId);
-  const overallScore = allScores.find(s => s.module === 'overall');
-  const moduleScores = allScores.filter(s => s.module !== 'overall');
+  const [allScores, latestRun] = await Promise.all([
+    listComplianceScores(companyId),
+    listRecentComplianceScoreRuns(companyId, 1).then((rows) => rows[0] ?? null)
+  ]);
+
+  const overallScore = allScores.find((score) => score.module === 'overall') ?? null;
+  const moduleScores = allScores.filter((score) => score.module !== 'overall');
 
   const statusByModule: Record<string, { score: number; status: string }> = {};
   for (const score of moduleScores) {
     statusByModule[score.module] = {
       score: score.score,
       status:
-        score.score >= 90 ? 'excellent' :
-        score.score >= 75 ? 'good' :
-        score.score >= 60 ? 'satisfactory' :
-        'needs-improvement'
+        score.score >= 85 ? 'green' :
+        score.score >= 70 ? 'yellow' :
+        'red'
     };
   }
 
+  const domains = latestRun ? (await listComplianceScoreRunDomains(latestRun.id)).map(mapRunDomainToSummary) : [];
+  const aiInsight = latestRun
+    ? {
+        predictedDeteriorationRisk: Number(latestRun.ai_predicted_deterioration_risk ?? 0),
+        nextMonthRiskFlag: (latestRun.ai_next_month_risk_flag as ComplianceAiInsight['nextMonthRiskFlag']) ?? 'low',
+        topGaps: sanitizeArray(latestRun.ai_top_gaps as ComplianceAiInsight['topGaps']),
+        recommendations: sanitizeArray(latestRun.ai_recommendations as ComplianceAiInsight['recommendations'])
+      }
+    : null;
+
   return {
-    overallScore: overallScore ?? null,
+    overallScore,
     moduleScores,
-    statusByModule
+    statusByModule,
+    latestRun,
+    domains,
+    aiInsight
   };
+}
+
+export function buildComplianceExcelRows(data: ComplianceDashboardData): Array<Record<string, string | number>> {
+  const rows: Array<Record<string, string | number>> = [
+    {
+      section: 'Overall',
+      label: 'Compliance score',
+      value: data.overall.scorePercentage,
+      rag_status: data.overall.ragStatus
+    }
+  ];
+
+  for (const domain of data.domains) {
+    rows.push({
+      section: 'Domain',
+      label: domain.label,
+      value: domain.scorePercentage,
+      rag_status: domain.ragStatus,
+      overdue: domain.overdueCount,
+      attention: domain.attentionCount
+    });
+  }
+
+  for (const risk of data.topRisks) {
+    rows.push({
+      section: 'Top risk',
+      label: String(risk.title ?? risk.id ?? 'Risk'),
+      value: Number(risk.high_risks ?? 0),
+      rag_status: String(risk.status ?? '')
+    });
+  }
+
+  for (const action of data.overdueActions) {
+    rows.push({
+      section: 'Overdue action',
+      label: String(action.title ?? action.id ?? 'Action'),
+      value: String(action.due_date ?? ''),
+      rag_status: String(action.priority ?? '')
+    });
+  }
+
+  return rows;
 }

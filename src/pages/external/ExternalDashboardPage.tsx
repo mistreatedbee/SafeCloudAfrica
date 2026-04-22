@@ -4,11 +4,20 @@ import { ShieldCheckIcon, FileTextIcon, SearchIcon, AlertTriangleIcon } from 'lu
 import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useIdentity } from '../../hooks/useIdentity';
+import { useAsync } from '../../api/hooks/useAsync';
+import { listExternalAccessGrants } from '../../api/services/externalAccessService';
 
 export function ExternalDashboardPage() {
-  const { activeRole } = useTenant();
+  const { activeRole, activeCompanyId } = useTenant();
   const { organisationName } = useIdentity();
   const isAuditor = activeRole === 'auditor';
+  const { data: grants } = useAsync(
+    async () => {
+      if (!activeCompanyId) return [];
+      return listExternalAccessGrants(activeCompanyId);
+    },
+    [activeCompanyId]
+  );
 
   return (
     <Layout title={isAuditor ? 'Auditor Dashboard' : 'Consultant Dashboard'}>
@@ -32,6 +41,9 @@ export function ExternalDashboardPage() {
               </p>
               <p className="text-xs text-charcoal-400 mt-2">
                 All your actions are logged for audit purposes.
+              </p>
+              <p className="text-xs text-charcoal-400 mt-1">
+                Active external grants configured: {grants?.length ?? 0}
               </p>
             </div>
           </div>

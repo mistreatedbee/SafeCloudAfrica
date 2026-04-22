@@ -5,7 +5,7 @@ import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listBbsObservations } from '../../api/services/bbsService';
+import { getBbsTrendSummary, listBbsObservations } from '../../api/services/bbsService';
 import type { BbsObservation } from '../../api/models/entities';
 import { BbsObservationCreateModal } from '../../components/features/BbsObservationCreateModal';
 import { isSellableFeatureAccessError } from '../../api/services/sellableFeaturesService';
@@ -29,6 +29,13 @@ export function BBSPage() {
     async () => {
       if (!activeCompanyId) return [];
       return await listBbsObservations(activeCompanyId);
+    },
+    [activeCompanyId, refreshKey]
+  );
+  const { data: summary } = useAsync(
+    async () => {
+      if (!activeCompanyId) return null;
+      return getBbsTrendSummary(activeCompanyId);
     },
     [activeCompanyId, refreshKey]
   );
@@ -92,6 +99,7 @@ export function BBSPage() {
             <p className="text-sm text-charcoal-500 mt-2">
               Capture observations and track status in real time across your company.
             </p>
+            <p className="text-2xl font-bold text-charcoal mt-3">{summary?.total ?? 0}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
             <h3 className="font-semibold text-charcoal flex items-center gap-2">
@@ -101,6 +109,7 @@ export function BBSPage() {
             <p className="text-sm text-charcoal-500 mt-2">
               Track positive behaviours and recognition scoring to increase participation.
             </p>
+            <p className="text-2xl font-bold text-success mt-3">{summary?.positive ?? 0}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
             <h3 className="font-semibold text-charcoal flex items-center gap-2">
@@ -110,6 +119,7 @@ export function BBSPage() {
             <p className="text-sm text-charcoal-500 mt-2">
               Use the observation list to identify common unsafe acts and coach teams accordingly.
             </p>
+            <p className="text-2xl font-bold text-warning mt-3">{summary?.unsafeActs ?? 0}</p>
           </div>
         </motion.div>
 

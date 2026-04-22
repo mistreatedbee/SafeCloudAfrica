@@ -5,7 +5,7 @@ import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listTemplateLibrary } from '../../api/services/templateLibraryService';
+import { listTemplateLibrary, listTemplateVersions } from '../../api/services/templateLibraryService';
 import type { TemplateLibraryItem } from '../../api/models/entities';
 import { TemplateUploadModal } from '../../components/features/TemplateUploadModal';
 import { downloadBlob, downloadDocumentFile } from '../../api/services/documentsStorageService';
@@ -33,6 +33,19 @@ export function TemplateLibraryPage() {
       return await listTemplateLibrary(activeCompanyId);
     },
     [activeCompanyId, refreshKey]
+  );
+  const { data: versionCounts } = useAsync(
+    async () => {
+      const items = data ?? [];
+      const entries = await Promise.all(
+        items.slice(0, 20).map(async (item) => ({
+          templateId: item.id,
+          count: (await listTemplateVersions(item.id)).length
+        }))
+      );
+      return Object.fromEntries(entries.map((entry) => [entry.templateId, entry.count]));
+    },
+    [data]
   );
 
   const filtered = useMemo(() => {
@@ -124,6 +137,9 @@ export function TemplateLibraryPage() {
                     <p className="font-medium text-charcoal">{t.name}</p>
                     <p className="text-sm text-charcoal-400 mt-0.5">
                       {(t as any).shortId} • {t.type} • {t.category}
+                    </p>
+                    <p className="text-xs text-charcoal-500 mt-1">
+                      Latest version: {t.latest_version_label ?? 'Unversioned'} • Versions: {versionCounts?.[t.id] ?? 0}
                     </p>
                   </div>
                 </div>

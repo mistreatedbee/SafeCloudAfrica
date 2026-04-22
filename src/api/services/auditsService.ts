@@ -1,51 +1,14 @@
 import { insforge } from '../insforge/client';
-import type { UUID } from '../models/entities';
+import type { Audit, AuditInvitationToken, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
-
-export interface Audit {
-  id: UUID;
-  company_id: UUID;
-  audit_number: string;
-  audit_type: 'internal' | 'external' | 'client' | 'supplier' | 'certification';
-  objectives: string;
-  audit_criteria: string;
-  scope_of_audit: string;
-  location: string;
-  auditor_user_ids: UUID[];
-  proposed_dates: string[];
-  selected_date: string | null;
-  approved_by_user_id: UUID | null;
-  approved_at: string | null;
-  status: 'planned' | 'scheduled' | 'in-progress' | 'completed' | 'reported';
-  planning_inputs?: {
-    organogram_document_url?: string;
-    process_maps_document_url?: string;
-    procedures_policies_document_url?: string;
-    risk_assessments_document_url?: string;
-    legal_register_document_url?: string;
-    previous_audit_reports_document_url?: string;
-    incident_reports_document_url?: string;
-    training_records_document_url?: string;
-    permits_registers_document_url?: string;
-    client_requirements_document_url?: string;
-  };
-  findings_count: number;
-  nonconformances_count: number;
-  observations_count: number;
-  report_document_url: string | null;
-  report_submitted_at: string | null;
-  related_ncr_ids: UUID[];
-  created_by_user_id: UUID;
-  created_at: string;
-  updated_at: string;
-}
 
 export interface AuditQuestion {
   id: UUID;
   audit_id: UUID;
   question: string;
-  expected_evidence?: string;
+  expected_evidence?: string | null;
+  allocated_score?: number | null;
   question_order: number;
   created_by_user_id: UUID;
   created_at: string;
@@ -57,12 +20,12 @@ export interface AuditResponse {
   is_compliant: boolean;
   finding: string | null;
   evidence_document_url: string | null;
+  achieved_score?: number | null;
   risk_rating: 'low' | 'medium' | 'high';
   answered_by_user_id: UUID;
   answered_at: string;
 }
 
-// Auto-generate audit number
 function generateAuditNumber(): string {
   const now = new Date();
   const year = now.getFullYear();
@@ -71,8 +34,18 @@ function generateAuditNumber(): string {
   return `AUDIT-${year}${month}-${random}`;
 }
 
+function hashToken(token: string): string {
+  let hash = 0;
+  for (let i = 0; i < token.length; i += 1) {
+    hash = (hash << 5) - hash + token.charCodeAt(i);
+    hash |= 0;
+  }
+  return `audit-${Math.abs(hash)}`;
+}
+
 export async function listAudits(input: {
   companyId: UUID;
+  module?: string;
   status?: string;
   auditType?: string;
   limit?: number;
@@ -82,12 +55,9 @@ export async function listAudits(input: {
     .select('*')
     .eq('company_id', input.companyId);
 
-  if (input.status) {
-    query = query.eq('status', input.status);
-  }
-  if (input.auditType) {
-    query = query.eq('audit_type', input.auditType);
-  }
+  if (input.module) query = query.eq('module', input.module);
+  if (input.status) query = query.eq('status', input.status);
+  if (input.auditType) query = query.eq('audit_type', input.auditType);
 
   const { data, error } = await query
     .order('created_at', { ascending: false })
@@ -102,46 +72,61 @@ export async function getAudit(auditId: UUID): Promise<Audit | null> {
     .from('audits')
     .select('*')
     .eq('id', auditId)
-    .single();
-
-  if (error && error.code !== 'PGRST116') {
-    throw new Error(getErrorMessage(error));
-  }
-  return (data as Audit) || null;
+    .maybeSingle();
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? null) as Audit | null;
 }
 
 export async function createAudit(input: {
   companyId: UUID;
-  auditType: 'internal' | 'external' | 'client' | 'supplier' | 'certification';
+  module: Audit['module'];
+  title?: string;
+  description?: string | null;
+  auditType: Audit['audit_type'];
   objectives: string;
   auditCriteria: string;
   scopeOfAudit: string;
-  location: string;
+  location?: string;
   auditorUserIds: UUID[];
   proposedDates: string[];
   createdByUserId: UUID;
-  planningInputs?: Record<string, any>;
+  requiredDocumentList?: Array<{ key: string; label: string }>;
+  documentSubmissionDeadline?: string;
+  departmentsAuditeeIds?: UUID[];
+  companyRepresentativeUserIds?: UUID[];
+  leadAuditorUserId?: UUID;
+  checklistTemplateId?: UUID;
+  inviteeEmail?: string | null;
 }): Promise<Audit> {
   const auditNumber = generateAuditNumber();
-
   const { data, error } = await insforge.database
     .from('audits')
     .insert({
       company_id: input.companyId,
+      module: input.module,
       audit_number: auditNumber,
+      title: input.title?.trim() || input.objectives.trim(),
+      description: input.description ?? null,
       audit_type: input.auditType,
       objectives: input.objectives,
       audit_criteria: input.auditCriteria,
       scope_of_audit: input.scopeOfAudit,
-      location: input.location,
+      location: input.location ?? null,
       auditor_user_ids: input.auditorUserIds,
       proposed_dates: input.proposedDates,
-      status: 'planned',
+      status: 'draft',
       findings_count: 0,
       nonconformances_count: 0,
       observations_count: 0,
       related_ncr_ids: [],
-      planning_inputs: input.planningInputs || {},
+      required_document_list: input.requiredDocumentList ?? null,
+      document_submission_deadline: input.documentSubmissionDeadline ?? null,
+      departments_auditee_ids: input.departmentsAuditeeIds ?? null,
+      company_representative_user_ids: input.companyRepresentativeUserIds ?? null,
+      lead_auditor_user_id: input.leadAuditorUserId ?? null,
+      checklist_template_id: input.checklistTemplateId ?? null,
+      date_approval_status: 'pending',
+      invitee_email: input.inviteeEmail ?? null,
       created_by_user_id: input.createdByUserId
     })
     .select('*')
@@ -149,7 +134,6 @@ export async function createAudit(input: {
 
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create audit.');
-
   const audit = data as Audit;
 
   await createActivityLog({
@@ -158,7 +142,11 @@ export async function createAudit(input: {
     action: 'audits.create',
     entityType: 'audit',
     entityId: audit.id,
-    metadata: { audit_number: auditNumber }
+    metadata: {
+      auditNumber,
+      module: input.module,
+      auditType: input.auditType
+    }
   });
 
   return audit;
@@ -169,7 +157,7 @@ export async function updateAudit(
   companyId: UUID,
   updates: Partial<Audit>,
   actorUserId: UUID
-): Promise<Audit | null> {
+): Promise<Audit> {
   const { data, error } = await insforge.database
     .from('audits')
     .update({
@@ -177,13 +165,12 @@ export async function updateAudit(
       updated_at: new Date().toISOString()
     })
     .eq('id', auditId)
+    .eq('company_id', companyId)
     .select('*')
     .single();
 
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update audit.');
-
-  const audit = data as Audit;
 
   await createActivityLog({
     companyId,
@@ -191,10 +178,12 @@ export async function updateAudit(
     action: 'audits.update',
     entityType: 'audit',
     entityId: auditId,
-    metadata: { status: audit.status }
+    metadata: {
+      status: (data as Audit).status
+    }
   });
 
-  return audit;
+  return data as Audit;
 }
 
 export async function scheduleAudit(
@@ -203,7 +192,7 @@ export async function scheduleAudit(
   selectedDate: string,
   approvedByUserId: UUID,
   actorUserId: UUID
-): Promise<Audit | null> {
+): Promise<Audit> {
   return updateAudit(
     auditId,
     companyId,
@@ -211,23 +200,16 @@ export async function scheduleAudit(
       selected_date: selectedDate,
       status: 'scheduled',
       approved_by_user_id: approvedByUserId,
-      approved_at: new Date().toISOString()
+      approved_at: new Date().toISOString(),
+      date_approval_status: 'approved',
+      date_decline_reason: null
     },
     actorUserId
   );
 }
 
-export async function startAudit(
-  auditId: UUID,
-  companyId: UUID,
-  actorUserId: UUID
-): Promise<Audit | null> {
-  return updateAudit(
-    auditId,
-    companyId,
-    { status: 'in-progress' },
-    actorUserId
-  );
+export async function startAudit(auditId: UUID, companyId: UUID, actorUserId: UUID): Promise<Audit> {
+  return updateAudit(auditId, companyId, { status: 'in-progress' }, actorUserId);
 }
 
 export async function completeAudit(
@@ -235,13 +217,14 @@ export async function completeAudit(
   companyId: UUID,
   reportDocumentUrl: string | null,
   actorUserId: UUID
-): Promise<Audit | null> {
+): Promise<Audit> {
   return updateAudit(
     auditId,
     companyId,
     {
       status: 'completed',
-      report_document_url: reportDocumentUrl
+      report_document_url: reportDocumentUrl,
+      report_submitted_at: new Date().toISOString()
     },
     actorUserId
   );
@@ -252,12 +235,12 @@ export async function submitAuditReport(
   companyId: UUID,
   reportDocumentUrl: string,
   actorUserId: UUID
-): Promise<Audit | null> {
+): Promise<Audit> {
   return updateAudit(
     auditId,
     companyId,
     {
-      status: 'reported',
+      status: 'completed',
       report_document_url: reportDocumentUrl,
       report_submitted_at: new Date().toISOString()
     },
@@ -265,7 +248,145 @@ export async function submitAuditReport(
   );
 }
 
-// ===== AUDIT QUESTIONS =====
+export async function createAuditInvitationTokens(input: {
+  auditId: UUID;
+  companyId: UUID;
+  inviteeEmails: string[];
+  proposedDates: string[];
+  expiresAt: string;
+  createdByUserId: UUID;
+}): Promise<Array<AuditInvitationToken & { plainToken: string }>> {
+  const created: Array<AuditInvitationToken & { plainToken: string }> = [];
+  for (const email of input.inviteeEmails) {
+    const plainToken = crypto.randomUUID();
+    const tokenHash = hashToken(plainToken);
+    const { data, error } = await insforge.database
+      .from('audit_invitation_tokens')
+      .insert({
+        audit_id: input.auditId,
+        company_id: input.companyId,
+        invitee_email: email.trim().toLowerCase(),
+        token_hash: tokenHash,
+        proposed_dates: input.proposedDates,
+        expires_at: input.expiresAt,
+        created_by_user_id: input.createdByUserId
+      })
+      .select('*')
+      .single();
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to create audit invitation token.');
+    created.push({ ...(data as AuditInvitationToken), plainToken });
+  }
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.createdByUserId,
+    action: 'audits.invites.create',
+    entityType: 'audit',
+    entityId: input.auditId,
+    metadata: {
+      inviteeCount: created.length
+    }
+  });
+
+  return created;
+}
+
+export async function respondToAuditInvitation(input: {
+  token: string;
+  responseStatus: 'accepted' | 'declined';
+  selectedDate?: string | null;
+  declineReason?: string | null;
+  respondedByUserId?: UUID | null;
+}): Promise<{ audit: Audit; invitation: AuditInvitationToken }> {
+  const tokenHash = hashToken(input.token);
+  const { data, error } = await insforge.database
+    .from('audit_invitation_tokens')
+    .select('*')
+    .eq('token_hash', tokenHash)
+    .maybeSingle();
+
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Audit invitation token not found.');
+
+  const invitation = data as AuditInvitationToken;
+  if (new Date(invitation.expires_at).getTime() < Date.now()) {
+    await insforge.database
+      .from('audit_invitation_tokens')
+      .update({ response_status: 'expired', updated_at: new Date().toISOString() })
+      .eq('id', invitation.id);
+    throw new Error('This audit invitation token has expired.');
+  }
+
+  const { data: invitationData, error: updateError } = await insforge.database
+    .from('audit_invitation_tokens')
+    .update({
+      invitee_user_id: input.respondedByUserId ?? invitation.invitee_user_id ?? null,
+      response_status: input.responseStatus,
+      selected_date: input.responseStatus === 'accepted' ? input.selectedDate ?? null : null,
+      decline_reason: input.responseStatus === 'declined' ? input.declineReason ?? null : null,
+      responded_date: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', invitation.id)
+    .select('*')
+    .single();
+
+  if (updateError) throw new Error(getErrorMessage(updateError));
+  if (!invitationData) throw new Error('Failed to store audit invitation response.');
+
+  let audit = await getAudit(invitation.audit_id);
+  if (!audit) throw new Error('Linked audit not found.');
+
+  if (input.responseStatus === 'accepted' && input.selectedDate) {
+    audit = await scheduleAudit(
+      invitation.audit_id,
+      invitation.company_id,
+      input.selectedDate,
+      input.respondedByUserId ?? audit.approved_by_user_id ?? audit.created_by_user_id,
+      input.respondedByUserId ?? audit.created_by_user_id
+    );
+  } else if (input.responseStatus === 'declined') {
+    audit = await updateAudit(
+      invitation.audit_id,
+      invitation.company_id,
+      {
+        date_approval_status: 'declined',
+        date_decline_reason: input.declineReason ?? null
+      },
+      input.respondedByUserId ?? audit.created_by_user_id
+    );
+  }
+
+  return {
+    audit,
+    invitation: invitationData as AuditInvitationToken
+  };
+}
+
+export async function expireAuditInvitationTokens(nowIso = new Date().toISOString()): Promise<number> {
+  const { data, error } = await insforge.database
+    .from('audit_invitation_tokens')
+    .update({
+      response_status: 'expired',
+      updated_at: nowIso
+    })
+    .eq('response_status', 'pending')
+    .lt('expires_at', nowIso)
+    .select('id');
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []).length;
+}
+
+export async function listAuditInvitationTokens(auditId: UUID): Promise<AuditInvitationToken[]> {
+  const { data, error } = await insforge.database
+    .from('audit_invitation_tokens')
+    .select('*')
+    .eq('audit_id', auditId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as AuditInvitationToken[];
+}
 
 export async function listAuditQuestions(auditId: UUID): Promise<AuditQuestion[]> {
   const { data, error } = await insforge.database
@@ -273,7 +394,6 @@ export async function listAuditQuestions(auditId: UUID): Promise<AuditQuestion[]
     .select('*')
     .eq('audit_id', auditId)
     .order('question_order', { ascending: true });
-
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as AuditQuestion[];
 }
@@ -283,6 +403,7 @@ export async function createAuditQuestion(input: {
   question: string;
   expectedEvidence?: string;
   questionOrder: number;
+  allocatedScore?: number | null;
   createdByUserId: UUID;
 }): Promise<AuditQuestion> {
   const { data, error } = await insforge.database
@@ -290,16 +411,15 @@ export async function createAuditQuestion(input: {
     .insert({
       audit_id: input.auditId,
       question: input.question,
-      expected_evidence: input.expectedEvidence || null,
+      expected_evidence: input.expectedEvidence ?? null,
+      allocated_score: input.allocatedScore ?? 1,
       question_order: input.questionOrder,
       created_by_user_id: input.createdByUserId
     })
     .select('*')
     .single();
-
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create audit question.');
-
   return data as AuditQuestion;
 }
 
@@ -308,56 +428,25 @@ export async function deleteAuditQuestion(questionId: UUID): Promise<void> {
     .from('audit_responses')
     .delete()
     .eq('audit_question_id', questionId);
-
   if (responsesError) throw new Error(getErrorMessage(responsesError));
 
   const { error } = await insforge.database
     .from('audit_questions')
     .delete()
     .eq('id', questionId);
-
   if (error) throw new Error(getErrorMessage(error));
 }
-
-// ===== AUDIT RESPONSES =====
 
 export async function listAuditResponses(auditId: UUID): Promise<AuditResponse[]> {
-  const { data: questions, error: qError } = await insforge.database
-    .from('audit_questions')
-    .select('id')
-    .eq('audit_id', auditId);
-
-  if (qError) throw new Error(getErrorMessage(qError));
-
-  const questionIds = (questions ?? []).map((q: any) => q.id);
-  if (questionIds.length === 0) return [];
-
+  const questions = await listAuditQuestions(auditId);
+  if (questions.length === 0) return [];
   const { data, error } = await insforge.database
     .from('audit_responses')
     .select('*')
-    .in('audit_question_id', questionIds)
+    .in('audit_question_id', questions.map((question) => question.id))
     .order('answered_at', { ascending: false });
-
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as AuditResponse[];
-}
-
-export async function getOrCreateAuditResponse(
-  auditQuestionId: UUID,
-  userId: UUID
-): Promise<AuditResponse | null> {
-  const { data, error } = await insforge.database
-    .from('audit_responses')
-    .select('*')
-    .eq('audit_question_id', auditQuestionId)
-    .eq('answered_by_user_id', userId)
-    .single();
-
-  if (error && error.code !== 'PGRST116') {
-    throw new Error(getErrorMessage(error));
-  }
-
-  return (data as AuditResponse) || null;
 }
 
 export async function submitAuditResponse(input: {
@@ -365,56 +454,40 @@ export async function submitAuditResponse(input: {
   isCompliant: boolean;
   finding?: string;
   evidenceDocumentUrl?: string;
+  achievedScore?: number | null;
   riskRating: 'low' | 'medium' | 'high';
   answeredByUserId: UUID;
 }): Promise<AuditResponse> {
-  // First try to get existing response
-  const existing = await getOrCreateAuditResponse(
-    input.auditQuestionId,
-    input.answeredByUserId
-  );
-
-  if (existing) {
-    // Update existing
-    const { data, error } = await insforge.database
-      .from('audit_responses')
-      .update({
-        is_compliant: input.isCompliant,
-        finding: input.finding || null,
-        evidence_document_url: input.evidenceDocumentUrl || null,
-        risk_rating: input.riskRating,
-        answered_at: new Date().toISOString()
-      })
-      .eq('id', existing.id)
-      .select('*')
-      .single();
-
-    if (error) throw new Error(getErrorMessage(error));
-    return data as AuditResponse;
-  }
-
-  // Create new
-  const { data, error } = await insforge.database
+  const { data: existing, error: existingError } = await insforge.database
     .from('audit_responses')
-    .insert({
-      audit_question_id: input.auditQuestionId,
-      is_compliant: input.isCompliant,
-      finding: input.finding || null,
-      evidence_document_url: input.evidenceDocumentUrl || null,
-      risk_rating: input.riskRating,
-      answered_by_user_id: input.answeredByUserId,
-      answered_at: new Date().toISOString()
-    })
     .select('*')
-    .single();
+    .eq('audit_question_id', input.auditQuestionId)
+    .eq('answered_by_user_id', input.answeredByUserId)
+    .maybeSingle();
+  if (existingError) throw new Error(getErrorMessage(existingError));
 
+  const payload = {
+    is_compliant: input.isCompliant,
+    finding: input.finding ?? null,
+    evidence_document_url: input.evidenceDocumentUrl ?? null,
+    achieved_score: input.achievedScore ?? null,
+    risk_rating: input.riskRating,
+    answered_at: new Date().toISOString()
+  };
+
+  const query = existing
+    ? insforge.database.from('audit_responses').update(payload).eq('id', (existing as AuditResponse).id)
+    : insforge.database.from('audit_responses').insert({
+        audit_question_id: input.auditQuestionId,
+        answered_by_user_id: input.answeredByUserId,
+        ...payload
+      });
+
+  const { data, error } = await query.select('*').single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to submit audit response.');
-
   return data as AuditResponse;
 }
-
-// ===== AUDIT FINDINGS CALCULATION =====
 
 export async function calculateAuditFindings(auditId: UUID): Promise<{
   findings_count: number;
@@ -422,21 +495,17 @@ export async function calculateAuditFindings(auditId: UUID): Promise<{
   observations_count: number;
 }> {
   const responses = await listAuditResponses(auditId);
-  
   let findings = 0;
   let nonconformances = 0;
   let observations = 0;
 
-  responses.forEach(r => {
-    if (!r.is_compliant && r.finding) {
-      findings++;
-      if (r.risk_rating === 'high') {
-        nonconformances++;
-      } else {
-        observations++;
-      }
+  for (const response of responses) {
+    if (!response.is_compliant && response.finding) {
+      findings += 1;
+      if (response.risk_rating === 'high') nonconformances += 1;
+      else observations += 1;
     }
-  });
+  }
 
   return {
     findings_count: findings,

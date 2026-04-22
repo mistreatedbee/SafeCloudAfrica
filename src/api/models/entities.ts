@@ -34,6 +34,9 @@ export type Company = {
   primary_admin_user_id: UUID;
   metadata?: Record<string, unknown> | null;
   subscription_duration_months?: number | null; // 3, 6, 9, 12 (Operating Model)
+  billing_plan_code?: string | null;
+  billing_cycle_months?: number | null;
+  renewal_reminder_days?: number | null;
   created_at: string;
   updated_at?: string | null;
 };
@@ -1961,6 +1964,14 @@ export type BbsObservation = {
   title: string;
   area: string | null;
   status: BbsObservationStatus;
+  behaviour_category?: string | null;
+  observation_outcome?: string | null;
+  linked_training_record_id?: UUID | null;
+  linked_ncr_id?: UUID | null;
+  owner_user_id?: UUID | null;
+  due_date?: string | null;
+  closed_at?: string | null;
+  notes?: string | null;
   created_by_user_id: UUID;
   created_at: string;
 };
@@ -1973,6 +1984,13 @@ export type Contractor = {
   status: ContractorStatus;
   documents_count: number;
   inductions_count: number;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  documents_status?: 'pending' | 'submitted' | 'approved' | 'rejected' | null;
+  induction_status?: 'pending' | 'in_progress' | 'completed' | null;
+  portal_token_hash?: string | null;
+  portal_expires_at?: string | null;
+  notes?: string | null;
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;
@@ -1986,6 +2004,12 @@ export type Visitor = {
   name: string;
   status: VisitorStatus;
   briefing: VisitorBriefingStatus;
+  host_user_id?: UUID | null;
+  visit_date?: string | null;
+  qr_code?: string | null;
+  signed_in_at?: string | null;
+  signed_out_at?: string | null;
+  notes?: string | null;
   created_by_user_id: UUID;
   created_at: string;
 };
@@ -1998,6 +2022,12 @@ export type EmergencyDrill = {
   drill_date: string;
   status: EmergencyDrillStatus;
   notes: string | null;
+  plan_document_id?: UUID | null;
+  performance_score?: number | null;
+  participants_count?: number;
+  actions_open?: number;
+  alert_channel?: string | null;
+  action_notes?: string | null;
   created_by_user_id: UUID;
   created_at: string;
 };
@@ -2010,8 +2040,248 @@ export type TemplateLibraryItem = {
   category: string;
   storage_bucket: string | null;
   storage_key: string | null;
+  is_master_template?: boolean;
+  latest_version_label?: string | null;
+  change_history?: Array<{ at: string; by?: UUID | null; summary: string }>;
   created_by_user_id: UUID;
   created_at: string;
+};
+
+export type ComplianceDomainKey = 'documents' | 'training' | 'risks' | 'incidents' | 'audits';
+
+export type ComplianceScoreRun = {
+  id: UUID;
+  company_id: UUID;
+  score_kind: 'overall';
+  score_percentage: number;
+  rag_status: 'green' | 'yellow' | 'red';
+  weighted_score: number;
+  generated_by_user_id: UUID | null;
+  generated_at: string;
+  effective_month: string;
+  ai_predicted_deterioration_risk: number | null;
+  ai_next_month_risk_flag: 'low' | 'medium' | 'high' | 'critical' | null;
+  ai_recommendations: Array<{ title: string; reason: string; action: string }>;
+  ai_top_gaps: Array<{ domain: ComplianceDomainKey; label: string; impact: number }>;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ComplianceScoreRunDomain = {
+  id: UUID;
+  run_id: UUID;
+  company_id: UUID;
+  domain_key: ComplianceDomainKey;
+  domain_label: string;
+  weight: number;
+  score_percentage: number;
+  rag_status: 'green' | 'yellow' | 'red';
+  total_count: number;
+  compliant_count: number;
+  overdue_count: number;
+  attention_count: number;
+  trend_delta: number;
+  drilldown_records: Array<Record<string, unknown>>;
+  created_at: string;
+};
+
+export type ComplianceIsoRecordLink = {
+  id: UUID;
+  company_id: UUID;
+  standard_key: 'iso45001' | 'iso14001' | 'iso9001';
+  clause_number: string;
+  clause_title: string;
+  module_key: string | null;
+  source_table: string;
+  source_record_id: UUID;
+  compliance_status: 'compliant' | 'non-compliant' | 'not-applicable' | 'under-review';
+  evidence_document_ids: UUID[] | null;
+  evidence_links: Array<Record<string, unknown>>;
+  notes: string | null;
+  linked_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MonthlyComplianceReport = {
+  id: UUID;
+  company_id: UUID;
+  report_month: string;
+  generated_from_run_id: UUID | null;
+  recipient_emails: string[];
+  status: 'queued' | 'sent' | 'failed';
+  summary: Record<string, unknown>;
+  sent_at: string | null;
+  delivery_error: string | null;
+  created_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AuditInvitationToken = {
+  id: UUID;
+  audit_id: UUID;
+  company_id: UUID;
+  invitee_email: string;
+  invitee_user_id: UUID | null;
+  token_hash: string;
+  proposed_dates: string[];
+  responded_date: string | null;
+  response_status: 'pending' | 'accepted' | 'declined' | 'expired';
+  selected_date: string | null;
+  decline_reason: string | null;
+  expires_at: string;
+  created_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SlaPolicy = {
+  id: UUID;
+  company_id: UUID;
+  entity_type: 'incident' | 'quality_ncr' | 'task' | 'audit';
+  reminder_after_hours: number;
+  manager_escalation_after_hours: number;
+  director_escalation_after_hours: number;
+  enabled: boolean;
+  created_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SlaEscalationEvent = {
+  id: UUID;
+  company_id: UUID;
+  entity_type: string;
+  entity_id: UUID;
+  stage: 'reminder' | 'manager' | 'director';
+  status: 'sent' | 'suppressed' | 'failed';
+  recipients: Array<Record<string, unknown>>;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ExternalAccessGrant = {
+  id: UUID;
+  company_id: UUID;
+  subject_email: string;
+  subject_user_id: UUID | null;
+  role: CompanyRole;
+  allowed_modules: string[];
+  allowed_site_ids: UUID[] | null;
+  allowed_department_ids: UUID[] | null;
+  audit_ids: UUID[] | null;
+  billing_mode: 'seat' | 'add_on';
+  starts_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  revoked_by_user_id: UUID | null;
+  status: 'active' | 'revoked' | 'expired';
+  created_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BillingPlanCatalog = {
+  id: UUID;
+  plan_code: string;
+  name: string;
+  currency: string;
+  monthly_base_amount: number;
+  included_users: number;
+  included_sites: number;
+  module_entitlements: Record<string, boolean>;
+  trial_user_limit: number | null;
+  trial_site_limit: number | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BillingSubscription = {
+  id: UUID;
+  company_id: UUID;
+  plan_code: string;
+  status: 'trial' | 'active' | 'past_due' | 'cancelled';
+  billing_cycle_months: number;
+  starts_at: string;
+  renews_at: string | null;
+  trial_ends_at: string | null;
+  user_limit: number | null;
+  site_limit: number | null;
+  module_overrides: Record<string, boolean>;
+  auto_invoice: boolean;
+  metadata: Record<string, unknown> | null;
+  created_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BillingUsageSnapshot = {
+  id: UUID;
+  company_id: UUID;
+  snapshot_month: string;
+  active_users: number;
+  active_sites: number;
+  enabled_modules: string[];
+  external_grants: number;
+  created_at: string;
+};
+
+export type BillingInvoice = {
+  id: UUID;
+  company_id: UUID;
+  subscription_id: UUID | null;
+  invoice_number: string;
+  period_start: string;
+  period_end: string;
+  subtotal_amount: number;
+  tax_amount: number;
+  total_amount: number;
+  currency: string;
+  status: 'draft' | 'issued' | 'paid' | 'void';
+  line_items: Array<Record<string, unknown>>;
+  due_at: string | null;
+  issued_at: string | null;
+  created_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VisitorQrSession = {
+  id: UUID;
+  company_id: UUID;
+  visitor_id: UUID;
+  qr_code: string;
+  signed_in_at: string | null;
+  signed_out_at: string | null;
+  status: 'generated' | 'signed_in' | 'signed_out' | 'expired';
+  created_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TemplateLibraryVersion = {
+  id: UUID;
+  template_item_id: UUID;
+  company_id: UUID;
+  version_label: string;
+  storage_bucket: string | null;
+  storage_key: string | null;
+  change_summary: string | null;
+  created_by_user_id: UUID | null;
+  created_at: string;
+};
+
+export type TemplateOrgCopy = {
+  id: UUID;
+  company_id: UUID;
+  source_template_item_id: UUID;
+  source_version_id: UUID | null;
+  target_document_id: UUID | null;
+  copied_by_user_id: UUID | null;
+  copied_at: string;
 };
 
 export type UserProfile = {
