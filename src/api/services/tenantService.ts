@@ -9,6 +9,11 @@ function normalizeInviteStatus(status: string | null | undefined): string {
   return String(status ?? '').trim().toUpperCase();
 }
 
+function isSeatExemptRole(role: string | null | undefined, seatExempt: boolean | null | undefined): boolean {
+  const normalizedRole = String(role ?? '').trim().toLowerCase();
+  return (normalizedRole === 'consultant' || normalizedRole === 'auditor') && Boolean(seatExempt);
+}
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const { accessToken } = await ensureInsforgeSession();
   return {
@@ -55,11 +60,9 @@ export async function createMembership(input: {
 }): Promise<CompanyMembership> {
   await ensureInsforgeSession();
 
-  const company = await getCompanyById(input.companyId);
-  if (!company) throw new Error('Company not found.');
-
-  const memberCount = await countActiveMembers(input.companyId);
-  if (company.employee_limit > 0 && memberCount >= company.employee_limit) {
+  const seatLimit = await getSeatLimitForCompany(input.companyId);
+  const memberCount = await countBillableActiveMembers(input.companyId);
+  if (seatLimit > 0 && memberCount >= seatLimit && !isSeatExemptRole(input.role, false)) {
     throw new Error('SEATS_FULL: This organization has reached its seat limit. Contact your admin.');
   }
 
@@ -175,6 +178,22 @@ export async function countActiveMembers(companyId: UUID): Promise<number> {
   }).length;
 }
 
+export async function countBillableActiveMembers(companyId: UUID): Promise<number> {
+  const { data, error } = await insforge.database.rpc('count_billable_seats', { p_company_id: companyId });
+  if (!error && data != null) return Number(data || 0);
+
+  const { data: memberships, error: fallbackError } = await insforge.database
+    .from('company_memberships')
+    .select('role, status, seat_exempt')
+    .eq('company_id', companyId);
+  if (fallbackError) throw new Error(getErrorMessage(fallbackError));
+
+  return (memberships ?? []).filter((row: any) => {
+    const status = String(row.status ?? 'ACTIVE').toUpperCase();
+    return status === 'ACTIVE' && !isSeatExemptRole(row.role, row.seat_exempt);
+  }).length;
+}
+
 export async function countPendingInvites(companyId: UUID): Promise<number> {
   const { count, error } = await insforge.database
     .from('company_invites')
@@ -186,6 +205,8 @@ export async function countPendingInvites(companyId: UUID): Promise<number> {
 }
 
 export async function getSeatLimitForCompany(companyId: UUID): Promise<number> {
+  const { data, error } = await insforge.database.rpc('get_company_seat_limit', { p_company_id: companyId });
+  if (!error && data != null) return Number(data || 0);
   const company = await getCompanyById(companyId);
   return company?.license_user_limit ?? company?.employee_limit ?? 0;
 }
@@ -214,7 +235,7 @@ export type InviteCreateResult =
       message: string;
     };
 
-export type InviteValidationCode = 'INVITE_INVALID' | 'INVITE_EXPIRED' | 'INVITE_ACCEPTED' | 'INVITE_REVOKED' | 'OK';
+export type InviteValidationCode = 'INVITE_INVALID' | 'INVITE_EXPIRED' | 'INVITE_ACCEPTED' | 'OK';
 
 export type InviteValidationResult = {
   code: InviteValidationCode;
@@ -238,12 +259,11 @@ function mapInviteCreateError(message: string): { code: InviteCreateErrorCode; m
   return { code: 'UNKNOWN', message: 'Invite failed to send. Please try again or contact support.' };
 }
 
-function mapInviteErrorCode(message: string): 'INVITE_EXPIRED' | 'INVITE_INVALID' | 'INVITE_ACCEPTED' | 'INVITE_REVOKED' | 'SEATS_FULL' | 'ALREADY_MEMBER' | 'ALREADY_INVITED' | 'UNKNOWN' {
+function mapInviteErrorCode(message: string): 'INVITE_EXPIRED' | 'INVITE_INVALID' | 'INVITE_ACCEPTED' | 'SEATS_FULL' | 'ALREADY_MEMBER' | 'ALREADY_INVITED' | 'UNKNOWN' {
   const lowered = message.toLowerCase();
   if (lowered.includes('invite_expired')) return 'INVITE_EXPIRED';
   if (lowered.includes('invite_invalid')) return 'INVITE_INVALID';
   if (lowered.includes('invite_accepted')) return 'INVITE_ACCEPTED';
-  if (lowered.includes('invite_revoked')) return 'INVITE_REVOKED';
   if (lowered.includes('seats_full') || lowered.includes('seat limit')) return 'SEATS_FULL';
   if (lowered.includes('already_member')) return 'ALREADY_MEMBER';
   if (lowered.includes('already_invited')) return 'ALREADY_INVITED';
@@ -307,7 +327,6 @@ export async function validateInvitationToken(token: string): Promise<InviteVali
       const reason = String(data?.reason ?? '').toLowerCase();
       if (reason === 'expired') return { code: 'INVITE_EXPIRED', invite: null };
       if (reason === 'accepted') return { code: 'INVITE_ACCEPTED', invite: null };
-      if (reason === 'revoked') return { code: 'INVITE_REVOKED', invite: null };
       return { code: 'INVITE_INVALID', invite: null };
     }
 
@@ -324,7 +343,7 @@ export async function validateInvitationToken(token: string): Promise<InviteVali
         created_at: '',
         accepted_at: null,
         accepted_user_id: null,
-        token: cleanToken,
+        token: null,
         expires_at: invite.expiresAt ?? null,
         status: invite.status ?? 'PENDING',
         company_name: invite.orgName ?? null
@@ -361,7 +380,7 @@ export async function acceptInvite(input: { inviteId: UUID; userId: UUID }): Pro
   const role = (invite as any).role as CompanyRole;
 
   const seatLimit = await getSeatLimitForCompany(companyId);
-  const seatsUsed = await countActiveMembers(companyId);
+  const seatsUsed = await countBillableActiveMembers(companyId);
   if (seatLimit > 0 && seatsUsed >= seatLimit) {
     throw new Error('SEATS_FULL: This organization has reached its seat limit. Contact your admin.');
   }
@@ -441,7 +460,6 @@ export async function acceptInviteByToken(input: { token: string; userId: UUID }
     const reason = String(data?.reason ?? '').toLowerCase();
     if (reason === 'expired') throw new Error('INVITE_EXPIRED: This invitation has expired.');
     if (reason === 'accepted') throw new Error('INVITE_ACCEPTED: This invitation has already been accepted.');
-    if (reason === 'revoked') throw new Error('INVITE_REVOKED: This invitation was revoked.');
     throw new Error(`INVITE_INVALID: ${data?.error || 'Invalid invite token.'}`);
   }
 
@@ -455,7 +473,13 @@ export async function acceptInviteByToken(input: { token: string; userId: UUID }
   } as CompanyMembership;
 }
 
-export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID }): Promise<CompanyInvite> {
+export type InviteResendResult = {
+  emailSent: boolean;
+  invite: CompanyInvite;
+  inviteLink?: string;
+};
+
+export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID }): Promise<InviteResendResult> {
   const headers = await getAuthHeaders();
   const response = await fetch('/api/invites/resend', {
     method: 'POST',
@@ -470,7 +494,11 @@ export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID })
   if (!response.ok || !data?.ok || !data?.invite) {
     throw new Error(data?.error || 'Failed to resend invite.');
   }
-  return data.invite as CompanyInvite;
+  return {
+    emailSent: !!data.emailSent,
+    invite: data.invite as CompanyInvite,
+    inviteLink: data.inviteLink ? String(data.inviteLink) : undefined
+  };
 }
 
 export async function getInviteLinkForInviteId(input: { inviteId: UUID }): Promise<string> {
@@ -538,8 +566,6 @@ export function toUserInviteMessage(message: string): string {
       return 'This invitation link is invalid.';
     case 'INVITE_ACCEPTED':
       return 'This invitation has already been accepted. Please log in.';
-    case 'INVITE_REVOKED':
-      return 'This invitation has been revoked. Request a new invite.';
     case 'SEATS_FULL':
       return 'This organization has reached its seat limit. Contact your admin.';
     case 'ALREADY_MEMBER':

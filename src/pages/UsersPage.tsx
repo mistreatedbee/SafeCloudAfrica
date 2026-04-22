@@ -7,6 +7,7 @@ import { useAsync } from '../api/hooks/useAsync';
 import {
   cancelInvite,
   getInviteLinkForInviteId,
+  getSeatLimitForCompany,
   listCompanyInvites,
   listCompanyMemberships,
   resendInvite,
@@ -76,6 +77,14 @@ export function UsersPage() {
     [activeCompanyId]
   );
 
+  const { data: effectiveSeatLimit } = useAsync<number>(
+    async () => {
+      if (!activeCompanyId) return 0;
+      return await getSeatLimitForCompany(activeCompanyId);
+    },
+    [activeCompanyId]
+  );
+
   const roles = ['admin', 'manager', 'supervisor', 'consultant', 'employee', 'auditor'] as const;
   const canInvite = activeRole === 'owner' || activeRole === 'admin';
   const canEditProfiles = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager';
@@ -91,8 +100,15 @@ export function UsersPage() {
       ? ['admin', 'manager', 'supervisor', 'consultant', 'employee', 'auditor']
       : ['manager', 'supervisor', 'consultant', 'employee', 'auditor'];
 
-  const seatsAllowed = (activeCompany?.license_user_limit ?? activeCompany?.employee_limit ?? 0) as number;
-  const seatsUsed = (members ?? []).filter((m) => String(m.status ?? 'ACTIVE').toUpperCase() === 'ACTIVE').length;
+  const seatsAllowed = typeof effectiveSeatLimit === 'number'
+    ? effectiveSeatLimit
+    : ((activeCompany?.license_user_limit ?? activeCompany?.employee_limit ?? 0) as number);
+  const seatsUsed = (members ?? []).filter((m) => {
+    const status = String(m.status ?? 'ACTIVE').toUpperCase();
+    const role = String(m.role ?? '').toLowerCase();
+    const seatExempt = Boolean((m as any).seat_exempt);
+    return status === 'ACTIVE' && !((role === 'consultant' || role === 'auditor') && seatExempt);
+  }).length;
   const pendingInvites = (invites ?? []).filter((i) => {
     const s = String(i.status ?? '').toUpperCase();
     return s === 'PENDING' || s === 'SENT';

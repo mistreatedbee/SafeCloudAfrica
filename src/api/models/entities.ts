@@ -78,14 +78,19 @@ export type CompanyInvite = {
   created_at: string;
   accepted_at: string | null;
   accepted_user_id: UUID | null;
+  invited_by_user_id?: UUID | null;
   department_id?: UUID | null;
   site_id?: UUID | null;
   consultant_scope?: ConsultantScope | null;
-  token: string;
+  token?: string | null;
+  token_hash?: string | null;
   expires_at: string;
   status: CompanyInviteStatus;
   sent_at?: string | null;
+  last_sent_at?: string | null;
+  send_count?: number;
   error_message?: string | null;
+  audit_log_id?: UUID | null;
 };
 
 export type LicenseKeyStatus = 'unused' | 'used' | 'revoked';

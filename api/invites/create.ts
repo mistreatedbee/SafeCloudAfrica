@@ -22,6 +22,35 @@ function normalizeStatus(status: unknown): string {
   return String(status ?? '').trim().toUpperCase();
 }
 
+async function getEffectiveSeatLimit(insforge: any, companyId: string, company: any): Promise<number> {
+  const rpcRes = await insforge.database.rpc('get_company_seat_limit', { p_company_id: companyId });
+  if (!rpcRes.error && rpcRes.data != null) {
+    return Number(rpcRes.data || 0);
+  }
+  return Number(company?.license_user_limit || company?.employee_limit || 0);
+}
+
+async function countBillableActiveMembers(insforge: any, companyId: string): Promise<number> {
+  const rpcRes = await insforge.database.rpc('count_billable_seats', { p_company_id: companyId });
+  if (!rpcRes.error && rpcRes.data != null) {
+    return Number(rpcRes.data || 0);
+  }
+
+  const membersRes = await insforge.database
+    .from('company_memberships')
+    .select('role, status, seat_exempt')
+    .eq('company_id', companyId);
+  if (membersRes.error) throw membersRes.error;
+
+  return (membersRes.data || []).filter((member: any) => {
+    const status = normalizeStatus(member.status || 'ACTIVE');
+    if (status !== 'ACTIVE') return false;
+    const role = normalizeRole(member.role);
+    const seatExempt = Boolean(member.seat_exempt);
+    return !((role === 'consultant' || role === 'auditor') && seatExempt);
+  }).length;
+}
+
 export default async function handler(req: any, res: any) {
   applyNoStoreHeaders(res);
   if (req.method !== 'POST') {
@@ -74,16 +103,13 @@ export default async function handler(req: any, res: any) {
       return res.status(403).json({ ok: false, error: 'Only Owner/Admin can invite users' });
     }
 
-    const [membersCountRes, pendingCountRes, existingInvitesRes] = await Promise.all([
-      insforge.database.from('company_memberships').select('id, status').eq('company_id', companyId),
-      insforge.database.from('company_invites').select('id', { count: 'exact', head: true }).eq('company_id', companyId).in('status', ['PENDING', 'SENT', 'FAILED']),
-      insforge.database.from('company_invites').select('id').eq('company_id', companyId).eq('email', email).in('status', ['PENDING', 'SENT', 'FAILED'])
+    const [seatLimit, activeBillableMembers, existingInvitesRes] = await Promise.all([
+      getEffectiveSeatLimit(insforge, companyId, companyRes.data),
+      countBillableActiveMembers(insforge, companyId),
+      insforge.database.from('company_invites').select('id').eq('company_id', companyId).eq('email', email).in('status', ['PENDING', 'SENT'])
     ]);
 
-    const membersCount = (membersCountRes.data || []).filter((m: any) => normalizeStatus(m.status || 'ACTIVE') === 'ACTIVE').length;
-    const pendingCount = pendingCountRes.count || 0;
-    const seatLimit = Number((companyRes.data as any).license_user_limit || (companyRes.data as any).employee_limit || 0);
-    if (seatLimit > 0 && membersCount + pendingCount >= seatLimit) {
+    if (seatLimit > 0 && activeBillableMembers >= seatLimit) {
       return res.status(409).json({ ok: false, error: 'No seats available, contact admin', code: 'SEATS_FULL' });
     }
 

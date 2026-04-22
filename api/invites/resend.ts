@@ -60,7 +60,7 @@ export default async function handler(req: any, res: any) {
 
     const status = normalizeInviteStatus(invite.status);
     if (status === 'ACCEPTED') return res.status(409).json({ ok: false, error: 'Invite already accepted' });
-    if (status === 'CANCELLED' || status === 'REVOKED') return res.status(409).json({ ok: false, error: 'Invite revoked. Create a new invite.' });
+    if (status === 'CANCELLED') return res.status(409).json({ ok: false, error: 'Invite revoked. Create a new invite.' });
 
     const membershipRes = await insforge.database
       .from('company_memberships')

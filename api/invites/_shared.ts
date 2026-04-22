@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
-export type InviteStatus = 'PENDING' | 'SENT' | 'FAILED' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED' | 'REVOKED';
+export type InviteStatus = 'PENDING' | 'SENT' | 'FAILED' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED';
 
 export function normalizeInviteStatus(status: unknown): string {
   return String(status ?? '').trim().toUpperCase();
@@ -170,7 +170,7 @@ export function mapInvalidReason(statusOrReason: string): 'not_found' | 'expired
   const value = normalizeInviteStatus(statusOrReason);
   if (value === 'EXPIRED') return 'expired';
   if (value === 'ACCEPTED') return 'accepted';
-  if (value === 'CANCELLED' || value === 'REVOKED') return 'revoked';
+  if (value === 'CANCELLED') return 'revoked';
   return 'not_found';
 }
 

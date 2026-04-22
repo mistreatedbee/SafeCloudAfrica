@@ -27,7 +27,6 @@ const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 
 function inviteErrorForCode(code: InviteValidationResult['code']): string {
   if (code === 'INVITE_EXPIRED') return 'This invitation has expired. Ask your admin to resend it.';
   if (code === 'INVITE_ACCEPTED') return 'This invitation has already been accepted.';
-  if (code === 'INVITE_REVOKED') return 'This invitation has been revoked. Ask your admin for a new invite.';
   return 'Invalid invite link.';
 }
 
