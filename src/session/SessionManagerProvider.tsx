@@ -29,6 +29,11 @@ type SessionManagerContextValue = {
 
 const SessionManagerContext = createContext<SessionManagerContextValue | null>(null);
 
+type RefreshSessionOutcome =
+  | { ok: true }
+  | { ok: false; shouldLogout: true; reason: 'invalid_session' }
+  | { ok: false; shouldLogout: false; reason: 'transient_failure' };
+
 function decodeTokenExpiryMs(token: string | null | undefined): number | null {
   if (!token) return null;
   try {
@@ -135,6 +140,18 @@ function isInvalidSessionError(error: unknown): boolean {
     message.includes('missing_refresh_cookie') ||
     message.includes('invalid refresh token')
   );
+}
+
+function refreshSucceeded(): RefreshSessionOutcome {
+  return { ok: true };
+}
+
+function invalidSessionFailure(): RefreshSessionOutcome {
+  return { ok: false, shouldLogout: true, reason: 'invalid_session' };
+}
+
+function transientRefreshFailure(): RefreshSessionOutcome {
+  return { ok: false, shouldLogout: false, reason: 'transient_failure' };
 }
 
 function clearClientSessionState(): void {
@@ -277,20 +294,25 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     }
   }, [flushAllDrafts, location.pathname, location.search, navigate, signOut]);
 
-  const refreshSessionIfNeeded = useCallback(async () => {
-    if (isLoggingOutRef.current) return false;
-    if (refreshInFlightRef.current) return true;
+  const refreshSessionIfNeeded = useCallback(async (): Promise<RefreshSessionOutcome> => {
+    if (isLoggingOutRef.current) return refreshSucceeded();
+    if (refreshInFlightRef.current) return refreshSucceeded();
     refreshInFlightRef.current = true;
+    const existingClientToken = readClientAuthToken();
+    const existingClientTokenExpiresAtMs = decodeTokenExpiryMs(existingClientToken);
     let lastKnownToken: string | null = null;
     let lastKnownExpiresAtMs: number | null = null;
     try {
       const current = await insforge.auth.getCurrentSession();
-      const existingClientToken = readClientAuthToken();
-      const existingClientTokenExpiresAtMs = decodeTokenExpiryMs(existingClientToken);
+      const existingTokenStillValid =
+        !!existingClientToken && !!existingClientTokenExpiresAtMs && existingClientTokenExpiresAtMs > Date.now();
       if (hasMalformedAuthResponse(current)) {
-        refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+        if (existingClientToken) {
+          insforge.getHttpClient().setAuthToken(existingClientToken);
+        }
+        refreshRetryCountRef.current += 1;
         console.warn('[session] malformed current session response', current);
-        return false;
+        return transientRefreshFailure();
       }
       const currentError = current.error ?? null;
       const { accessToken: token, userId: currentUserId } = readAuthSession(current);
@@ -301,32 +323,39 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
           insforge.getHttpClient().setAuthToken(null);
           refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
           console.warn('[session] current session rejected', currentError);
-          return false;
+          return invalidSessionFailure();
         }
-        const existingTokenStillValid = !!existingClientToken && !!existingClientTokenExpiresAtMs && existingClientTokenExpiresAtMs > Date.now();
         if (existingTokenStillValid) {
           insforge.getHttpClient().setAuthToken(existingClientToken);
           refreshRetryCountRef.current = 0;
           console.warn('[session] current session unavailable; keeping existing client token', currentError);
-          return true;
+          return refreshSucceeded();
         }
+        if (existingClientToken) {
+          insforge.getHttpClient().setAuthToken(existingClientToken);
+        }
+        refreshRetryCountRef.current += 1;
+        console.warn('[session] current session unavailable; treating as transient failure', currentError);
+        return transientRefreshFailure();
       }
       if (!token || !currentUserId) {
-        const existingTokenStillValid = !!existingClientToken && !!existingClientTokenExpiresAtMs && existingClientTokenExpiresAtMs > Date.now();
         if (existingTokenStillValid) {
           insforge.getHttpClient().setAuthToken(existingClientToken);
           refreshRetryCountRef.current = 0;
           console.warn('[session] current session missing required data; keeping existing client token', current);
-          return true;
+          return refreshSucceeded();
         }
-        refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
-        console.warn('[session] current session missing required data', current);
-        return false;
+        if (existingClientToken) {
+          insforge.getHttpClient().setAuthToken(existingClientToken);
+        }
+        refreshRetryCountRef.current += 1;
+        console.warn('[session] current session missing required data; treating as transient failure', current);
+        return transientRefreshFailure();
       }
       const now = Date.now();
       if (lastKnownExpiresAtMs && lastKnownExpiresAtMs - now > REFRESH_LEEWAY_MS) {
         refreshRetryCountRef.current = 0;
-        return true;
+        return refreshSucceeded();
       }
       const authApi = insforge.auth as any;
       if (typeof authApi.refreshSession === 'function') {
@@ -336,53 +365,63 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
           const sinceLast = now - lastExpiresParseFallbackAttemptRef.current;
           if (sinceLast < EXPIRES_PARSE_THROTTLE_MS) {
             refreshRetryCountRef.current = 0;
-            return true;
+            return refreshSucceeded();
           }
           lastExpiresParseFallbackAttemptRef.current = now;
         }
         try {
           const refreshed = await authApi.refreshSession();
           if (hasMalformedAuthResponse(refreshed)) {
-            insforge.getHttpClient().setAuthToken(null);
-            refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+            const fallbackToken = existingClientToken ?? lastKnownToken;
+            if (fallbackToken) {
+              insforge.getHttpClient().setAuthToken(fallbackToken);
+            }
+            refreshRetryCountRef.current += 1;
             console.warn('[session] malformed refresh response', refreshed);
-            return false;
+            return transientRefreshFailure();
           }
           const { accessToken: refreshedToken, userId: refreshedUserId } = readAuthSession(refreshed);
           if (refreshedToken && refreshedUserId) {
             insforge.getHttpClient().setAuthToken(refreshedToken);
             refreshRetryCountRef.current = 0;
             console.info('[session] refresh success');
-            return true;
+            return refreshSucceeded();
           }
           if (isInvalidSessionError(refreshed?.error)) {
             insforge.getHttpClient().setAuthToken(null);
             refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
             console.warn('[session] refresh rejected', refreshed?.error);
-            return false;
+            return invalidSessionFailure();
           }
-          insforge.getHttpClient().setAuthToken(null);
-          refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
-          console.warn('[session] refresh returned no usable session', refreshed);
-          return false;
+          const fallbackToken = existingClientToken ?? lastKnownToken;
+          if (fallbackToken) {
+            insforge.getHttpClient().setAuthToken(fallbackToken);
+          }
+          refreshRetryCountRef.current += 1;
+          console.warn('[session] refresh returned no usable session; treating as transient failure', refreshed);
+          return transientRefreshFailure();
         } catch (error) {
           if (isInvalidSessionError(error)) {
             insforge.getHttpClient().setAuthToken(null);
             refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
             console.warn('[session] refresh rejected', error);
-            return false;
+            return invalidSessionFailure();
           }
           // If refresh fails but the existing token is still valid, don't force a logout.
           // Network hiccups should not interrupt the user session while the JWT is alive.
           const tokenStillValid = !!lastKnownExpiresAtMs && lastKnownExpiresAtMs > Date.now();
+          const fallbackToken = existingClientToken ?? lastKnownToken;
           if (tokenStillValid && lastKnownToken) {
             insforge.getHttpClient().setAuthToken(lastKnownToken);
             refreshRetryCountRef.current = 0;
-            return true;
+            return refreshSucceeded();
+          }
+          if (fallbackToken) {
+            insforge.getHttpClient().setAuthToken(fallbackToken);
           }
           refreshRetryCountRef.current += 1;
           console.warn('[session] refresh failed', error);
-          return false;
+          return transientRefreshFailure();
         }
       }
 
@@ -392,7 +431,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         const tokenStillValid = !lastKnownExpiresAtMs || lastKnownExpiresAtMs > Date.now();
         insforge.getHttpClient().setAuthToken(token);
         refreshRetryCountRef.current = tokenStillValid ? 0 : (refreshRetryCountRef.current + 1);
-        return tokenStillValid;
+        return tokenStillValid ? refreshSucceeded() : transientRefreshFailure();
       }
 
       throw new Error('No session token available after refresh attempt.');
@@ -401,19 +440,21 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         insforge.getHttpClient().setAuthToken(null);
         refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
         console.warn('[session] refresh rejected', error);
-        return false;
+        return invalidSessionFailure();
       }
       // If we have enough info to tell the token hasn't expired yet, treat refresh errors as non-fatal.
       const tokenStillValid = !!lastKnownExpiresAtMs && lastKnownExpiresAtMs > Date.now();
       if (lastKnownToken && tokenStillValid) {
         insforge.getHttpClient().setAuthToken(lastKnownToken);
         refreshRetryCountRef.current = 0;
-        return true;
+        return refreshSucceeded();
       }
-
+      if (existingClientToken) {
+        insforge.getHttpClient().setAuthToken(existingClientToken);
+      }
       refreshRetryCountRef.current += 1;
       console.warn('[session] refresh failed', error);
-      return false;
+      return transientRefreshFailure();
     } finally {
       refreshInFlightRef.current = false;
     }
@@ -422,8 +463,8 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   const continueSession = useCallback(async () => {
     if (isLoggingOutRef.current) return;
     registerActivity();
-    const ok = await refreshSessionIfNeeded();
-    if (!ok && refreshRetryCountRef.current > MAX_REFRESH_RETRIES) {
+    const outcome = await refreshSessionIfNeeded();
+    if (!outcome.ok && outcome.shouldLogout) {
       await markSessionExpiredAndLogout('refresh_failure');
       return;
     }
@@ -529,13 +570,13 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       }
 
       void (async () => {
-        const ok = await refreshSessionIfNeeded();
-        if (!ok && refreshRetryCountRef.current <= MAX_REFRESH_RETRIES) {
+        const outcome = await refreshSessionIfNeeded();
+        if (!outcome.ok && outcome.shouldLogout) {
+          await markSessionExpiredAndLogout('refresh_failure');
+        } else if (!outcome.ok && refreshRetryCountRef.current <= MAX_REFRESH_RETRIES) {
           window.setTimeout(() => {
             void refreshSessionIfNeeded();
           }, REFRESH_RETRY_MS);
-        } else if (!ok) {
-          await markSessionExpiredAndLogout('refresh_failure');
         }
       })();
     }, CHECK_INTERVAL_MS);

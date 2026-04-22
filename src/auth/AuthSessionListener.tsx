@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useAuth } from '@insforge/react';
+import { insforge } from '../api/insforge/client';
 import { useDraftManager } from '../session/DraftManagerProvider';
 
 const SESSION_EXPIRED_KEY = 'sca_session_expired';
@@ -28,6 +29,19 @@ export function AuthSessionListener() {
       if (userSignedOut) {
         sessionStorage.removeItem(USER_SIGNED_OUT_KEY);
       } else {
+        const currentHeaders = (() => {
+          try {
+            return insforge.getHttpClient().getHeaders();
+          } catch {
+            return {};
+          }
+        })();
+        const authHeader = String((currentHeaders as any).Authorization ?? (currentHeaders as any).authorization ?? '').trim();
+        if (authHeader) {
+          // If a bearer token is still attached to the shared client, treat this as a recoverable
+          // auth-state wobble and avoid showing the "session expired" banner.
+          return;
+        }
         // Best-effort: persist any local draft snapshots before redirecting to login.
         void (async () => {
           try {
