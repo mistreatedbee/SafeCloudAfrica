@@ -33,8 +33,8 @@ import { FirstWinBanner } from '../../components/onboarding/FirstWinBanner';
 export function OwnerDashboardPage() {
   const { activeCompanyId, activeCompany } = useTenant();
   const location = useLocation();
-  const { organisationName } = useIdentity();
-  const firstName = String(useIdentity().fullName).split(' ')[0];
+  const { fullName, organisationName } = useIdentity();
+  const firstName = String(fullName).split(' ')[0];
   const [refreshKey, setRefreshKey] = useState(0);
   const showOnboardingComplete = new URLSearchParams(location.search).get('onboarding') === 'complete';
 

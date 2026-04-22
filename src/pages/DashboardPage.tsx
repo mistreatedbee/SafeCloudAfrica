@@ -28,6 +28,7 @@ import { listModuleTargets } from '../api/services/moduleTargetsService';
 import { countOverdueCorrectiveActions } from '../api/services/correctiveActionsService';
 import { countExpiringTraining, countExpiringTrainingForUser } from '../api/services/trainingService';
 import { listInspections } from '../api/services/inspectionsService';
+import { useIdentity } from '../hooks/useIdentity';
 const containerVariants = {
   hidden: {
     opacity: 0
@@ -76,8 +77,8 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
-  const displayName = (user?.profile as any)?.name ?? user?.email ?? 'there';
-  const firstName = String(displayName).split(' ')[0];
+  const { fullName } = useIdentity();
+  const firstName = String(fullName || user?.email || 'there').split(' ')[0];
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Lightweight real-time refresh (poll)

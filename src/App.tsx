@@ -124,15 +124,17 @@ import { SELLABLE_FEATURE_ROUTE_PATHS } from './api/services/sellableFeaturesSer
 import { DraftManagerProvider } from './session/DraftManagerProvider';
 import { DraftExperience } from './session/DraftExperience';
 import { SessionManagerProvider } from './session/SessionManagerProvider';
+import { IdentityProvider } from './hooks/useIdentity';
 export function App() {
   return (
     <BrowserRouter>
       <TenantProvider>
-        <DraftManagerProvider>
-          <SessionManagerProvider>
-            <AuthSessionListener />
-            <DraftExperience />
-            <Routes>
+        <IdentityProvider>
+          <DraftManagerProvider>
+            <SessionManagerProvider>
+              <AuthSessionListener />
+              <DraftExperience />
+              <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
 
@@ -1776,9 +1778,10 @@ export function App() {
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </SessionManagerProvider>
-        </DraftManagerProvider>
+              </Routes>
+            </SessionManagerProvider>
+          </DraftManagerProvider>
+        </IdentityProvider>
       </TenantProvider>
     </BrowserRouter>);
 

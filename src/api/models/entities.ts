@@ -2296,6 +2296,8 @@ export type UserProfile = {
   full_name: string | null;
   email: string | null;
   phone: string | null;
+  avatar_bucket?: string | null;
+  avatar_key?: string | null;
   site_id?: UUID | null;
   department_id?: UUID | null;
   department: string | null;

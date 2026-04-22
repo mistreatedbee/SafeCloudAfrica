@@ -8,8 +8,8 @@ import {
 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useUser } from '@insforge/react';
 import { useTenant } from '../../tenant/TenantContext';
+import { useIdentity } from '../../hooks/useIdentity';
 
 function getInitials(nameOrEmail: string): string {
   const raw = nameOrEmail.trim();
@@ -36,11 +36,10 @@ export function UserMenu() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useUser();
   const { activeCompany, activeRole, isPlatformAdmin } = useTenant();
+  const { avatarUrl, email, fullName } = useIdentity();
   const onSuperAdminRoute = location.pathname.startsWith('/super-admin');
-  const displayName = (user?.profile as any)?.name ?? user?.email ?? 'Account';
-  const email = user?.email ?? '';
+  const displayName = fullName || email || 'Account';
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -61,8 +60,12 @@ export function UserMenu() {
         aria-label="User menu"
         aria-expanded={isOpen}>
 
-        <div className="w-8 h-8 rounded-full border-2 border-surface-200 bg-navy text-white flex items-center justify-center text-xs font-bold">
-          {getInitials(displayName)}
+        <div className="w-8 h-8 rounded-full border-2 border-surface-200 bg-navy text-white flex items-center justify-center text-xs font-bold overflow-hidden">
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+          ) : (
+            getInitials(displayName)
+          )}
         </div>
 
         <div className="hidden md:block text-left">
@@ -97,11 +100,22 @@ export function UserMenu() {
           transition={{
             duration: 0.15
           }}
-          className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-elevated border border-surface-300 overflow-hidden z-50">
+            className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-elevated border border-surface-300 overflow-hidden z-50">
 
             <div className="px-4 py-3 border-b border-surface-200">
-              <p className="font-medium text-charcoal">{displayName}</p>
-              <p className="text-sm text-charcoal-500">{email}</p>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full border border-surface-200 bg-navy text-white flex items-center justify-center text-sm font-bold overflow-hidden">
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+                  ) : (
+                    getInitials(displayName)
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium text-charcoal truncate">{displayName}</p>
+                  <p className="text-sm text-charcoal-500 truncate">{email}</p>
+                </div>
+              </div>
               <p className="text-xs text-charcoal-400 mt-1">
                 {onSuperAdminRoute ? 'Platform scope' : activeCompany?.name ?? 'No company selected'}
               </p>
