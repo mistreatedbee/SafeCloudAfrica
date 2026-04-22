@@ -1,5 +1,26 @@
 import { insforge } from './client';
 
+const AUTH_BOOTSTRAP_DEBUG = (import.meta as any)?.env?.VITE_AUTH_BOOTSTRAP_DEBUG === '1';
+
+type EnsureSessionFailureCode = 'AUTH_SESSION_MISSING' | 'AUTH_SESSION_INVALID';
+
+type EnsureSessionOptions = {
+  reason?: string;
+};
+
+export class InsforgeAuthBootstrapError extends Error {
+  code: EnsureSessionFailureCode;
+
+  constructor(code: EnsureSessionFailureCode, message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = 'InsforgeAuthBootstrapError';
+    this.code = code;
+    if (options && 'cause' in options) {
+      (this as Error & { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
 function readJwtSub(token: string | null | undefined): string | null {
   if (!token) return null;
   try {
@@ -14,6 +35,36 @@ function readJwtSub(token: string | null | undefined): string | null {
   }
 }
 
+function getAuthStatusCode(error: unknown): number {
+  const raw = Number((error as any)?.statusCode ?? (error as any)?.status ?? 0);
+  return Number.isFinite(raw) ? raw : 0;
+}
+
+function isInvalidSessionError(error: unknown): boolean {
+  const statusCode = getAuthStatusCode(error);
+  if (statusCode === 401 || statusCode === 403) return true;
+  const message = String(
+    (error as any)?.code ??
+      (error as any)?.error ??
+      (error as any)?.message ??
+      ''
+  ).toLowerCase();
+  return (
+    message.includes('invalid or expired session') ||
+    message.includes('session expired') ||
+    message.includes('refresh_unauthorized') ||
+    message.includes('refresh_forbidden') ||
+    message.includes('missing_refresh_cookie') ||
+    message.includes('invalid refresh token') ||
+    message.includes('unauthorized')
+  );
+}
+
+function debugAuthBootstrap(event: string, details?: Record<string, unknown>): void {
+  if (!AUTH_BOOTSTRAP_DEBUG) return;
+  console.debug('[auth-bootstrap]', event, details ?? {});
+}
+
 /**
  * Ensures the shared InsForge SDK client has a signed-in user's access token
  * set on its HTTP client before making RLS-protected database calls.
@@ -21,13 +72,47 @@ function readJwtSub(token: string | null | undefined): string | null {
  * Why: if the HTTP client falls back to the anon key, Postgres sees auth.uid() as null
  * and RLS policies (correctly) reject inserts/updates.
  */
-export async function ensureInsforgeSession(): Promise<{ accessToken: string; userId: string }> {
-  const result = await insforge.auth.getCurrentSession();
+export async function ensureInsforgeSession(options: EnsureSessionOptions = {}): Promise<{ accessToken: string; userId: string }> {
+  const reason = options.reason ?? 'unknown';
+  const existingHeaders = (() => {
+    try {
+      return insforge.getHttpClient().getHeaders();
+    } catch {
+      return {};
+    }
+  })();
+  const hadAuthHeader = !!String((existingHeaders as any)?.Authorization ?? (existingHeaders as any)?.authorization ?? '').trim();
+  debugAuthBootstrap('ensure-session:start', { reason, hadAuthHeader });
+
+  const result = await insforge.auth.getCurrentSession().catch((error) => {
+    debugAuthBootstrap('ensure-session:get-current-session-error', {
+      reason,
+      hadAuthHeader,
+      invalidSession: isInvalidSessionError(error)
+    });
+    throw new InsforgeAuthBootstrapError(
+      isInvalidSessionError(error) ? 'AUTH_SESSION_INVALID' : 'AUTH_SESSION_MISSING',
+      'Your session is not available. Please sign in again.',
+      { cause: error }
+    );
+  });
   if (!result || typeof result !== 'object') {
-    throw new Error('Your session is not available. Please sign in again.');
+    debugAuthBootstrap('ensure-session:missing-result', { reason, hadAuthHeader });
+    throw new InsforgeAuthBootstrapError('AUTH_SESSION_MISSING', 'Your session is not available. Please sign in again.');
   }
   const { data, error } = result;
-  if (error) throw error;
+  if (error) {
+    debugAuthBootstrap('ensure-session:result-error', {
+      reason,
+      hadAuthHeader,
+      invalidSession: isInvalidSessionError(error)
+    });
+    throw new InsforgeAuthBootstrapError(
+      isInvalidSessionError(error) ? 'AUTH_SESSION_INVALID' : 'AUTH_SESSION_MISSING',
+      'Your session is not available. Please sign in again.',
+      { cause: error }
+    );
+  }
 
   const session = data?.session ?? null;
   const token =
@@ -44,11 +129,22 @@ export async function ensureInsforgeSession(): Promise<{ accessToken: string; us
 
   if (!token || !userId) {
     // Keep message user-friendly; UI can prompt a re-login.
-    throw new Error('Your session is not available. Please sign in again.');
+    debugAuthBootstrap('ensure-session:missing-token-or-user', {
+      reason,
+      hadAuthHeader,
+      hasToken: !!token,
+      hasUserId: !!userId
+    });
+    throw new InsforgeAuthBootstrapError('AUTH_SESSION_MISSING', 'Your session is not available. Please sign in again.');
   }
 
   // Redundant but intentional: guarantees DB calls that follow are authenticated.
   insforge.getHttpClient().setAuthToken(token);
+  debugAuthBootstrap('ensure-session:attached-token', {
+    reason,
+    hadAuthHeader,
+    tokenAttached: true
+  });
 
   return { accessToken: token, userId };
 }

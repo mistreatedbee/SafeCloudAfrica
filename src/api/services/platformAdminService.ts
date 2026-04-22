@@ -1,5 +1,6 @@
 import { insforge } from '../insforge/client';
 import { getErrorMessage } from '../insforge/errors';
+import { ensureInsforgeSession, InsforgeAuthBootstrapError } from '../insforge/ensureSession';
 import type { UUID } from '../models/entities';
 
 const ROLE_ORDER = ['owner', 'admin', 'manager', 'supervisor', 'consultant', 'employee', 'auditor'] as const;
@@ -31,6 +32,7 @@ export function getDashboardPathByRole(role: string): string {
 /** Returns the dashboard path for the user's best role across memberships, or /app. */
 export async function getRoleBasedRedirectPath(userId: UUID): Promise<string> {
   try {
+    await ensureInsforgeSession({ reason: 'platform-admin:get-role-based-redirect' });
     const { data, error } = await insforge.database
       .from('company_memberships')
       .select('role')
@@ -60,6 +62,7 @@ export type LoginRedirectResult = { path: string; organizationId?: UUID; reason?
  */
 export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId?: UUID | null): Promise<LoginRedirectResult> {
   try {
+    await ensureInsforgeSession({ reason: 'platform-admin:get-login-redirect' });
     const { data: memberships, error: mErr } = await insforge.database
       .from('company_memberships')
       .select('company_id, role')
@@ -122,18 +125,38 @@ export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId
   }
 }
 
+export type EnsureSuperAdminResult =
+  | { status: 'ok' }
+  | { status: 'auth_failed'; error: InsforgeAuthBootstrapError }
+  | { status: 'compat_ignored' };
+
 /** Call RPC so that if current user email is in super_admin_allowed_emails, they get added to platform_admins. No-op otherwise. */
-export async function ensureMeAsSuperAdmin(): Promise<void> {
+export async function ensureMeAsSuperAdmin(): Promise<EnsureSuperAdminResult> {
   try {
+    await ensureInsforgeSession({ reason: 'platform-admin:ensure-me-as-super-admin' });
     const { error } = await insforge.database.rpc('ensure_me_as_super_admin');
     if (error) throw error;
-  } catch {
-    // Table or RPC may not exist yet; ignore so login still works
+    return { status: 'ok' };
+  } catch (error) {
+    if (error instanceof InsforgeAuthBootstrapError) {
+      return { status: 'auth_failed', error };
+    }
+    const msg = getErrorMessage(error).toLowerCase();
+    if (
+      msg.includes('does not exist') ||
+      msg.includes('function') ||
+      msg.includes('not found') ||
+      msg.includes('schema cache')
+    ) {
+      return { status: 'compat_ignored' };
+    }
+    throw error;
   }
 }
 
 export async function isPlatformAdmin(userId: UUID): Promise<boolean> {
   try {
+    await ensureInsforgeSession({ reason: 'platform-admin:is-platform-admin' });
     const { data, error } = await insforge.database.from('platform_admins').select('user_id').eq('user_id', userId).maybeSingle();
     if (error) throw error;
     return !!data;

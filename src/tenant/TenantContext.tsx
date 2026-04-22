@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useUser } from '@insforge/react';
-import { insforge } from '../api/insforge/client';
+import { insforge, insforgeReady } from '../api/insforge/client';
+import { ensureInsforgeSession, InsforgeAuthBootstrapError } from '../api/insforge/ensureSession';
 import type { Company, CompanyMembership, UUID } from '../api/models/entities';
 import { createActivityLog } from '../api/services/activityLogService';
 import type { CompanyRole, ModuleKey } from '../api/models/core';
@@ -61,6 +62,7 @@ function isActiveMembership(row: { status?: string | null }): boolean {
 }
 
 async function fetchMemberships(userId: UUID): Promise<MembershipWithCompany[]> {
+  await ensureInsforgeSession({ reason: 'tenant:fetch-memberships' });
   const { data, error } = await insforge.database
     .from('company_memberships')
     .select('*, companies(*)')
@@ -114,7 +116,12 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       setIsTenantLoaded(false);
     }
     try {
-      await ensureMeAsSuperAdmin();
+      await insforgeReady;
+      const session = await ensureInsforgeSession({ reason: 'tenant:refresh' });
+      const ensureSaResult = await ensureMeAsSuperAdmin();
+      if (ensureSaResult.status === 'auth_failed') {
+        throw ensureSaResult.error;
+      }
       const rows = await fetchMemberships(user.id as UUID);
       setMemberships(rows);
 
@@ -137,7 +144,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const dbIsAdmin = await checkPlatformAdmin(user.id as UUID);
+      const dbIsAdmin = await checkPlatformAdmin(session.userId as UUID);
       setIsPlatformAdmin(dbIsAdmin);
 
       if (next) {
@@ -152,9 +159,15 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
           }).catch(() => undefined);
         }
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof InsforgeAuthBootstrapError) {
+        debugTenant('auth bootstrap failed during tenant refresh', {
+          code: error.code
+        });
+      }
       // Preserve existing memberships on transient failures to avoid redirect churn.
       try {
+        await ensureInsforgeSession({ reason: 'tenant:refresh-fallback-is-platform-admin' });
         const dbIsAdmin = await checkPlatformAdmin(user.id as UUID);
         setIsPlatformAdmin(dbIsAdmin);
       } catch {

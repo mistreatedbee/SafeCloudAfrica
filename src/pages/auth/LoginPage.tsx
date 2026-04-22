@@ -6,6 +6,7 @@ import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY } from '../../auth/Aut
 import { formatAuthError } from '../../auth/authMessages';
 import { recoverAuthState } from '../../auth/recoverAuthState';
 import { useTenant } from '../../tenant/TenantContext';
+import { ensureInsforgeSession } from '../../api/insforge/ensureSession';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getLoginRedirectPath } from '../../api/services/platformAdminService';
 import { insforge, insforgeReady } from '../../api/insforge/client';
 import type { UUID } from '../../api/models/entities';
@@ -116,8 +117,15 @@ export function LoginPage() {
     setRedirectError(null);
     setRedirecting(true);
     try {
-      await ensureMeAsSuperAdmin();
-      const isSA = await isPlatformAdmin(resolvedUserId);
+      await insforgeReady;
+      const session = await ensureInsforgeSession({ reason: 'login:redirect-after-login' });
+      const sessionUserId = session.userId as UUID;
+      const ensureSaResult = await ensureMeAsSuperAdmin();
+      if (ensureSaResult.status === 'auth_failed') {
+        throw ensureSaResult.error;
+      }
+      const effectiveUserId = sessionUserId || resolvedUserId;
+      const isSA = await isPlatformAdmin(effectiveUserId);
       if (isSA) {
         await refreshTenant();
         redirectToPath('/super-admin/overview');
@@ -130,7 +138,7 @@ export function LoginPage() {
           return null;
         }
       })();
-      const { path: defaultPath, organizationId, reason } = await getLoginRedirectPath(resolvedUserId, storedCompanyId);
+      const { path: defaultPath, organizationId, reason } = await getLoginRedirectPath(effectiveUserId, storedCompanyId);
       if (organizationId) setActiveCompanyId(organizationId);
       const target = defaultPath;
       const pathWithReason = reason

@@ -205,6 +205,7 @@ export async function countPendingInvites(companyId: UUID): Promise<number> {
 }
 
 export async function getSeatLimitForCompany(companyId: UUID): Promise<number> {
+  await ensureInsforgeSession({ reason: 'tenant-service:get-seat-limit' });
   const { data, error } = await insforge.database.rpc('get_company_seat_limit', { p_company_id: companyId });
   if (!error && data != null) return Number(data || 0);
   const company = await getCompanyById(companyId);
