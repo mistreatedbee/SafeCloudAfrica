@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth, useUser } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY } from '../../auth/AuthSessionListener';
@@ -11,7 +11,6 @@ import { insforge, insforgeReady } from '../../api/insforge/client';
 import type { UUID } from '../../api/models/entities';
 
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
-const INVALID_REDIRECT_PREFIXES = ['/login', '/register', '/forgot-password', '/reset-password', '/logout'];
 const ACTIVE_COMPANY_KEY = 'sca_active_company_id_v3';
 const SESSION_RESOLVE_RETRIES = 4;
 const SESSION_RESOLVE_DELAY_MS = 200;
@@ -56,16 +55,8 @@ function readAuthSession(result: unknown): { accessToken: string | null; userId:
   return { accessToken, userId };
 }
 
-function sanitizeRedirect(raw: string | null, fallback: string): string {
-  if (!raw) return fallback;
-  try {
-    const decoded = decodeURIComponent(raw);
-    if (!decoded.startsWith('/')) return fallback;
-    if (INVALID_REDIRECT_PREFIXES.some((prefix) => decoded.startsWith(prefix))) return fallback;
-    return decoded;
-  } catch {
-    return fallback;
-  }
+function redirectToPath(path: string): void {
+  window.location.replace(path);
 }
 
 export function LoginPage() {
@@ -73,7 +64,6 @@ export function LoginPage() {
   const { user } = useUser();
   const { setActiveCompanyId, refreshTenant } = useTenant();
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const [redirecting, setRedirecting] = useState(false);
   const [redirectError, setRedirectError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -100,8 +90,6 @@ export function LoginPage() {
       }
     }
   }, [sessionExpiredMessage]);
-
-  const redirectParam = searchParams.get('redirect');
 
   const resolveSignedInUserId = React.useCallback(async (initialResult: unknown): Promise<UUID | null> => {
     const initialSession = readAuthSession(initialResult);
@@ -132,7 +120,7 @@ export function LoginPage() {
       const isSA = await isPlatformAdmin(resolvedUserId);
       if (isSA) {
         await refreshTenant();
-        navigate('/super-admin/overview', { replace: true });
+        redirectToPath('/super-admin/overview');
         return;
       }
       const storedCompanyId = (() => {
@@ -144,7 +132,7 @@ export function LoginPage() {
       })();
       const { path: defaultPath, organizationId, reason } = await getLoginRedirectPath(resolvedUserId, storedCompanyId);
       if (organizationId) setActiveCompanyId(organizationId);
-      const target = sanitizeRedirect(redirectParam, defaultPath);
+      const target = defaultPath;
       const pathWithReason = reason
         ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`)
         : target;
@@ -152,13 +140,13 @@ export function LoginPage() {
         refreshTenant(),
         wait(TENANT_REFRESH_MAX_WAIT_MS)
       ]);
-      navigate(pathWithReason, { replace: true });
+      redirectToPath(pathWithReason);
     } catch {
       await recoverAuthState(signOut, refreshTenant);
       setRedirectError(LOGIN_FAILED_MESSAGE);
       setRedirecting(false);
     }
-  }, [navigate, redirectParam, refreshTenant, setActiveCompanyId, signOut]);
+  }, [refreshTenant, setActiveCompanyId, signOut]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user?.id) return;
@@ -215,7 +203,7 @@ export function LoginPage() {
       }
 
       setRedirecting(true);
-      navigate(sanitizeRedirect(redirectParam, '/app'), { replace: true });
+      redirectToPath('/app');
     } catch (error) {
       handleSignInError(error);
     } finally {
