@@ -244,6 +244,20 @@ export async function requestSellableFeatureUnlock(input: {
     if (insertError) throw new Error(getErrorMessage(insertError));
   }
 
+  // Also notify platform admins ("super admins"). This runs via SECURITY DEFINER RPC so the caller
+  // does not need to be able to read `platform_admins` (RLS blocks that for non-admin users).
+  try {
+    await insforge.database.rpc('notify_platform_admins_unlock_request', {
+      p_company_id: input.companyId,
+      p_feature_key: input.featureKey,
+      p_feature_label: featureLabel,
+      p_requested_by_user_id: input.requestedByUserId,
+      p_requested_by_email: input.requestedByEmail ?? null
+    });
+  } catch {
+    // Backwards compatible: ignore if RPC isn't deployed yet.
+  }
+
   try {
     await createActivityLog({
       companyId: input.companyId,
