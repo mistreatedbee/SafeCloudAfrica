@@ -21,6 +21,7 @@ import { EnvironmentWastePage } from './pages/environment/EnvironmentWastePage';
 import { EnvironmentWaterPage } from './pages/environment/EnvironmentWaterPage';
 import { EnvironmentAirPage } from './pages/environment/EnvironmentAirPage';
 import { DocumentsPage } from './pages/DocumentsPage';
+import { DocumentEditorPage } from './pages/DocumentEditorPage';
 import { TasksPage } from './pages/TasksPage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
 import { IncidentsPage } from './pages/IncidentsPage';
@@ -777,6 +778,16 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <DocumentsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/documents/editor/:versionId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <DocumentEditorPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

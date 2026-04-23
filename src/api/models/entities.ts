@@ -558,6 +558,41 @@ export type Document = {
   review_due_at: string | null;
   storage_bucket: string | null;
   storage_key: string | null;
+  folder_id?: UUID | null;
+  description?: string | null;
+  current_version_id?: UUID | null;
+  published_version_id?: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DocumentFolder = {
+  id: UUID;
+  company_id: UUID;
+  parent_id: UUID | null;
+  module: ModuleKey;
+  name: string;
+  sort_order: number;
+  created_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DocumentVersionStatus = 'draft' | 'in_review' | 'approved' | 'rejected' | 'archived';
+
+export type DocumentVersion = {
+  id: UUID;
+  company_id: UUID;
+  document_id: UUID;
+  version_label: string;
+  status: DocumentVersionStatus;
+  storage_bucket: string | null;
+  storage_key: string | null;
+  original_filename: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  created_by_user_id: UUID | null;
+  supersedes_version_id: UUID | null;
   created_at: string;
   updated_at: string;
 };

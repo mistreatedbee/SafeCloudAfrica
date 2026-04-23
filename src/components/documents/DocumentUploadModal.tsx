@@ -3,7 +3,8 @@ import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { ModuleKey, UUID } from '../../api/models/core';
-import { createDocument } from '../../api/services/documentsService';
+import type { DocumentFolder } from '../../api/models/entities';
+import { createDocumentWithInitialVersion } from '../../api/services/documentsService';
 import { uploadDocumentFile } from '../../api/services/documentsStorageService';
 import { DOCUMENT_CATEGORIES_BY_MODULE } from '../../constants/documentCategories';
 
@@ -12,13 +13,17 @@ export function DocumentUploadModal(props: {
   onClose: () => void;
   companyId: UUID;
   actorUserId: UUID;
+  folders?: DocumentFolder[];
+  defaultFolderId?: UUID | null;
   onUploaded?: () => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [module, setModule] = useState<ModuleKey>('safety');
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [categoryPreset, setCategoryPreset] = useState('Policies');
   const [categoryCustom, setCategoryCustom] = useState('');
+  const [folderId, setFolderId] = useState<UUID | ''>(() => (props.defaultFolderId ? props.defaultFolderId : ''));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,29 +36,54 @@ export function DocumentUploadModal(props: {
 
   const canSubmit = useMemo(() => !!file && title.trim().length > 2 && category.trim().length > 1, [category, file, title]);
 
+  const folderOptions = useMemo(() => {
+    const all = props.folders ?? [];
+    const filtered = all.filter((f) => f.company_id === props.companyId && f.module === module);
+    // Shallow flatten with basic "Parent / Child" labels for selection.
+    const byId = new Map<string, DocumentFolder>();
+    filtered.forEach((f) => byId.set(String(f.id), f));
+    const labelFor = (f: DocumentFolder): string => {
+      if (!f.parent_id) return f.name;
+      const parent = byId.get(String(f.parent_id));
+      return parent ? `${parent.name} / ${f.name}` : f.name;
+    };
+    return filtered
+      .slice()
+      .sort((a, b) => labelFor(a).localeCompare(labelFor(b)))
+      .map((f) => ({ id: f.id, label: labelFor(f) }));
+  }, [module, props.companyId, props.folders]);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || !file) return;
-    setError(null);
+      setError(null);
     try {
       setLoading(true);
       const uploaded = await uploadDocumentFile({ companyId: props.companyId, file });
-      await createDocument({
+      await createDocumentWithInitialVersion({
         companyId: props.companyId,
         module,
         title: title.trim(),
         category: category.trim(),
+        description: description.trim() || null,
+        folderId: folderId ? (folderId as UUID) : null,
         ownerUserId: props.actorUserId,
+        createdByUserId: props.actorUserId,
         storageBucket: uploaded.bucket,
-        storageKey: uploaded.key
+        storageKey: uploaded.key,
+        originalFilename: file.name,
+        mimeType: file.type || null,
+        fileSize: file.size
       });
       props.onUploaded?.();
       props.onClose();
       setFile(null);
       setTitle('');
+      setDescription('');
       setCategoryPreset('Policies');
       setCategoryCustom('');
       setModule('safety');
+      setFolderId(props.defaultFolderId ? props.defaultFolderId : '');
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {
@@ -146,6 +176,33 @@ export function DocumentUploadModal(props: {
               placeholder="e.g. OHS Policy"
               className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Description (optional)</label>
+            <textarea
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Short summary for audit and search…"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Folder (optional)</label>
+            <select
+              value={folderId}
+              onChange={(e) => setFolderId((e.target.value || '') as any)}
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            >
+              <option value="">No folder</option>
+              {folderOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
