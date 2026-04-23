@@ -65,7 +65,7 @@ export default async function handler(req: any, res: any) {
         module: MODULE,
         message: 'Database error validating invite'
       });
-      return res.status(500).json({ ok: false, reason: 'not_found', error: 'Could not validate invite' });
+      return res.status(500).json({ ok: false, reason: 'backend_unavailable', error: 'Could not validate invite' });
     }
 
     if (!data) {
@@ -76,7 +76,7 @@ export default async function handler(req: any, res: any) {
     const expiresAt = (data as any).expires_at ? new Date((data as any).expires_at) : null;
     const isExpired = !!expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
 
-    if (isExpired && (status === 'PENDING' || status === 'SENT' || status === 'FAILED')) {
+    if (isExpired && (status === 'PENDING' || status === 'SENT')) {
       await insforge.database
         .from('company_invites')
         .update({ status: 'EXPIRED' })
@@ -85,7 +85,7 @@ export default async function handler(req: any, res: any) {
       return res.status(410).json({ ok: false, reason: 'expired' });
     }
 
-    if (status !== 'PENDING' && status !== 'SENT' && status !== 'FAILED') {
+    if (status !== 'PENDING' && status !== 'SENT') {
       return res.status(409).json({ ok: false, reason: mapInvalidReason(status) });
     }
 
@@ -105,6 +105,6 @@ export default async function handler(req: any, res: any) {
     const msg = String(err?.message || err);
     logStructuredLine({ module: MODULE, level: 'error', message: msg, organization_id: null });
     sendAlertWebhook({ kind: 'invite_api', module: MODULE, message: msg });
-    return res.status(500).json({ ok: false, reason: 'not_found', error: msg });
+    return res.status(500).json({ ok: false, reason: 'backend_unavailable', error: msg });
   }
 }

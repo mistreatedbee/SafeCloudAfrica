@@ -96,7 +96,7 @@ export default async function handler(req: any, res: any) {
     const expiresAt = invite.expires_at ? new Date(invite.expires_at) : null;
     const expired = !!expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
 
-    if (expired && (status === 'PENDING' || status === 'SENT' || status === 'FAILED')) {
+    if (expired && (status === 'PENDING' || status === 'SENT')) {
       await insforge.database
         .from('company_invites')
         .update({ status: 'EXPIRED' })
@@ -107,7 +107,7 @@ export default async function handler(req: any, res: any) {
 
     if (status === 'ACCEPTED') return res.status(409).json({ ok: false, reason: 'accepted', error: 'Invite already used. Please log in.' });
     if (status === 'CANCELLED') return res.status(409).json({ ok: false, reason: 'revoked', error: 'Invite revoked. Request a new invite.' });
-    if (!['PENDING', 'SENT', 'FAILED'].includes(status)) return res.status(409).json({ ok: false, reason: 'not_found', error: 'Invalid invite link.' });
+    if (!['PENDING', 'SENT'].includes(status)) return res.status(409).json({ ok: false, reason: 'not_found', error: 'Invalid invite link.' });
 
     const inviteEmail = String(invite.email || '').trim().toLowerCase();
     if (!inviteEmail || inviteEmail !== userEmail) {

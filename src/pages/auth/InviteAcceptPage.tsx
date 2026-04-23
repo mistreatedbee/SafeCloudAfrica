@@ -27,7 +27,13 @@ const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 
 function inviteErrorForCode(code: InviteValidationResult['code']): string {
   if (code === 'INVITE_EXPIRED') return 'This invitation has expired. Ask your admin to resend it.';
   if (code === 'INVITE_ACCEPTED') return 'This invitation has already been accepted.';
+  if (code === 'BACKEND_UNAVAILABLE') return 'Invite validation is not configured correctly yet. Please contact support or ask your admin to finish the latest invite migration.';
   return 'Invalid invite link.';
+}
+
+function inviteTitleForCode(code: InviteValidationResult['code'] | null): string {
+  if (code === 'BACKEND_UNAVAILABLE') return 'Invite System Error';
+  return 'Invalid or Expired Invite';
 }
 
 export function InviteAcceptPage() {
@@ -44,6 +50,7 @@ export function InviteAcceptPage() {
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<InviteValidationResult['code'] | null>(null);
   const [success, setSuccess] = useState(false);
 
   const redirectToLogin = useMemo(() => `/login?redirect=${encodeURIComponent(`/invite/accept?token=${token}`)}`, [token]);
@@ -55,12 +62,14 @@ export function InviteAcceptPage() {
     async function loadInvite() {
       setLoading(true);
       setError(null);
+      setErrorCode(null);
 
       try {
         if (token) {
           const validation = await validateInvitationToken(token);
           if (cancelled) return;
           if (validation.code !== 'OK' || !validation.invite) {
+            setErrorCode(validation.code);
             setError(inviteErrorForCode(validation.code));
             setLoading(false);
             return;
@@ -72,6 +81,7 @@ export function InviteAcceptPage() {
         }
 
         if (!inviteId) {
+          setErrorCode('INVITE_INVALID');
           setError('Invalid invite link.');
           setLoading(false);
           return;
@@ -82,7 +92,10 @@ export function InviteAcceptPage() {
         setInvite(inviteData);
         setCompanyName((inviteData as any)?.company?.name ?? 'Organization');
       } catch (err: any) {
-        if (!cancelled) setError(toUserInviteMessage(err?.message || 'Failed to load invite.'));
+        if (!cancelled) {
+          setErrorCode('BACKEND_UNAVAILABLE');
+          setError(toUserInviteMessage(err?.message || 'Failed to load invite.'));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -147,7 +160,7 @@ export function InviteAcceptPage() {
         <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
           <motion.div variants={itemVariants} className="bg-critical-50 border border-critical/20 rounded-xl p-6 text-center">
             <XCircleIcon className="w-12 h-12 text-critical mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-critical mb-2">Invalid or Expired Invite</h3>
+            <h3 className="text-lg font-semibold text-critical mb-2">{inviteTitleForCode(errorCode)}</h3>
             <p className="text-charcoal-600">{error}</p>
             <Link to="/login" className="inline-flex mt-4 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">
               Request new invite

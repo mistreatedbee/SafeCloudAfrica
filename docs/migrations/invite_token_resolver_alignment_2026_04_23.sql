@@ -1,0 +1,153 @@
+-- Invite token resolver alignment
+-- 2026-04-23
+-- Canonical token resolution for hashed and legacy raw invite tokens.
+
+create or replace function public.resolve_invitation_token(p_token text)
+returns table(
+  resolution_code text,
+  invite_id uuid,
+  company_id uuid,
+  company_name text,
+  email text,
+  role text,
+  status text,
+  expires_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_token text;
+  v_token_hash text;
+  v_row record;
+begin
+  v_token := nullif(trim(p_token), '');
+  if v_token is null then
+    return query
+    select 'not_found'::text, null::uuid, null::uuid, null::text, null::text, null::text, null::text, null::timestamptz;
+    return;
+  end if;
+
+  v_token_hash := encode(digest(v_token, 'sha256'), 'hex');
+
+  update public.company_invites
+  set status = 'EXPIRED'
+  where (
+      token_hash = v_token_hash
+      or token = v_token
+    )
+    and status in ('PENDING', 'SENT')
+    and expires_at is not null
+    and expires_at <= now();
+
+  select
+    i.id,
+    i.company_id,
+    c.name as company_name,
+    i.email,
+    i.role,
+    i.status,
+    i.expires_at
+  into v_row
+  from public.company_invites i
+  join public.companies c on c.id = i.company_id
+  where i.token_hash = v_token_hash
+     or i.token = v_token
+  order by i.created_at desc
+  limit 1;
+
+  if not found then
+    return query
+    select 'not_found'::text, null::uuid, null::uuid, null::text, null::text, null::text, null::text, null::timestamptz;
+    return;
+  end if;
+
+  if v_row.status = 'ACCEPTED' then
+    return query
+    select 'accepted'::text, v_row.id, v_row.company_id, v_row.company_name, v_row.email, v_row.role, v_row.status, v_row.expires_at;
+    return;
+  end if;
+
+  if v_row.status = 'CANCELLED' then
+    return query
+    select 'cancelled'::text, v_row.id, v_row.company_id, v_row.company_name, v_row.email, v_row.role, v_row.status, v_row.expires_at;
+    return;
+  end if;
+
+  if v_row.status = 'EXPIRED' or (v_row.expires_at is not null and v_row.expires_at <= now()) then
+    return query
+    select 'expired'::text, v_row.id, v_row.company_id, v_row.company_name, v_row.email, v_row.role, 'EXPIRED'::text, v_row.expires_at;
+    return;
+  end if;
+
+  if v_row.status in ('PENDING', 'SENT') then
+    return query
+    select 'ok'::text, v_row.id, v_row.company_id, v_row.company_name, v_row.email, v_row.role, v_row.status, v_row.expires_at;
+    return;
+  end if;
+
+  return query
+  select 'not_found'::text, v_row.id, v_row.company_id, v_row.company_name, v_row.email, v_row.role, v_row.status, v_row.expires_at;
+end;
+$$;
+
+grant execute on function public.resolve_invitation_token(text) to anon;
+grant execute on function public.resolve_invitation_token(text) to authenticated;
+
+create or replace function public.get_invite_id_by_token(p_token text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_row record;
+begin
+  select * into v_row
+  from public.resolve_invitation_token(p_token)
+  limit 1;
+
+  if v_row.resolution_code = 'ok' then
+    return v_row.invite_id;
+  end if;
+
+  return null;
+end;
+$$;
+
+grant execute on function public.get_invite_id_by_token(text) to anon;
+grant execute on function public.get_invite_id_by_token(text) to authenticated;
+
+create or replace function public.validate_invitation_token(p_token text)
+returns table(
+  invite_id uuid,
+  company_id uuid,
+  company_name text,
+  email text,
+  role text,
+  status text,
+  expires_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+  select
+    r.invite_id,
+    r.company_id,
+    r.company_name,
+    r.email,
+    r.role,
+    r.status,
+    r.expires_at
+  from public.resolve_invitation_token(p_token) r
+  where r.resolution_code = 'ok'
+  limit 1;
+end;
+$$;
+
+grant execute on function public.validate_invitation_token(text) to anon;
+grant execute on function public.validate_invitation_token(text) to authenticated;

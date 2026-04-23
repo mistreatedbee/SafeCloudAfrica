@@ -152,36 +152,37 @@ async function createInviteFallback(input: {
 }
 
 async function validateInvitationTokenFallback(token: string): Promise<InviteValidationResult> {
-  const { data, error } = await insforge.database.rpc('validate_invitation_token', { p_token: token });
-  if (error) return { code: 'INVITE_INVALID', invite: null };
-
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row) return { code: 'INVITE_INVALID', invite: null };
-
-  return {
-    code: 'OK',
-    invite: {
-      id: row.invite_id,
-      company_id: row.company_id,
-      organization_name: row.company_name ?? null,
-      email: row.email,
-      role: row.role,
-      created_by_user_id: '' as UUID,
-      created_at: '',
-      accepted_at: null,
-      accepted_user_id: null,
-      token: token,
-      expires_at: row.expires_at ?? null,
-      status: row.status ?? 'PENDING',
-      company_name: row.company_name ?? null
-    } as CompanyInvite & { company_name?: string | null }
-  };
+  const resolved = await resolveInviteTokenFallback(token);
+  if (resolved.code === 'OK' && resolved.invite) {
+    return {
+      code: 'OK',
+      invite: {
+        id: resolved.invite.id,
+        company_id: resolved.invite.company_id,
+        organization_name: resolved.invite.company_name ?? null,
+        email: resolved.invite.email,
+        role: resolved.invite.role as CompanyRole,
+        created_by_user_id: '' as UUID,
+        created_at: '',
+        accepted_at: null,
+        accepted_user_id: null,
+        token,
+        expires_at: resolved.invite.expires_at ?? null,
+        status: resolved.invite.status ?? 'PENDING',
+        company_name: resolved.invite.company_name ?? null
+      } as CompanyInvite & { company_name?: string | null }
+    };
+  }
+  return { code: resolved.code, invite: null };
 }
 
 async function getInviteIdByTokenRpc(token: string): Promise<UUID | null> {
-  const { data, error } = await insforge.database.rpc('get_invite_id_by_token', { p_token: token });
-  if (error) throw new Error(getErrorMessage(error));
-  return (data as UUID | null) ?? null;
+  const resolved = await resolveInviteTokenFallback(token);
+  if (resolved.code === 'OK' && resolved.invite?.id) return resolved.invite.id as UUID;
+  if (resolved.code === 'BACKEND_UNAVAILABLE') {
+    throw new Error('INVITE_BACKEND_UNAVAILABLE: Invite validation is not configured correctly.');
+  }
+  return null;
 }
 
 async function resendInviteFallback(input: { inviteId: UUID; actorUserId: UUID }): Promise<InviteResendResult> {
@@ -449,7 +450,7 @@ export type InviteCreateResult =
       message: string;
     };
 
-export type InviteValidationCode = 'INVITE_INVALID' | 'INVITE_EXPIRED' | 'INVITE_ACCEPTED' | 'OK';
+export type InviteValidationCode = 'INVITE_INVALID' | 'INVITE_EXPIRED' | 'INVITE_ACCEPTED' | 'BACKEND_UNAVAILABLE' | 'OK';
 
 export type InviteValidationResult = {
   code: InviteValidationCode;
@@ -473,15 +474,88 @@ function mapInviteCreateError(message: string): { code: InviteCreateErrorCode; m
   return { code: 'UNKNOWN', message: 'Invite failed to send. Please try again or contact support.' };
 }
 
-function mapInviteErrorCode(message: string): 'INVITE_EXPIRED' | 'INVITE_INVALID' | 'INVITE_ACCEPTED' | 'SEATS_FULL' | 'ALREADY_MEMBER' | 'ALREADY_INVITED' | 'UNKNOWN' {
+function mapInviteErrorCode(message: string): 'INVITE_EXPIRED' | 'INVITE_INVALID' | 'INVITE_ACCEPTED' | 'INVITE_BACKEND_UNAVAILABLE' | 'SEATS_FULL' | 'ALREADY_MEMBER' | 'ALREADY_INVITED' | 'UNKNOWN' {
   const lowered = message.toLowerCase();
   if (lowered.includes('invite_expired')) return 'INVITE_EXPIRED';
   if (lowered.includes('invite_invalid')) return 'INVITE_INVALID';
   if (lowered.includes('invite_accepted')) return 'INVITE_ACCEPTED';
+  if (lowered.includes('invite_backend_unavailable') || lowered.includes('validation is not configured') || lowered.includes('rpc')) {
+    return 'INVITE_BACKEND_UNAVAILABLE';
+  }
   if (lowered.includes('seats_full') || lowered.includes('seat limit')) return 'SEATS_FULL';
   if (lowered.includes('already_member')) return 'ALREADY_MEMBER';
   if (lowered.includes('already_invited')) return 'ALREADY_INVITED';
   return 'UNKNOWN';
+}
+
+type InviteResolverRow = {
+  invite_id?: UUID | null;
+  company_id?: UUID | null;
+  company_name?: string | null;
+  email?: string | null;
+  role?: string | null;
+  status?: string | null;
+  expires_at?: string | null;
+  resolution_code?: string | null;
+};
+
+type InviteResolverResult = {
+  code: InviteValidationCode;
+  invite: (InviteResolverRow & { id?: UUID | null }) | null;
+};
+
+function mapInviteResolutionCode(code: string | null | undefined): InviteValidationCode {
+  const normalized = String(code ?? '').trim().toLowerCase();
+  if (normalized === 'ok') return 'OK';
+  if (normalized === 'expired') return 'INVITE_EXPIRED';
+  if (normalized === 'accepted') return 'INVITE_ACCEPTED';
+  if (normalized === 'cancelled') return 'INVITE_INVALID';
+  return 'INVITE_INVALID';
+}
+
+function normalizeResolvedInvite(row: InviteResolverRow | null | undefined): (InviteResolverRow & { id?: UUID | null }) | null {
+  if (!row) return null;
+  return {
+    ...row,
+    id: row.invite_id ?? null
+  };
+}
+
+async function resolveInviteTokenFallback(token: string): Promise<InviteResolverResult> {
+  const cleanToken = token.trim();
+  if (!cleanToken) return { code: 'INVITE_INVALID', invite: null };
+
+  const resolverRpc = await insforge.database.rpc('resolve_invitation_token', { p_token: cleanToken });
+  if (!resolverRpc.error) {
+    const row = normalizeResolvedInvite(Array.isArray(resolverRpc.data) ? resolverRpc.data[0] : resolverRpc.data);
+    if (!row) return { code: 'INVITE_INVALID', invite: null };
+    return {
+      code: mapInviteResolutionCode(row.resolution_code),
+      invite: row
+    };
+  }
+
+  const validationRpc = await insforge.database.rpc('validate_invitation_token', { p_token: cleanToken });
+  if (!validationRpc.error) {
+    const row = normalizeResolvedInvite(Array.isArray(validationRpc.data) ? validationRpc.data[0] : validationRpc.data);
+    if (!row) return { code: 'INVITE_INVALID', invite: null };
+    return { code: 'OK', invite: row };
+  }
+
+  const legacyIdRpc = await insforge.database.rpc('get_invite_id_by_token', { p_token: cleanToken });
+  if (!legacyIdRpc.error) {
+    const inviteId = (legacyIdRpc.data as UUID | null) ?? null;
+    if (!inviteId) return { code: 'INVITE_INVALID', invite: null };
+    return {
+      code: 'OK',
+      invite: {
+        id: inviteId,
+        invite_id: inviteId
+      }
+    };
+  }
+
+  return { code: 'BACKEND_UNAVAILABLE', invite: null };
 }
 
 export async function createInvite(input: {
@@ -547,6 +621,7 @@ export async function validateInvitationToken(token: string): Promise<InviteVali
       const reason = String(data?.reason ?? '').toLowerCase();
       if (reason === 'expired') return { code: 'INVITE_EXPIRED', invite: null };
       if (reason === 'accepted') return { code: 'INVITE_ACCEPTED', invite: null };
+      if (response.status >= 500 || reason === 'backend_unavailable') return { code: 'BACKEND_UNAVAILABLE', invite: null };
       return { code: 'INVITE_INVALID', invite: null };
     }
 
@@ -570,7 +645,7 @@ export async function validateInvitationToken(token: string): Promise<InviteVali
       } as CompanyInvite & { company_name?: string | null }
     };
   } catch {
-    return { code: 'INVITE_INVALID', invite: null };
+    return { code: 'BACKEND_UNAVAILABLE', invite: null };
   }
 }
 
@@ -587,7 +662,7 @@ export async function acceptInvite(input: { inviteId: UUID; userId: UUID }): Pro
   if (!invite) throw new Error('INVITE_INVALID: Invite not found.');
 
   const status = normalizeInviteStatus((invite as any).status);
-  if (!['PENDING', 'SENT', 'FAILED'].includes(status)) {
+  if (!['PENDING', 'SENT'].includes(status)) {
     throw new Error('INVITE_INVALID: Invite is no longer active.');
   }
 
@@ -685,6 +760,9 @@ export async function acceptInviteByToken(input: { token: string; userId: UUID }
     const reason = String(data?.reason ?? '').toLowerCase();
     if (reason === 'expired') throw new Error('INVITE_EXPIRED: This invitation has expired.');
     if (reason === 'accepted') throw new Error('INVITE_ACCEPTED: This invitation has already been accepted.');
+    if (response.status >= 500 || reason === 'backend_unavailable') {
+      throw new Error('INVITE_BACKEND_UNAVAILABLE: Invite validation is not configured correctly.');
+    }
     throw new Error(`INVITE_INVALID: ${data?.error || 'Invalid invite token.'}`);
   }
 
@@ -802,6 +880,8 @@ export function toUserInviteMessage(message: string): string {
       return 'This invitation link is invalid.';
     case 'INVITE_ACCEPTED':
       return 'This invitation has already been accepted. Please log in.';
+    case 'INVITE_BACKEND_UNAVAILABLE':
+      return 'Invite validation is not configured correctly yet. Please contact support or ask your admin to finish the latest invite migration.';
     case 'SEATS_FULL':
       return 'This organization has reached its seat limit. Contact your admin.';
     case 'ALREADY_MEMBER':
