@@ -153,6 +153,7 @@ export default async function handler(req: any, res: any) {
     const inviterEmail = (profileRes.data as any)?.email || userEmail;
 
     let emailSent = false;
+    let emailError: string | null = null;
     const emailContent = toInviteEmailHtml({
       orgName: invite.organization_name || invite.companies?.name || 'Organization',
       inviterName,
@@ -183,6 +184,7 @@ export default async function handler(req: any, res: any) {
     } catch (emailErr: any) {
       patch.status = 'FAILED';
       patch.error_message = String(emailErr?.message || emailErr);
+      emailError = patch.error_message;
     }
 
     const updateRes = await insforge.database
@@ -203,7 +205,7 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ ok: false, error: 'Failed to update invite' });
     }
 
-    return res.status(200).json({ ok: true, emailSent, invite: updateRes.data, inviteLink });
+    return res.status(200).json({ ok: true, emailSent, emailError, invite: updateRes.data, inviteLink });
   } catch (err: any) {
     const msg = String(err?.message || err);
     logStructuredLine({

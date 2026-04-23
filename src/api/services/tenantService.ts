@@ -147,7 +147,8 @@ async function createInviteFallback(input: {
     status: 'FAILED',
     invite: data as CompanyInvite,
     inviteLink: getInviteAcceptanceLinkForCurrentOrigin(rawToken),
-    message: 'Invite created, but email failed. Copy link and send manually.'
+    message: 'Invite created, but email is unavailable in this environment. Copy the invite link and send it manually.',
+    emailError: 'Email is unavailable in this environment.'
   };
 }
 
@@ -224,7 +225,9 @@ async function resendInviteFallback(input: { inviteId: UUID; actorUserId: UUID }
   return {
     emailSent: false,
     invite: data as CompanyInvite,
-    inviteLink: getInviteAcceptanceLinkForCurrentOrigin(rawToken)
+    inviteLink: getInviteAcceptanceLinkForCurrentOrigin(rawToken),
+    message: 'Invite updated, but email is unavailable in this environment. Copy the invite link and send it manually.',
+    emailError: 'Email is unavailable in this environment.'
   };
 }
 
@@ -442,6 +445,7 @@ export type InviteCreateResult =
       invite: CompanyInvite;
       inviteLink?: string;
       message?: string;
+      emailError?: string | null;
     }
   | {
       ok: false;
@@ -456,6 +460,12 @@ export type InviteValidationResult = {
   code: InviteValidationCode;
   invite: (CompanyInvite & { company_name?: string | null }) | null;
 };
+
+function formatInviteEmailFailureMessage(prefix: string, emailError?: string | null): string {
+  const detail = String(emailError ?? '').trim();
+  if (!detail) return `${prefix} Copy the invite link and send it manually.`;
+  return `${prefix} ${detail} Copy the invite link and send it manually.`;
+}
 
 function mapInviteCreateError(message: string): { code: InviteCreateErrorCode; message: string } {
   const lowered = message.toLowerCase();
@@ -597,7 +607,10 @@ export async function createInvite(input: {
       status: emailSent ? 'SENT' : 'FAILED',
       invite,
       inviteLink: data.inviteLink ? String(data.inviteLink) : undefined,
-      message: emailSent ? 'Invite email sent successfully.' : 'Invite created, but email failed. Copy link and send manually.'
+      message: emailSent
+        ? 'Invite email sent successfully.'
+        : formatInviteEmailFailureMessage('Invite created, but email failed.', data?.emailError || invite?.error_message),
+      emailError: data?.emailError ? String(data.emailError) : (invite?.error_message ?? null)
     };
   } catch (err: any) {
     const mapped = mapInviteCreateError(getErrorMessage(err));
@@ -780,6 +793,8 @@ export type InviteResendResult = {
   emailSent: boolean;
   invite: CompanyInvite;
   inviteLink?: string;
+  message?: string;
+  emailError?: string | null;
 };
 
 export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID }): Promise<InviteResendResult> {
@@ -803,7 +818,11 @@ export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID })
   return {
     emailSent: !!data.emailSent,
     invite: data.invite as CompanyInvite,
-    inviteLink: data.inviteLink ? String(data.inviteLink) : undefined
+    inviteLink: data.inviteLink ? String(data.inviteLink) : undefined,
+    message: data.emailSent
+      ? 'Invite resent successfully.'
+      : formatInviteEmailFailureMessage('Invite updated, but email failed.', data?.emailError || data?.invite?.error_message),
+    emailError: data?.emailError ? String(data.emailError) : (data?.invite?.error_message ? String(data.invite.error_message) : null)
   };
 }
 

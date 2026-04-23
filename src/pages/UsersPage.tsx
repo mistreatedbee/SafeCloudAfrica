@@ -287,12 +287,12 @@ export function UsersPage() {
         setLatestInviteLink(result.inviteLink ?? null);
         setInviteFeedback({
           type: 'error',
-          text: 'Invite updated, but email failed. Copy the invite link and send it manually.'
+          text: result.message || 'Invite updated, but email failed. Copy the invite link and send it manually.'
         });
         return;
       }
       setLatestInviteLink(null);
-      setInviteFeedback({ type: 'success', text: 'Invite resent successfully.' });
+      setInviteFeedback({ type: 'success', text: result.message || 'Invite resent successfully.' });
     } catch (err: any) {
       setLatestInviteLink(null);
       setInviteFeedback({ type: 'error', text: err?.message || 'Failed to resend invite.' });

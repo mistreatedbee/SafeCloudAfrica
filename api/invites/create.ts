@@ -216,6 +216,7 @@ export default async function handler(req: any, res: any) {
     });
 
     let emailSent = false;
+    let emailError: string | null = null;
     try {
       const emailResult = await sendTransactionalEmail({
         actor: { userId: logUserId, organizationId: logOrgId },
@@ -242,6 +243,7 @@ export default async function handler(req: any, res: any) {
         .eq('id', (insertRes.data as any).id);
     } catch (emailErr: any) {
       const message = String(emailErr?.message || emailErr);
+      emailError = message;
       await insforge.database
         .from('company_invites')
         .update({ status: 'FAILED', error_message: message })
@@ -251,9 +253,11 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({
       ok: true,
       emailSent,
+      emailError,
       invite: {
         ...(insertRes.data as any),
-        status: emailSent ? 'SENT' : 'FAILED'
+        status: emailSent ? 'SENT' : 'FAILED',
+        error_message: emailSent ? null : emailError
       },
       inviteLink
     });
