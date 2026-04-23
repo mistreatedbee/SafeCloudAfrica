@@ -55,6 +55,7 @@ export async function createDraftVersionFrom(input: {
   fileSize?: number | null;
   createdByUserId: UUID;
   setCurrent: boolean;
+  unpublish: boolean;
 }): Promise<DocumentVersion> {
   const versionLabel = nextVersionLabel(input.baseVersionLabel ?? undefined);
 
@@ -70,7 +71,8 @@ export async function createDraftVersionFrom(input: {
     p_file_size: input.fileSize ?? null,
     p_created_by_user_id: input.createdByUserId,
     p_supersedes_version_id: input.supersedesVersionId ?? null,
-    p_set_current: input.setCurrent
+    p_set_current: input.setCurrent,
+    p_unpublish: input.unpublish
   });
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create document version.');

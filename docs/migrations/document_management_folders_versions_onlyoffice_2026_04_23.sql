@@ -58,6 +58,9 @@ create table if not exists public.document_versions (
 create index if not exists idx_document_versions_doc
   on public.document_versions(company_id, document_id, created_at desc);
 
+create unique index if not exists idx_document_versions_unique_label
+  on public.document_versions(company_id, document_id, lower(version_label));
+
 create index if not exists idx_document_versions_status
   on public.document_versions(company_id, status, updated_at desc);
 
@@ -122,6 +125,7 @@ set search_path = public
 as $$
 declare
   v_created integer := 0;
+  v_delta integer := 0;
   v_root uuid;
   v_module text;
   v_sub text;
@@ -136,6 +140,8 @@ begin
     insert into public.document_folders (company_id, parent_id, module, name, sort_order, created_by_user_id)
     values (p_company_id, null, v_module, initcap(v_module), 0, p_actor_user_id)
     on conflict do nothing;
+    get diagnostics v_delta = row_count;
+    v_created := v_created + coalesce(v_delta, 0);
 
     select id into v_root
     from public.document_folders
@@ -147,12 +153,13 @@ begin
         insert into public.document_folders (company_id, parent_id, module, name, sort_order, created_by_user_id)
         values (p_company_id, v_root, v_module, v_sub, 0, p_actor_user_id)
         on conflict do nothing;
+        get diagnostics v_delta = row_count;
+        v_created := v_created + coalesce(v_delta, 0);
       end loop;
     end if;
   end loop;
 
-  get diagnostics v_created = row_count;
-  return 1;
+  return v_created;
 end;
 $$;
 
@@ -187,6 +194,18 @@ begin
     raise exception 'not_allowed';
   end if;
 
+  if p_folder_id is not null then
+    if not exists (
+      select 1
+      from public.document_folders f
+      where f.id = p_folder_id
+        and f.company_id = p_company_id
+        and f.module = p_module
+    ) then
+      raise exception 'invalid_folder';
+    end if;
+  end if;
+
   insert into public.documents (
     company_id,
     module,
@@ -196,10 +215,11 @@ begin
     status,
     owner_user_id,
     review_due_at,
+    folder_id,
+    description,
     storage_bucket,
     storage_key,
-    folder_id,
-    description
+    published_version_id
   )
   values (
     p_company_id,
@@ -210,10 +230,11 @@ begin
     'draft',
     p_owner_user_id,
     null,
-    p_storage_bucket,
-    p_storage_key,
     p_folder_id,
-    p_description
+    p_description,
+    null,
+    null,
+    null
   )
   returning * into v_doc;
 
@@ -239,7 +260,7 @@ begin
     p_original_filename,
     p_mime_type,
     p_file_size,
-    p_created_by_user_id
+    public.request_user_id()
   )
   returning * into v_ver;
 
@@ -257,6 +278,9 @@ grant execute on function public.create_document_with_initial_version(
 ) to authenticated;
 
 -- RPC: create a new version (draft) for an existing document
+drop function if exists public.create_document_version(
+  uuid, uuid, text, text, text, text, text, text, bigint, uuid, uuid, boolean
+);
 create or replace function public.create_document_version(
   p_company_id uuid,
   p_document_id uuid,
@@ -269,7 +293,8 @@ create or replace function public.create_document_version(
   p_file_size bigint,
   p_created_by_user_id uuid,
   p_supersedes_version_id uuid,
-  p_set_current boolean
+  p_set_current boolean,
+  p_unpublish boolean
 )
 returns public.document_versions
 language plpgsql
@@ -290,6 +315,18 @@ begin
 
   if not found then
     raise exception 'not_found';
+  end if;
+
+  if p_supersedes_version_id is not null then
+    if not exists (
+      select 1
+      from public.document_versions dv
+      where dv.id = p_supersedes_version_id
+        and dv.company_id = p_company_id
+        and dv.document_id = p_document_id
+    ) then
+      raise exception 'invalid_supersedes_version';
+    end if;
   end if;
 
   insert into public.document_versions (
@@ -315,7 +352,7 @@ begin
     p_original_filename,
     p_mime_type,
     p_file_size,
-    p_created_by_user_id,
+    public.request_user_id(),
     p_supersedes_version_id
   )
   returning * into v_ver;
@@ -324,17 +361,16 @@ begin
     update public.documents
     set
       current_version_id = v_ver.id,
-      status = case when v_ver.status = 'approved' then 'approved' else 'draft' end,
+      status = 'draft',
       updated_at = now()
     where id = p_document_id and company_id = p_company_id;
 
-    if v_ver.status = 'approved' then
+    if p_unpublish then
       update public.documents
       set
-        published_version_id = v_ver.id,
-        version = v_ver.version_label,
-        storage_bucket = v_ver.storage_bucket,
-        storage_key = v_ver.storage_key,
+        published_version_id = null,
+        storage_bucket = null,
+        storage_key = null,
         updated_at = now()
       where id = p_document_id and company_id = p_company_id;
     end if;
@@ -345,7 +381,7 @@ end;
 $$;
 
 grant execute on function public.create_document_version(
-  uuid, uuid, text, text, text, text, text, text, bigint, uuid, uuid, boolean
+  uuid, uuid, text, text, text, text, text, text, bigint, uuid, uuid, boolean, boolean
 ) to authenticated;
 
 -- Approval trigger: if approvals.entity_type='document_version', update document_versions + documents
@@ -357,22 +393,27 @@ set search_path = public
 as $$
 declare
   v_ver public.document_versions;
+  v_doc public.documents;
 begin
-  if tg_op <> 'UPDATE' then
-    return new;
-  end if;
-
   if new.entity_type <> 'document_version' then
     return new;
   end if;
 
-  if new.status is not distinct from old.status then
+  if tg_op = 'UPDATE' and new.status is not distinct from old.status then
     return new;
   end if;
 
   select * into v_ver
   from public.document_versions
   where id = new.entity_id and company_id = new.company_id;
+
+  if not found then
+    return new;
+  end if;
+
+  select * into v_doc
+  from public.documents
+  where id = v_ver.document_id and company_id = new.company_id;
 
   if not found then
     return new;
@@ -387,7 +428,7 @@ begin
     set
       status = 'approved',
       published_version_id = v_ver.id,
-      current_version_id = v_ver.id,
+      current_version_id = null,
       version = v_ver.version_label,
       storage_bucket = v_ver.storage_bucket,
       storage_key = v_ver.storage_key,
@@ -400,7 +441,19 @@ begin
 
     update public.documents
     set
-      status = case when published_version_id is not null then 'approved' else 'draft' end,
+      current_version_id = v_ver.id,
+      status = case when v_doc.published_version_id is null then 'draft' else v_doc.status end,
+      updated_at = now()
+    where id = v_ver.document_id and company_id = new.company_id;
+  elsif new.status = 'pending' then
+    update public.document_versions
+    set status = 'in_review', updated_at = now()
+    where id = v_ver.id and company_id = new.company_id;
+
+    update public.documents
+    set
+      current_version_id = v_ver.id,
+      status = case when v_doc.published_version_id is null then 'in_review' else v_doc.status end,
       updated_at = now()
     where id = v_ver.document_id and company_id = new.company_id;
   end if;
@@ -413,3 +466,180 @@ drop trigger if exists trg_approvals_document_version on public.approvals;
 create trigger trg_approvals_document_version
 after update of status on public.approvals
 for each row execute function public.on_approval_document_version_status_change();
+
+drop trigger if exists trg_approvals_document_version_insert on public.approvals;
+create trigger trg_approvals_document_version_insert
+after insert on public.approvals
+for each row execute function public.on_approval_document_version_status_change();
+
+-- DMS: Enforce tenant consistency & actor attribution
+create or replace function public.dms_enforce_document_folders()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_parent public.document_folders;
+begin
+  if tg_op = 'INSERT' then
+    new.created_by_user_id := public.request_user_id();
+  end if;
+
+  if tg_op = 'UPDATE' then
+    if new.company_id is distinct from old.company_id then
+      raise exception 'company_id_immutable';
+    end if;
+    if new.module is distinct from old.module then
+      raise exception 'module_immutable';
+    end if;
+    if new.created_by_user_id is distinct from old.created_by_user_id then
+      new.created_by_user_id := old.created_by_user_id;
+    end if;
+  end if;
+
+  if new.parent_id is not null then
+    select * into v_parent
+    from public.document_folders
+    where id = new.parent_id;
+
+    if not found then
+      raise exception 'invalid_parent';
+    end if;
+
+    if v_parent.company_id <> new.company_id or v_parent.module <> new.module then
+      raise exception 'invalid_parent_scope';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_dms_enforce_document_folders on public.document_folders;
+create trigger trg_dms_enforce_document_folders
+before insert or update on public.document_folders
+for each row execute function public.dms_enforce_document_folders();
+
+create or replace function public.dms_enforce_document_versions()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_doc public.documents;
+  v_super public.document_versions;
+begin
+  if tg_op = 'INSERT' then
+    new.created_by_user_id := public.request_user_id();
+  end if;
+
+  if tg_op = 'UPDATE' then
+    if new.company_id is distinct from old.company_id then
+      raise exception 'company_id_immutable';
+    end if;
+    if new.document_id is distinct from old.document_id then
+      raise exception 'document_id_immutable';
+    end if;
+    if new.created_by_user_id is distinct from old.created_by_user_id then
+      new.created_by_user_id := old.created_by_user_id;
+    end if;
+  end if;
+
+  select * into v_doc
+  from public.documents
+  where id = new.document_id;
+
+  if not found then
+    raise exception 'invalid_document';
+  end if;
+
+  if v_doc.company_id <> new.company_id then
+    raise exception 'invalid_document_scope';
+  end if;
+
+  if new.supersedes_version_id is not null then
+    select * into v_super
+    from public.document_versions
+    where id = new.supersedes_version_id;
+
+    if not found then
+      raise exception 'invalid_supersedes_version';
+    end if;
+
+    if v_super.company_id <> new.company_id or v_super.document_id <> new.document_id then
+      raise exception 'invalid_supersedes_scope';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_dms_enforce_document_versions on public.document_versions;
+create trigger trg_dms_enforce_document_versions
+before insert or update on public.document_versions
+for each row execute function public.dms_enforce_document_versions();
+
+create or replace function public.dms_enforce_documents()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_folder public.document_folders;
+  v_cur public.document_versions;
+  v_pub public.document_versions;
+begin
+  if new.folder_id is not null then
+    select * into v_folder
+    from public.document_folders
+    where id = new.folder_id;
+
+    if not found then
+      raise exception 'invalid_folder';
+    end if;
+
+    if v_folder.company_id <> new.company_id or v_folder.module <> new.module then
+      raise exception 'invalid_folder_scope';
+    end if;
+  end if;
+
+  if new.current_version_id is not null then
+    select * into v_cur
+    from public.document_versions
+    where id = new.current_version_id;
+
+    if not found then
+      raise exception 'invalid_current_version';
+    end if;
+
+    if v_cur.company_id <> new.company_id or v_cur.document_id <> new.id then
+      raise exception 'invalid_current_version_scope';
+    end if;
+  end if;
+
+  if new.published_version_id is not null then
+    select * into v_pub
+    from public.document_versions
+    where id = new.published_version_id;
+
+    if not found then
+      raise exception 'invalid_published_version';
+    end if;
+
+    if v_pub.company_id <> new.company_id or v_pub.document_id <> new.id then
+      raise exception 'invalid_published_version_scope';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_dms_enforce_documents on public.documents;
+create trigger trg_dms_enforce_documents
+before insert or update on public.documents
+for each row execute function public.dms_enforce_documents();

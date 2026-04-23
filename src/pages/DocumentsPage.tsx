@@ -299,14 +299,15 @@ export function DocumentsPage() {
             mimeType: publishedVersion.mime_type,
             fileSize: publishedVersion.file_size,
             createdByUserId: user.id as UUID,
-            setCurrent: true
+            setCurrent: true,
+            unpublish: false
           });
           setRefreshKey((k) => k + 1);
         }}
         onUnpublish={async () => {
           if (!activeCompanyId || !user?.id || !selectedDoc || !publishedVersion) return;
           setEditChoiceOpen(false);
-          // v1 behavior: create a new draft as current working version.
+          // v1 behavior: create a new draft as current working version and clear published snapshot.
           await createDraftVersionFrom({
             companyId: activeCompanyId,
             documentId: selectedDoc.id,
@@ -318,7 +319,8 @@ export function DocumentsPage() {
             mimeType: publishedVersion.mime_type,
             fileSize: publishedVersion.file_size,
             createdByUserId: user.id as UUID,
-            setCurrent: true
+            setCurrent: true,
+            unpublish: true
           });
           setRefreshKey((k) => k + 1);
         }}
@@ -566,4 +568,3 @@ export function DocumentsPage() {
     </Layout>
   );
 }
-

@@ -117,22 +117,6 @@ export default async function handler(req: any, res: any) {
       .eq('company_id', companyId);
     if (patchErr) return applyJson(res, 502, { ok: false, error: 'Failed to update version record' });
 
-    // Keep documents denormalized fields in sync when this is the current version.
-    try {
-      await svc.database
-        .from('documents')
-        .update({
-          storage_bucket: bucket,
-          storage_key: nextKey,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', String(v.document_id))
-        .eq('company_id', companyId)
-        .eq('current_version_id', versionId);
-    } catch {
-      // Best-effort.
-    }
-
     // Audit trail (best-effort)
     try {
       await svc.database.from('activity_logs').insert({
@@ -159,4 +143,3 @@ export default async function handler(req: any, res: any) {
     return applyJson(res, 500, { ok: false, error: String(e?.message || e) });
   }
 }
-
