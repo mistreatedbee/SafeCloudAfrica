@@ -226,16 +226,17 @@ export async function requestSellableFeatureUnlock(input: {
   const payload = recipients.map((userId) => ({
     company_id: input.companyId,
     user_id: userId,
-    type: 'info',
     title: 'Sellable Feature Unlock Request',
     message: `${sender} requested unlock for ${featureLabel}.`,
+    severity: 'medium',
+    read_at: null,
     metadata: {
       feature_key: input.featureKey,
       requested_by_user_id: input.requestedByUserId,
       requested_by_email: input.requestedByEmail ?? null,
+      notification_type: 'info',
       action: 'sellable_feature_unlock_request'
     },
-    read: false
   }));
 
   if (payload.length > 0) {
