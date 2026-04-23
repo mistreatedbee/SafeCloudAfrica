@@ -28,16 +28,22 @@ export async function createNotification(
 ): Promise<Notification> {
   await ensureInsforgeSession();
 
+  const severity =
+    type === 'error' ? 'critical' :
+    type === 'warning' ? 'high' :
+    type === 'success' ? 'low' :
+    'medium';
+
   const { data, error } = await insforge.database
     .from('notifications')
     .insert({
       company_id: companyId,
       user_id: userId,
-      type,
       title,
       message,
-      metadata: metadata || {},
-      read: false
+      severity,
+      read_at: null,
+      metadata: metadata || {}
     })
     .select('*')
     .single();
@@ -56,7 +62,7 @@ export async function markNotificationRead(notificationId: UUID): Promise<void> 
 
   const { error } = await insforge.database
     .from('notifications')
-    .update({ read: true })
+    .update({ read_at: new Date().toISOString() })
     .eq('id', notificationId);
 
   if (error) throw new Error(getErrorMessage(error));
@@ -71,7 +77,7 @@ export async function getUnreadCount(companyId: UUID, userId: UUID): Promise<num
     .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
     .eq('user_id', userId)
-    .eq('read', false);
+    .is('read_at', null);
 
   if (error) throw new Error(getErrorMessage(error));
   return count || 0;
