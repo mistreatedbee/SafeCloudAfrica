@@ -58,9 +58,12 @@ export function canEditDocuments(role: ViewerRole | null): boolean {
   return role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor' || role === 'consultant';
 }
 
+export function canViewRestrictedDocuments(role: ViewerRole | null): boolean {
+  return role === 'owner' || role === 'admin';
+}
+
 export function getServiceClientOrThrow() {
   const svc = getServiceInsforge();
   if (!svc) throw new Error('INSFORGE_SERVICE_ROLE_KEY not configured.');
   return svc;
 }
-

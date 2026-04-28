@@ -14,17 +14,15 @@ export function DocumentPicker(props: {
   const [search, setSearch] = useState('');
   const { data, loading } = useAsync<Document[]>(
     async () => {
-      return await listDocuments(props.companyId);
+      return await listDocuments(props.companyId, { search: search.trim() || undefined });
     },
-    [props.companyId]
+    [props.companyId, search]
   );
 
   const selectedMap = useMemo(() => new Map((props.value ?? []).map((v) => [v.documentId, v.documentTitleSnapshot])), [props.value]);
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return data ?? [];
-    return (data ?? []).filter((d) => d.title.toLowerCase().includes(q));
-  }, [data, search]);
+    return data ?? [];
+  }, [data]);
 
   return (
     <div className="space-y-2">
@@ -33,7 +31,7 @@ export function DocumentPicker(props: {
         type="search"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search documents by title"
+        placeholder="Search documents by title, number, or compiler"
         className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
       />
       <div className="border border-surface-300 rounded-lg max-h-48 overflow-auto">

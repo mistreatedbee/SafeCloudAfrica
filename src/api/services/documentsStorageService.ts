@@ -2,8 +2,17 @@ import { insforge } from '../insforge/client';
 
 export const DOCUMENTS_BUCKET = 'sca-documents';
 
+function sanitizeFileName(name: string): string {
+  const trimmed = name.trim() || 'document';
+  return trimmed
+    .replace(/[^\w.\-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 export async function uploadDocumentFile(input: { companyId: string; file: File }): Promise<{ bucket: string; key: string }> {
-  const key = `${input.companyId}/${Date.now()}-${input.file.name}`.replace(/\s+/g, '_');
+  const safeName = sanitizeFileName(input.file.name || 'document');
+  const key = `${input.companyId}/${Date.now()}-${safeName}`;
   const { data, error } = await insforge.storage.from(DOCUMENTS_BUCKET).upload(key, input.file);
   if (error) throw error;
   if (!data) throw new Error('Upload failed.');

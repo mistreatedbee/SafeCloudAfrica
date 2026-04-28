@@ -15,6 +15,14 @@ const TRAINING_EXPIRY_WINDOWS = [
   { days: 0, type: 'expiry_0' }
 ];
 
+const DOCUMENT_EXPIRY_WINDOWS = [
+  { days: 30, type: 'expiry_30' },
+  { days: 14, type: 'expiry_14' },
+  { days: 7, type: 'expiry_7' },
+  { days: 1, type: 'expiry_1' },
+  { days: 0, type: 'expiry_0' }
+];
+
 module.exports = async function (request) {
   const cors = {
     'Access-Control-Allow-Origin': '*',
@@ -34,6 +42,7 @@ module.exports = async function (request) {
 
     const summary = {
       documents: 0,
+      document_expiry: 0,
       training_records: 0,
       training_outstanding: 0,
       medical_certificates: 0
@@ -62,6 +71,77 @@ module.exports = async function (request) {
           )}.</p>`
         });
         summary.documents += 1;
+      }
+    }
+
+    // Document expiry reminders with dedupe and restricted-doc executive routing.
+    const { data: expiringDocuments, error: expiringDocumentsError } = await client.database
+      .from('documents')
+      .select('id, company_id, title, document_number, document_owner_name, owner_user_id, expiry_date, is_restricted')
+      .not('expiry_date', 'is', null)
+      .lte('expiry_date', in30Days.slice(0, 10));
+
+    if (expiringDocumentsError) {
+      console.error('cronDailyComplianceReminders: failed to load expiring documents', expiringDocumentsError);
+    } else {
+      for (const doc of expiringDocuments || []) {
+        const expiryDate = new Date(`${doc.expiry_date}T00:00:00Z`);
+        const daysUntil = Math.ceil((expiryDate - now) / (24 * 60 * 60 * 1000));
+        let reminderType = null;
+        for (const windowDef of DOCUMENT_EXPIRY_WINDOWS) {
+          const inWindow = windowDef.days === 0
+            ? daysUntil <= 0 && daysUntil > -1
+            : daysUntil <= windowDef.days && daysUntil > windowDef.days - 1;
+          if (inWindow) {
+            reminderType = windowDef.type;
+            break;
+          }
+        }
+        if (!reminderType && daysUntil < 0) reminderType = 'expired';
+        if (!reminderType) continue;
+
+        const recipients = await getDocumentReminderRecipients(client, doc);
+        for (const recipientUserId of recipients) {
+          let sent = null;
+          try {
+            const sentResult = await client.database
+              .from('document_expiry_reminder_sent')
+              .select('id')
+              .eq('document_id', doc.id)
+              .eq('recipient_user_id', recipientUserId)
+              .eq('reminder_type', reminderType)
+              .maybeSingle();
+            sent = sentResult.data;
+          } catch (_) {}
+          if (sent) continue;
+
+          const label = doc.document_number ? `${doc.document_number} — ${doc.title}` : doc.title;
+          const statusText = reminderType === 'expired'
+            ? `expired on ${doc.expiry_date}`
+            : reminderType === 'expiry_0'
+              ? `expires today (${doc.expiry_date})`
+              : `expires in ${reminderType.replace('expiry_', '')} day(s) (${doc.expiry_date})`;
+          await notifyOwner(client, {
+            companyId: doc.company_id,
+            userId: recipientUserId,
+            title: 'Document Expiry Reminder',
+            severity: reminderType === 'expired' || reminderType === 'expiry_0' || reminderType === 'expiry_1' ? 'high' : 'medium',
+            message: `Document "${label}" ${statusText}.`,
+            emailSubject: `Document expiry reminder: ${label}`,
+            emailHtml: `<p>Document "<strong>${escapeHtml(label)}</strong>" ${escapeHtml(statusText)}.</p><p>Compiler: ${escapeHtml(doc.document_owner_name || 'Not specified')}</p>`
+          });
+          try {
+            await client.database.from('document_expiry_reminder_sent').insert({
+              company_id: doc.company_id,
+              document_id: doc.id,
+              recipient_user_id: recipientUserId,
+              reminder_type: reminderType
+            });
+          } catch (insertError) {
+            console.warn('document_expiry_reminder_sent insert failed', insertError?.message);
+          }
+          summary.document_expiry += 1;
+        }
       }
     }
 
@@ -267,6 +347,34 @@ async function notifySupervisorAndAdmin(client, trainingRecord) {
   if (adminId && adminId !== employeeUserId && adminId !== supervisorId) {
     await notifyOwner(client, { companyId, userId: adminId, title, severity: 'medium', message, emailSubject, emailHtml });
   }
+}
+
+async function getDocumentReminderRecipients(client, doc) {
+  const recipients = new Set();
+  const { data: memberships, error } = await client.database
+    .from('company_memberships')
+    .select('user_id, role, status')
+    .eq('company_id', doc.company_id);
+
+  if (error) {
+    console.warn('cronDailyComplianceReminders: failed to load document reminder recipients', doc.company_id, error);
+    if (doc.owner_user_id) recipients.add(doc.owner_user_id);
+    return Array.from(recipients);
+  }
+
+  const activeMemberships = (memberships || []).filter((row) => !row.status || row.status === 'ACTIVE');
+  if (doc.is_restricted) {
+    for (const row of activeMemberships) {
+      if (row.role === 'owner' || row.role === 'admin') recipients.add(row.user_id);
+    }
+    return Array.from(recipients);
+  }
+
+  if (doc.owner_user_id) recipients.add(doc.owner_user_id);
+  for (const row of activeMemberships) {
+    if (row.role === 'owner' || row.role === 'admin') recipients.add(row.user_id);
+  }
+  return Array.from(recipients);
 }
 
 async function notifyOwner(client, { companyId, userId, title, severity, message, emailSubject, emailHtml }) {

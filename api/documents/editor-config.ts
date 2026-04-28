@@ -1,6 +1,6 @@
 import { applyNoStoreHeaders } from '../_response.js';
 import { signJwtHs256 } from '../_jwt.js';
-import { applyJson, canEditDocuments, getAppPublicOrigin, getDmsFileAccessSecret, getViewerRole, requireOnlyofficeConfigured, requireViewer } from './_shared.js';
+import { applyJson, canEditDocuments, canViewRestrictedDocuments, getAppPublicOrigin, getDmsFileAccessSecret, getViewerRole, requireOnlyofficeConfigured, requireViewer } from './_shared.js';
 import { getServerInsforge } from '../_insforge.js';
 
 type DocumentVersionRow = {
@@ -22,6 +22,12 @@ function guessDocumentType(mime: string | null, filename: string | null): 'word'
   const mt = String(mime || '').toLowerCase();
   if (name.endsWith('.xlsx') || name.endsWith('.xls') || mt.includes('spreadsheet')) return 'cell';
   return 'word';
+}
+
+function resolveFileType(filename: string | null, fallback: 'docx' | 'xlsx'): string {
+  const match = /\.([a-z0-9]+)$/i.exec(String(filename || '').trim());
+  const ext = match?.[1]?.toLowerCase();
+  return ext || fallback;
 }
 
 export default async function handler(req: any, res: any) {
@@ -52,8 +58,28 @@ export default async function handler(req: any, res: any) {
     const role = await getViewerRole({ token, companyId: v.company_id, userId });
     if (!role) return applyJson(res, 403, { ok: false, error: 'Not allowed' });
 
+    const { data: document, error: docErr } = await insforge.database
+      .from('documents')
+      .select('id,is_restricted')
+      .eq('company_id', v.company_id)
+      .eq('id', v.document_id)
+      .maybeSingle();
+    if (docErr || !document) return applyJson(res, 404, { ok: false, error: 'Document not found' });
+
+    const isRestricted = Boolean((document as any).is_restricted);
+    if (isRestricted && !canViewRestrictedDocuments(role)) {
+      return applyJson(res, 403, { ok: false, error: 'Not allowed' });
+    }
+
     const isEditRequested = mode === 'edit';
-    const allowEdit = isEditRequested && canEditDocuments(role) && v.status !== 'approved' && v.status !== 'archived';
+    const filename = v.original_filename || v.storage_key.split('/').pop() || `document-${v.id}.docx`;
+    const type = guessDocumentType(v.mime_type, filename);
+    const fileType = resolveFileType(filename, type === 'cell' ? 'xlsx' : 'docx');
+    const isPdf = fileType === 'pdf';
+    if (isEditRequested && isPdf) {
+      return applyJson(res, 409, { ok: false, error: 'PDF files are view/download only.' });
+    }
+    const allowEdit = isEditRequested && canEditDocuments(role) && (!isRestricted || canViewRestrictedDocuments(role)) && v.status !== 'approved' && v.status !== 'archived';
 
     const origin = getAppPublicOrigin(req);
     const fileAccessSecret = getDmsFileAccessSecret();
@@ -63,7 +89,11 @@ export default async function handler(req: any, res: any) {
       {
         aud: 'dms_file',
         bucket: v.storage_bucket,
-        key: v.storage_key
+        key: v.storage_key,
+        companyId: v.company_id,
+        versionId: v.id,
+        role,
+        restricted: isRestricted
       },
       fileAccessSecret,
       { expiresInSeconds: 10 * 60 }
@@ -72,13 +102,10 @@ export default async function handler(req: any, res: any) {
     const fileUrl = `${origin}/api/documents/file?token=${encodeURIComponent(fileToken)}`;
     const callbackUrl = `${origin}/api/documents/onlyoffice/callback`;
 
-    const filename = v.original_filename || v.storage_key.split('/').pop() || `document-${v.id}.docx`;
-    const type = guessDocumentType(v.mime_type, filename);
-
     const editorConfig = {
       documentType: type === 'cell' ? 'cell' : 'word',
       document: {
-        fileType: type === 'cell' ? 'xlsx' : 'docx',
+        fileType,
         key: v.id, // used by callback to map save -> version id
         title: filename,
         url: fileUrl,

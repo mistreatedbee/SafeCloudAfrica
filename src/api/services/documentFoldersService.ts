@@ -20,6 +20,7 @@ export async function createDocumentFolder(input: {
   module: ModuleKey;
   name: string;
   parentId?: UUID | null;
+  isRestricted?: boolean;
   sortOrder?: number;
   createdByUserId?: UUID | null;
 }): Promise<DocumentFolder> {
@@ -30,6 +31,7 @@ export async function createDocumentFolder(input: {
       module: input.module,
       name: input.name,
       parent_id: input.parentId ?? null,
+      is_restricted: input.isRestricted ?? false,
       sort_order: input.sortOrder ?? 0,
       created_by_user_id: input.createdByUserId ?? null
     })

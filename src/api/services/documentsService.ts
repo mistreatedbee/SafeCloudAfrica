@@ -2,13 +2,40 @@ import { insforge } from '../insforge/client';
 import type { Document, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 
-export async function listDocuments(companyId: UUID): Promise<Document[]> {
-  const { data, error } = await insforge.database
+function escapeIlike(input: string): string {
+  return input.replace(/[%_,]/g, ' ').trim();
+}
+
+export async function listDocuments(
+  companyId: UUID,
+  filters?: {
+    search?: string;
+    module?: Document['module'] | null;
+    includeRestricted?: boolean;
+  }
+): Promise<Document[]> {
+  let query = insforge.database
     .from('documents')
     .select('*')
-    .eq('company_id', companyId)
-    .order('updated_at', { ascending: false })
-    .limit(200);
+    .eq('company_id', companyId);
+
+  if (filters?.module) {
+    query = query.eq('module', filters.module);
+  }
+
+  if (filters?.includeRestricted === false) {
+    query = query.eq('is_restricted', false);
+  }
+
+  const search = filters?.search?.trim();
+  if (search) {
+    const q = escapeIlike(search);
+    query = query.or(
+      `title.ilike.%${q}%,document_number.ilike.%${q}%,document_owner_name.ilike.%${q}%`
+    );
+  }
+
+  const { data, error } = await query.order('updated_at', { ascending: false }).limit(500);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Document[];
 }
@@ -58,6 +85,15 @@ export async function createDocumentWithInitialVersion(input: {
   originalFilename?: string | null;
   mimeType?: string | null;
   fileSize?: number | null;
+  effectiveDate?: string | null;
+  documentOwnerName?: string | null;
+  approvingOfficerName?: string | null;
+  documentNumber?: string | null;
+  revisionNumber?: string | null;
+  revisionDate?: string | null;
+  approvedDate?: string | null;
+  expiryDate?: string | null;
+  isRestricted?: boolean | null;
 }): Promise<Document> {
   const { data, error } = await insforge.database.rpc('create_document_with_initial_version', {
     p_company_id: input.companyId,
@@ -72,10 +108,74 @@ export async function createDocumentWithInitialVersion(input: {
     p_storage_key: input.storageKey,
     p_original_filename: input.originalFilename ?? null,
     p_mime_type: input.mimeType ?? null,
-    p_file_size: input.fileSize ?? null
+    p_file_size: input.fileSize ?? null,
+    p_effective_date: input.effectiveDate ?? null,
+    p_document_owner_name: input.documentOwnerName ?? null,
+    p_approving_officer_name: input.approvingOfficerName ?? null,
+    p_document_number: input.documentNumber ?? null,
+    p_revision_number: input.revisionNumber ?? null,
+    p_revision_date: input.revisionDate ?? null,
+    p_approved_date: input.approvedDate ?? null,
+    p_expiry_date: input.expiryDate ?? null,
+    p_is_restricted: typeof input.isRestricted === 'boolean' ? input.isRestricted : null
   });
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create document.');
+  return data as Document;
+}
+
+export async function updateDocument(input: {
+  companyId: UUID;
+  documentId: UUID;
+  patch: Partial<Pick<
+    Document,
+    | 'title'
+    | 'category'
+    | 'description'
+    | 'folder_id'
+    | 'effective_date'
+    | 'document_owner_name'
+    | 'approving_officer_name'
+    | 'document_number'
+    | 'revision_number'
+    | 'revision_date'
+    | 'approved_date'
+    | 'expiry_date'
+    | 'is_restricted'
+  >>;
+}): Promise<Document> {
+  const patch: Record<string, unknown> = {
+    updated_at: new Date().toISOString()
+  };
+  const allowedKeys = [
+    'title',
+    'category',
+    'description',
+    'folder_id',
+    'effective_date',
+    'document_owner_name',
+    'approving_officer_name',
+    'document_number',
+    'revision_number',
+    'revision_date',
+    'approved_date',
+    'expiry_date',
+    'is_restricted'
+  ] as const;
+
+  for (const key of allowedKeys) {
+    if (key in input.patch) patch[key] = (input.patch as any)[key] ?? null;
+  }
+
+  const { data, error } = await insforge.database
+    .from('documents')
+    .update(patch)
+    .eq('company_id', input.companyId)
+    .eq('id', input.documentId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update document.');
   return data as Document;
 }
 

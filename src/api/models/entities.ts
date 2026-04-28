@@ -558,6 +558,15 @@ export type Document = {
   review_due_at: string | null;
   storage_bucket: string | null;
   storage_key: string | null;
+  effective_date?: string | null;
+  document_owner_name?: string | null;
+  approving_officer_name?: string | null;
+  document_number?: string | null;
+  revision_number?: string | null;
+  revision_date?: string | null;
+  approved_date?: string | null;
+  expiry_date?: string | null;
+  is_restricted?: boolean;
   folder_id?: UUID | null;
   description?: string | null;
   current_version_id?: UUID | null;
@@ -572,6 +581,7 @@ export type DocumentFolder = {
   parent_id: UUID | null;
   module: ModuleKey;
   name: string;
+  is_restricted?: boolean;
   sort_order: number;
   created_by_user_id: UUID | null;
   created_at: string;

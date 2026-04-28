@@ -1,11 +1,15 @@
 import { applyNoStoreHeaders } from '../_response.js';
 import { verifyJwtHs256 } from '../_jwt.js';
-import { applyJson, getDmsFileAccessSecret, getServiceClientOrThrow } from './_shared.js';
+import { applyJson, canViewRestrictedDocuments, getDmsFileAccessSecret, getServiceClientOrThrow } from './_shared.js';
 
 type FileTokenPayload = {
   aud: string;
   bucket: string;
   key: string;
+  companyId?: string;
+  versionId?: string;
+  role?: string;
+  restricted?: boolean;
   exp: number;
   iat: number;
 };
@@ -29,6 +33,32 @@ export default async function handler(req: any, res: any) {
     if (!bucket || !key) return applyJson(res, 400, { ok: false, error: 'Invalid token payload' });
 
     const svc = getServiceClientOrThrow();
+    if (payload.versionId && payload.companyId) {
+      const { data: version, error: versionError } = await svc.database
+        .from('document_versions')
+        .select('id,company_id,document_id,storage_bucket,storage_key')
+        .eq('id', payload.versionId)
+        .eq('company_id', payload.companyId)
+        .maybeSingle();
+      if (versionError || !version) return applyJson(res, 404, { ok: false, error: 'File not found' });
+      if (String((version as any).storage_bucket || '') !== bucket || String((version as any).storage_key || '') !== key) {
+        return applyJson(res, 403, { ok: false, error: 'Invalid token payload' });
+      }
+
+      const { data: document } = await svc.database
+        .from('documents')
+        .select('is_restricted')
+        .eq('company_id', payload.companyId)
+        .eq('id', (version as any).document_id)
+        .maybeSingle();
+      const isRestricted = Boolean((document as any)?.is_restricted ?? payload.restricted);
+      if (isRestricted && !canViewRestrictedDocuments((payload.role || null) as any)) {
+        return applyJson(res, 403, { ok: false, error: 'Not allowed' });
+      }
+    } else if (payload.restricted && !canViewRestrictedDocuments((payload.role || null) as any)) {
+      return applyJson(res, 403, { ok: false, error: 'Not allowed' });
+    }
+
     const { data, error } = await svc.storage.from(bucket).download(key);
     if (error) return applyJson(res, 404, { ok: false, error: 'File not found' });
     if (!data) return applyJson(res, 404, { ok: false, error: 'File not found' });
@@ -41,4 +71,3 @@ export default async function handler(req: any, res: any) {
     applyJson(res, 403, { ok: false, error: String(e?.message || e) });
   }
 }
-
