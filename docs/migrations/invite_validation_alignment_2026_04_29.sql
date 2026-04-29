@@ -17,6 +17,24 @@ alter table if exists public.company_invites
 alter table if exists public.company_invites
   drop constraint if exists company_invites_status_check;
 
+update public.company_invites
+set status = case
+  when upper(coalesce(status, '')) = 'PENDING' then 'PENDING'
+  when upper(coalesce(status, '')) = 'SENT' then 'SENT'
+  when upper(coalesce(status, '')) = 'FAILED' then 'FAILED'
+  when upper(coalesce(status, '')) = 'ACCEPTED' then 'ACCEPTED'
+  when upper(coalesce(status, '')) = 'EXPIRED' then 'EXPIRED'
+  when upper(coalesce(status, '')) = 'CANCELLED' then 'CANCELLED'
+  when accepted_at is not null then 'ACCEPTED'
+  when expires_at is not null and expires_at <= now() then 'EXPIRED'
+  else 'PENDING'
+end;
+
+update public.company_invites
+set token_hash = encode(digest(token, 'sha256'), 'hex')
+where token_hash is null
+  and nullif(trim(token), '') is not null;
+
 alter table if exists public.company_invites
   add constraint company_invites_status_check
   check (status in ('PENDING', 'SENT', 'FAILED', 'ACCEPTED', 'EXPIRED', 'CANCELLED'));
@@ -25,9 +43,28 @@ create unique index if not exists idx_company_invites_token_hash
   on public.company_invites(token_hash)
   where token_hash is not null;
 
-create unique index if not exists idx_company_invites_active_unique
+with ranked as (
+  select
+    id,
+    row_number() over (
+      partition by company_id, lower(email)
+      order by coalesce(sent_at, created_at) desc, created_at desc, id desc
+    ) as rn
+  from public.company_invites
+  where status in ('PENDING', 'SENT')
+)
+update public.company_invites i
+set
+  status = 'CANCELLED',
+  error_message = coalesce(i.error_message, 'Auto-cancelled during invite validation alignment.')
+from ranked r
+where i.id = r.id
+  and r.rn > 1;
+
+drop index if exists idx_company_invites_active_unique;
+create unique index idx_company_invites_active_unique
   on public.company_invites(company_id, lower(email))
-  where status in ('PENDING', 'SENT', 'FAILED');
+  where status in ('PENDING', 'SENT');
 
 create or replace function public.resolve_invitation_token(p_token text)
 returns table(
