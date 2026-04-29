@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileTextIcon, FolderIcon, FolderPlusIcon, LockIcon, PencilIcon, PlusIcon, SearchIcon, ShieldAlertIcon, UploadIcon } from 'lucide-react';
+import { ChevronDownIcon, ChevronRightIcon, FileTextIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, LockIcon, PencilIcon, PlusIcon, SearchIcon, ShieldAlertIcon, UploadIcon } from 'lucide-react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
@@ -90,6 +90,54 @@ function isOfficeVersion(version: DocumentVersion | null | undefined): boolean {
     mimeType.includes('excel') ||
     mimeType.includes('spreadsheet')
   );
+}
+
+function getVersionExtension(version: DocumentVersion | null | undefined): string {
+  const filename = String(version?.original_filename || '').trim().toLowerCase();
+  const match = /\.([a-z0-9]+)$/i.exec(filename);
+  return match?.[1]?.toLowerCase() ?? '';
+}
+
+function isPdfVersion(version: DocumentVersion | null | undefined): boolean {
+  return getVersionExtension(version) === 'pdf' || String(version?.mime_type || '').toLowerCase().includes('pdf');
+}
+
+function isEditableOfficeVersion(version: DocumentVersion | null | undefined): boolean {
+  const extension = getVersionExtension(version);
+  return extension === 'doc' || extension === 'docx' || extension === 'xls' || extension === 'xlsx' || isOfficeVersion(version);
+}
+
+function collectAncestorFolderIds(folderId: string, byId: Map<string, DocumentFolder>): string[] {
+  const ancestors: string[] = [];
+  let cursor = byId.get(folderId) ?? null;
+  while (cursor?.parent_id) {
+    const parentId = String(cursor.parent_id);
+    ancestors.push(parentId);
+    cursor = byId.get(parentId) ?? null;
+  }
+  return ancestors;
+}
+
+function collectMatchingFolderIds(input: {
+  folders: DocumentFolder[];
+  byId: Map<string, DocumentFolder>;
+  query: string;
+}): Set<string> {
+  const normalizedQuery = input.query.trim().toLowerCase();
+  if (!normalizedQuery) return new Set();
+
+  const visible = new Set<string>();
+  for (const folder of input.folders) {
+    const id = String(folder.id);
+    const path = folderPath(folder, input.byId).toLowerCase();
+    if (!path.includes(normalizedQuery)) continue;
+    visible.add(id);
+    for (const ancestorId of collectAncestorFolderIds(id, input.byId)) {
+      visible.add(ancestorId);
+    }
+  }
+
+  return visible;
 }
 
 function FolderCreateModal(props: {
@@ -356,6 +404,8 @@ export function DocumentsPage() {
   const [search, setSearch] = useState('');
   const [uploadOpen, setUploadOpen] = useState(false);
   const [folderCreateOpen, setFolderCreateOpen] = useState(false);
+  const [folderSearch, setFolderSearch] = useState('');
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Record<string, boolean>>({});
   const [selectedFolderId, setSelectedFolderId] = useState('');
   const [selectedDocId, setSelectedDocId] = useState('');
   const [approvalOpen, setApprovalOpen] = useState(false);
@@ -382,6 +432,10 @@ export function DocumentsPage() {
   const docList = documents ?? [];
   const folderList = folders ?? [];
   const folderMaps = useMemo(() => buildFolderMaps(folderList), [folderList]);
+  const matchingFolderIds = useMemo(
+    () => collectMatchingFolderIds({ folders: folderList, byId: folderMaps.byId, query: folderSearch }),
+    [folderList, folderMaps.byId, folderSearch]
+  );
   const selectedDoc = useMemo(() => docList.find((doc) => doc.id === selectedDocId) ?? null, [docList, selectedDocId]);
 
   const versionIds = useMemo(() => {
@@ -427,6 +481,31 @@ export function DocumentsPage() {
 
   const publishedVersion = selectedDoc?.published_version_id ? versionById.get(String(selectedDoc.published_version_id)) ?? null : null;
   const currentVersion = selectedDoc?.current_version_id ? versionById.get(String(selectedDoc.current_version_id)) ?? null : null;
+  const displayVersion = publishedVersion ?? currentVersion;
+  const selectedFolderAncestors = useMemo(
+    () => (selectedFolderId ? collectAncestorFolderIds(selectedFolderId, folderMaps.byId) : []),
+    [folderMaps.byId, selectedFolderId]
+  );
+
+  React.useEffect(() => {
+    if (!selectedFolderId) return;
+    setExpandedFolderIds((current) => {
+      const next = { ...current };
+      for (const folderId of selectedFolderAncestors) next[folderId] = true;
+      return next;
+    });
+  }, [selectedFolderAncestors, selectedFolderId]);
+
+  React.useEffect(() => {
+    if (!folderSearch.trim()) return;
+    setExpandedFolderIds((current) => {
+      const next = { ...current };
+      for (const folderId of matchingFolderIds) {
+        if ((folderMaps.byParent.get(folderId) ?? []).length > 0) next[folderId] = true;
+      }
+      return next;
+    });
+  }, [folderMaps.byParent, folderSearch, matchingFolderIds]);
 
   async function openPublishedPreview(doc: Document): Promise<void> {
     if (!doc.storage_bucket || !doc.storage_key) return;
@@ -434,21 +513,53 @@ export function DocumentsPage() {
     openBlobInNewTab(blob);
   }
 
+  function toggleFolder(folderId: string): void {
+    setExpandedFolderIds((current) => ({ ...current, [folderId]: !current[folderId] }));
+  }
+
   function renderFolderNode(folder: DocumentFolder, depth = 0): React.ReactNode {
-    const selected = selectedFolderId === String(folder.id);
-    const children = folderMaps.byParent.get(String(folder.id)) ?? [];
+    const folderId = String(folder.id);
+    const selected = selectedFolderId === folderId;
+    const children = folderMaps.byParent.get(folderId) ?? [];
+    const hasChildren = children.length > 0;
+    const matchesSearch = !folderSearch.trim() || matchingFolderIds.has(folderId);
+    if (!matchesSearch) return null;
+    const forceExpanded = selectedFolderAncestors.includes(folderId) || (!!folderSearch.trim() && matchingFolderIds.has(folderId));
+    const expanded = hasChildren ? forceExpanded || Boolean(expandedFolderIds[folderId]) : false;
     return (
-      <div key={folder.id}>
-        <button
-          type="button"
-          onClick={() => setSelectedFolderId(String(folder.id))}
-          className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between ${selected ? 'bg-teal-50 text-teal' : 'hover:bg-surface-50 text-charcoal'}`}
-          style={{ paddingLeft: `${12 + depth * 16}px` }}
+      <div key={folder.id} className="space-y-1">
+        <div
+          className={`group flex items-center gap-1 rounded-xl border px-2 py-1.5 ${
+            selected ? 'border-teal/30 bg-teal-50 text-teal shadow-sm' : 'border-transparent text-charcoal hover:bg-surface-50'
+          }`}
+          style={{ paddingLeft: `${8 + depth * 14}px` }}
         >
-          <span className="truncate">{folder.name}</span>
-          {folder.is_restricted ? <LockIcon className="w-3.5 h-3.5 shrink-0" /> : null}
-        </button>
-        {children.length > 0 && <div className="space-y-1">{children.map((child) => renderFolderNode(child, depth + 1))}</div>}
+          <button
+            type="button"
+            onClick={() => hasChildren && toggleFolder(folderId)}
+            className={`inline-flex h-7 w-7 items-center justify-center rounded-lg ${hasChildren ? 'hover:bg-white/80' : 'opacity-40 cursor-default'}`}
+            aria-label={hasChildren ? (expanded ? `Collapse ${folder.name}` : `Expand ${folder.name}`) : `${folder.name} has no subfolders`}
+            disabled={!hasChildren}
+          >
+            {hasChildren ? (
+              expanded ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />
+            ) : (
+              <span className="w-4 h-4" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedFolderId(folderId)}
+            className="min-w-0 flex-1 text-left"
+          >
+            <span className="flex items-center gap-2">
+              {expanded ? <FolderOpenIcon className="w-4 h-4 shrink-0" /> : <FolderIcon className="w-4 h-4 shrink-0" />}
+              <span className="truncate text-sm font-medium">{folder.name}</span>
+              {folder.is_restricted ? <LockIcon className="w-3.5 h-3.5 shrink-0" /> : null}
+            </span>
+          </button>
+        </div>
+        {hasChildren && expanded ? <div className="space-y-1">{children.map((child) => renderFolderNode(child, depth + 1))}</div> : null}
       </div>
     );
   }
@@ -574,8 +685,8 @@ export function DocumentsPage() {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-5">
-        <div className="bg-white rounded-xl border border-surface-300 shadow-card p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
+        <div className="bg-white rounded-xl border border-surface-300 shadow-card p-4 lg:h-[calc(100vh-13rem)] lg:min-h-[32rem] flex flex-col">
+          <div className="flex items-center justify-between gap-3 shrink-0">
             <h2 className="font-semibold text-charcoal flex items-center gap-2">
               <FolderIcon className="w-4 h-4 text-teal" />
               Folders
@@ -587,23 +698,42 @@ export function DocumentsPage() {
               </button>
             )}
           </div>
-          {foldersError && <p className="text-xs text-critical">{foldersError.message}</p>}
-          {folderList.length === 0 ? (
-            <div className="rounded-xl bg-surface-50 p-4 text-sm text-charcoal-500">
-              Create your first folder before uploading documents so every file is saved under the correct module and location.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => setSelectedFolderId('')}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm ${!selectedFolderId ? 'bg-teal-50 text-teal' : 'hover:bg-surface-50 text-charcoal'}`}
-              >
-                All folders
-              </button>
-              {(folderMaps.byParent.get('root') ?? []).map((root) => renderFolderNode(root))}
-            </div>
-          )}
+          <div className="mt-3 relative shrink-0">
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
+            <input
+              type="search"
+              value={folderSearch}
+              onChange={(event) => setFolderSearch(event.target.value)}
+              placeholder="Filter folders..."
+              className="w-full pl-9 pr-3 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            />
+          </div>
+          <div className="mt-3 flex-1 min-h-0 overflow-hidden">
+            {foldersError && <p className="text-xs text-critical mb-3">{foldersError.message}</p>}
+            {folderList.length === 0 ? (
+              <div className="rounded-xl bg-surface-50 p-4 text-sm text-charcoal-500">
+                Create your first folder before uploading documents so every file is saved under the correct module and location.
+              </div>
+            ) : (
+              <div className="h-full overflow-y-auto pr-1 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedFolderId('')}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium border ${
+                    !selectedFolderId ? 'bg-teal-50 text-teal border-teal/30' : 'border-transparent hover:bg-surface-50 text-charcoal'
+                  }`}
+                >
+                  All folders
+                </button>
+                {(folderMaps.byParent.get('root') ?? []).map((root) => renderFolderNode(root))}
+                {folderSearch.trim() && matchingFolderIds.size === 0 ? (
+                  <div className="rounded-xl border border-surface-200 bg-surface-50 px-3 py-4 text-sm text-charcoal-500">
+                    No folders match your filter.
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -752,12 +882,12 @@ export function DocumentsPage() {
                       View published
                     </button>
                   )}
-                  {publishedVersion?.id && isOfficeVersion(publishedVersion) && (
+                  {publishedVersion?.id && isEditableOfficeVersion(publishedVersion) && (
                     <button type="button" onClick={() => navigate(`/documents/editor/${publishedVersion.id}?mode=view`)} className="px-3 py-2 rounded-lg bg-surface-900 text-white text-xs font-semibold hover:bg-surface-800">
                       Open editor (view)
                     </button>
                   )}
-                  {currentVersion?.id && canManage && isOfficeVersion(currentVersion) && (
+                  {currentVersion?.id && canManage && isEditableOfficeVersion(currentVersion) && (
                     <button
                       type="button"
                       onClick={() => navigate(`/documents/editor/${currentVersion.id}?mode=edit`)}
@@ -769,6 +899,11 @@ export function DocumentsPage() {
                   )}
                 </div>
               </div>
+              {displayVersion && isPdfVersion(displayVersion) ? (
+                <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-charcoal-600">
+                  PDF files cannot be edited. Please upload a Word or Excel document.
+                </div>
+              ) : null}
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div className="rounded-xl border border-surface-200 p-3">

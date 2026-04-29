@@ -30,12 +30,34 @@ function resolveFileType(filename: string | null, fallback: 'docx' | 'xlsx'): st
   return ext || fallback;
 }
 
+function isEditableFileType(fileType: string): boolean {
+  return fileType === 'doc' || fileType === 'docx' || fileType === 'xls' || fileType === 'xlsx';
+}
+
+function getFriendlyEditorError(error: string): string {
+  const normalized = String(error || '').toLowerCase();
+  if (
+    normalized.includes('onlyoffice_docserver_origin') ||
+    normalized.includes('onlyoffice_jwt_secret') ||
+    normalized.includes('dms file access secret') ||
+    normalized.includes('public origin')
+  ) {
+    return 'Document editor is not configured yet. Please contact the system administrator.';
+  }
+  if (normalized.includes('pdf files are view/download only')) {
+    return 'PDF files cannot be edited. Please upload a Word or Excel document.';
+  }
+  if (normalized.includes('not supported')) {
+    return 'This file type is not supported in the document editor.';
+  }
+  return String(error || 'Unable to open editor.');
+}
+
 export default async function handler(req: any, res: any) {
   applyNoStoreHeaders(res);
   if (req.method !== 'GET') return applyJson(res, 405, { ok: false, error: 'Method not allowed' });
 
   try {
-    const { docServerOrigin, jwtSecret } = requireOnlyofficeConfigured();
     const { token, userId, email } = await requireViewer(req);
     const versionId = String(req?.query?.versionId || '').trim();
     const mode = String(req?.query?.mode || 'view').trim().toLowerCase() === 'edit' ? 'edit' : 'view';
@@ -76,14 +98,24 @@ export default async function handler(req: any, res: any) {
     const type = guessDocumentType(v.mime_type, filename);
     const fileType = resolveFileType(filename, type === 'cell' ? 'xlsx' : 'docx');
     const isPdf = fileType === 'pdf';
-    if (isEditRequested && isPdf) {
-      return applyJson(res, 409, { ok: false, error: 'PDF files are view/download only.' });
-    }
+    const isEditableType = isEditableFileType(fileType);
     const allowEdit = isEditRequested && canEditDocuments(role) && (!isRestricted || canViewRestrictedDocuments(role)) && v.status !== 'approved' && v.status !== 'archived';
 
     const origin = getAppPublicOrigin(req);
     const fileAccessSecret = getDmsFileAccessSecret();
-    if (!fileAccessSecret) return applyJson(res, 500, { ok: false, error: 'DMS file access secret not configured.' });
+    if (!fileAccessSecret) {
+      return applyJson(res, 200, {
+        ok: true,
+        editorAvailable: false,
+        friendlyError: getFriendlyEditorError('DMS file access secret not configured.'),
+        error: 'DMS file access secret not configured.',
+        fileName: filename,
+        fileType,
+        canEdit: false,
+        fileUrl: null,
+        downloadUrl: null
+      });
+    }
 
     const fileToken = signJwtHs256(
       {
@@ -101,6 +133,55 @@ export default async function handler(req: any, res: any) {
 
     const fileUrl = `${origin}/api/documents/file?token=${encodeURIComponent(fileToken)}`;
     const callbackUrl = `${origin}/api/documents/onlyoffice/callback`;
+    const downloadUrl = fileUrl;
+
+    if (isEditRequested && isPdf) {
+      return applyJson(res, 200, {
+        ok: true,
+        editorAvailable: false,
+        friendlyError: getFriendlyEditorError('PDF files are view/download only.'),
+        error: 'PDF files are view/download only.',
+        fileName: filename,
+        fileType,
+        canEdit: false,
+        fileUrl,
+        downloadUrl
+      });
+    }
+
+    if (!isEditableType) {
+      return applyJson(res, 200, {
+        ok: true,
+        editorAvailable: false,
+        friendlyError: getFriendlyEditorError('This file type is not supported in the document editor.'),
+        error: 'This file type is not supported in the document editor.',
+        fileName: filename,
+        fileType,
+        canEdit: false,
+        fileUrl,
+        downloadUrl
+      });
+    }
+
+    let docServerOrigin: string | null = null;
+    let jwtSecret: string | null = null;
+    try {
+      const config = requireOnlyofficeConfigured();
+      docServerOrigin = config.docServerOrigin;
+      jwtSecret = config.jwtSecret;
+    } catch (configError: any) {
+      return applyJson(res, 200, {
+        ok: true,
+        editorAvailable: false,
+        friendlyError: getFriendlyEditorError(String(configError?.message || configError)),
+        error: String(configError?.message || configError),
+        fileName: filename,
+        fileType,
+        canEdit: allowEdit,
+        fileUrl,
+        downloadUrl
+      });
+    }
 
     const editorConfig = {
       documentType: type === 'cell' ? 'cell' : 'word',
@@ -134,9 +215,15 @@ export default async function handler(req: any, res: any) {
 
     res.status(200).json({
       ok: true,
+      editorAvailable: true,
       docServerOrigin,
       config: editorConfig,
-      token: onlyofficeToken
+      token: onlyofficeToken,
+      fileName: filename,
+      fileType,
+      canEdit: allowEdit,
+      fileUrl,
+      downloadUrl
     });
   } catch (e: any) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
