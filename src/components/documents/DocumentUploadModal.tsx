@@ -61,6 +61,8 @@ export function DocumentUploadModal(props: {
   const [loading, setLoading] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
 
   const suggested = useMemo(() => DOCUMENT_CATEGORIES_BY_MODULE[module] ?? ['Other'], [module]);
   const category = useMemo(() => {
@@ -122,6 +124,8 @@ export function DocumentUploadModal(props: {
     if (!newFolderName.trim()) return;
     try {
       setCreatingFolder(true);
+      setError(null);
+      setSuccessMessage(null);
       const created = await createDocumentFolder({
         companyId: props.companyId,
         module,
@@ -138,6 +142,7 @@ export function DocumentUploadModal(props: {
       setNewFolderName('');
       setNewFolderParentId('');
       setNewFolderRestricted(false);
+      setSuccessMessage('Folder created successfully');
       props.onFoldersChanged?.();
     } catch (err: any) {
       setError(formatAuthError(err));
@@ -150,35 +155,49 @@ export function DocumentUploadModal(props: {
     event.preventDefault();
     if (!canSubmit || !file || !folderId) return;
     setError(null);
+    setSuccessMessage(null);
+    setUploadedFileName(null);
     try {
       setLoading(true);
       const uploaded = await uploadDocumentFile({ companyId: props.companyId, file });
-      await createDocumentWithInitialVersion({
-        companyId: props.companyId,
-        module,
-        title: title.trim(),
-        category: category.trim(),
-        description: description.trim() || null,
-        folderId: folderId as UUID,
-        ownerUserId: props.actorUserId,
-        createdByUserId: props.actorUserId,
-        storageBucket: uploaded.bucket,
-        storageKey: uploaded.key,
-        originalFilename: file.name,
-        mimeType: file.type || null,
-        fileSize: file.size,
-        effectiveDate: effectiveDate || null,
-        documentOwnerName: documentOwnerName.trim() || null,
-        approvingOfficerName: approvingOfficerName.trim() || null,
-        documentNumber: documentNumber.trim() || null,
-        revisionNumber: revisionNumber.trim() || null,
-        revisionDate: revisionDate || null,
-        approvedDate: approvedDate || null,
-        expiryDate: expiryDate || null,
-        isRestricted
-      });
+      try {
+        await createDocumentWithInitialVersion({
+          companyId: props.companyId,
+          module,
+          title: title.trim(),
+          category: category.trim(),
+          description: description.trim() || null,
+          folderId: folderId as UUID,
+          ownerUserId: props.actorUserId,
+          createdByUserId: props.actorUserId,
+          storageBucket: uploaded.bucket,
+          storageKey: uploaded.key,
+          originalFilename: file.name,
+          mimeType: file.type || null,
+          fileSize: file.size,
+          effectiveDate: effectiveDate || null,
+          documentOwnerName: documentOwnerName.trim() || null,
+          approvingOfficerName: approvingOfficerName.trim() || null,
+          documentNumber: documentNumber.trim() || null,
+          revisionNumber: revisionNumber.trim() || null,
+          revisionDate: revisionDate || null,
+          approvedDate: approvedDate || null,
+          expiryDate: expiryDate || null,
+          isRestricted
+        });
+      } catch (recordError) {
+        console.error('Document record creation failed after storage upload', {
+          bucket: uploaded.bucket,
+          key: uploaded.key,
+          filename: file.name,
+          error: recordError
+        });
+        throw new Error('The file uploaded, but the document record could not be saved. Please check the latest document migration and try again.');
+      }
+
+      setUploadedFileName(file.name);
+      setSuccessMessage('Document uploaded successfully');
       props.onUploaded?.();
-      props.onClose();
       setFile(null);
       setTitle('');
       setDescription('');
@@ -195,6 +214,7 @@ export function DocumentUploadModal(props: {
       setExpiryDate('');
       setIsRestricted(false);
       setRestrictionTouched(false);
+      setTimeout(() => props.onClose(), 600);
     } catch (err: any) {
       setError(formatAuthError(err));
     } finally {
@@ -224,6 +244,14 @@ export function DocumentUploadModal(props: {
         </div>
 
         <form onSubmit={onSubmit} className="p-5 space-y-5">
+          {successMessage && (
+            <div className="bg-success/5 border border-success/20 rounded-xl p-3">
+              <p className="text-sm font-semibold text-success">{successMessage}</p>
+              {uploadedFileName && successMessage === 'Document uploaded successfully' ? (
+                <p className="text-sm text-charcoal-600 mt-1">{uploadedFileName}</p>
+              ) : null}
+            </div>
+          )}
           {error && (
             <div className="bg-critical/5 border border-critical/20 rounded-xl p-3">
               <p className="text-sm font-semibold text-critical">Upload failed</p>
@@ -288,6 +316,8 @@ export function DocumentUploadModal(props: {
                   <button
                     type="button"
                     onClick={() => {
+                      setError(null);
+                      setSuccessMessage(null);
                       setShowFolderCreate((current) => !current);
                       setNewFolderParentId(folderId);
                     }}
@@ -310,7 +340,7 @@ export function DocumentUploadModal(props: {
                         />
                       </label>
                       <label className="block text-sm">
-                        <span className="block text-charcoal-600 mb-1">Parent folder</span>
+                        <span className="block text-charcoal-600 mb-1">Select folder</span>
                         <select
                           value={newFolderParentId}
                           onChange={(event) => setNewFolderParentId((event.target.value || '') as UUID | '')}
@@ -386,6 +416,8 @@ export function DocumentUploadModal(props: {
                     onChange={(event) => {
                       const nextFile = event.target.files?.[0] ?? null;
                       setFile(nextFile);
+                      setSuccessMessage(null);
+                      setUploadedFileName(null);
                       if (nextFile && !title.trim()) {
                         setTitle(nextFile.name.replace(/\.[^.]+$/, ''));
                       }

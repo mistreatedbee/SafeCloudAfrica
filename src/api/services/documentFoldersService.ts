@@ -2,6 +2,55 @@ import { insforge } from '../insforge/client';
 import type { DocumentFolder, ModuleKey, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 
+const DMS_MIGRATION_REQUIRED_MESSAGE = 'Document folder setup is incomplete. Please run the latest document migration.';
+const DUPLICATE_FOLDER_MESSAGE = 'Folder already exists';
+
+function normalizeFolderName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ');
+}
+
+function isSchemaMismatchError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes('schema cache') ||
+    message.includes('could not find the') ||
+    (message.includes('column') && message.includes('document_folders')) ||
+    message.includes('is_restricted') ||
+    message.includes('does not exist')
+  );
+}
+
+function isDuplicateError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return message.includes('duplicate key') || message.includes('unique') || message.includes('already exists');
+}
+
+async function findExistingFolder(input: {
+  companyId: UUID;
+  module: ModuleKey;
+  name: string;
+  parentId?: UUID | null;
+}): Promise<DocumentFolder | null> {
+  const normalizedName = normalizeFolderName(input.name);
+  let query = insforge.database
+    .from('document_folders')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('module', input.module)
+    .ilike('name', normalizedName)
+    .limit(1)
+    .maybeSingle();
+
+  query = input.parentId ? query.eq('parent_id', input.parentId) : query.is('parent_id', null);
+
+  const { data, error } = await query;
+  if (error) {
+    if (isSchemaMismatchError(error)) throw new Error(DMS_MIGRATION_REQUIRED_MESSAGE);
+    throw new Error(getErrorMessage(error));
+  }
+  return (data as DocumentFolder | null) ?? null;
+}
+
 export async function listDocumentFolders(companyId: UUID): Promise<DocumentFolder[]> {
   const { data, error } = await insforge.database
     .from('document_folders')
@@ -24,12 +73,23 @@ export async function createDocumentFolder(input: {
   sortOrder?: number;
   createdByUserId?: UUID | null;
 }): Promise<DocumentFolder> {
+  const normalizedName = normalizeFolderName(input.name);
+  if (!normalizedName) throw new Error('Folder name is required.');
+
+  const existing = await findExistingFolder({
+    companyId: input.companyId,
+    module: input.module,
+    name: normalizedName,
+    parentId: input.parentId ?? null
+  });
+  if (existing) throw new Error(DUPLICATE_FOLDER_MESSAGE);
+
   const { data, error } = await insforge.database
     .from('document_folders')
     .insert({
       company_id: input.companyId,
       module: input.module,
-      name: input.name,
+      name: normalizedName,
       parent_id: input.parentId ?? null,
       is_restricted: input.isRestricted ?? false,
       sort_order: input.sortOrder ?? 0,
@@ -37,7 +97,11 @@ export async function createDocumentFolder(input: {
     })
     .select('*')
     .single();
-  if (error) throw new Error(getErrorMessage(error));
+  if (error) {
+    if (isDuplicateError(error)) throw new Error(DUPLICATE_FOLDER_MESSAGE);
+    if (isSchemaMismatchError(error)) throw new Error(DMS_MIGRATION_REQUIRED_MESSAGE);
+    throw new Error(getErrorMessage(error));
+  }
   if (!data) throw new Error('Failed to create folder.');
   return data as DocumentFolder;
 }

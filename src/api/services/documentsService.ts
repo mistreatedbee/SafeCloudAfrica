@@ -2,8 +2,27 @@ import { insforge } from '../insforge/client';
 import type { Document, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 
+const DMS_MIGRATION_REQUIRED_MESSAGE = 'Document management database updates are missing. Please run the latest migration.';
+
 function escapeIlike(input: string): string {
   return input.replace(/[%_,]/g, ' ').trim();
+}
+
+function getDocumentMigrationError(error: unknown): string | null {
+  const message = getErrorMessage(error).toLowerCase();
+  if (
+    message.includes('schema cache') ||
+    message.includes('could not find the') ||
+    message.includes('function public.create_document_with_initial_version') ||
+    message.includes('function public.create_document_version') ||
+    message.includes('is_restricted') ||
+    message.includes('document_number') ||
+    message.includes('document_owner_name') ||
+    message.includes('does not exist')
+  ) {
+    return DMS_MIGRATION_REQUIRED_MESSAGE;
+  }
+  return null;
 }
 
 export async function listDocuments(
@@ -36,7 +55,7 @@ export async function listDocuments(
   }
 
   const { data, error } = await query.order('updated_at', { ascending: false }).limit(500);
-  if (error) throw new Error(getErrorMessage(error));
+  if (error) throw new Error(getDocumentMigrationError(error) ?? getErrorMessage(error));
   return (data ?? []) as Document[];
 }
 
@@ -119,7 +138,7 @@ export async function createDocumentWithInitialVersion(input: {
     p_expiry_date: input.expiryDate ?? null,
     p_is_restricted: typeof input.isRestricted === 'boolean' ? input.isRestricted : null
   });
-  if (error) throw new Error(getErrorMessage(error));
+  if (error) throw new Error(getDocumentMigrationError(error) ?? getErrorMessage(error));
   if (!data) throw new Error('Failed to create document.');
   return data as Document;
 }
@@ -174,7 +193,7 @@ export async function updateDocument(input: {
     .eq('id', input.documentId)
     .select('*')
     .single();
-  if (error) throw new Error(getErrorMessage(error));
+  if (error) throw new Error(getDocumentMigrationError(error) ?? getErrorMessage(error));
   if (!data) throw new Error('Failed to update document.');
   return data as Document;
 }

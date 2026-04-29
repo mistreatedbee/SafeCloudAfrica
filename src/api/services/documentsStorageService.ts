@@ -1,6 +1,7 @@
 import { insforge } from '../insforge/client';
 
 export const DOCUMENTS_BUCKET = 'sca-documents';
+const ALLOWED_DOCUMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx']);
 
 function sanitizeFileName(name: string): string {
   const trimmed = name.trim() || 'document';
@@ -10,11 +11,21 @@ function sanitizeFileName(name: string): string {
     .replace(/^_+|_+$/g, '');
 }
 
+function getExtension(name: string): string {
+  const match = /\.([^.]+)$/.exec(name.trim().toLowerCase());
+  return match?.[1] ?? '';
+}
+
 export async function uploadDocumentFile(input: { companyId: string; file: File }): Promise<{ bucket: string; key: string }> {
+  const extension = getExtension(input.file.name || '');
+  if (!ALLOWED_DOCUMENT_EXTENSIONS.has(extension)) {
+    throw new Error('Only Word, Excel, and PDF documents are supported.');
+  }
+
   const safeName = sanitizeFileName(input.file.name || 'document');
   const key = `${input.companyId}/${Date.now()}-${safeName}`;
   const { data, error } = await insforge.storage.from(DOCUMENTS_BUCKET).upload(key, input.file);
-  if (error) throw error;
+  if (error) throw new Error('File upload failed. Please try again.');
   if (!data) throw new Error('Upload failed.');
   return { bucket: DOCUMENTS_BUCKET, key: data.path ?? key };
 }

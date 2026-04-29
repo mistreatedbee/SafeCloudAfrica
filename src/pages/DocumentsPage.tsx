@@ -107,6 +107,7 @@ function FolderCreateModal(props: {
   const [isRestricted, setIsRestricted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const folderOptions = useMemo(() => {
     const relevant = props.folders.filter((folder) => folder.module === module);
@@ -139,6 +140,7 @@ function FolderCreateModal(props: {
             event.preventDefault();
             if (!name.trim()) return;
             setError(null);
+            setSuccessMessage(null);
             try {
               setLoading(true);
               await createDocumentFolder({
@@ -150,10 +152,11 @@ function FolderCreateModal(props: {
                 createdByUserId: props.actorUserId
               });
               props.onCreated();
-              props.onClose();
               setName('');
               setParentId('');
               setIsRestricted(false);
+              setSuccessMessage('Folder created successfully');
+              setTimeout(() => props.onClose(), 600);
             } catch (err: any) {
               setError(String(err?.message || err));
             } finally {
@@ -161,6 +164,7 @@ function FolderCreateModal(props: {
             }
           }}
         >
+          {successMessage && <p className="text-sm text-success">{successMessage}</p>}
           {error && <p className="text-sm text-critical">{error}</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="block text-sm">
@@ -177,7 +181,7 @@ function FolderCreateModal(props: {
               </select>
             </label>
             <label className="block text-sm">
-              <span className="block mb-1 text-charcoal-500">Parent folder</span>
+              <span className="block mb-1 text-charcoal-500">Select folder</span>
               <select value={parentId} onChange={(event) => setParentId(event.target.value)} className="w-full px-4 py-2.5 border border-surface-300 rounded-lg">
                 <option value="">Root folder</option>
                 {folderOptions.map((folder) => (
