@@ -24,9 +24,9 @@ export function InviteAcceptByTokenPage() {
         const inviteId = await getInviteIdByToken(token);
         if (cancelled) return;
         if (inviteId) navigate(`/invite/${inviteId}`, { replace: true });
-        else setError('Invalid or expired invite link.');
+        else setError('This invite link is invalid.');
       } catch {
-        if (!cancelled) setError('Could not load invite.');
+        if (!cancelled) setError('We could not validate this invite right now. Please try again.');
       }
     })();
     return () => { cancelled = true; };

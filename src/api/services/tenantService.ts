@@ -18,6 +18,10 @@ function isRouteMissingError(status: number, data: any): boolean {
   return status === 404 || String(data?.error || '').toLowerCase().includes('not found');
 }
 
+function isApiRouteUnavailable(status: number, data: any): boolean {
+  return status === 404 && !String(data?.reason ?? '').trim();
+}
+
 function getInviteAcceptanceLinkForCurrentOrigin(token: string): string {
   return `${window.location.origin}/invite/accept?token=${encodeURIComponent(token)}`;
 }
@@ -36,6 +40,8 @@ async function hashInviteToken(rawToken: string): Promise<string> {
 function addDaysIso(days: number): string {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
+
+const INVITE_MANUAL_LINK_SUFFIX = 'Copy the invite link and send it manually.';
 
 async function getMembershipForActor(companyId: UUID, userId: UUID): Promise<CompanyMembership | null> {
   const { data, error } = await insforge.database
@@ -147,7 +153,7 @@ async function createInviteFallback(input: {
     status: 'FAILED',
     invite: data as CompanyInvite,
     inviteLink: getInviteAcceptanceLinkForCurrentOrigin(rawToken),
-    message: 'Invite created, but email is unavailable in this environment. Copy the invite link and send it manually.',
+    message: `Invite created, but email is unavailable in this environment. ${INVITE_MANUAL_LINK_SUFFIX}`,
     emailError: 'Email is unavailable in this environment.'
   };
 }
@@ -226,7 +232,7 @@ async function resendInviteFallback(input: { inviteId: UUID; actorUserId: UUID }
     emailSent: false,
     invite: data as CompanyInvite,
     inviteLink: getInviteAcceptanceLinkForCurrentOrigin(rawToken),
-    message: 'Invite updated, but email is unavailable in this environment. Copy the invite link and send it manually.',
+    message: `Invite updated, but email is unavailable in this environment. ${INVITE_MANUAL_LINK_SUFFIX}`,
     emailError: 'Email is unavailable in this environment.'
   };
 }
@@ -463,8 +469,8 @@ export type InviteValidationResult = {
 
 function formatInviteEmailFailureMessage(prefix: string, emailError?: string | null): string {
   const detail = String(emailError ?? '').trim();
-  if (!detail) return `${prefix} Copy the invite link and send it manually.`;
-  return `${prefix} ${detail} Copy the invite link and send it manually.`;
+  if (!detail) return `${prefix} ${INVITE_MANUAL_LINK_SUFFIX}`;
+  return `${prefix} ${detail} ${INVITE_MANUAL_LINK_SUFFIX}`;
 }
 
 function mapInviteCreateError(message: string): { code: InviteCreateErrorCode; message: string } {
@@ -520,6 +526,17 @@ function mapInviteResolutionCode(code: string | null | undefined): InviteValidat
   if (normalized === 'expired') return 'INVITE_EXPIRED';
   if (normalized === 'accepted') return 'INVITE_ACCEPTED';
   if (normalized === 'cancelled') return 'INVITE_INVALID';
+  return 'INVITE_INVALID';
+}
+
+function mapInviteValidationFailure(status: number, reason: string | null | undefined): InviteValidationCode {
+  const normalizedReason = String(reason ?? '').trim().toLowerCase();
+  if (status === 410 || normalizedReason === 'expired') return 'INVITE_EXPIRED';
+  if (normalizedReason === 'accepted') return 'INVITE_ACCEPTED';
+  if (normalizedReason === 'revoked' || normalizedReason === 'not_found' || status === 400 || status === 404) {
+    return 'INVITE_INVALID';
+  }
+  if (status >= 500 || normalizedReason === 'backend_unavailable') return 'BACKEND_UNAVAILABLE';
   return 'INVITE_INVALID';
 }
 
@@ -627,15 +644,11 @@ export async function validateInvitationToken(token: string): Promise<InviteVali
       cache: 'no-store'
     });
     const data = await response.json().catch(() => null as any);
-    if (isRouteMissingError(response.status, data)) {
+    if (isApiRouteUnavailable(response.status, data)) {
       return await validateInvitationTokenFallback(cleanToken);
     }
-    if (!response.ok || !data?.ok) {
-      const reason = String(data?.reason ?? '').toLowerCase();
-      if (reason === 'expired') return { code: 'INVITE_EXPIRED', invite: null };
-      if (reason === 'accepted') return { code: 'INVITE_ACCEPTED', invite: null };
-      if (response.status >= 500 || reason === 'backend_unavailable') return { code: 'BACKEND_UNAVAILABLE', invite: null };
-      return { code: 'INVITE_INVALID', invite: null };
+    if (!response.ok || !data?.valid) {
+      return { code: mapInviteValidationFailure(response.status, data?.reason), invite: null };
     }
 
     const invite = data.invite;
@@ -643,8 +656,8 @@ export async function validateInvitationToken(token: string): Promise<InviteVali
       code: 'OK',
       invite: {
         id: invite.id,
-        company_id: invite.orgId,
-        organization_name: invite.orgName ?? null,
+        company_id: invite.company_id,
+        organization_name: invite.organization_name ?? null,
         email: invite.email,
         role: invite.role,
         created_by_user_id: '' as UUID,
@@ -652,9 +665,9 @@ export async function validateInvitationToken(token: string): Promise<InviteVali
         accepted_at: null,
         accepted_user_id: null,
         token: null,
-        expires_at: invite.expiresAt ?? null,
+        expires_at: invite.expires_at ?? null,
         status: invite.status ?? 'PENDING',
-        company_name: invite.orgName ?? null
+        company_name: invite.organization_name ?? null
       } as CompanyInvite & { company_name?: string | null }
     };
   } catch {
@@ -764,7 +777,7 @@ export async function acceptInviteByToken(input: { token: string; userId: UUID }
     body: JSON.stringify({ token: input.token })
   });
   const data = await response.json().catch(() => null as any);
-  if (isRouteMissingError(response.status, data)) {
+  if (isApiRouteUnavailable(response.status, data)) {
     const inviteId = await getInviteIdByTokenRpc(input.token);
     if (!inviteId) throw new Error('INVITE_INVALID: Invalid invite token.');
     return await acceptInvite({ inviteId, userId: input.userId });
@@ -773,8 +786,9 @@ export async function acceptInviteByToken(input: { token: string; userId: UUID }
     const reason = String(data?.reason ?? '').toLowerCase();
     if (reason === 'expired') throw new Error('INVITE_EXPIRED: This invitation has expired.');
     if (reason === 'accepted') throw new Error('INVITE_ACCEPTED: This invitation has already been accepted.');
+    if (reason === 'revoked') throw new Error('INVITE_INVALID: This invite link is invalid.');
     if (response.status >= 500 || reason === 'backend_unavailable') {
-      throw new Error('INVITE_BACKEND_UNAVAILABLE: Invite validation is not configured correctly.');
+      throw new Error('INVITE_BACKEND_UNAVAILABLE: We could not validate this invite right now.');
     }
     throw new Error(`INVITE_INVALID: ${data?.error || 'Invalid invite token.'}`);
   }
@@ -878,10 +892,10 @@ export function getInviteIdByToken(token: string): Promise<UUID | null> {
   })
     .then(async (response) => {
       const data = await response.json().catch(() => null as any);
-      if (isRouteMissingError(response.status, data)) {
+      if (isApiRouteUnavailable(response.status, data)) {
         return await getInviteIdByTokenRpc(cleanToken);
       }
-      if (!response.ok || !data?.ok || !data?.invite?.id) return null;
+      if (!response.ok || !data?.valid || !data?.invite?.id) return null;
       return data.invite.id as UUID;
     });
 }
@@ -894,13 +908,13 @@ export function toUserInviteMessage(message: string): string {
   const code = mapInviteErrorCode(message);
   switch (code) {
     case 'INVITE_EXPIRED':
-      return 'This invitation has expired. Ask your admin to resend it.';
+      return 'This invite has expired. Please request a new invite.';
     case 'INVITE_INVALID':
-      return 'This invitation link is invalid.';
+      return 'This invite link is invalid.';
     case 'INVITE_ACCEPTED':
-      return 'This invitation has already been accepted. Please log in.';
+      return 'This invite has already been used.';
     case 'INVITE_BACKEND_UNAVAILABLE':
-      return 'Invite validation is not configured correctly yet. Please contact support or ask your admin to finish the latest invite migration.';
+      return 'We could not validate this invite right now. Please try again.';
     case 'SEATS_FULL':
       return 'This organization has reached its seat limit. Contact your admin.';
     case 'ALREADY_MEMBER':

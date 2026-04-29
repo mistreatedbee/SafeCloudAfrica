@@ -260,7 +260,7 @@ export function UsersPage() {
         setLatestInviteLink(result.inviteLink ?? null);
         setInviteFeedback({
           type: 'error',
-          text: result.message || 'Invite created, but email failed. Copy link and send manually.'
+          text: result.message || 'Invite created, but email delivery needs configuration. Copy the invite link and send it manually.'
         });
       } else {
         setLatestInviteLink(null);
@@ -287,7 +287,7 @@ export function UsersPage() {
         setLatestInviteLink(result.inviteLink ?? null);
         setInviteFeedback({
           type: 'error',
-          text: result.message || 'Invite updated, but email failed. Copy the invite link and send it manually.'
+          text: result.message || 'Invite updated, but email delivery needs configuration. Copy the invite link and send it manually.'
         });
         return;
       }

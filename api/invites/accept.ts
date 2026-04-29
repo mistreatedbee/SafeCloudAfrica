@@ -1,13 +1,8 @@
 import { getServerInsforge, nowIso, readBearerToken, resolveServerUser } from '../_insforge.js';
 import { logStructuredLine, sendAlertWebhook } from '../_observability.js';
 import { applyNoStoreHeaders } from '../_response.js';
-import {
-  hashInviteToken,
-  isSignedInviteToken,
-  normalizeInviteStatus,
-  parseSignedInviteToken,
-  verifyInviteToken
-} from './_shared.js';
+import { resolveInviteToken } from './_resolver.js';
+import { normalizeInviteStatus } from './_shared.js';
 
 const MODULE = 'api.invites.accept';
 
@@ -68,46 +63,17 @@ export default async function handler(req: any, res: any) {
 
     logUserId = String(userId);
 
-    let inviteRes: any;
-    if (isSignedInviteToken(token)) {
-      const parsed = parseSignedInviteToken(token);
-      if (!parsed) return res.status(404).json({ ok: false, reason: 'not_found', error: 'Invalid invite link.' });
-      inviteRes = await insforge.database.from('company_invites').select('*').eq('id', parsed.inviteId).maybeSingle();
-      if (inviteRes.data && !verifyInviteToken(token, inviteRes.data)) {
-        return res.status(404).json({ ok: false, reason: 'not_found', error: 'Invalid invite link.' });
-      }
-    } else {
-      const tokenHash = hashInviteToken(token);
-      inviteRes = await insforge.database
-        .from('company_invites')
-        .select('*')
-        .or(`token_hash.eq.${tokenHash},token.eq.${token}`)
-        .limit(1)
-        .maybeSingle();
+    const inviteResult = await resolveInviteToken(insforge, token);
+    if (!inviteResult.ok) {
+      return res.status(inviteResult.status).json({
+        ok: false,
+        reason: inviteResult.reason,
+        error: inviteResult.error
+      });
     }
 
-    if (inviteRes.error || !inviteRes.data) {
-      return res.status(404).json({ ok: false, reason: 'not_found', error: 'Invalid invite link.' });
-    }
-
-    const invite = inviteRes.data as any;
+    const invite = inviteResult.invite as any;
     logOrgId = String(invite.company_id || '') || null;
-    const status = normalizeInviteStatus(invite.status);
-    const expiresAt = invite.expires_at ? new Date(invite.expires_at) : null;
-    const expired = !!expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date();
-
-    if (expired && (status === 'PENDING' || status === 'SENT')) {
-      await insforge.database
-        .from('company_invites')
-        .update({ status: 'EXPIRED' })
-        .eq('company_id', String(invite.company_id))
-        .eq('id', invite.id);
-      return res.status(410).json({ ok: false, reason: 'expired', error: 'Invite expired. Request a new invite.' });
-    }
-
-    if (status === 'ACCEPTED') return res.status(409).json({ ok: false, reason: 'accepted', error: 'Invite already used. Please log in.' });
-    if (status === 'CANCELLED') return res.status(409).json({ ok: false, reason: 'revoked', error: 'Invite revoked. Request a new invite.' });
-    if (!['PENDING', 'SENT'].includes(status)) return res.status(409).json({ ok: false, reason: 'not_found', error: 'Invalid invite link.' });
 
     const inviteEmail = String(invite.email || '').trim().toLowerCase();
     if (!inviteEmail || inviteEmail !== userEmail) {

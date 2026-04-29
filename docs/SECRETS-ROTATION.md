@@ -11,7 +11,7 @@ Used by [`api/email/send.ts`](../api/email/send.ts) for transactional email (inv
 5. **Revoke** the old Resend key in the dashboard after cutover.
 6. **Rollback**: restore the previous `RESEND_API_KEY` in Vercel and redeploy if something fails.
 
-If your sending domain changes, update **`EMAIL_FROM`** in Vercel to match a verified domain in Resend.
+If your sending domain changes, update **`EMAIL_FROM`** in Vercel to match a verified domain in Resend, such as `noreply@mg.safecloudafrica.com`. Do not use consumer domains like `gmail.com`, and remember that `resend.dev` is only suitable for limited test sending.
 
 ## `vercel.json` and InsForge URL
 

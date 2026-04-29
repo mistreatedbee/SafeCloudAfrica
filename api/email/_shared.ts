@@ -16,6 +16,9 @@ export type EmailActor = {
   organizationId: string | null;
 };
 
+const VERIFIED_DOMAIN_HELP =
+  'Email delivery is not configured for the current sender domain. Ask an administrator to verify the sending domain in Resend, then try again.';
+
 function asArray(value: string | string[]): string[] {
   return Array.isArray(value) ? value : [value];
 }
@@ -35,6 +38,26 @@ function looksLikeEmailAddress(value: string): boolean {
   if (!parts[0] || !parts[1]) return false;
   if (!parts[1].includes('.')) return false;
   return true;
+}
+
+export function normalizeEmailProviderError(error: unknown): string {
+  const detail = String(error ?? '').trim();
+  const lowered = detail.toLowerCase();
+  if (!detail) return 'Email delivery failed. Please try again.';
+
+  const isDomainVerificationIssue =
+    lowered.includes('domain is not verified') ||
+    lowered.includes('verify your domain') ||
+    lowered.includes('verified domain') ||
+    lowered.includes('sender domain') ||
+    lowered.includes('from address') ||
+    lowered.includes('from field') ||
+    lowered.includes('resend.dev') ||
+    (lowered.includes('403') && lowered.includes('domain'));
+
+  if (isDomainVerificationIssue) return VERIFIED_DOMAIN_HELP;
+
+  return detail;
 }
 
 export function validateResendConfig(): { ok: true; apiKey: string; from: string } | { ok: false; error: string } {
@@ -118,6 +141,7 @@ export async function sendTransactionalEmail(input: {
     const { error } = await resend.emails.send(emailPayload as any);
     if (error) {
       const msg = String((error as { message?: string }).message || error);
+      const publicMsg = normalizeEmailProviderError(msg);
       logStructuredLine({
         module: MODULE,
         level: 'error',
@@ -142,7 +166,7 @@ export async function sendTransactionalEmail(input: {
         user_id: input.actor.userId,
         organization_id: input.actor.organizationId
       });
-      return { ok: false, error: msg, status: 502 };
+      return { ok: false, error: publicMsg, status: 502 };
     }
 
     logStructuredLine({
@@ -165,6 +189,7 @@ export async function sendTransactionalEmail(input: {
     return { ok: true };
   } catch (err: any) {
     const msg = String(err?.message || err);
+    const publicMsg = normalizeEmailProviderError(msg);
     logStructuredLine({
       module: MODULE,
       level: 'error',
@@ -187,7 +212,7 @@ export async function sendTransactionalEmail(input: {
       user_id: input.actor.userId,
       organization_id: input.actor.organizationId
     });
-    return { ok: false, error: msg, status: 500 };
+    return { ok: false, error: publicMsg, status: 500 };
   }
 }
 

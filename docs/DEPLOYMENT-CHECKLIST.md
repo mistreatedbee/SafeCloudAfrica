@@ -11,7 +11,7 @@ Use this checklist when deploying the IDSMP upgrade to production.
   - `INSFORGE_ANON_KEY` — optional server copy for API routes
   - `INSFORGE_SERVICE_ROLE_KEY` — for platform operational events / server inserts (see superadmin health UI)
   - `APP_URL` or `VITE_APP_URL` — public site URL for invite links when request headers lack Host (Vercel sets `VERCEL_URL` automatically)
-  - `RESEND_API_KEY`, `EMAIL_FROM` — email (`api/email/send`)
+  - `RESEND_API_KEY`, `EMAIL_FROM` — email (`api/email/send`); `EMAIL_FROM` must use a Resend-verified domain you control (for example `noreply@mg.safecloudafrica.com`), not `gmail.com` or a `resend.dev` test sender for production
   - (Optional) `ALERT_WEBHOOK_URL`, `CRON_SECRET` — see `env.example`
   - (Optional) `VITE_ENABLE_DEMO_SEED=true` and `VITE_DEMO_SEED_TOKEN` for `/seed-demo` (disable or gate in production)
 - [ ] **`vercel.json` InsForge rewrites** must use the **same InsForge origin** as `INSFORGE_BASE_URL`. Static JSON cannot read env vars; after changing backend URL, run `node scripts/sync-vercel-insforge-rewrites.mjs` (see `docs/SECRETS-ROTATION.md`) or edit destinations manually, then commit and deploy.

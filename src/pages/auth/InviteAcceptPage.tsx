@@ -25,15 +25,15 @@ const containerVariants = {
 const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
 
 function inviteErrorForCode(code: InviteValidationResult['code']): string {
-  if (code === 'INVITE_EXPIRED') return 'This invitation has expired. Ask your admin to resend it.';
-  if (code === 'INVITE_ACCEPTED') return 'This invitation has already been accepted.';
-  if (code === 'BACKEND_UNAVAILABLE') return 'Invite validation is not configured correctly yet. Please contact support or ask your admin to finish the latest invite migration.';
-  return 'Invalid invite link.';
+  if (code === 'INVITE_EXPIRED') return 'This invite has expired. Please request a new invite.';
+  if (code === 'INVITE_ACCEPTED') return 'This invite has already been used.';
+  if (code === 'BACKEND_UNAVAILABLE') return 'We could not validate this invite right now. Please try again.';
+  return 'This invite link is invalid.';
 }
 
 function inviteTitleForCode(code: InviteValidationResult['code'] | null): string {
   if (code === 'BACKEND_UNAVAILABLE') return 'Invite System Error';
-  return 'Invalid or Expired Invite';
+  return 'Invite Error';
 }
 
 export function InviteAcceptPage() {
@@ -75,14 +75,14 @@ export function InviteAcceptPage() {
             return;
           }
           setInvite(validation.invite as CompanyInvite);
-          setCompanyName(validation.invite.company_name ?? 'Organization');
+          setCompanyName(validation.invite.organization_name ?? validation.invite.company_name ?? 'Organization');
           setLoading(false);
           return;
         }
 
         if (!inviteId) {
           setErrorCode('INVITE_INVALID');
-          setError('Invalid invite link.');
+          setError('This invite link is invalid.');
           setLoading(false);
           return;
         }

@@ -92,6 +92,10 @@
       "destination": "/api/invites/validate"
     },
     {
+      "source": "/api/invites/validate/(.*)",
+      "destination": "/api/invites/validate/$1"
+    },
+    {
       "source": "/api/invites/accept",
       "destination": "/api/invites/accept"
     },
