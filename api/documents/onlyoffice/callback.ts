@@ -1,6 +1,6 @@
-import { applyNoStoreHeaders } from '../_response.js';
-import { verifyJwtHs256 } from '../_jwt.js';
-import { applyJson, getServiceClientOrThrow, requireOnlyofficeConfigured } from './_shared.js';
+import { applyNoStoreHeaders } from '../../_response.js';
+import { verifyJwtHs256 } from '../../_jwt.js';
+import { applyJson, getServiceClientOrThrow, requireOnlyofficeConfigured } from '../_shared.js';
 
 type OnlyOfficeCallbackBody = {
   key?: string;
