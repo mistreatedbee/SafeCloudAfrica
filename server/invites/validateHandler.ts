@@ -1,7 +1,7 @@
-import { getServerInsforge } from '../_insforge.js';
-import { logStructuredLine, sendAlertWebhook } from '../_observability.js';
-import { applyNoStoreHeaders } from '../_response.js';
-import { resolveInviteToken, toPublicInvitePayload } from './_resolver.js';
+import { getServerInsforge } from '../../api/_insforge.js';
+import { logStructuredLine, sendAlertWebhook } from '../../api/_observability.js';
+import { applyNoStoreHeaders } from '../../api/_response.js';
+import { resolveInviteToken, toPublicInvitePayload } from './resolver.js';
 
 const MODULE = 'api.invites.validate';
 
@@ -41,28 +41,6 @@ export async function validateInviteHandler(req: any, res: any, tokenValue?: str
     const msg = String(err?.message || err);
     logStructuredLine({ module: MODULE, level: 'error', message: msg, organization_id: null });
     sendAlertWebhook({ kind: 'invite_api', module: MODULE, message: msg });
-    return res.status(500).json({ valid: false, reason: 'backend_unavailable', error: 'Could not validate invite.' });
-  }
-}
-
-export default async function handler(req: any, res: any) {
-  try {
-    return await validateInviteHandler(req, res);
-  } catch (err: any) {
-    const msg = String(err?.message || err);
-    if (msg) {
-      logStructuredLine({
-        module: MODULE,
-        level: 'error',
-        message: msg,
-        organization_id: null
-      });
-      sendAlertWebhook({
-        kind: 'invite_api',
-        module: MODULE,
-        message: msg
-      });
-    }
     return res.status(500).json({ valid: false, reason: 'backend_unavailable', error: 'Could not validate invite.' });
   }
 }

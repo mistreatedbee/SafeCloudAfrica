@@ -1,7 +1,7 @@
 import { getServerInsforge, nowIso, readBearerToken, resolveServerUser } from '../_insforge.js';
 import { logStructuredLine, sendAlertWebhook } from '../_observability.js';
 import { applyNoStoreHeaders } from '../_response.js';
-import { resolveInviteToken } from './_resolver.js';
+import { resolveInviteToken } from '../../server/invites/resolver.js';
 import { normalizeInviteStatus } from './_shared.js';
 
 const MODULE = 'api.invites.accept';

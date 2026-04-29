@@ -1,6 +1,6 @@
-import { applyNoStoreHeaders } from '../../_response.js';
-import { verifyJwtHs256 } from '../../_jwt.js';
-import { applyJson, getServiceClientOrThrow, requireOnlyofficeConfigured } from '../_shared.js';
+import { applyNoStoreHeaders } from '../../api/_response.js';
+import { verifyJwtHs256 } from '../../api/_jwt.js';
+import { applyJson, getServiceClientOrThrow, requireOnlyofficeConfigured } from '../../api/documents/_shared.js';
 
 type OnlyOfficeCallbackBody = {
   key?: string;
@@ -31,7 +31,7 @@ function corsHeaders() {
   };
 }
 
-export default async function handler(req: any, res: any) {
+export default async function onlyofficeCallbackHandler(req: any, res: any) {
   applyNoStoreHeaders(res);
 
   if (req.method === 'OPTIONS') {
@@ -50,16 +50,13 @@ export default async function handler(req: any, res: any) {
     const authToken = readAuthToken(req, body);
     if (!authToken) return applyJson(res, 403, { ok: false, error: 'Missing ONLYOFFICE callback token.' });
 
-    // We verify the callback JWT, but we don't depend on its exact payload shape.
     verifyJwtHs256<Record<string, unknown>>(authToken, jwtSecret);
 
     const versionId = String(body.key || '').trim();
     const status = Number(body.status || 0);
 
-    // Status codes: 2 means "document is ready for saving" in ONLYOFFICE.
     if (!versionId) return applyJson(res, 400, { ok: false, error: 'Missing key' });
     if (status !== 2) {
-      // Acknowledge other statuses so ONLYOFFICE doesn't keep retrying.
       res.setHeader('Content-Type', 'application/json');
       Object.entries(corsHeaders()).forEach(([k, v]) => res.setHeader(k, v));
       return res.status(200).send(JSON.stringify({ error: 0 }));
@@ -83,7 +80,6 @@ export default async function handler(req: any, res: any) {
       return applyJson(res, 409, { ok: false, error: 'Approved documents are read-only. Create a draft version to edit.' });
     }
 
-    // Download updated file from ONLYOFFICE.
     const fetched = await fetch(downloadUrl);
     if (!fetched.ok) {
       return applyJson(res, 502, { ok: false, error: `Failed to fetch updated file (${fetched.status})` });
@@ -104,7 +100,6 @@ export default async function handler(req: any, res: any) {
 
     const nextKey = (up as any)?.path ? String((up as any).path) : key;
 
-    // Update draft version to point at the newly uploaded object.
     const { error: patchErr } = await svc.database
       .from('document_versions')
       .update({
@@ -117,7 +112,6 @@ export default async function handler(req: any, res: any) {
       .eq('company_id', companyId);
     if (patchErr) return applyJson(res, 502, { ok: false, error: 'Failed to update version record' });
 
-    // Audit trail (best-effort)
     try {
       await svc.database.from('activity_logs').insert({
         company_id: companyId,

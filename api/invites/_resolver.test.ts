@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { isMalformedInviteToken, toPublicInvitePayload } from './_resolver';
+import { isMalformedInviteToken, toPublicInvitePayload } from '../../server/invites/resolver';
 import { signInviteToken } from './_shared';
 
 describe('invite resolver helpers', () => {

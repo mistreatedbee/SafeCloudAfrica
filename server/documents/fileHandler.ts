@@ -1,6 +1,11 @@
-import { applyNoStoreHeaders } from '../_response.js';
-import { verifyJwtHs256 } from '../_jwt.js';
-import { applyJson, canViewRestrictedDocuments, getDmsFileAccessSecret, getServiceClientOrThrow } from './_shared.js';
+import { applyNoStoreHeaders } from '../../api/_response.js';
+import { verifyJwtHs256 } from '../../api/_jwt.js';
+import {
+  applyJson,
+  canViewRestrictedDocuments,
+  getDmsFileAccessSecret,
+  getServiceClientOrThrow
+} from '../../api/documents/_shared.js';
 
 type FileTokenPayload = {
   aud: string;
@@ -14,7 +19,7 @@ type FileTokenPayload = {
   iat: number;
 };
 
-export default async function handler(req: any, res: any) {
+export default async function fileHandler(req: any, res: any) {
   applyNoStoreHeaders(res);
   if (req.method !== 'GET') return applyJson(res, 405, { ok: false, error: 'Method not allowed' });
 

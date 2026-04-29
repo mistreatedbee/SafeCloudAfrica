@@ -4,7 +4,7 @@ import {
   normalizeInviteStatus,
   parseSignedInviteToken,
   verifyInviteToken
-} from './_shared.js';
+} from '../../api/invites/_shared.js';
 
 export type InviteValidationReason =
   | 'malformed'

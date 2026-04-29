@@ -1,7 +1,16 @@
-import { applyNoStoreHeaders } from '../_response.js';
-import { signJwtHs256 } from '../_jwt.js';
-import { applyJson, canEditDocuments, canViewRestrictedDocuments, getAppPublicOrigin, getDmsFileAccessSecret, getViewerRole, requireOnlyofficeConfigured, requireViewer } from './_shared.js';
-import { getServerInsforge } from '../_insforge.js';
+import { applyNoStoreHeaders } from '../../api/_response.js';
+import { signJwtHs256 } from '../../api/_jwt.js';
+import {
+  applyJson,
+  canEditDocuments,
+  canViewRestrictedDocuments,
+  getAppPublicOrigin,
+  getDmsFileAccessSecret,
+  getViewerRole,
+  requireOnlyofficeConfigured,
+  requireViewer
+} from '../../api/documents/_shared.js';
+import { getServerInsforge } from '../../api/_insforge.js';
 
 type DocumentVersionRow = {
   id: string;
@@ -53,7 +62,7 @@ function getFriendlyEditorError(error: string): string {
   return String(error || 'Unable to open editor.');
 }
 
-export default async function handler(req: any, res: any) {
+export default async function editorConfigHandler(req: any, res: any) {
   applyNoStoreHeaders(res);
   if (req.method !== 'GET') return applyJson(res, 405, { ok: false, error: 'Method not allowed' });
 
@@ -187,7 +196,7 @@ export default async function handler(req: any, res: any) {
       documentType: type === 'cell' ? 'cell' : 'word',
       document: {
         fileType,
-        key: v.id, // used by callback to map save -> version id
+        key: v.id,
         title: filename,
         url: fileUrl,
         permissions: {
@@ -210,7 +219,6 @@ export default async function handler(req: any, res: any) {
       }
     };
 
-    // ONLYOFFICE uses a JWT to protect config + callback payloads when enabled on the doc server.
     const onlyofficeToken = signJwtHs256(editorConfig as any, jwtSecret, { expiresInSeconds: 10 * 60 });
 
     res.status(200).json({
