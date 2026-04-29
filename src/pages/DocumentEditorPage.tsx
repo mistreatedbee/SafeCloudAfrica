@@ -32,7 +32,7 @@ function toFriendlyEditorMessage(error: string | null | undefined): string {
     return 'Document editor is not configured yet. Please contact the system administrator.';
   }
   if (normalized.includes('pdf files are view/download only')) {
-    return 'PDF files cannot be edited. Please upload a Word or Excel document.';
+    return 'PDF files cannot be edited. Please download or view the file.';
   }
   if (normalized.includes('not supported')) {
     return 'This file type is not supported in the document editor.';
@@ -75,6 +75,7 @@ export function DocumentEditorPage() {
   const [fallbackFileUrl, setFallbackFileUrl] = React.useState<string | null>(null);
   const [fallbackDownloadUrl, setFallbackDownloadUrl] = React.useState<string | null>(null);
   const [fileName, setFileName] = React.useState<string | null>(null);
+  const [setupHint, setSetupHint] = React.useState<string | null>(null);
 
   const containerId = React.useMemo(() => `onlyoffice-doceditor-${versionId || 'unknown'}`, [versionId]);
   const editorRef = React.useRef<any>(null);
@@ -93,6 +94,7 @@ export function DocumentEditorPage() {
       setFallbackFileUrl(null);
       setFallbackDownloadUrl(null);
       setFileName(null);
+      setSetupHint(null);
       try {
         const { accessToken } = await ensureInsforgeSession({ reason: 'dms_onlyoffice_editor' });
         const res = await fetch(`/api/documents/editor-config?versionId=${encodeURIComponent(versionId)}&mode=${encodeURIComponent(mode)}`, {
@@ -107,6 +109,9 @@ export function DocumentEditorPage() {
         setFallbackDownloadUrl(payload.downloadUrl || payload.fileUrl || null);
         setFileName(payload.fileName || null);
         if (payload.editorAvailable === false || !payload.docServerOrigin || !payload.config || !payload.token) {
+          if (String(payload.error || '').toLowerCase().includes('onlyoffice_docserver_origin')) {
+            setSetupHint('Required Vercel environment variable: ONLYOFFICE_DOCSERVER_ORIGIN=https://your-onlyoffice-server-url');
+          }
           setError(payload.friendlyError || toFriendlyEditorMessage(payload.error));
           setLoading(false);
           return;
@@ -129,8 +134,11 @@ export function DocumentEditorPage() {
         setLoading(false);
       } catch (e: any) {
         if (cancelled) return;
-        console.error('Document editor failed to initialise', e);
-        setError(toFriendlyEditorMessage(String(e?.message || e)));
+        const message = String(e?.message || e);
+        if (message.toLowerCase().includes('onlyoffice_docserver_origin')) {
+          setSetupHint('Required Vercel environment variable: ONLYOFFICE_DOCSERVER_ORIGIN=https://your-onlyoffice-server-url');
+        }
+        setError(toFriendlyEditorMessage(message));
         setLoading(false);
       }
     }
@@ -161,6 +169,7 @@ export function DocumentEditorPage() {
             <div>
               <p className="text-sm font-semibold text-critical">Unable to open editor</p>
               <p className="text-sm text-charcoal-500 mt-1">{error}</p>
+              {setupHint ? <p className="text-xs text-charcoal-400 mt-2">{setupHint}</p> : null}
             </div>
           </div>
           {(fallbackFileUrl || fallbackDownloadUrl) && (

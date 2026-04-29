@@ -901,7 +901,7 @@ export function DocumentsPage() {
               </div>
               {displayVersion && isPdfVersion(displayVersion) ? (
                 <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-charcoal-600">
-                  PDF files cannot be edited. Please upload a Word or Excel document.
+                  PDF files cannot be edited. Please download or view the file.
                 </div>
               ) : null}
 

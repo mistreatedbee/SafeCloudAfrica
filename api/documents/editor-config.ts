@@ -45,7 +45,7 @@ function getFriendlyEditorError(error: string): string {
     return 'Document editor is not configured yet. Please contact the system administrator.';
   }
   if (normalized.includes('pdf files are view/download only')) {
-    return 'PDF files cannot be edited. Please upload a Word or Excel document.';
+    return 'PDF files cannot be edited. Please download or view the file.';
   }
   if (normalized.includes('not supported')) {
     return 'This file type is not supported in the document editor.';
