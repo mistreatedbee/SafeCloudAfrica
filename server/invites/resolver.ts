@@ -35,15 +35,9 @@ export type InviteResolutionResult =
   | { ok: true; invite: ResolvedInvite }
   | { ok: false; reason: InviteValidationReason; status: number; error: string };
 
-function isLegacyRawInviteToken(token: string): boolean {
-  return /^[0-9a-f]{64}$/i.test(token.trim());
-}
-
 export function isMalformedInviteToken(token: string): boolean {
   const cleanToken = token.trim();
-  if (!cleanToken) return true;
-  if (isSignedInviteToken(cleanToken)) return false;
-  return !isLegacyRawInviteToken(cleanToken);
+  return !cleanToken;
 }
 
 function invalidInvite(reason: InviteValidationReason, status: number, error: string): InviteResolutionResult {

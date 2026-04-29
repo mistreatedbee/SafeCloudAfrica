@@ -16,6 +16,11 @@ describe('invite resolver helpers', () => {
     expect(isMalformedInviteToken('a'.repeat(64))).toBe(false);
   });
 
+  it('accepts legacy non-hex invite tokens', () => {
+    expect(isMalformedInviteToken('legacy-token-123')).toBe(false);
+    expect(isMalformedInviteToken('11111111-1111-1111-1111-111111111111')).toBe(false);
+  });
+
   it('accepts signed invite tokens', () => {
     const token = signInviteToken({
       inviteId: '11111111-1111-1111-1111-111111111111',

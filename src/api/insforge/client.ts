@@ -10,17 +10,27 @@ const configuredAnonKey = ((import.meta as any)?.env?.VITE_INSFORGE_ANON_KEY as 
 
 function resolveBaseUrl(rawBaseUrl: string): string {
   if (typeof window === 'undefined') return rawBaseUrl;
+  const currentOrigin = window.location.origin;
+  const currentHost = window.location.hostname.toLowerCase();
+  const isLocalHost = currentHost === 'localhost' || currentHost === '127.0.0.1';
+
+  // In production, prefer the Vercel same-origin proxy so auth/session calls and REST calls
+  // share the platform rewrites and compatibility shims instead of hitting InsForge directly.
+  if (!isLocalHost) {
+    return currentOrigin;
+  }
+
   if (!rawBaseUrl) {
     // Prevent SDK fallback to localhost:7130 when env is missing in production.
     // Same-origin may work when the hosting platform proxies `/api/*` to InsForge,
     // but the recommended setup is to provide the actual InsForge base URL.
-    return window.location.origin;
+    return currentOrigin;
   }
   try {
     return new URL(rawBaseUrl).origin;
   } catch {
     // If base URL is relative, normalize to absolute.
-    if (rawBaseUrl.startsWith('/')) return `${window.location.origin}${rawBaseUrl}`;
+    if (rawBaseUrl.startsWith('/')) return `${currentOrigin}${rawBaseUrl}`;
   }
   return rawBaseUrl;
 }
