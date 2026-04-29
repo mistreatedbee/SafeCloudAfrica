@@ -99,7 +99,7 @@ export default async function handler(req: any, res: any) {
     const bucket = String(v.storage_bucket || 'sca-documents');
 
     const blob = new Blob([buf], { type: String(v.mime_type || 'application/octet-stream') });
-    const { data: up, error: upErr } = await svc.storage.from(bucket).upload(key, blob as any, { upsert: false });
+    const { data: up, error: upErr } = await svc.storage.from(bucket).upload(key, blob as any);
     if (upErr) return applyJson(res, 502, { ok: false, error: 'Failed to upload updated file' });
 
     const nextKey = (up as any)?.path ? String((up as any).path) : key;
