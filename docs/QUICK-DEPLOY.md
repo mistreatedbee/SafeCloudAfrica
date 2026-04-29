@@ -18,8 +18,13 @@ SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';
 ```
 VITE_INSFORGE_BASE_URL=https://your-project.insforge.app
 VITE_INSFORGE_ANON_KEY=your-anon-key-here
+INSFORGE_BASE_URL=https://your-project.insforge.app
 VITE_API_MODE=insforge
 ```
+
+**Important**:
+- keep `vercel.json` routing `/api/*` through `/api/_insforge-proxy`
+- redeploy after auth proxy changes so production picks up the compatibility layer
 
 **Deploy**:
 ```bash
@@ -39,6 +44,7 @@ node scripts/seed-demo.mjs
 
 Visit your Vercel URL and:
 - Sign up a new account
+- Sign in and confirm there is no `405` for `/api/auth/sessions` or `/api/auth/refresh`
 - Create incident/NCR/risk/task
 - Check dashboard
 

@@ -14,7 +14,10 @@ Use this checklist when deploying the IDSMP upgrade to production.
   - `RESEND_API_KEY`, `EMAIL_FROM` — email (`api/email/send`); `EMAIL_FROM` must use a Resend-verified domain you control (for example `noreply@mg.safecloudafrica.com`), not `gmail.com` or a `resend.dev` test sender for production
   - (Optional) `ALERT_WEBHOOK_URL`, `CRON_SECRET` — see `env.example`
   - (Optional) `VITE_ENABLE_DEMO_SEED=true` and `VITE_DEMO_SEED_TOKEN` for `/seed-demo` (disable or gate in production)
-- [ ] **`vercel.json` InsForge rewrites** must use the **same InsForge origin** as `INSFORGE_BASE_URL`. Static JSON cannot read env vars; after changing backend URL, run `node scripts/sync-vercel-insforge-rewrites.mjs` (see `docs/SECRETS-ROTATION.md`) or edit destinations manually, then commit and deploy.
+- [ ] **`vercel.json` proxy shape** routes through local Vercel handlers, not directly to InsForge:
+  - `/api/(.*)` -> `/api/_insforge-proxy?path=$1`
+  - `/functions/(.*)` -> `/api/_insforge-functions?path=$1`
+  - after changing auth proxy behavior or Vercel rewrites, redeploy so production serves the updated proxy code
 - [ ] **Build**: `npm run build` succeeds; no `localhost` or dev URLs in production build.
 - [ ] **Redirects**: SPA fallback configured (e.g. `/* /index.html 200`).
 
@@ -44,6 +47,10 @@ Use this checklist when deploying the IDSMP upgrade to production.
 After deployment, verify:
 
 - [ ] **Auth**: Login, logout, session persistence; password reset flow.
+- [ ] **Auth proxy compatibility**:
+  - sign in with a valid account and confirm the browser does not show `405` for `/api/auth/sessions`
+  - refresh the app and confirm `/api/auth/refresh` does not leave the app stuck signed out
+  - if `405` appears, verify production is on the latest deployment and serving the proxy-based `vercel.json`
 - [ ] **Multi-tenant**: Create company → invite user → accept invite; data isolated per company.
 - [ ] **RLS**: Second company cannot see first company’s data (e.g. incidents, tasks, NCRs).
 - [ ] **Roles**: Admin/Manager see Users & Settings; Employee sees limited create (e.g. incidents, PJO); Auditor read-only on audits/NCRs/inspections.

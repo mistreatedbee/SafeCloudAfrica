@@ -156,11 +156,33 @@ In Vercel project settings → Environment Variables, add:
 ```
 VITE_INSFORGE_BASE_URL=https://your-project.insforge.app
 VITE_INSFORGE_ANON_KEY=your-public-anon-key
+INSFORGE_BASE_URL=https://your-project.insforge.app
+INSFORGE_ANON_KEY=your-public-anon-key
 VITE_API_MODE=insforge
 VITE_SHOW_ENV_DEBUG=false
 ```
 
-### Step 2: Deploy
+### Step 2: Confirm Proxy-Based `vercel.json`
+
+Production must route app requests through the local compatibility proxy:
+
+```json
+{
+  "source": "/api/(.*)",
+  "destination": "/api/_insforge-proxy?path=$1"
+}
+```
+
+```json
+{
+  "source": "/functions/(.*)",
+  "destination": "/api/_insforge-functions?path=$1"
+}
+```
+
+Do not deploy an older configuration that rewrites `/api/*` directly to InsForge, or hosted auth/session compatibility fallbacks will be bypassed.
+
+### Step 3: Deploy
 
 ```bash
 # Option A: Automatic (GitHub)
@@ -171,7 +193,7 @@ VITE_SHOW_ENV_DEBUG=false
 vercel deploy --prod
 ```
 
-### Step 3: Verify Deployment
+### Step 4: Verify Deployment
 
 ```bash
 # Check that the site is live
@@ -235,23 +257,12 @@ INSERT INTO public.company_memberships (
 
 ### 1. Authentication Flow
 
-```bash
-# Test sign up
-curl -X POST https://your-project.insforge.app/auth/v1/signup \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@company.com",
-    "password": "SecurePassword123!"
-  }'
-
-# Test sign in
-curl -X POST https://your-project.insforge.app/auth/v1/token?grant_type=password \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@company.com",
-    "password": "SecurePassword123!"
-  }'
-```
+- Sign in through the deployed app with a valid user.
+- Confirm the browser network tab does not show `405` for:
+  - `POST /api/auth/sessions`
+  - `POST /api/auth/refresh`
+- Refresh the page and confirm the session restores correctly.
+- Leave the app idle long enough to trigger the session manager and confirm silent refresh does not force a false logout.
 
 ### 2. API Connectivity
 
@@ -384,7 +395,11 @@ curl -I https://your-project.insforge.app
 
 ### Slow Login / Auth Issues
 
-**Solution**: Check PostgREST rate limiting and increase if needed in InsForge settings.
+**Solution**: First inspect the deployed browser network tab.
+
+- If `POST /api/auth/sessions` or `POST /api/auth/refresh` returns `405`, production is likely serving an older deploy or bypassing the Vercel auth proxy.
+- Confirm the latest deployment uses the proxy-based `vercel.json` routes and redeploy.
+- If the latest deployment is already live, check Vercel function logs for `api/_insforge-proxy` to confirm the compatibility fallback is running.
 
 ### RLS Denying Valid Requests
 
