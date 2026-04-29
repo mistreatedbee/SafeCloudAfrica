@@ -1,4 +1,4 @@
-import { getServerInsforge } from '../../api/_insforge.js';
+import { getServerInsforge, getServiceInsforge } from '../../api/_insforge.js';
 import { logStructuredLine, sendAlertWebhook } from '../../api/_observability.js';
 import { applyNoStoreHeaders } from '../../api/_response.js';
 import { resolveInviteToken, toPublicInvitePayload } from './resolver.js';
@@ -14,7 +14,7 @@ export async function validateInviteHandler(req: any, res: any, tokenValue?: str
   const token = String(tokenValue ?? req.query?.token ?? '').trim();
 
   try {
-    const insforge = getServerInsforge();
+    const insforge = getServiceInsforge() ?? getServerInsforge();
     const result = await resolveInviteToken(insforge, token);
     if (!result.ok) {
       if (result.reason === 'backend_unavailable') {
