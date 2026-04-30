@@ -1,6 +1,6 @@
-import { forwardDatabaseRoute, getRouteSegment } from '../_forward.js';
+import { forwardDatabaseRoute, getRouteSegment } from '../server/databaseProxy.js';
 
-const MODULE = 'api.database.records';
+const MODULE = 'api.database-records';
 
 export default async function handler(req: any, res: any) {
   const path = getRouteSegment(req, 'path');

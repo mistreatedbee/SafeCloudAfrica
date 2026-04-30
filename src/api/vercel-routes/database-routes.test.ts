@@ -70,7 +70,7 @@ describe('concrete database API routes', () => {
   });
 
   it('POST /api/database/rpc/:functionName forwards to the InsForge RPC endpoint', async () => {
-    const { default: handler } = await import('../../../api/database/rpc/[functionName]');
+    const { default: handler } = await import('../../../api/database-rpc');
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { 'content-type': 'application/json' }
@@ -93,7 +93,7 @@ describe('concrete database API routes', () => {
   });
 
   it('database RPC route forwards missing-auth upstream 401 instead of returning a Vercel 405', async () => {
-    const { default: handler } = await import('../../../api/database/rpc/[functionName]');
+    const { default: handler } = await import('../../../api/database-rpc');
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'AUTH_INVALID_CREDENTIALS' }), {
       status: 401,
       headers: { 'content-type': 'application/json' }
@@ -115,7 +115,7 @@ describe('concrete database API routes', () => {
   });
 
   it('GET /api/database/records/:path forwards to the InsForge records endpoint', async () => {
-    const { default: handler } = await import('../../../api/database/records/[...path]');
+    const { default: handler } = await import('../../../api/database-records');
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([{ role: 'owner' }]), {
       status: 200,
       headers: { 'content-type': 'application/json' }
@@ -137,7 +137,7 @@ describe('concrete database API routes', () => {
   });
 
   it('database records route forwards missing-auth upstream 401 instead of returning SPA HTML', async () => {
-    const { default: handler } = await import('../../../api/database/records/[...path]');
+    const { default: handler } = await import('../../../api/database-records');
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'AUTH_INVALID_CREDENTIALS' }), {
       status: 401,
       headers: { 'content-type': 'application/json' }

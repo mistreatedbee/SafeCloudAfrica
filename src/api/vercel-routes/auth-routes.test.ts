@@ -112,7 +112,7 @@ describe('concrete auth API routes', () => {
   });
 
   it('GET /api/auth/sessions/current falls back to legacy me payloads', async () => {
-    const { default: handler } = await import('../../../api/auth/[...path]');
+    const { default: handler } = await import('../../../api/auth-current');
     fetchMock
       .mockResolvedValueOnce(new Response('method not allowed', { status: 405 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'user-2' }), {
@@ -120,7 +120,7 @@ describe('concrete auth API routes', () => {
         headers: { 'content-type': 'application/json' }
       }));
 
-    const req = { method: 'GET', query: { path: ['sessions', 'current'] }, headers: {} };
+    const req = { method: 'GET', headers: {} };
     const res = createRes();
 
     await handler(req, res);

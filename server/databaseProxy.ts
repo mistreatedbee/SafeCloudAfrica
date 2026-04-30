@@ -1,12 +1,12 @@
-import { applyNoStoreHeaders } from '../_response.js';
-import { logStructuredLine } from '../_observability.js';
+import { applyNoStoreHeaders } from '../api/_response.js';
+import { logStructuredLine } from '../api/_observability.js';
 import {
   buildForwardHeaders,
   buildUpstreamUrl,
   getProxyBody,
   startProxy,
   writeUpstreamResponse
-} from '../_insforge-proxy/_shared.js';
+} from '../api/_insforge-proxy/_shared.js';
 
 const UPSTREAM_TIMEOUT_MS = 15_000;
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);

@@ -116,6 +116,18 @@
       "destination": "/api/health/insforge-db"
     },
     {
+      "source": "/api/auth/sessions/current",
+      "destination": "/api/auth-current"
+    },
+    {
+      "source": "/api/database/rpc/(.*)",
+      "destination": "/api/database-rpc?functionName=$1"
+    },
+    {
+      "source": "/api/database/records/(.*)",
+      "destination": "/api/database-records?path=$1"
+    },
+    {
       "source": "/api/_insforge-proxy/(.*)",
       "destination": "/api/_insforge-proxy"
     },
