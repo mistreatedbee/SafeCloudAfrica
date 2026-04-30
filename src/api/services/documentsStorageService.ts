@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { uploadInsforgeStorageFile } from './insforgeStorageUpload';
 
 export const DOCUMENTS_BUCKET = 'sca-documents';
 const ALLOWED_DOCUMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx']);
@@ -24,10 +25,19 @@ export async function uploadDocumentFile(input: { companyId: string; file: File 
 
   const safeName = sanitizeFileName(input.file.name || 'document');
   const key = `${input.companyId}/${Date.now()}-${safeName}`;
-  const { data, error } = await insforge.storage.from(DOCUMENTS_BUCKET).upload(key, input.file);
-  if (error) throw new Error('File upload failed. Please try again.');
-  if (!data) throw new Error('Upload failed.');
-  return { bucket: DOCUMENTS_BUCKET, key: data.path ?? key };
+  try {
+    const uploaded = await uploadInsforgeStorageFile({
+      bucket: DOCUMENTS_BUCKET,
+      key,
+      file: input.file,
+      filename: input.file.name || safeName
+    });
+    return { bucket: DOCUMENTS_BUCKET, key: uploaded.key };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message.toLowerCase().includes('confirmation failed')) throw error;
+    throw new Error('File upload failed. Please try again.');
+  }
 }
 
 export async function downloadDocumentFile(input: { bucket: string; key: string }): Promise<Blob> {

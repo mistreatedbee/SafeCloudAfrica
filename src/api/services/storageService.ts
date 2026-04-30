@@ -1,5 +1,6 @@
 import { insforge } from '../insforge/client';
 import { ensureInsforgeSession } from '../insforge/ensureSession';
+import { getInsforgeStoragePublicUrl, uploadInsforgeStorageFile } from './insforgeStorageUpload';
 
 export type StorageBucket =
   | 'sca-documents'
@@ -28,31 +29,21 @@ export async function uploadFile(
     metadata?: Record<string, string>;
   }
 ): Promise<UploadResult> {
-  await ensureInsforgeSession();
-
   // Generate key if not provided
   const key = options?.key || `${Date.now()}-${file.name}`;
 
-  // Upload to storage
-  const { data, error } = await insforge.storage
-    .from(bucket)
-    .upload(key, file, {
-      cacheControl: '3600',
-      upsert: false,
-      metadata: options?.metadata
-    });
-
-  if (error) throw new Error(`Upload failed: ${error.message}`);
-
-  // Get public URL
-  const { data: urlData } = insforge.storage
-    .from(bucket)
-    .getPublicUrl(key);
+  const result = await uploadInsforgeStorageFile({
+    bucket,
+    key,
+    file,
+    filename: file.name,
+    metadata: options?.metadata
+  });
 
   return {
     bucket,
-    key,
-    url: urlData.publicUrl,
+    key: result.key,
+    url: getPublicUrl(bucket, result.key),
     size: file.size,
     mimeType: file.type
   };
@@ -66,7 +57,7 @@ export async function deleteFile(bucket: StorageBucket, key: string): Promise<vo
 
   const { error } = await insforge.storage
     .from(bucket)
-    .remove([key]);
+    .remove(key);
 
   if (error) throw new Error(`Delete failed: ${error.message}`);
 }
@@ -75,11 +66,11 @@ export async function deleteFile(bucket: StorageBucket, key: string): Promise<vo
  * Get public URL for a file
  */
 export function getPublicUrl(bucket: StorageBucket, key: string): string {
-  const { data } = insforge.storage
-    .from(bucket)
-    .getPublicUrl(key);
-
-  return data.publicUrl;
+  try {
+    return insforge.storage.from(bucket).getPublicUrl(key);
+  } catch {
+    return getInsforgeStoragePublicUrl(bucket, key);
+  }
 }
 
 /**
@@ -97,10 +88,10 @@ export async function listFiles(
 
   const { data, error } = await insforge.storage
     .from(bucket)
-    .list(options?.prefix, {
+    .list({
+      prefix: options?.prefix,
       limit: options?.limit || 100,
-      offset: options?.offset || 0,
-      sortBy: { column: 'name', order: 'asc' }
+      offset: options?.offset || 0
     });
 
   if (error) throw new Error(`List failed: ${error.message}`);

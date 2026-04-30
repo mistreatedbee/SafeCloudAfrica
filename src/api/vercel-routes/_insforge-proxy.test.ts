@@ -152,4 +152,29 @@ describe('api/_insforge-proxy', () => {
     expect(sharedMocks.writeUpstreamResponse).toHaveBeenCalledTimes(1);
     expect(res.statusCode).toBe(200);
   });
+
+  it('passes storage confirm-upload routes straight through', async () => {
+    const { default: handler } = await import('../../../api/insforge-proxy');
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ key: 'company/doc.pdf' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }));
+
+    const req = {
+      method: 'POST',
+      query: { path: 'storage/buckets/sca-documents/objects/company%2Fdoc.pdf/confirm-upload' },
+      body: { size: 123, contentType: 'application/pdf' },
+      headers: {}
+    };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://insforge.example/api/storage/buckets/sca-documents/objects/company%2Fdoc.pdf/confirm-upload'
+    );
+    expect(sharedMocks.writeUpstreamResponse).toHaveBeenCalledTimes(1);
+    expect(res.statusCode).toBe(200);
+  });
 });
