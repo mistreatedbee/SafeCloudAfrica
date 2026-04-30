@@ -17,8 +17,8 @@ If your sending domain changes, update **`EMAIL_FROM`** in Vercel to match a ver
 
 This repo now uses a **same-origin Vercel proxy** for auth and API compatibility:
 
-- `/api/(.*)` -> `/api/_insforge-proxy?path=$1`
-- `/functions/(.*)` -> `/api/_insforge-functions?path=$1`
+- `/api/(.*)` -> `/api/insforge-proxy?path=$1`
+- `/functions/(.*)` -> `/api/insforge-functions?path=$1`
 
 Those rewrite targets are intentionally local Vercel functions, not direct InsForge URLs. The proxy reads `INSFORGE_BASE_URL` / `VITE_INSFORGE_BASE_URL` at runtime and applies auth compatibility shims for legacy tenants.
 

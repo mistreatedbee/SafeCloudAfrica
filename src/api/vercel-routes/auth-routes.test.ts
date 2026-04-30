@@ -54,7 +54,7 @@ function createRes(): TestResponse {
   };
 }
 
-describe('concrete auth API routes', () => {
+describe('auth API routes through api/_insforge-proxy', () => {
   const fetchMock = vi.fn();
   const originalFetch = globalThis.fetch;
 
@@ -70,7 +70,7 @@ describe('concrete auth API routes', () => {
   });
 
   it('POST /api/auth/sessions falls back to legacy login when upstream sessions is unsupported', async () => {
-    const { default: handler } = await import('../../../api/auth/sessions');
+    const { default: handler } = await import('../../../api/insforge-proxy');
     fetchMock
       .mockResolvedValueOnce(new Response('method not allowed', { status: 405 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ accessToken: 'token-1' }), {
@@ -78,7 +78,7 @@ describe('concrete auth API routes', () => {
         headers: { 'content-type': 'application/json' }
       }));
 
-    const req = { method: 'POST', body: { email: 'user@example.com', password: 'secret' }, headers: {} };
+    const req = { method: 'POST', query: { path: 'auth/sessions' }, body: { email: 'user@example.com', password: 'secret' }, headers: {} };
     const res = createRes();
 
     await handler(req, res);
@@ -91,7 +91,7 @@ describe('concrete auth API routes', () => {
   });
 
   it('GET /api/auth/sessions reads the current session and normalizes legacy me payloads', async () => {
-    const { default: handler } = await import('../../../api/auth/sessions');
+    const { default: handler } = await import('../../../api/insforge-proxy');
     fetchMock
       .mockResolvedValueOnce(new Response('not found', { status: 404 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'user-1' }), {
@@ -99,7 +99,7 @@ describe('concrete auth API routes', () => {
         headers: { 'content-type': 'application/json' }
       }));
 
-    const req = { method: 'GET', headers: {} };
+    const req = { method: 'GET', query: { path: 'auth/sessions/current' }, headers: {} };
     const res = createRes();
 
     await handler(req, res);
@@ -112,10 +112,10 @@ describe('concrete auth API routes', () => {
   });
 
   it.each([401, 403, 405])('POST /api/auth/refresh maps upstream %s to SDK fallback response', async (statusCode) => {
-    const { default: handler } = await import('../../../api/auth/refresh');
+    const { default: handler } = await import('../../../api/insforge-proxy');
     fetchMock.mockResolvedValueOnce(new Response('refresh unavailable', { status: statusCode }));
 
-    const req = { method: 'POST', headers: {} };
+    const req = { method: 'POST', query: { path: 'auth/refresh' }, headers: {} };
     const res = createRes();
 
     await handler(req, res);
@@ -129,15 +129,17 @@ describe('concrete auth API routes', () => {
     });
   });
 
-  it('returns 405 only for unsupported concrete auth route methods', async () => {
-    const { default: handler } = await import('../../../api/auth/refresh');
-    const req = { method: 'GET', headers: {} };
+  it('passes unsupported auth route methods through the proxy', async () => {
+    const { default: handler } = await import('../../../api/insforge-proxy');
+    fetchMock.mockResolvedValueOnce(new Response('method not allowed', { status: 405 }));
+
+    const req = { method: 'GET', query: { path: 'auth/refresh' }, headers: {} };
     const res = createRes();
 
     await handler(req, res);
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(res.statusCode).toBe(405);
-    expect(res.headers.Allow).toBe('POST');
+    expect(sharedMocks.writeUpstreamResponse).toHaveBeenCalledTimes(1);
   });
 });

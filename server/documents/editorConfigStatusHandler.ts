@@ -1,5 +1,5 @@
-import { applyNoStoreHeaders } from '../_response.js';
-import { getAppPublicOrigin, requireOnlyofficeConfigured } from './_shared.js';
+import { applyNoStoreHeaders } from '../../api/_response.js';
+import { getAppPublicOrigin, requireOnlyofficeConfigured } from '../../api/documents/_shared.js';
 
 export default async function handler(_req: any, res: any) {
   applyNoStoreHeaders(res);

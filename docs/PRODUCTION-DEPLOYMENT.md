@@ -169,14 +169,14 @@ Production must route app requests through the local compatibility proxy:
 ```json
 {
   "source": "/api/(.*)",
-  "destination": "/api/_insforge-proxy?path=$1"
+  "destination": "/api/insforge-proxy?path=$1"
 }
 ```
 
 ```json
 {
   "source": "/functions/(.*)",
-  "destination": "/api/_insforge-functions?path=$1"
+  "destination": "/api/insforge-functions?path=$1"
 }
 ```
 
@@ -399,7 +399,7 @@ curl -I https://your-project.insforge.app
 
 - If `POST /api/auth/sessions` or `POST /api/auth/refresh` returns `405`, production is likely serving an older deploy or bypassing the Vercel auth proxy.
 - Confirm the latest deployment uses the proxy-based `vercel.json` routes and redeploy.
-- If the latest deployment is already live, check Vercel function logs for `api/_insforge-proxy` to confirm the compatibility fallback is running.
+- If the latest deployment is already live, check Vercel function logs for `api/insforge-proxy` to confirm the compatibility fallback is running.
 
 ### RLS Denying Valid Requests
 

@@ -1,7 +1,7 @@
-import { addDaysIso, getServerInsforge, nowIso, readBearerToken, resolveServerUser } from '../_insforge.js';
-import { logStructuredLine, sendAlertWebhook } from '../_observability.js';
-import { applyNoStoreHeaders } from '../_response.js';
-import { sendTransactionalEmail } from '../email/_shared.js';
+import { addDaysIso, getServerInsforge, nowIso, readBearerToken, resolveServerUser } from '../../api/_insforge.js';
+import { logStructuredLine, sendAlertWebhook } from '../../api/_observability.js';
+import { applyNoStoreHeaders } from '../../api/_response.js';
+import { sendTransactionalEmail } from '../../api/email/_shared.js';
 import {
   buildInviteLink,
   generateRawInviteToken,
@@ -10,7 +10,7 @@ import {
   resolvePublicOrigin,
   signInviteToken,
   toInviteEmailHtml
-} from './_shared.js';
+} from '../../api/invites/_shared.js';
 
 const MODULE = 'api.invites.create';
 

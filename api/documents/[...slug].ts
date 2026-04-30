@@ -1,4 +1,5 @@
 import { applyNoStoreHeaders } from '../_response.js';
+import editorConfigStatusHandler from '../../server/documents/editorConfigStatusHandler.js';
 import editorConfigHandler from '../../server/documents/editorConfigHandler.js';
 import fileHandler from '../../server/documents/fileHandler.js';
 import onlyofficeCallbackHandler from '../../server/documents/onlyofficeCallbackHandler.js';
@@ -11,6 +12,10 @@ export default async function handler(req: any, res: any) {
 
   if (slug.length === 1 && slug[0] === 'editor-config') {
     return editorConfigHandler(req, res);
+  }
+
+  if (slug.length === 1 && slug[0] === 'editor-config-status') {
+    return editorConfigStatusHandler(req, res);
   }
 
   if (slug.length === 1 && slug[0] === 'file') {

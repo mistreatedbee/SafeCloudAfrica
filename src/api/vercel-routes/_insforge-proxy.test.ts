@@ -73,7 +73,7 @@ describe('api/_insforge-proxy', () => {
   });
 
   it('falls back from auth/sessions to legacy auth/login on upstream 405', async () => {
-    const { default: handler } = await import('../../../api/_insforge-proxy');
+    const { default: handler } = await import('../../../api/insforge-proxy');
     fetchMock
       .mockResolvedValueOnce(new Response('method not allowed', { status: 405 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ accessToken: 'token-1' }), {
@@ -94,7 +94,7 @@ describe('api/_insforge-proxy', () => {
   });
 
   it('falls back from auth/sessions/current to legacy auth/me on upstream 405 and normalizes payload', async () => {
-    const { default: handler } = await import('../../../api/_insforge-proxy');
+    const { default: handler } = await import('../../../api/insforge-proxy');
     fetchMock
       .mockResolvedValueOnce(new Response('method not allowed', { status: 405 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'user-1', email: 'user@example.com' }), {
@@ -119,7 +119,7 @@ describe('api/_insforge-proxy', () => {
   });
 
   it.each([401, 403, 405])('maps auth/refresh upstream %s to a local 404 payload', async (statusCode) => {
-    const { default: handler } = await import('../../../api/_insforge-proxy');
+    const { default: handler } = await import('../../../api/insforge-proxy');
     fetchMock.mockResolvedValueOnce(new Response('refresh unavailable', { status: statusCode }));
 
     const req = { method: 'POST', query: { path: 'auth/refresh' }, headers: {} };
@@ -136,7 +136,7 @@ describe('api/_insforge-proxy', () => {
   });
 
   it('passes non-auth routes straight through', async () => {
-    const { default: handler } = await import('../../../api/_insforge-proxy');
+    const { default: handler } = await import('../../../api/insforge-proxy');
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { 'content-type': 'application/json' }

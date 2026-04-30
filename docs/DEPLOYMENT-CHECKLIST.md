@@ -15,8 +15,8 @@ Use this checklist when deploying the IDSMP upgrade to production.
   - (Optional) `ALERT_WEBHOOK_URL`, `CRON_SECRET` — see `env.example`
   - (Optional) `VITE_ENABLE_DEMO_SEED=true` and `VITE_DEMO_SEED_TOKEN` for `/seed-demo` (disable or gate in production)
 - [ ] **`vercel.json` proxy shape** routes through local Vercel handlers, not directly to InsForge:
-  - `/api/(.*)` -> `/api/_insforge-proxy?path=$1`
-  - `/functions/(.*)` -> `/api/_insforge-functions?path=$1`
+  - `/api/(.*)` -> `/api/insforge-proxy?path=$1`
+  - `/functions/(.*)` -> `/api/insforge-functions?path=$1`
   - after changing auth proxy behavior or Vercel rewrites, redeploy so production serves the updated proxy code
 - [ ] **Build**: `npm run build` succeeds; no `localhost` or dev URLs in production build.
 - [ ] **Redirects**: SPA fallback configured (e.g. `/* /index.html 200`).

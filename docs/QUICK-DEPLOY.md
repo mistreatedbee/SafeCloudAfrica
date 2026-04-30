@@ -23,7 +23,7 @@ VITE_API_MODE=insforge
 ```
 
 **Important**:
-- keep `vercel.json` routing `/api/*` through `/api/_insforge-proxy`
+- keep `vercel.json` routing `/api/*` through `/api/insforge-proxy`
 - redeploy after auth proxy changes so production picks up the compatibility layer
 
 **Deploy**:

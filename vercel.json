@@ -120,20 +120,16 @@
       "destination": "/api/documents/editor-config"
     },
     {
+      "source": "/api/documents/editor-config-status",
+      "destination": "/api/documents/editor-config-status"
+    },
+    {
       "source": "/api/documents/file",
       "destination": "/api/documents/file"
     },
     {
       "source": "/api/documents/onlyoffice/callback",
       "destination": "/api/documents/onlyoffice/callback"
-    },
-    {
-      "source": "/api/auth/sessions/current",
-      "destination": "https://pas375jb.us-west.insforge.app/api/auth/sessions/current"
-    },
-    {
-      "source": "/api/auth/logout",
-      "destination": "https://pas375jb.us-west.insforge.app/api/auth/logout"
     },
     {
       "source": "/api/database/rpc/(.*)",
@@ -145,19 +141,19 @@
     },
     {
       "source": "/api/_insforge-proxy/(.*)",
-      "destination": "/api/_insforge-proxy"
+      "destination": "/api/insforge-proxy?path=$1"
     },
     {
       "source": "/api/_insforge-functions/(.*)",
-      "destination": "/api/_insforge-functions"
+      "destination": "/api/insforge-functions?path=$1"
     },
     {
       "source": "/functions/(.*)",
-      "destination": "/api/_insforge-functions?path=$1"
+      "destination": "/api/insforge-functions?path=$1"
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api/_insforge-proxy?path=$1"
+      "destination": "/api/insforge-proxy?path=$1"
     },
     { "source": "/(.*)", "destination": "/" }
   ],
