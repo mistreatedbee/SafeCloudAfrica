@@ -165,8 +165,11 @@ export function DocumentEditorPage() {
           )}
         </div>
       )}
-      <div className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">
-        <div id={containerId} className="w-full min-h-[75vh]" />
+      <div
+        className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden"
+        style={{ height: 'calc(100dvh - var(--header-height) - 2rem)' }}
+      >
+        <div id={containerId} className="w-full h-full min-h-[640px]" />
       </div>
     </Layout>
   );
