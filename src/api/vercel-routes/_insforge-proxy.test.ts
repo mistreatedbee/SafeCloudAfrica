@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sharedMocks = vi.hoisted(() => ({
+  buildUpstreamUrl: vi.fn((origin: string, path: string) => `${origin}${path}`),
   writeUpstreamResponse: vi.fn(async (res: any, upstreamRes: Response) => {
     res.statusCode = upstreamRes.status;
     res.bodyText = await upstreamRes.text();
@@ -10,7 +11,7 @@ const sharedMocks = vi.hoisted(() => ({
 
 vi.mock('../../../api/_insforge-proxy/_shared.js', () => ({
   buildForwardHeaders: vi.fn(() => new Headers()),
-  buildUpstreamUrl: vi.fn((origin: string, path: string) => `${origin}${path}`),
+  buildUpstreamUrl: sharedMocks.buildUpstreamUrl,
   getProxyBody: vi.fn((req: any) => req.body),
   startProxy: vi.fn(() => ({ requestId: 'req-1', upstreamOrigin: 'https://insforge.example' })),
   writeUpstreamResponse: sharedMocks.writeUpstreamResponse
@@ -63,6 +64,7 @@ describe('api/_insforge-proxy', () => {
 
   beforeEach(() => {
     fetchMock.mockReset();
+    sharedMocks.buildUpstreamUrl.mockClear();
     sharedMocks.writeUpstreamResponse.mockClear();
     sharedMocks.logStructuredLine.mockClear();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -176,5 +178,35 @@ describe('api/_insforge-proxy', () => {
     );
     expect(sharedMocks.writeUpstreamResponse).toHaveBeenCalledTimes(1);
     expect(res.statusCode).toBe(200);
+  });
+
+  it.each([
+    ['POST', 'storage/buckets/sca-documents/objects/company%2Fdoc.pdf/confirm-upload'],
+    ['PUT', 'storage/buckets/sca-documents/objects/company%2Fdoc.pdf'],
+    ['POST', 'storage/buckets/sca-documents/objects/company%2Fdoc.pdf/download-strategy'],
+    ['GET', 'storage/buckets/sca-documents/objects/company%2Fdoc.pdf']
+  ])('preserves encoded slashes for %s %s from the raw URL', async (method, path) => {
+    const { default: handler } = await import('../../../api/insforge-proxy');
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }));
+
+    const req = {
+      method,
+      url: `/api/insforge-proxy?path=${path}`,
+      query: { path: path.replace('%2F', '/') },
+      body: method === 'GET' ? undefined : {},
+      headers: {}
+    };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(sharedMocks.buildUpstreamUrl).toHaveBeenCalledWith(
+      'https://insforge.example',
+      `/api/${path}`,
+      req
+    );
   });
 });

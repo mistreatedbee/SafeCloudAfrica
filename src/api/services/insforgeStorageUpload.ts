@@ -20,6 +20,30 @@ type StorageUploadData = {
   uploadedAt?: string;
 };
 
+class StorageHttpError extends Error {
+  status?: number;
+  payload?: unknown;
+
+  constructor(message: string, options?: { status?: number; payload?: unknown }) {
+    super(message);
+    this.name = 'StorageHttpError';
+    this.status = options?.status;
+    this.payload = options?.payload;
+  }
+}
+
+class StorageConfirmationError extends Error {
+  status?: number;
+  payload?: unknown;
+
+  constructor(message: string, options?: { status?: number; payload?: unknown }) {
+    super(message);
+    this.name = 'StorageConfirmationError';
+    this.status = options?.status;
+    this.payload = options?.payload;
+  }
+}
+
 export type InsforgeStorageUploadResult = {
   bucket: string;
   key: string;
@@ -63,6 +87,16 @@ function normalizeStorageData(payload: unknown, fallback: StorageUploadData): St
   return fallback;
 }
 
+function buildStorageDataFallback(bucket: string, key: string, file: File | Blob): StorageUploadData {
+  return {
+    key,
+    bucket,
+    size: file.size,
+    mimeType: file.type || 'application/octet-stream',
+    uploadedAt: new Date().toISOString()
+  };
+}
+
 async function requestInsforgeJson<T>(method: string, pathOrUrl: string, body?: unknown): Promise<T> {
   const http = getHttpClient();
   const headers = new Headers(http.getHeaders());
@@ -77,10 +111,7 @@ async function requestInsforgeJson<T>(method: string, pathOrUrl: string, body?: 
   const payload = await parseResponseBody(response);
   if (!response.ok) {
     const message = errorMessageFromPayload(payload, `Storage request failed with status ${response.status}.`);
-    const error = new Error(message) as Error & { status?: number; payload?: unknown };
-    error.status = response.status;
-    error.payload = payload;
-    throw error;
+    throw new StorageHttpError(message, { status: response.status, payload });
   }
 
   return payload as T;
@@ -127,13 +158,7 @@ async function uploadDirect(bucket: string, key: string, file: File | Blob): Pro
     throw new Error(errorMessageFromPayload(payload, `Direct storage upload failed with status ${response.status}.`));
   }
 
-  return normalizeStorageData(payload, {
-    key,
-    bucket,
-    size: file.size,
-    mimeType: file.type || 'application/octet-stream',
-    uploadedAt: new Date().toISOString()
-  });
+  return normalizeStorageData(payload, buildStorageDataFallback(bucket, key, file));
 }
 
 async function confirmPresignedUpload(input: {
@@ -152,30 +177,24 @@ async function confirmPresignedUpload(input: {
 
   try {
     const payload = await requestInsforgeJson<StorageUploadData>('POST', confirmUrl, body);
-    return normalizeStorageData(payload, {
-      key: input.key,
-      bucket: input.bucket,
-      size: input.file.size,
-      mimeType: input.file.type || 'application/octet-stream',
-      uploadedAt: new Date().toISOString()
-    });
+    return normalizeStorageData(payload, buildStorageDataFallback(input.bucket, input.key, input.file));
   } catch (error) {
     if ((error as { status?: number }).status !== 404 || confirmUrl === canonicalPath) {
-      throw new Error(`Storage upload confirmation failed: ${(error as Error).message}`);
+      throw new StorageConfirmationError(`Storage upload confirmation failed: ${(error as Error).message}`, {
+        status: (error as { status?: number }).status,
+        payload: (error as { payload?: unknown }).payload
+      });
     }
   }
 
   try {
     const payload = await requestInsforgeJson<StorageUploadData>('POST', canonicalPath, body);
-    return normalizeStorageData(payload, {
-      key: input.key,
-      bucket: input.bucket,
-      size: input.file.size,
-      mimeType: input.file.type || 'application/octet-stream',
-      uploadedAt: new Date().toISOString()
-    });
+    return normalizeStorageData(payload, buildStorageDataFallback(input.bucket, input.key, input.file));
   } catch (error) {
-    throw new Error(`Storage upload confirmation failed: ${(error as Error).message}`);
+    throw new StorageConfirmationError(`Storage upload confirmation failed: ${(error as Error).message}`, {
+      status: (error as { status?: number }).status,
+      payload: (error as { payload?: unknown }).payload
+    });
   }
 }
 
@@ -215,20 +234,24 @@ export async function uploadInsforgeStorageFile(input: {
 
   if (method === 'presigned') {
     await uploadWithPresignedUrl(strategy, input.file);
-    const data = strategy.confirmRequired === false
-      ? {
-          key: strategyKey,
-          bucket: input.bucket,
-          size: input.file.size,
-          mimeType: contentType,
-          uploadedAt: new Date().toISOString()
-        }
-      : await confirmPresignedUpload({
-          bucket: input.bucket,
-          key: strategyKey,
-          strategy,
-          file: input.file
-        });
+    let data: StorageUploadData;
+    try {
+      data = strategy.confirmRequired === false
+        ? buildStorageDataFallback(input.bucket, strategyKey, input.file)
+        : await confirmPresignedUpload({
+            bucket: input.bucket,
+            key: strategyKey,
+            strategy,
+            file: input.file
+          });
+    } catch (error) {
+      if ((error as { status?: number }).status !== 404) throw error;
+      try {
+        data = await uploadDirect(input.bucket, strategyKey, input.file);
+      } catch (directError) {
+        throw new Error(`Storage upload confirmation failed and direct upload fallback failed: ${(directError as Error).message}`);
+      }
+    }
 
     return {
       bucket: input.bucket,

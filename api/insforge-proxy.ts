@@ -16,7 +16,32 @@ import {
 const MODULE = 'api.insforge-proxy.api';
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
+function getRawPathFromUrl(req: any): string | null {
+  const url: string = typeof req?.url === 'string' ? req.url : '';
+  const idx = url.indexOf('?');
+  if (idx < 0) return null;
+
+  const query = url.slice(idx + 1);
+  for (const part of query.split('&')) {
+    if (!part) continue;
+    const eqIdx = part.indexOf('=');
+    const rawKey = eqIdx >= 0 ? part.slice(0, eqIdx) : part;
+    if (rawKey !== 'path') continue;
+    const rawValue = eqIdx >= 0 ? part.slice(eqIdx + 1) : '';
+    return rawValue
+      .split('/')
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .join('/');
+  }
+
+  return null;
+}
+
 function parsePath(req: any): string {
+  const rawFromUrl = getRawPathFromUrl(req);
+  if (rawFromUrl) return rawFromUrl;
+
   const raw = req?.query?.path;
   if (Array.isArray(raw)) return raw.map((p) => String(p)).filter(Boolean).join('/');
   return String(raw ?? '')

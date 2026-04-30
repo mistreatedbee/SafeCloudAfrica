@@ -52,7 +52,14 @@ function getRequestId(): string {
 function getQueryString(req: any): string {
   const url: string = typeof req?.url === 'string' ? req.url : '';
   const idx = url.indexOf('?');
-  return idx >= 0 ? url.slice(idx) : '';
+  if (idx < 0) return '';
+  const raw = url.slice(idx + 1);
+  const kept = raw.split('&').filter((part) => {
+    if (!part) return false;
+    const [key = ''] = part.split('=', 1);
+    return key !== 'path';
+  });
+  return kept.length ? `?${kept.join('&')}` : '';
 }
 
 export function getInsforgeUpstreamOrigin(): string {
