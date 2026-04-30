@@ -64,10 +64,19 @@ function getFriendlyEditorError(error: string): string {
 
 export default async function editorConfigHandler(req: any, res: any) {
   applyNoStoreHeaders(res);
+  // Log incoming request for diagnostics
+  try {
+    console.info('[editorConfigHandler] %s %s %o', req.method, req.url || req.path || '', { query: req.query });
+  } catch (logErr) {
+    // ignore logging failures
+  }
   if (req.method !== 'GET') return applyJson(res, 405, { ok: false, error: 'Method not allowed' });
 
   try {
     const { token, userId, email } = await requireViewer(req);
+    try {
+      console.info('[editorConfigHandler] viewer resolved', { userId, email });
+    } catch {}
     const versionId = String(req?.query?.versionId || '').trim();
     const mode = String(req?.query?.mode || 'view').trim().toLowerCase() === 'edit' ? 'edit' : 'view';
     if (!versionId) return applyJson(res, 400, { ok: false, error: 'Missing versionId' });
@@ -179,6 +188,7 @@ export default async function editorConfigHandler(req: any, res: any) {
       docServerOrigin = config.docServerOrigin;
       jwtSecret = config.jwtSecret;
     } catch (configError: any) {
+      console.warn('[editorConfigHandler] onlyoffice config error', String(configError?.message || configError));
       return applyJson(res, 200, {
         ok: true,
         editorAvailable: false,
@@ -234,6 +244,9 @@ export default async function editorConfigHandler(req: any, res: any) {
       downloadUrl
     });
   } catch (e: any) {
-    res.status(500).json({ ok: false, error: String(e?.message || e) });
+    try {
+      console.error('[editorConfigHandler] unexpected error', e && e.stack ? e.stack : String(e));
+    } catch {}
+    return applyJson(res, 500, { ok: false, error: String(e?.message || e) });
   }
 }
