@@ -111,7 +111,33 @@ describe('auth API routes through api/_insforge-proxy', () => {
     expect(res.jsonBody).toEqual({ user: { id: 'user-1' } });
   });
 
-  it.each([401, 403, 405])('POST /api/auth/refresh maps upstream %s to SDK fallback response', async (statusCode) => {
+  it('POST /api/auth/sessions falls back when Vercel encodes route separators in the path query', async () => {
+    const { default: handler } = await import('../../../api/insforge-proxy');
+    fetchMock
+      .mockResolvedValueOnce(new Response('not found', { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ accessToken: 'token-1' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      }));
+
+    const req = {
+      method: 'POST',
+      url: '/api/insforge-proxy?path=auth%2Fsessions',
+      query: { path: 'auth/sessions' },
+      body: { email: 'user@example.com', password: 'secret' },
+      headers: {}
+    };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://insforge.example/api/auth/sessions');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://insforge.example/api/auth/login');
+    expect(res.statusCode).toBe(200);
+  });
+
+  it.each([401, 403, 404, 405])('POST /api/auth/refresh maps upstream %s to SDK fallback response', async (statusCode) => {
     const { default: handler } = await import('../../../api/insforge-proxy');
     fetchMock.mockResolvedValueOnce(new Response('refresh unavailable', { status: statusCode }));
 

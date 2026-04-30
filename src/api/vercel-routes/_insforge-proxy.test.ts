@@ -209,4 +209,30 @@ describe('api/_insforge-proxy', () => {
       req
     );
   });
+
+  it('decodes encoded route separators while preserving encoded storage object slashes', async () => {
+    const { default: handler } = await import('../../../api/insforge-proxy');
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }));
+
+    const path = 'storage%2Fbuckets%2Fsca-documents%2Fobjects%2Fcompany%252Fdoc.pdf%2Fconfirm-upload';
+    const req = {
+      method: 'POST',
+      url: `/api/insforge-proxy?path=${path}`,
+      query: { path: 'storage/buckets/sca-documents/objects/company/doc.pdf/confirm-upload' },
+      body: {},
+      headers: {}
+    };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(sharedMocks.buildUpstreamUrl).toHaveBeenCalledWith(
+      'https://insforge.example',
+      '/api/storage/buckets/sca-documents/objects/company%2Fdoc.pdf/confirm-upload',
+      req
+    );
+  });
 });

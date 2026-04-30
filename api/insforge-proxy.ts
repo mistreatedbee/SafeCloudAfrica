@@ -16,6 +16,25 @@ import {
 const MODULE = 'api.insforge-proxy.api';
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
+function normalizeRawPathValue(rawValue: string): string {
+  const value = rawValue.trim();
+  const routeValue = value.includes('/')
+    ? value
+    : (() => {
+        try {
+          return decodeURIComponent(value);
+        } catch {
+          return value;
+        }
+      })();
+
+  return routeValue
+    .split('/')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .join('/');
+}
+
 function getRawPathFromUrl(req: any): string | null {
   const url: string = typeof req?.url === 'string' ? req.url : '';
   const idx = url.indexOf('?');
@@ -28,11 +47,7 @@ function getRawPathFromUrl(req: any): string | null {
     const rawKey = eqIdx >= 0 ? part.slice(0, eqIdx) : part;
     if (rawKey !== 'path') continue;
     const rawValue = eqIdx >= 0 ? part.slice(eqIdx + 1) : '';
-    return rawValue
-      .split('/')
-      .map((p) => p.trim())
-      .filter(Boolean)
-      .join('/');
+    return normalizeRawPathValue(rawValue);
   }
 
   return null;

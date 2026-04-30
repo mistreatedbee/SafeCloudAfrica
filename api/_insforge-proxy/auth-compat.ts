@@ -45,7 +45,7 @@ export function matchLegacyAuthRoute(input: AuthCompatRouteInput): AuthCompatRou
 }
 
 export function shouldMapRefreshToNotFound(input: AuthCompatRouteInput): boolean {
-  return input.method === 'POST' && input.path === 'auth/refresh' && [401, 403, 405].includes(input.upstreamStatus);
+  return input.method === 'POST' && input.path === 'auth/refresh' && [401, 403, 404, 405].includes(input.upstreamStatus);
 }
 
 export function normalizeLegacyAuthPayload(payload: unknown): Record<string, unknown> {
