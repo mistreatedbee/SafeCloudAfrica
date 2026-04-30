@@ -1,14 +1,14 @@
-import { applyNoStoreHeaders } from '../../_response.js';
-import { logStructuredLine } from '../../_observability.js';
+import { applyNoStoreHeaders } from '../_response.js';
+import { logStructuredLine } from '../_observability.js';
 import {
   buildForwardHeaders,
   buildUpstreamUrl,
   startProxy,
   writeUpstreamResponse
-} from '../../_insforge-proxy/_shared.js';
-import { normalizeLegacyAuthPayload } from '../../_insforge-proxy/auth-compat.js';
+} from '../_insforge-proxy/_shared.js';
+import { normalizeLegacyAuthPayload } from '../_insforge-proxy/auth-compat.js';
 
-const MODULE = 'api.auth.sessions.current';
+const MODULE = 'api.auth.catch-all';
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
@@ -21,11 +21,31 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
   }
 }
 
+function parsePath(req: any): string {
+  const raw = req?.query?.path;
+  if (Array.isArray(raw)) return raw.map((part) => String(part).trim()).filter(Boolean).join('/');
+  return String(raw ?? '')
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('/');
+}
+
 export default async function handler(req: any, res: any) {
   const started = startProxy(req, res, MODULE);
   if (!started) return;
 
   const method = String(req?.method ?? 'GET').toUpperCase();
+  const path = parsePath(req);
+
+  if (path !== 'sessions/current') {
+    applyNoStoreHeaders(res);
+    res.status(404).json({
+      ok: false,
+      error: 'Not found'
+    });
+    return;
+  }
 
   if (method !== 'GET' && method !== 'HEAD') {
     applyNoStoreHeaders(res);
@@ -52,7 +72,7 @@ export default async function handler(req: any, res: any) {
         module: MODULE,
         level: 'warn',
         message: 'Falling back to legacy auth me endpoint',
-        extra: { requestId: started.requestId, method, upstreamStatus: upstreamRes.status }
+        extra: { requestId: started.requestId, method, path, upstreamStatus: upstreamRes.status }
       });
       const legacyUrl = buildUpstreamUrl(started.upstreamOrigin, '/api/auth/me', req);
       const legacyRes = await fetchWithTimeout(legacyUrl, {
@@ -79,7 +99,7 @@ export default async function handler(req: any, res: any) {
         module: MODULE,
         level: 'warn',
         message: 'Passing through upstream sessions/current 405 response',
-        extra: { requestId: started.requestId, method, upstreamStatus: upstreamRes.status }
+        extra: { requestId: started.requestId, method, path, upstreamStatus: upstreamRes.status }
       });
     }
 
@@ -89,8 +109,8 @@ export default async function handler(req: any, res: any) {
     logStructuredLine({
       module: MODULE,
       level: 'error',
-      message: 'Auth sessions/current request failed',
-      extra: { requestId: started.requestId, method, error: msg }
+      message: 'Auth catch-all request failed',
+      extra: { requestId: started.requestId, method, path, error: msg }
     });
     res.status(503).json({
       ok: false,
