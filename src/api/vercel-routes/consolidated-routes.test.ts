@@ -117,7 +117,9 @@ describe('consolidated Vercel API routes', () => {
     [['editor-config'], routeMocks.editorConfigHandler, { routed: 'editor-config' }],
     [['editor-config-status'], routeMocks.editorConfigStatusHandler, { routed: 'editor-config-status' }],
     [['file'], routeMocks.fileHandler, { routed: 'file' }],
-    [['onlyoffice', 'callback'], routeMocks.onlyofficeCallbackHandler, { routed: 'onlyoffice-callback' }]
+    [['onlyoffice', 'callback'], routeMocks.onlyofficeCallbackHandler, { routed: 'onlyoffice-callback' }],
+    ['editor-config', routeMocks.editorConfigHandler, { routed: 'editor-config' }],
+    ['onlyoffice/callback', routeMocks.onlyofficeCallbackHandler, { routed: 'onlyoffice-callback' }]
   ])('routes /api/documents/%s through the documents catch-all', async (slug, expectedHandler, expectedBody) => {
     const { default: handler } = await import('../../../api/documents/[...slug]');
     const req = { method: 'GET', query: { slug }, headers: {} };
@@ -128,6 +130,18 @@ describe('consolidated Vercel API routes', () => {
     expect(expectedHandler).toHaveBeenCalledWith(req, res);
     expect(res.statusCode).toBe(200);
     expect(res.jsonBody).toEqual(expectedBody);
+  });
+
+  it('routes the concrete /api/documents entrypoint through the documents dispatcher', async () => {
+    const { default: handler } = await import('../../../api/documents');
+    const req = { method: 'GET', query: { slug: 'editor-config-status' }, headers: {} };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(routeMocks.editorConfigStatusHandler).toHaveBeenCalledWith(req, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.jsonBody).toEqual({ routed: 'editor-config-status' });
   });
 
   it('does not self-rewrite document editor paths away from the catch-all', async () => {
@@ -141,5 +155,20 @@ describe('consolidated Vercel API routes', () => {
     ]);
 
     expect(rewrites.filter((rewrite) => blockedSources.has(rewrite.source))).toEqual([]);
+  });
+
+  it('rewrites document editor API paths to the local documents function before the broad API proxy', async () => {
+    const { default: vercelConfig } = await import('../../../vercel.json');
+    const rewrites = (vercelConfig as any).rewrites as Array<{ source: string; destination: string }>;
+    const documentRewriteIndex = rewrites.findIndex((rewrite) => rewrite.source === '/api/documents/:path*');
+    const broadProxyIndex = rewrites.findIndex((rewrite) => rewrite.source === '/api/(.*)');
+
+    expect(documentRewriteIndex).toBeGreaterThanOrEqual(0);
+    expect(rewrites[documentRewriteIndex]).toEqual({
+      source: '/api/documents/:path*',
+      destination: '/api/documents?slug=:path*'
+    });
+    expect(broadProxyIndex).toBeGreaterThanOrEqual(0);
+    expect(documentRewriteIndex).toBeLessThan(broadProxyIndex);
   });
 });

@@ -116,6 +116,10 @@
       "destination": "/api/health/insforge-db"
     },
     {
+      "source": "/api/documents/:path*",
+      "destination": "/api/documents?slug=:path*"
+    },
+    {
       "source": "/api/database/rpc/(.*)",
       "destination": "https://pas375jb.us-west.insforge.app/api/database/rpc/$1"
     },
