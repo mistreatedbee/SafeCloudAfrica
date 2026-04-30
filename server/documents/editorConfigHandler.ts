@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { applyNoStoreHeaders } from '../../api/_response.js';
 import { signJwtHs256 } from '../../api/_jwt.js';
 import {
@@ -41,6 +42,25 @@ function resolveFileType(filename: string | null, fallback: 'docx' | 'xlsx'): st
 
 function isEditableFileType(fileType: string): boolean {
   return fileType === 'doc' || fileType === 'docx' || fileType === 'xls' || fileType === 'xlsx';
+}
+
+export function buildOnlyofficeDocumentKey(input: {
+  versionId: string;
+  storageKey: string | null;
+  updatedAt: string | null;
+  fileSize: number | null;
+}): string {
+  const versionPart = String(input.versionId || 'version').replace(/[^a-z0-9_-]/gi, '').slice(0, 32) || 'version';
+  const hash = createHash('sha256')
+    .update([
+      input.versionId || '',
+      input.storageKey || '',
+      input.updatedAt || '',
+      String(input.fileSize ?? '')
+    ].join('|'))
+    .digest('hex')
+    .slice(0, 16);
+  return `${versionPart}-${hash}`;
 }
 
 function getFriendlyEditorError(error: string): string {
@@ -206,7 +226,12 @@ export default async function editorConfigHandler(req: any, res: any) {
       documentType: type === 'cell' ? 'cell' : 'word',
       document: {
         fileType,
-        key: v.id,
+        key: buildOnlyofficeDocumentKey({
+          versionId: v.id,
+          storageKey: v.storage_key,
+          updatedAt: v.updated_at,
+          fileSize: v.file_size
+        }),
         title: filename,
         url: fileUrl,
         permissions: {

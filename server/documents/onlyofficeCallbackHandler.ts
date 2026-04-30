@@ -1,6 +1,7 @@
 import { applyNoStoreHeaders } from '../../api/_response.js';
 import { verifyJwtHs256 } from '../../api/_jwt.js';
 import { applyJson, getServiceClientOrThrow, requireOnlyofficeConfigured } from '../../api/documents/_shared.js';
+import { uploadServerStorageFile } from './insforgeServerStorageUpload.js';
 
 type OnlyOfficeCallbackBody = {
   key?: string;
@@ -31,6 +32,10 @@ function corsHeaders() {
   };
 }
 
+function isSaveStatus(status: number, downloadUrl: string): boolean {
+  return status === 2 || (status === 6 && Boolean(downloadUrl));
+}
+
 export default async function onlyofficeCallbackHandler(req: any, res: any) {
   applyNoStoreHeaders(res);
 
@@ -54,18 +59,19 @@ export default async function onlyofficeCallbackHandler(req: any, res: any) {
 
     const versionId = String(body.key || '').trim();
     const status = Number(body.status || 0);
+    const downloadUrl = String(body.url || '').trim();
 
     if (!versionId) return applyJson(res, 400, { ok: false, error: 'Missing key' });
-    if (status !== 2) {
+    if (!isSaveStatus(status, downloadUrl)) {
       res.setHeader('Content-Type', 'application/json');
       Object.entries(corsHeaders()).forEach(([k, v]) => res.setHeader(k, v));
       return res.status(200).send(JSON.stringify({ error: 0 }));
     }
 
-    const downloadUrl = String(body.url || '').trim();
     if (!downloadUrl) return applyJson(res, 400, { ok: false, error: 'Missing save URL' });
 
     const svc = getServiceClientOrThrow();
+    console.info('[onlyofficeCallbackHandler] save requested', { versionId, status });
 
     const { data: version, error: verErr } = await svc.database
       .from('document_versions')
@@ -95,10 +101,26 @@ export default async function onlyofficeCallbackHandler(req: any, res: any) {
     const bucket = String(v.storage_bucket || 'sca-documents');
 
     const blob = new Blob([buf], { type: String(v.mime_type || 'application/octet-stream') });
-    const { data: up, error: upErr } = await svc.storage.from(bucket).upload(key, blob as any);
-    if (upErr) return applyJson(res, 502, { ok: false, error: 'Failed to upload updated file' });
-
-    const nextKey = (up as any)?.path ? String((up as any).path) : key;
+    let nextKey = key;
+    try {
+      const up = await uploadServerStorageFile({
+        client: svc,
+        bucket,
+        key,
+        file: blob,
+        filename: body.title || v.original_filename || `${versionId}.${safeExt}`,
+        metadata: {
+          source: 'onlyoffice',
+          versionId,
+          documentId: String(v.document_id)
+        }
+      });
+      nextKey = up.key;
+      console.info('[onlyofficeCallbackHandler] upload succeeded', { versionId, key: nextKey, fileSize: buf.length });
+    } catch (uploadError: any) {
+      console.error('[onlyofficeCallbackHandler] upload failed', { versionId, status, error: String(uploadError?.message || uploadError) });
+      return applyJson(res, 502, { ok: false, error: `Failed to upload updated file: ${String(uploadError?.message || uploadError)}` });
+    }
 
     const { error: patchErr } = await svc.database
       .from('document_versions')
@@ -110,7 +132,11 @@ export default async function onlyofficeCallbackHandler(req: any, res: any) {
       })
       .eq('id', versionId)
       .eq('company_id', companyId);
-    if (patchErr) return applyJson(res, 502, { ok: false, error: 'Failed to update version record' });
+    if (patchErr) {
+      console.error('[onlyofficeCallbackHandler] version update failed', { versionId, key: nextKey, fileSize: buf.length, error: String((patchErr as any)?.message || patchErr) });
+      return applyJson(res, 502, { ok: false, error: 'Failed to update version record' });
+    }
+    console.info('[onlyofficeCallbackHandler] version update succeeded', { versionId, key: nextKey, fileSize: buf.length });
 
     try {
       await svc.database.from('activity_logs').insert({
