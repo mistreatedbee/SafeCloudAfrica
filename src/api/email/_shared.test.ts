@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeEmailProviderError } from './_shared';
+import { normalizeEmailProviderError } from '../../../api/email/_shared';
 
 describe('normalizeEmailProviderError', () => {
   it('maps domain verification failures to admin-friendly guidance', () => {

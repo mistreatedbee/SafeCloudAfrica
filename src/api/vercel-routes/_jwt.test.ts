@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { signJwtHs256, verifyJwtHs256 } from './_jwt';
+import { signJwtHs256, verifyJwtHs256 } from '../../../api/_jwt';
 
 describe('jwt hs256', () => {
   it('signs and verifies payload', () => {
