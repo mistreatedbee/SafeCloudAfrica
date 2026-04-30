@@ -111,45 +111,6 @@ describe('concrete auth API routes', () => {
     expect(res.jsonBody).toEqual({ user: { id: 'user-1' } });
   });
 
-  it('GET /api/auth/sessions/current falls back to legacy me payloads', async () => {
-    const { default: handler } = await import('../../../api/auth-current');
-    fetchMock
-      .mockResolvedValueOnce(new Response('method not allowed', { status: 405 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'user-2' }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' }
-      }));
-
-    const req = { method: 'GET', headers: {} };
-    const res = createRes();
-
-    await handler(req, res);
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://insforge.example/api/auth/sessions/current');
-    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://insforge.example/api/auth/me');
-    expect(res.statusCode).toBe(200);
-    expect(res.jsonBody).toEqual({ user: { id: 'user-2' } });
-  });
-
-  it.each([401, 403, 404, 405])('POST /api/auth/logout treats upstream %s as local logout success', async (statusCode) => {
-    const { default: handler } = await import('../../../api/auth/logout');
-    fetchMock.mockResolvedValueOnce(new Response('logout unavailable', { status: statusCode }));
-
-    const req = { method: 'POST', body: {}, headers: {} };
-    const res = createRes();
-
-    await handler(req, res);
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://insforge.example/api/auth/logout');
-    expect(res.statusCode).toBe(200);
-    expect(res.jsonBody).toEqual({
-      ok: true,
-      message: 'Logged out'
-    });
-  });
-
   it.each([401, 403, 405])('POST /api/auth/refresh maps upstream %s to SDK fallback response', async (statusCode) => {
     const { default: handler } = await import('../../../api/auth/refresh');
     fetchMock.mockResolvedValueOnce(new Response('refresh unavailable', { status: statusCode }));

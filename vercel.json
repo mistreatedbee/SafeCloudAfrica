@@ -117,15 +117,19 @@
     },
     {
       "source": "/api/auth/sessions/current",
-      "destination": "/api/auth-current"
+      "destination": "https://pas375jb.us-west.insforge.app/api/auth/sessions/current"
+    },
+    {
+      "source": "/api/auth/logout",
+      "destination": "https://pas375jb.us-west.insforge.app/api/auth/logout"
     },
     {
       "source": "/api/database/rpc/(.*)",
-      "destination": "/api/database-rpc?functionName=$1"
+      "destination": "https://pas375jb.us-west.insforge.app/api/database/rpc/$1"
     },
     {
       "source": "/api/database/records/(.*)",
-      "destination": "/api/database-records?path=$1"
+      "destination": "https://pas375jb.us-west.insforge.app/api/database/records/$1"
     },
     {
       "source": "/api/_insforge-proxy/(.*)",
