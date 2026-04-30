@@ -19,6 +19,9 @@ type EditorConfigResponse = {
   error?: string;
 };
 
+const EDITOR_ROUTE_MISCONFIGURED_MESSAGE =
+  'Document editor service route is unavailable or misconfigured. Please contact the system administrator.';
+
 function toFriendlyEditorMessage(error: string | null | undefined): string {
   const normalized = String(error || '').toLowerCase();
   if (
@@ -38,6 +41,22 @@ function toFriendlyEditorMessage(error: string | null | undefined): string {
     return 'This file type is not supported in the document editor.';
   }
   return String(error || 'Unable to open editor.');
+}
+
+async function readEditorConfigResponse(res: Response): Promise<EditorConfigResponse> {
+  const contentType = res.headers.get('content-type')?.toLowerCase() || '';
+  if (contentType.includes('application/json')) {
+    return (await res.json()) as EditorConfigResponse;
+  }
+
+  const body = await res.text().catch(() => '');
+  const normalizedBody = body.trim().toLowerCase();
+  const looksLikeHtml = normalizedBody.startsWith('<!doctype') || normalizedBody.startsWith('<html') || normalizedBody.includes('<body');
+  if (looksLikeHtml || contentType.includes('text/html')) {
+    throw new Error(EDITOR_ROUTE_MISCONFIGURED_MESSAGE);
+  }
+
+  throw new Error(EDITOR_ROUTE_MISCONFIGURED_MESSAGE);
 }
 
 function loadOnlyofficeApi(docServerOrigin: string): Promise<void> {
@@ -103,7 +122,7 @@ export function DocumentEditorPage() {
             Authorization: `Bearer ${accessToken}`
           }
         });
-        const payload = (await res.json()) as EditorConfigResponse;
+        const payload = await readEditorConfigResponse(res);
         if (!res.ok || !payload.ok) throw new Error(payload.error || 'Failed to load editor config.');
         setFallbackFileUrl(payload.fileUrl || null);
         setFallbackDownloadUrl(payload.downloadUrl || payload.fileUrl || null);

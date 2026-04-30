@@ -116,6 +116,18 @@
       "destination": "/api/health/insforge-db"
     },
     {
+      "source": "/api/documents/editor-config",
+      "destination": "/api/documents/editor-config"
+    },
+    {
+      "source": "/api/documents/file",
+      "destination": "/api/documents/file"
+    },
+    {
+      "source": "/api/documents/onlyoffice/callback",
+      "destination": "/api/documents/onlyoffice/callback"
+    },
+    {
       "source": "/api/auth/sessions/current",
       "destination": "https://pas375jb.us-west.insforge.app/api/auth/sessions/current"
     },
