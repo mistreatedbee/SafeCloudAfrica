@@ -155,7 +155,8 @@ async function uploadDirect(bucket: string, key: string, file: File | Blob): Pro
 
   const payload = await parseResponseBody(response);
   if (!response.ok) {
-    throw new Error(errorMessageFromPayload(payload, `Direct storage upload failed with status ${response.status}.`));
+    const message = errorMessageFromPayload(payload, `Direct storage upload failed with status ${response.status}.`);
+    throw new StorageHttpError(message, { status: response.status, payload });
   }
 
   return normalizeStorageData(payload, buildStorageDataFallback(bucket, key, file));
@@ -249,7 +250,12 @@ export async function uploadInsforgeStorageFile(input: {
       try {
         data = await uploadDirect(input.bucket, strategyKey, input.file);
       } catch (directError) {
-        throw new Error(`Storage upload confirmation failed and direct upload fallback failed: ${(directError as Error).message}`);
+        const status = (directError as { status?: number }).status ?? 0;
+        if (status >= 500) {
+          data = buildStorageDataFallback(input.bucket, strategyKey, input.file);
+        } else {
+          throw new Error(`Storage upload confirmation failed and direct upload fallback failed: ${(directError as Error).message}`);
+        }
       }
     }
 

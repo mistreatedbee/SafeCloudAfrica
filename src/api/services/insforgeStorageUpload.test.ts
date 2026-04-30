@@ -218,7 +218,7 @@ describe('uploadInsforgeStorageFile', () => {
     })).rejects.toThrow('Storage upload confirmation failed');
   });
 
-  it('reports a clear error when direct upload fallback fails after confirmation 404', async () => {
+  it('treats direct upload fallback 5xx as a completed presigned upload', async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({
         method: 'presigned',
@@ -228,7 +228,34 @@ describe('uploadInsforgeStorageFile', () => {
       }))
       .mockResolvedValueOnce(textResponse('', { status: 200 }))
       .mockResolvedValueOnce(jsonResponse({ message: 'No such route' }, { status: 404 }))
-      .mockResolvedValueOnce(jsonResponse({ message: 'Direct route failed' }, { status: 500 }));
+      .mockResolvedValueOnce(jsonResponse({ message: 'Service temporarily unavailable. Please try again.' }, { status: 502 }));
+
+    const result = await uploadInsforgeStorageFile({
+      bucket: 'sca-documents',
+      key: 'company/doc.pdf',
+      file: new Blob(['doc'], { type: 'application/pdf' })
+    });
+
+    expect(result.key).toBe('company/doc.pdf');
+    expect(result.data).toMatchObject({
+      key: 'company/doc.pdf',
+      bucket: 'sca-documents',
+      size: 3,
+      mimeType: 'application/pdf'
+    });
+  });
+
+  it('reports a clear error when direct upload fallback fails with a non-server error after confirmation 404', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({
+        method: 'presigned',
+        uploadUrl: 'https://s3.example/upload',
+        confirmRequired: true,
+        key: 'company/doc.pdf'
+      }))
+      .mockResolvedValueOnce(textResponse('', { status: 200 }))
+      .mockResolvedValueOnce(jsonResponse({ message: 'No such route' }, { status: 404 }))
+      .mockResolvedValueOnce(jsonResponse({ message: 'Forbidden' }, { status: 403 }));
 
     await expect(uploadInsforgeStorageFile({
       bucket: 'sca-documents',
