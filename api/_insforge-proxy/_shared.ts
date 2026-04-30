@@ -94,8 +94,8 @@ export function getProxyBody(req: any): BodyInit | undefined {
     if (!contentType || contentType === 'application/json') return undefined;
   }
   if (typeof body === 'string') return body;
-  // Vercel may provide Buffer for raw payloads.
-  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(body)) return body;
+  // Vercel may provide Buffer for raw payloads; fetch expects a web BodyInit type.
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(body)) return new Uint8Array(body);
   if (body instanceof ArrayBuffer) return body;
   if (ArrayBuffer.isView(body)) return body as any;
   try {
