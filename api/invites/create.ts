@@ -228,7 +228,7 @@ export default async function handler(req: any, res: any) {
           meta: { orgId: companyId, inviteId: (insertRes.data as any).id, role }
         }
       });
-      if (!emailResult.ok) throw new Error(emailResult.error);
+      if (emailResult.ok === false) throw new Error(emailResult.error);
 
       emailSent = true;
       await insforge.database

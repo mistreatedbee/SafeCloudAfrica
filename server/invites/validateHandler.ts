@@ -16,7 +16,7 @@ export async function validateInviteHandler(req: any, res: any, tokenValue?: str
   try {
     const insforge = getServiceInsforge() ?? getServerInsforge();
     const result = await resolveInviteToken(insforge, token);
-    if (!result.ok) {
+    if (result.ok === false) {
       if (result.reason === 'backend_unavailable') {
         logStructuredLine({
           module: MODULE,

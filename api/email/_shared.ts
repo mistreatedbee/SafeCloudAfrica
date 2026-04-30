@@ -93,7 +93,7 @@ export async function sendTransactionalEmail(input: {
   body: EmailRequest;
 }): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   const config = validateResendConfig();
-  if (!config.ok) {
+  if (config.ok === false) {
     logStructuredLine({
       module: MODULE,
       level: 'error',
@@ -120,7 +120,7 @@ export async function sendTransactionalEmail(input: {
   }
 
   const payload = normalizeEmailPayload(input.body);
-  if (!payload.ok) {
+  if (payload.ok === false) {
     logStructuredLine({
       module: MODULE,
       level: 'warn',

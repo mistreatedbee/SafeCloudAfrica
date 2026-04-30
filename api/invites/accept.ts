@@ -64,7 +64,7 @@ export default async function handler(req: any, res: any) {
     logUserId = String(userId);
 
     const inviteResult = await resolveInviteToken(insforge, token);
-    if (!inviteResult.ok) {
+    if (inviteResult.ok === false) {
       return res.status(inviteResult.status).json({
         ok: false,
         reason: inviteResult.reason,

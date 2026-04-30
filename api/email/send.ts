@@ -18,7 +18,7 @@ export default async function handler(req: any, res: any) {
     body
   });
 
-  if (!result.ok) {
+  if (result.ok === false) {
     return res.status(result.status).json({ ok: false, error: result.error, module: MODULE });
   }
   return res.status(200).json({ ok: true });

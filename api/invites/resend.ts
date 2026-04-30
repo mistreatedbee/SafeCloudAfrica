@@ -174,7 +174,7 @@ export default async function handler(req: any, res: any) {
           meta: { orgId: companyId, inviteId, role: invite.role }
         }
       });
-      if (!emailResult.ok) throw new Error(emailResult.error);
+      if (emailResult.ok === false) throw new Error(emailResult.error);
 
       emailSent = true;
       patch.status = 'SENT';
