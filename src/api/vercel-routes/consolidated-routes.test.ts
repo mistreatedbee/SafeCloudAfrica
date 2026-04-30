@@ -112,4 +112,34 @@ describe('consolidated Vercel API routes', () => {
     expect(routeMocks.editorConfigStatusHandler).toHaveBeenCalledWith(req, res);
     expect(res.jsonBody).toEqual({ routed: 'editor-config-status' });
   });
+
+  it.each([
+    [['editor-config'], routeMocks.editorConfigHandler, { routed: 'editor-config' }],
+    [['editor-config-status'], routeMocks.editorConfigStatusHandler, { routed: 'editor-config-status' }],
+    [['file'], routeMocks.fileHandler, { routed: 'file' }],
+    [['onlyoffice', 'callback'], routeMocks.onlyofficeCallbackHandler, { routed: 'onlyoffice-callback' }]
+  ])('routes /api/documents/%s through the documents catch-all', async (slug, expectedHandler, expectedBody) => {
+    const { default: handler } = await import('../../../api/documents/[...slug]');
+    const req = { method: 'GET', query: { slug }, headers: {} };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(expectedHandler).toHaveBeenCalledWith(req, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.jsonBody).toEqual(expectedBody);
+  });
+
+  it('does not self-rewrite document editor paths away from the catch-all', async () => {
+    const { default: vercelConfig } = await import('../../../vercel.json');
+    const rewrites = (vercelConfig as any).rewrites as Array<{ source: string; destination: string }>;
+    const blockedSources = new Set([
+      '/api/documents/editor-config',
+      '/api/documents/editor-config-status',
+      '/api/documents/file',
+      '/api/documents/onlyoffice/callback'
+    ]);
+
+    expect(rewrites.filter((rewrite) => blockedSources.has(rewrite.source))).toEqual([]);
+  });
 });

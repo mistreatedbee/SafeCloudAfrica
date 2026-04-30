@@ -65,8 +65,20 @@ export default async function fileHandler(req: any, res: any) {
     }
 
     const { data, error } = await svc.storage.from(bucket).download(key);
-    if (error) return applyJson(res, 404, { ok: false, error: 'File not found' });
-    if (!data) return applyJson(res, 404, { ok: false, error: 'File not found' });
+    if (error) {
+      return applyJson(res, 404, {
+        ok: false,
+        error: 'The document record exists, but the uploaded file could not be retrieved from storage.',
+        code: 'DMS_STORAGE_FILE_UNAVAILABLE'
+      });
+    }
+    if (!data) {
+      return applyJson(res, 404, {
+        ok: false,
+        error: 'The document record exists, but the uploaded file is missing from storage.',
+        code: 'DMS_STORAGE_FILE_MISSING'
+      });
+    }
 
     const buf = Buffer.from(await data.arrayBuffer());
     res.setHeader('Content-Type', 'application/octet-stream');
