@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getProxyBody } from './_insforge-proxy/_shared';
+import { getProxyBody } from '../../api/_insforge-proxy/_shared';
 
 describe('api/_insforge-proxy/_shared getProxyBody', () => {
   it('converts raw Buffer payloads into fetch-compatible body data', () => {
