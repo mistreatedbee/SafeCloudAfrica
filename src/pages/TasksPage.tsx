@@ -48,6 +48,7 @@ import { toCsv, downloadTextFile } from '../utils/csv';
 import { useIdentity } from '../hooks/useIdentity';
 import { TASK_CATEGORY_LABELS, TASK_TIME_STATUS_LABELS, TASK_SOURCE_ENTITY_LABELS } from '../api/constants/taskLabels';
 import { getMyProfile } from '../api/services/profilesService';
+import { canManageTasks } from '../api/permissions/taskPermissions';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -104,7 +105,7 @@ export function TasksPage() {
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
   const { fullName, organisationName } = useIdentity();
-  const canCreate = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
+  const canCreate = canManageTasks(activeRole);
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
   const view = (params.get('view') || 'tasks') as 'tasks' | 'capa';
