@@ -90,6 +90,9 @@ export const UsersPage = lazy(() => import('../pages/UsersPage').then((m) => ({ 
 export const PlanningReviewPage = lazy(() =>
   import('../pages/PlanningReviewPage').then((m) => ({ default: m.PlanningReviewPage }))
 );
+export const ObjectivesTargetsPage = lazy(() =>
+  import('../pages/ObjectivesTargetsPage').then((m) => ({ default: m.ObjectivesTargetsPage }))
+);
 export const ApprovalsPage = lazy(() =>
   import('../pages/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage }))
 );

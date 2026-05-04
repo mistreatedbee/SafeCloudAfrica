@@ -189,7 +189,7 @@ const managementGroups: NavGroup[] = [
       { name: 'KPI', path: '/modules/hr/kpis', icon: TrendingUpIcon, roles: managementRoles, module: 'hr' },
       { name: 'Document Reviews', path: '/dashboard/management/document-reviews', icon: CalendarIcon },
       { name: 'Reports / Exports', path: '/dashboard/management/reports', icon: BarChart3Icon, roles: managementRoles },
-      { name: 'Planning & Review', path: '/dashboard/management/planning', icon: ClipboardCheckIcon, roles: managementRoles },
+      { name: 'Objectives & Targets', path: '/dashboard/management/objectives-targets', icon: ClipboardCheckIcon, roles: managementRoles },
       { name: 'Improvement', path: '/dashboard/management/improvement', icon: TrendingUpIcon, roles: managementRoles },
       { name: 'Approvals', path: '/dashboard/management/approvals', icon: LockIcon, roles: managementRoles },
       { name: 'Hours Worked', path: '/dashboard/management/hours-worked', icon: ClockIcon, roles: managementRoles },

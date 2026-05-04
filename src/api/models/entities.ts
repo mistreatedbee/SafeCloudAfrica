@@ -1833,6 +1833,10 @@ export type Notification = {
   created_at: string;
 };
 
+export type ModuleTargetStatus = 'not_started' | 'in_progress' | 'completed' | 'not_achieved';
+export type ModuleTargetCategory = 'Safety' | 'Health' | 'Environment' | 'Quality';
+export type ModuleTargetReviewActionStatus = 'not_started' | 'in_progress' | 'completed';
+
 export type ModuleTarget = {
   id: UUID;
   company_id: UUID;
@@ -1842,6 +1846,26 @@ export type ModuleTarget = {
   target_value: number;
   unit: string | null;
   achieved: boolean;
+  description?: string | null;
+  target_text?: string | null;
+  category?: ModuleTargetCategory | null;
+  start_date?: string | null;
+  target_date?: string | null;
+  status?: ModuleTargetStatus;
+  responsible_employee_id?: UUID | null;
+  responsible_user_id?: UUID | null;
+  responsible_name?: string | null;
+  completed_at?: string | null;
+  closed_at?: string | null;
+  review_reason?: string | null;
+  review_corrective_action?: string | null;
+  review_responsible_employee_id?: UUID | null;
+  review_responsible_user_id?: UUID | null;
+  review_responsible_name?: string | null;
+  review_resources_required?: string | null;
+  review_start_date?: string | null;
+  review_action_status?: ModuleTargetReviewActionStatus | null;
+  review_close_date?: string | null;
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;

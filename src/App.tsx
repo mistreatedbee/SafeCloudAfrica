@@ -48,6 +48,7 @@ import { LegalRequirementDetailPage } from './pages/LegalRequirementDetailPage';
 import { LegalUpdatesPage } from './pages/LegalUpdatesPage';
 import { UsersPage } from './pages/UsersPage';
 import { PlanningReviewPage } from './pages/PlanningReviewPage';
+import { ObjectivesTargetsPage } from './pages/ObjectivesTargetsPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
 import { DocumentReviewsPage } from './pages/DocumentReviewsPage';
 import { ReviewMeetingDetailPage } from './pages/ReviewMeetingDetailPage';
@@ -1170,6 +1171,16 @@ export function App() {
             }
           />
           <Route
+            path="/objectives-targets"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ObjectivesTargetsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/approvals"
             element={
               <RequireSignedIn>
@@ -1547,6 +1558,16 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <PlanningReviewPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/management/objectives-targets"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ObjectivesTargetsPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

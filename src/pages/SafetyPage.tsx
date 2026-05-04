@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { useUser } from '@insforge/react';
 import {
   ShieldIcon,
   AlertTriangleIcon,
@@ -10,13 +11,13 @@ import {
   HardHatIcon,
   ArrowRightIcon,
   TargetIcon,
-  ActivityIcon
+  ActivityIcon,
+  PlusIcon
 } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { ComplianceScore } from '../components/ui/ComplianceScore';
 import { StatCard } from '../components/ui/StatCard';
 import { TrendChart } from '../components/ui/TrendChart';
-import { ProgressBar } from '../components/ui/ProgressBar';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
 import { countIncidentsByStatusForModule, listIncidents } from '../api/services/incidentsService';
@@ -28,6 +29,8 @@ import { listActivityLogs } from '../api/services/activityLogService';
 import { isNearMiss } from '../api/utils/incidents';
 import { FirstWinBanner } from '../components/onboarding/FirstWinBanner';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { ObjectiveCreateModal } from '../components/general/ObjectiveCreateModal';
+import type { ModuleTargetStatus } from '../api/models/entities';
 
 const containerVariants = {
   hidden: {
@@ -64,9 +67,32 @@ function timeAgo(iso: string): string {
   return `${days} days ago`;
 }
 
+function objectiveStatus(status: ModuleTargetStatus | undefined, achieved?: boolean) {
+  return status ?? (achieved ? 'completed' : 'not_started');
+}
+
+function objectiveStatusLabel(status: ModuleTargetStatus | undefined, achieved?: boolean) {
+  const normalized = objectiveStatus(status, achieved);
+  if (normalized === 'completed') return 'Completed';
+  if (normalized === 'in_progress') return 'In Progress';
+  if (normalized === 'not_achieved') return 'Not Achieved';
+  return 'Not Started';
+}
+
+function objectiveStatusClass(status: ModuleTargetStatus | undefined, achieved?: boolean) {
+  const normalized = objectiveStatus(status, achieved);
+  if (normalized === 'completed') return 'bg-success/10 text-success border-success/20';
+  if (normalized === 'in_progress') return 'bg-warning/10 text-warning border-warning/20';
+  if (normalized === 'not_achieved') return 'bg-critical/10 text-critical border-critical/20';
+  return 'bg-surface-100 text-charcoal-500 border-surface-200';
+}
+
 export function SafetyPage() {
   const navigate = useNavigate();
   const { activeCompanyId, activeRole } = useTenant();
+  const { user } = useUser();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [createObjectiveOpen, setCreateObjectiveOpen] = useState(false);
   const showSafetyFirstWin = activeRole != null && activeRole !== 'employee';
 
   const { data: summary } = useAsync(
@@ -90,7 +116,7 @@ export function SafetyPage() {
   const { data: objectives } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listModuleTargets({ companyId: activeCompanyId, module: 'safety', limit: 10 });
-  }, [activeCompanyId]);
+  }, [activeCompanyId, refreshKey]);
 
   const { data: activity } = useAsync(async () => {
     if (!activeCompanyId) return [];
@@ -121,16 +147,17 @@ export function SafetyPage() {
 
   const safetyStats = summary ?? { compliance: 0, openIncidents: 0, pendingActions: 0, activeHazards: 0, ppeCompliance: 0 };
 
-  const safetyObjectives = useMemo(() => {
-    return (objectives ?? []).map((t) => {
-      const progress = t.target_value > 0 ? Math.round((t.current_value / t.target_value) * 100) : 0;
-      const status = t.achieved ? 'On Track' : progress >= 80 ? 'On Track' : progress >= 60 ? 'At Risk' : 'Behind';
-      return { name: t.name, progress: Math.max(0, Math.min(100, progress)), status };
-    });
-  }, [objectives]);
-
   return (
     <Layout title="Safety Management">
+      {activeCompanyId && (
+        <ObjectiveCreateModal
+          open={createObjectiveOpen}
+          onClose={() => setCreateObjectiveOpen(false)}
+          companyId={activeCompanyId}
+          module="safety"
+          onCreated={() => setRefreshKey((k) => k + 1)}
+        />
+      )}
       <motion.div
         variants={containerVariants}
         initial="hidden"
@@ -214,34 +241,63 @@ export function SafetyPage() {
               Safety Objectives
             </h3>
             <div className="space-y-4">
-              {safetyObjectives.length === 0 && (
+              {(objectives ?? []).length === 0 && (
                 <ListEmptyState
                   embedded
                   icon={TargetIcon}
-                  title="No safety objectives yet"
-                  description="Define module targets to track progress and status on this dashboard."
-                  primaryAction={{ kind: 'link', to: '/planning-review', label: 'Open planning & review' }}
+                  title="No objectives yet"
+                  description="Create a safety objective, assign a responsible person, and track it to completion."
+                  primaryAction={{
+                    kind: 'button',
+                    label: 'Create Objective',
+                    onClick: () => setCreateObjectiveOpen(true),
+                    disabled: !activeCompanyId || !user?.id
+                  }}
                 />
               )}
-              {safetyObjectives.map((objective, index) => (
-                <div key={`${objective.name}-${index}`}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-medium text-charcoal">
-                      {objective.name}
-                    </span>
-                    <span
-                    className={`text-xs font-medium ${objective.status === 'On Track' ? 'text-success' : objective.status === 'At Risk' ? 'text-warning' : 'text-critical'}`}>
-
-                      {objective.status}
-                    </span>
+              {(objectives ?? []).length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-surface-100">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Objective</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Target</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Responsible Person</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Target Date</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-surface-200">
+                      {(objectives ?? []).map((objective) => (
+                        <tr key={objective.id}>
+                          <td className="px-3 py-3 text-sm font-medium text-charcoal">{objective.name}</td>
+                          <td className="px-3 py-3 text-sm text-charcoal-600">
+                            {objective.target_text || `${objective.target_value}${objective.unit ?? ''}`}
+                          </td>
+                          <td className="px-3 py-3 text-sm text-charcoal-600">{objective.responsible_name || '-'}</td>
+                          <td className="px-3 py-3 text-sm text-charcoal-600">{objective.target_date || '-'}</td>
+                          <td className="px-3 py-3">
+                            <span className={`px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${objectiveStatusClass(objective.status, objective.achieved)}`}>
+                              {objectiveStatusLabel(objective.status, objective.achieved)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="pt-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setCreateObjectiveOpen(true)}
+                      disabled={!activeCompanyId || !user?.id}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60"
+                    >
+                      <PlusIcon className="w-4 h-4" />
+                      Create Objective
+                    </button>
                   </div>
-                  <ProgressBar
-                  value={objective.progress}
-                  size="sm"
-                  showValue={true} />
-
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
