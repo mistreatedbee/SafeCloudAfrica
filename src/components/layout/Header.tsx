@@ -17,16 +17,16 @@ type HeaderProps = {
 };
 
 function SeatsRemainingBadge() {
-  const { activeCompanyId, activeRole } = useTenant();
+  const { activeCompanyId, activeRole, isTenantLoaded } = useTenant();
   const [seats, setSeats] = useState<{ used: number; limit: number } | null>(null);
   useEffect(() => {
-    if (!activeCompanyId || (activeRole !== 'owner' && activeRole !== 'admin')) return;
+    if (!isTenantLoaded || !activeCompanyId || (activeRole !== 'owner' && activeRole !== 'admin')) return;
     let cancelled = false;
     Promise.all([countActiveMembers(activeCompanyId), getSeatLimitForCompany(activeCompanyId)])
       .then(([used, limit]) => { if (!cancelled) setSeats({ used, limit }); })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [activeCompanyId, activeRole]);
+  }, [activeCompanyId, activeRole, isTenantLoaded]);
   if (!seats || seats.limit <= 0) return null;
   const remaining = Math.max(0, seats.limit - seats.used);
   return (
@@ -38,7 +38,7 @@ function SeatsRemainingBadge() {
 }
 
 export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed, title }: HeaderProps) {
-  const { activeCompanyId, activeRole, isPlatformAdmin } = useTenant();
+  const { activeCompanyId, activeRole, isPlatformAdmin, isTenantLoaded } = useTenant();
   const { user } = useUser();
   const { organisationName, roleLabel } = useIdentity();
   const [items, setItems] = useState<NotificationItem[]>([]);
@@ -49,7 +49,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed, title
     let isMounted = true;
 
     async function loadNotifications() {
-      if (!activeCompanyId || !user?.id) return;
+      if (!isTenantLoaded || !activeCompanyId || !user?.id) return;
       try {
         const records = await listMyNotifications(activeCompanyId as any, user.id as any, 20);
         if (!isMounted) return;
@@ -68,7 +68,7 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed, title
       isMounted = false;
       clearInterval(interval);
     };
-  }, [activeCompanyId, user?.id]);
+  }, [activeCompanyId, isTenantLoaded, user?.id]);
 
   return (
     <header className="sticky top-0 z-50 shrink-0 bg-white border-b border-surface-300">

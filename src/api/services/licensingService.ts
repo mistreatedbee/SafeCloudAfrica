@@ -12,6 +12,7 @@
 import type { UUID } from '../models/core';
 import type { BillingInvoice, BillingPlanCatalog, BillingSubscription, BillingUsageSnapshot, Company } from '../models/entities';
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 
 export type LicenseType = 'starter_6m' | 'professional_12m' | 'enterprise_custom';
 export type LicenseStatus = 'trial' | 'active' | 'expired' | 'suspended';
@@ -129,6 +130,7 @@ const FEATURE_MAP: Record<LicenseType, Partial<FeatureAccess>> = {
  * Get license info for a company
  */
 export async function getLicenseInfo(companyId: UUID): Promise<LicenseInfo> {
+  return withInsforgeSession('licensing:get-license-info', async () => {
   try {
     // Fetch company
     const { data: company, error: companyError } = await insforge.database
@@ -177,6 +179,7 @@ export async function getLicenseInfo(companyId: UUID): Promise<LicenseInfo> {
     console.error('Failed to load license info:', err);
     throw err;
   }
+  });
 }
 
 /**

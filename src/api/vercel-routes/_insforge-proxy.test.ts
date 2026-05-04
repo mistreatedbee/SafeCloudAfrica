@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sharedMocks = vi.hoisted(() => ({
   buildUpstreamUrl: vi.fn((origin: string, path: string) => `${origin}${path}`),
+  buildForwardHeaders: vi.fn((req: any) => new Headers(req.headers ?? {})),
   writeUpstreamResponse: vi.fn(async (res: any, upstreamRes: Response) => {
     res.statusCode = upstreamRes.status;
     res.bodyText = await upstreamRes.text();
@@ -10,7 +11,7 @@ const sharedMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../api/_insforge-proxy/_shared.js', () => ({
-  buildForwardHeaders: vi.fn(() => new Headers()),
+  buildForwardHeaders: sharedMocks.buildForwardHeaders,
   buildUpstreamUrl: sharedMocks.buildUpstreamUrl,
   getProxyBody: vi.fn((req: any) => req.body),
   startProxy: vi.fn(() => ({ requestId: 'req-1', upstreamOrigin: 'https://insforge.example' })),
@@ -66,6 +67,7 @@ describe('api/_insforge-proxy', () => {
     fetchMock.mockReset();
     sharedMocks.buildUpstreamUrl.mockClear();
     sharedMocks.writeUpstreamResponse.mockClear();
+    sharedMocks.buildForwardHeaders.mockClear();
     sharedMocks.logStructuredLine.mockClear();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
   });
@@ -178,6 +180,49 @@ describe('api/_insforge-proxy', () => {
     );
     expect(sharedMocks.writeUpstreamResponse).toHaveBeenCalledTimes(1);
     expect(res.statusCode).toBe(200);
+  });
+
+  it('proxies database record routes with the caller Authorization header', async () => {
+    const { default: handler } = await import('../../../api/insforge-proxy');
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([{ id: 'row-1' }]), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }));
+
+    const req = {
+      method: 'GET',
+      query: { path: 'database/records/notifications' },
+      headers: { authorization: 'Bearer user-token' }
+    };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://insforge.example/api/database/records/notifications');
+    expect((fetchMock.mock.calls[0]?.[1]?.headers as Headers).get('authorization')).toBe('Bearer user-token');
+    expect(sharedMocks.writeUpstreamResponse).toHaveBeenCalledTimes(1);
+  });
+
+  it('proxies database RPC routes with the caller Authorization header', async () => {
+    const { default: handler } = await import('../../../api/insforge-proxy');
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }));
+
+    const req = {
+      method: 'POST',
+      query: { path: 'database/rpc/ensure_me_as_super_admin' },
+      body: {},
+      headers: { authorization: 'Bearer user-token' }
+    };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://insforge.example/api/database/rpc/ensure_me_as_super_admin');
+    expect((fetchMock.mock.calls[0]?.[1]?.headers as Headers).get('authorization')).toBe('Bearer user-token');
+    expect(sharedMocks.writeUpstreamResponse).toHaveBeenCalledTimes(1);
   });
 
   it.each([

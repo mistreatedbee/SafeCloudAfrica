@@ -5,6 +5,13 @@ import type { UUID } from '../models/entities';
 
 const ROLE_ORDER = ['owner', 'admin', 'manager', 'supervisor', 'consultant', 'employee', 'auditor'] as const;
 
+function isAuthDeniedError(error: unknown): boolean {
+  const status = Number((error as any)?.status ?? (error as any)?.statusCode ?? 0);
+  if (status === 401 || status === 403) return true;
+  const msg = getErrorMessage(error).toLowerCase();
+  return msg.includes('unauthorized') || msg.includes('not authorised') || msg.includes('forbidden');
+}
+
 /** Single source of truth: role -> dashboard path. Use for login, activation, and app boot. */
 export const ROLE_PATH_MAP: Record<string, string> = {
   owner: '/org/dashboard',
@@ -141,6 +148,16 @@ export async function ensureMeAsSuperAdmin(): Promise<EnsureSuperAdminResult> {
     if (error instanceof InsforgeAuthBootstrapError) {
       return { status: 'auth_failed', error };
     }
+    if (isAuthDeniedError(error)) {
+      return {
+        status: 'auth_failed',
+        error: new InsforgeAuthBootstrapError(
+          'AUTH_SESSION_INVALID',
+          'Your session is not available. Please sign in again.',
+          { cause: error }
+        )
+      };
+    }
     const msg = getErrorMessage(error).toLowerCase();
     if (
       msg.includes('does not exist') ||
@@ -164,6 +181,9 @@ export async function isPlatformAdmin(userId: UUID): Promise<boolean> {
     const msg = getErrorMessage(err);
     // If the table doesn't exist yet, treat as not a platform admin.
     if (msg.toLowerCase().includes('does not exist')) return false;
+    if (err instanceof InsforgeAuthBootstrapError || isAuthDeniedError(err)) {
+      throw err;
+    }
     return false;
   }
 }

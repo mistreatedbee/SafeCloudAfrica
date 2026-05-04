@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type { Risk, UUID } from '../models/entities';
 import type { ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
@@ -119,24 +120,28 @@ function generateAssessmentNumber(type: AssessmentType): string {
 }
 
 export async function listRisks(input: ListRisksInput): Promise<Risk[]> {
+  return withInsforgeSession('risks:list', async () => {
   const base = insforge.database.from('risks').select('*').eq('company_id', input.companyId);
   const q1 = input.module ? base.eq('module', input.module) : base;
   const q2 = input.status ? q1.eq('status', input.status) : q1;
   const { data, error } = await q2.order('created_at', { ascending: false }).limit(input.limit ?? 200);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Risk[];
+  });
 }
 
 export async function countRisks(
   companyId: UUID,
   input?: { module?: ModuleKey; status?: Risk['status'] }
 ): Promise<number> {
+  return withInsforgeSession('risks:count', async () => {
   const base = insforge.database.from('risks').select('*', { count: 'planned', head: true }).eq('company_id', companyId);
   const q1 = input?.module ? base.eq('module', input.module) : base;
   const q2 = input?.status ? q1.eq('status', input.status) : q1;
   const { count, error } = await q2;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export type CreateRiskInput = {

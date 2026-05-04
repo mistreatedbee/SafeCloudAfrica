@@ -1,9 +1,11 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { Department, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
 
 export async function listDepartments(companyId: UUID, limit = 1000): Promise<Department[]> {
+  return withInsforgeSession('departments:list', async () => {
   const { data, error } = await insforge.database
     .from('departments')
     .select('*')
@@ -12,6 +14,7 @@ export async function listDepartments(companyId: UUID, limit = 1000): Promise<De
     .limit(limit);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Department[];
+  });
 }
 
 export async function createDepartment(input: {

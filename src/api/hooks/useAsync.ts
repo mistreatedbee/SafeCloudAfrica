@@ -10,6 +10,7 @@ export type AsyncState<T> = {
   /** Alias for `refetch` / `retry` (invalidate and reload). */
   refresh: () => void;
   isBackendUnavailable: boolean;
+  isAuthFailure: boolean;
 };
 
 export type UseAsyncOptions = {
@@ -38,10 +39,35 @@ function isBackendUnavailableError(error: unknown): boolean {
   );
 }
 
+function isAuthFailureError(error: unknown): boolean {
+  if (!error) return false;
+  const status = Number((error as any)?.status ?? (error as any)?.statusCode ?? 0);
+  if (status === 401 || status === 403) return true;
+  const message = String((error as any)?.message ?? (error as any)?.error ?? error).toLowerCase();
+  return (
+    message.includes('401') ||
+    message.includes('403') ||
+    message.includes('unauthorized') ||
+    message.includes('not authorised') ||
+    message.includes('forbidden')
+  );
+}
+
+function emitAuthFailure(error: unknown): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent('sca:auth-failure', {
+      detail: { message: String((error as any)?.message ?? error ?? 'Authentication failed') }
+    })
+  );
+}
+
 export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsyncOptions = {}): AsyncState<T> {
   const [reloadToken, setReloadToken] = useState(0);
   const lastRefreshAtRef = useRef(0);
   const backendUnavailableUntilRef = useRef(0);
+  const authFailureRef = useRef(false);
+  const authFailureEmittedRef = useRef(false);
   const [state, setState] = useState<AsyncState<T>>({
     data: null,
     error: null,
@@ -49,9 +75,12 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
     retry: noop,
     refetch: noop,
     refresh: noop,
-    isBackendUnavailable: false
+    isBackendUnavailable: false,
+    isAuthFailure: false
   });
   const retry = useCallback(() => {
+    authFailureRef.current = false;
+    authFailureEmittedRef.current = false;
     lastRefreshAtRef.current = Date.now();
     setReloadToken((n) => n + 1);
   }, []);
@@ -70,19 +99,30 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
       retry,
       refetch: retry,
       refresh: retry,
-      isBackendUnavailable: false
+      isBackendUnavailable: false,
+      isAuthFailure: false
     }));
     fn()
       .then((data) => {
         if (cancelled) return;
         backendUnavailableUntilRef.current = 0;
-        setState({ data, error: null, loading: false, retry, refetch: retry, refresh: retry, isBackendUnavailable: false });
+        authFailureRef.current = false;
+        authFailureEmittedRef.current = false;
+        setState({ data, error: null, loading: false, retry, refetch: retry, refresh: retry, isBackendUnavailable: false, isAuthFailure: false });
       })
       .catch((error) => {
         if (cancelled) return;
         const unavailable = isBackendUnavailableError(error);
+        const authFailure = isAuthFailureError(error);
         // Back off auto-refresh for a short period when the backend is unavailable to avoid spamming requests.
         if (unavailable) backendUnavailableUntilRef.current = Date.now() + 15_000;
+        if (authFailure) {
+          authFailureRef.current = true;
+          if (!authFailureEmittedRef.current) {
+            authFailureEmittedRef.current = true;
+            emitAuthFailure(error);
+          }
+        }
         setState((prev) => ({
           // Preserve last-known-good data so dashboards/forms don’t clear during an outage.
           data: prev.data,
@@ -91,7 +131,8 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
           retry,
           refetch: retry,
           refresh: retry,
-          isBackendUnavailable: unavailable
+          isBackendUnavailable: unavailable,
+          isAuthFailure: authFailure
         }));
       });
     return () => {
@@ -104,6 +145,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
     if (typeof window === 'undefined') return;
 
     const maybeRefresh = () => {
+      if (authFailureRef.current) return;
       const now = Date.now();
       if (now < backendUnavailableUntilRef.current) return;
       if (now - lastRefreshAtRef.current < 1500) return;
@@ -139,6 +181,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
   useEffect(() => {
     if (!refreshOnMutation) return;
     return subscribeToLiveDataMutations(() => {
+      if (authFailureRef.current) return;
       const now = Date.now();
       if (now - lastRefreshAtRef.current < 250) return;
       retry();
@@ -149,6 +192,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
     if (!refreshIntervalMs || refreshIntervalMs <= 0) return;
 
     const interval = window.setInterval(() => {
+      if (authFailureRef.current) return;
       if (document.visibilityState !== 'visible') return;
       retry();
     }, refreshIntervalMs);
@@ -161,6 +205,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
     retry,
     refetch: retry,
     refresh: retry,
-    isBackendUnavailable: isBackendUnavailableError(state.error)
+    isBackendUnavailable: isBackendUnavailableError(state.error),
+    isAuthFailure: isAuthFailureError(state.error)
   };
 }

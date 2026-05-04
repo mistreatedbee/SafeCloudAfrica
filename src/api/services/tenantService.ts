@@ -3,7 +3,7 @@ import type { Company, CompanyInvite, CompanyMembership, UUID } from '../models/
 import type { CompanyRole, LicenseType, ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
-import { ensureInsforgeSession } from '../insforge/ensureSession';
+import { ensureInsforgeSession, withInsforgeSession } from '../insforge/ensureSession';
 
 function normalizeInviteStatus(status: string | null | undefined): string {
   return String(status ?? '').trim().toUpperCase();
@@ -388,6 +388,7 @@ export async function getInviteById(inviteId: UUID): Promise<CompanyInvite> {
 }
 
 export async function countActiveMembers(companyId: UUID): Promise<number> {
+  return withInsforgeSession('tenant-service:count-active-members', async () => {
   const { data, error } = await insforge.database
     .from('company_memberships')
     .select('status')
@@ -399,6 +400,7 @@ export async function countActiveMembers(companyId: UUID): Promise<number> {
     const status = String(row.status ?? 'ACTIVE').toUpperCase();
     return status === 'ACTIVE' || status === '';
   }).length;
+  });
 }
 
 export async function countBillableActiveMembers(companyId: UUID): Promise<number> {
@@ -418,6 +420,7 @@ export async function countBillableActiveMembers(companyId: UUID): Promise<numbe
 }
 
 export async function countPendingInvites(companyId: UUID): Promise<number> {
+  return withInsforgeSession('tenant-service:count-pending-invites', async () => {
   const { count, error } = await insforge.database
     .from('company_invites')
     .select('*', { count: 'planned', head: true })
@@ -425,6 +428,7 @@ export async function countPendingInvites(companyId: UUID): Promise<number> {
     .in('status', ['PENDING', 'SENT']);
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function getSeatLimitForCompany(companyId: UUID): Promise<number> {

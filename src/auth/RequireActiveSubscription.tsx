@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useTenant } from '../tenant/TenantContext';
 import { insforge } from '../api/insforge/client';
+import { withInsforgeSession } from '../api/insforge/ensureSession';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
 const BILLING_PATHS = ['/billing', '/billing/status'];
@@ -15,37 +16,44 @@ type SubscriptionStatus = 'loading' | 'allowed' | 'expired' | 'suspended';
  */
 export function RequireActiveSubscription({ children }: { children: React.ReactElement }) {
   const location = useLocation();
-  const { activeCompanyId, isPlatformAdmin } = useTenant();
+  const { activeCompanyId, isPlatformAdmin, isTenantLoaded } = useTenant();
   const [status, setStatus] = useState<SubscriptionStatus>('loading');
 
   const pathname = location.pathname;
   const skipCheck = isPlatformAdmin || BILLING_PATHS.some((p) => pathname.startsWith(p));
 
   useEffect(() => {
-    if (skipCheck || !activeCompanyId) {
+    if (skipCheck) {
       setStatus('allowed');
+      return;
+    }
+    if (!isTenantLoaded || !activeCompanyId) {
+      setStatus('loading');
       return;
     }
     let cancelled = false;
     setStatus('loading');
     (async () => {
       try {
-        const { data: company } = await insforge.database
-          .from('companies')
-          .select('status')
-          .eq('id', activeCompanyId)
-          .maybeSingle();
+        const { company, licenses } = await withInsforgeSession('subscription:active-check', async () => {
+          const { data: company } = await insforge.database
+            .from('companies')
+            .select('status')
+            .eq('id', activeCompanyId)
+            .maybeSingle();
+          const { data: licenses } = await insforge.database
+            .from('org_licenses')
+            .select('id, status, end_date')
+            .eq('company_id', activeCompanyId)
+            .order('end_date', { ascending: false })
+            .limit(1);
+          return { company, licenses };
+        });
         const companySuspended = (company as { status?: string } | null)?.status === 'suspended';
         if (companySuspended && !cancelled) {
           setStatus('suspended');
           return;
         }
-        const { data: licenses } = await insforge.database
-          .from('org_licenses')
-          .select('id, status, end_date')
-          .eq('company_id', activeCompanyId)
-          .order('end_date', { ascending: false })
-          .limit(1);
         const license = Array.isArray(licenses) && licenses.length > 0 ? (licenses[0] as { status: string; end_date: string }) : null;
         if (!license) {
           if (!cancelled) setStatus('allowed');
@@ -59,7 +67,7 @@ export function RequireActiveSubscription({ children }: { children: React.ReactE
       }
     })();
     return () => { cancelled = true; };
-  }, [skipCheck, activeCompanyId]);
+  }, [skipCheck, activeCompanyId, isTenantLoaded]);
 
   if (skipCheck) return children;
   if (status === 'loading') {

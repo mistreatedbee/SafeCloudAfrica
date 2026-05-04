@@ -121,11 +121,11 @@
     },
     {
       "source": "/api/database/rpc/(.*)",
-      "destination": "https://pas375jb.us-west.insforge.app/api/database/rpc/$1"
+      "destination": "/api/insforge-proxy?path=database/rpc/$1"
     },
     {
       "source": "/api/database/records/(.*)",
-      "destination": "https://pas375jb.us-west.insforge.app/api/database/records/$1"
+      "destination": "/api/insforge-proxy?path=database/records/$1"
     },
     {
       "source": "/api/_insforge-proxy/(.*)",

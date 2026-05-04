@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type { Audit, AuditInvitationToken, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
@@ -50,6 +51,7 @@ export async function listAudits(input: {
   auditType?: string;
   limit?: number;
 }): Promise<Audit[]> {
+  return withInsforgeSession('audits:list', async () => {
   let query = insforge.database
     .from('audits')
     .select('*')
@@ -65,6 +67,7 @@ export async function listAudits(input: {
 
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Audit[];
+  });
 }
 
 export async function getAudit(auditId: UUID): Promise<Audit | null> {

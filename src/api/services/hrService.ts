@@ -1,5 +1,6 @@
 
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type { UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog, listActivityLogsByEntity } from './activityLogService';
@@ -222,6 +223,7 @@ export type HrAckReceiptRow = HrSimpleRecord & {
 };
 
 async function getCount(table: string, companyId: UUID, eq?: Record<string, string | number | boolean>): Promise<number> {
+  return withInsforgeSession(`hr:count:${table}`, async () => {
   let q = insforge.database.from(table).select('*', { count: 'planned', head: true }).eq('company_id', companyId);
   if (eq) {
     for (const [key, value] of Object.entries(eq)) q = q.eq(key, value);
@@ -229,9 +231,11 @@ async function getCount(table: string, companyId: UUID, eq?: Record<string, stri
   const { count, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 async function listTable<T>(table: string, companyId: UUID, filters?: Record<string, string | number | boolean | null>, order = 'created_at'): Promise<T[]> {
+  return withInsforgeSession(`hr:list:${table}`, async () => {
   let q = insforge.database.from(table).select('*').eq('company_id', companyId);
   if (filters) {
     for (const [key, value] of Object.entries(filters)) {
@@ -242,6 +246,7 @@ async function listTable<T>(table: string, companyId: UUID, filters?: Record<str
   const { data, error } = await q.order(order, { ascending: false });
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as T[];
+  });
 }
 
 async function insertTable<T>(table: string, payload: Record<string, unknown>): Promise<T> {

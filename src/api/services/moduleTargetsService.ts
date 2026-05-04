@@ -1,16 +1,19 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type { ModuleTarget, UUID } from '../models/entities';
 import type { ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { requireModuleEnabled } from './orgModulesService';
 
 export async function listModuleTargets(input: { companyId: UUID; module?: ModuleKey; limit?: number }): Promise<ModuleTarget[]> {
+  return withInsforgeSession('module-targets:list', async () => {
   if (input.module) await requireModuleEnabled(input.companyId, input.module);
   const base = insforge.database.from('module_targets').select('*').eq('company_id', input.companyId);
   const q = input.module ? base.eq('module', input.module) : base;
   const { data, error } = await q.order('updated_at', { ascending: false }).limit(input.limit ?? 50);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as ModuleTarget[];
+  });
 }
 
 export async function createModuleTarget(input: {

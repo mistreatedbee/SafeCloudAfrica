@@ -1,9 +1,11 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { Site, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
 
 export async function listSites(companyId: UUID, limit = 500): Promise<Site[]> {
+  return withInsforgeSession('sites:list', async () => {
   const { data, error } = await insforge.database
     .from('sites')
     .select('*')
@@ -12,6 +14,7 @@ export async function listSites(companyId: UUID, limit = 500): Promise<Site[]> {
     .limit(limit);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Site[];
+  });
 }
 
 export async function createSite(input: {

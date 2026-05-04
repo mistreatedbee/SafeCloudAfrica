@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type {
   Task,
   TaskStatus,
@@ -122,6 +123,7 @@ export type ListTasksWithFiltersInput = {
 };
 
 export async function listTasks(input: ListTasksInput): Promise<Task[]> {
+  return withInsforgeSession('tasks:list', async () => {
   const base = insforge.database.from('tasks').select('*').eq('company_id', input.companyId);
   const q = input.assigneeUserId ? base.eq('assignee_user_id', input.assigneeUserId) : base;
 
@@ -129,9 +131,11 @@ export async function listTasks(input: ListTasksInput): Promise<Task[]> {
   if (error) throw new Error(getErrorMessage(error));
   const tasks = (data ?? []) as Task[];
   return tasks.map(applyTimeStatusIndicator);
+  });
 }
 
 export async function listTasksWithFilters(input: ListTasksWithFiltersInput): Promise<Task[]> {
+  return withInsforgeSession('tasks:list-with-filters', async () => {
   let q = insforge.database.from('tasks').select('*').eq('company_id', input.companyId);
 
   if (input.category) q = q.eq('category', input.category);
@@ -156,9 +160,11 @@ export async function listTasksWithFilters(input: ListTasksWithFiltersInput): Pr
   if (error) throw new Error(getErrorMessage(error));
   const tasks = (data ?? []) as Task[];
   return tasks.map(applyTimeStatusIndicator);
+  });
 }
 
 export async function getTaskById(companyId: UUID, taskId: UUID): Promise<Task | null> {
+  return withInsforgeSession('tasks:get-by-id', async () => {
   const { data, error } = await insforge.database
     .from('tasks')
     .select('*')
@@ -168,9 +174,11 @@ export async function getTaskById(companyId: UUID, taskId: UUID): Promise<Task |
   if (error) throw new Error(getErrorMessage(error));
   if (!data) return null;
   return applyTimeStatusIndicator(data as Task);
+  });
 }
 
 export async function countTasksByAssignee(companyId: UUID, assigneeUserId: UUID, openOnly = true): Promise<number> {
+  return withInsforgeSession('tasks:count-by-assignee', async () => {
   let q = insforge.database
     .from('tasks')
     .select('*', { count: 'planned', head: true })
@@ -180,9 +188,11 @@ export async function countTasksByAssignee(companyId: UUID, assigneeUserId: UUID
   const { count, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countTasksByDepartment(companyId: UUID, departmentId: UUID, openOnly = true): Promise<number> {
+  return withInsforgeSession('tasks:count-by-department', async () => {
   let q = insforge.database
     .from('tasks')
     .select('*', { count: 'planned', head: true })
@@ -192,6 +202,7 @@ export async function countTasksByDepartment(companyId: UUID, departmentId: UUID
   const { count, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countTasksByRiskLevel(
@@ -199,6 +210,7 @@ export async function countTasksByRiskLevel(
   riskLevel: 'high' | 'critical',
   openOnly = true
 ): Promise<number> {
+  return withInsforgeSession('tasks:count-by-risk-level', async () => {
   let q = insforge.database
     .from('tasks')
     .select('*', { count: 'planned', head: true })
@@ -208,9 +220,11 @@ export async function countTasksByRiskLevel(
   const { count, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countMyPendingTasks(companyId: UUID, userId: UUID): Promise<number> {
+  return withInsforgeSession('tasks:count-my-pending', async () => {
   const { count, error } = await insforge.database
     .from('tasks')
     .select('*', { count: 'planned', head: true })
@@ -219,9 +233,11 @@ export async function countMyPendingTasks(companyId: UUID, userId: UUID): Promis
     .in('status', OPEN_STATUSES);
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countCompanyPendingTasks(companyId: UUID): Promise<number> {
+  return withInsforgeSession('tasks:count-company-pending', async () => {
   const { count, error } = await insforge.database
     .from('tasks')
     .select('*', { count: 'planned', head: true })
@@ -229,9 +245,11 @@ export async function countCompanyPendingTasks(companyId: UUID): Promise<number>
     .in('status', OPEN_STATUSES);
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countOverdueTasks(companyId: UUID): Promise<number> {
+  return withInsforgeSession('tasks:count-overdue', async () => {
   const { count, error } = await insforge.database
     .from('tasks')
     .select('*', { count: 'planned', head: true })
@@ -239,9 +257,11 @@ export async function countOverdueTasks(companyId: UUID): Promise<number> {
     .eq('status', 'overdue');
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countPendingTasksByModule(companyId: UUID, module: ModuleKey): Promise<number> {
+  return withInsforgeSession('tasks:count-pending-by-module', async () => {
   const { count, error } = await insforge.database
     .from('tasks')
     .select('*', { count: 'planned', head: true })
@@ -250,15 +270,18 @@ export async function countPendingTasksByModule(companyId: UUID, module: ModuleK
     .in('status', OPEN_STATUSES);
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countTasksByStatus(companyId: UUID, input: { module?: ModuleKey; status?: Task['status'] }): Promise<number> {
+  return withInsforgeSession('tasks:count-by-status', async () => {
   const base = insforge.database.from('tasks').select('*', { count: 'planned', head: true }).eq('company_id', companyId);
   const q1 = input.module ? base.eq('module', input.module) : base;
   const q2 = input.status ? q1.eq('status', input.status) : q1;
   const { count, error } = await q2;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export type CreateTaskInput = {

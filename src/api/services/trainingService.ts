@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type {
   TrainingCourse,
   TrainingRecord,
@@ -344,6 +345,7 @@ export async function deleteTrainingRecord(input: {
 }
 
 export async function countExpiringTraining(companyId: UUID, withinDays = 30): Promise<number> {
+  return withInsforgeSession('training:count-expiring', async () => {
   const nowIso = new Date().toISOString();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + withinDays);
@@ -356,9 +358,11 @@ export async function countExpiringTraining(companyId: UUID, withinDays = 30): P
     .lte('expires_at', cutoff.toISOString());
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countExpiringTrainingForUser(companyId: UUID, userId: UUID, withinDays = 30): Promise<number> {
+  return withInsforgeSession('training:count-expiring-for-user', async () => {
   const nowIso = new Date().toISOString();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + withinDays);
@@ -372,6 +376,7 @@ export async function countExpiringTrainingForUser(companyId: UUID, userId: UUID
     .lte('expires_at', cutoff.toISOString());
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 // ---------------------------------------------------------------------------

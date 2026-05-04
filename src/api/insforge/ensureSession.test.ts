@@ -11,6 +11,7 @@ const httpMock = vi.hoisted(() => ({
 }));
 
 vi.mock('./client', () => ({
+  insforgeReady: Promise.resolve(),
   insforge: {
     auth: authMock,
     getHttpClient: () => httpMock
@@ -57,5 +58,21 @@ describe('ensureInsforgeSession', () => {
     await expect(ensureInsforgeSession({ reason: 'test' })).rejects.toMatchObject({
       code: 'AUTH_SESSION_MISSING'
     });
+  });
+
+  it('withInsforgeSession attaches a user token before running the guarded call', async () => {
+    const userToken = createJwt({ sub: 'user-1' });
+    const guarded = vi.fn().mockResolvedValue('ok');
+    authMock.getCurrentSession.mockResolvedValue({
+      data: { session: { accessToken: userToken, user: { id: 'user-1' } } },
+      error: null
+    });
+    httpMock.getHeaders.mockReturnValue({});
+
+    const { withInsforgeSession } = await import('./ensureSession');
+    await expect(withInsforgeSession('test:guarded', guarded)).resolves.toBe('ok');
+
+    expect(httpMock.setAuthToken).toHaveBeenCalledWith(userToken);
+    expect(guarded).toHaveBeenCalledTimes(1);
   });
 });

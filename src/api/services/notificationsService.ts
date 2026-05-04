@@ -1,9 +1,10 @@
 import { insforge } from '../insforge/client';
-import { ensureInsforgeSession } from '../insforge/ensureSession';
+import { ensureInsforgeSession, withInsforgeSession } from '../insforge/ensureSession';
 import type { Notification, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 
 export async function listMyNotifications(companyId: UUID, userId: UUID, limit = 20): Promise<Notification[]> {
+  return withInsforgeSession('notifications:list-my', async () => {
   const { data, error } = await insforge.database
     .from('notifications')
     .select('*')
@@ -13,6 +14,7 @@ export async function listMyNotifications(companyId: UUID, userId: UUID, limit =
     .limit(limit);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Notification[];
+  });
 }
 
 /**
@@ -72,6 +74,7 @@ export async function markNotificationRead(notificationId: UUID): Promise<void> 
  * Get unread count
  */
 export async function getUnreadCount(companyId: UUID, userId: UUID): Promise<number> {
+  return withInsforgeSession('notifications:get-unread-count', async () => {
   const { count, error } = await insforge.database
     .from('notifications')
     .select('*', { count: 'planned', head: true })
@@ -81,6 +84,7 @@ export async function getUnreadCount(companyId: UUID, userId: UUID): Promise<num
 
   if (error) throw new Error(getErrorMessage(error));
   return count || 0;
+  });
 }
 
 /**

@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type { UUID } from '../models/entities';
 import type { ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
@@ -406,6 +407,7 @@ export async function getDueSoonActions(companyId: UUID, daysAhead = 7): Promise
 }
 
 export async function countOpenCorrectiveActions(companyId: UUID, input?: { module?: ModuleKey }): Promise<number> {
+  return withInsforgeSession('corrective-actions:count-open', async () => {
   const base = insforge.database
     .from('corrective_actions')
     .select('*', { count: 'planned', head: true })
@@ -415,9 +417,11 @@ export async function countOpenCorrectiveActions(companyId: UUID, input?: { modu
   const { count, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countOverdueCorrectiveActions(companyId: UUID, input?: { module?: ModuleKey }): Promise<number> {
+  return withInsforgeSession('corrective-actions:count-overdue', async () => {
   const base = insforge.database
     .from('corrective_actions')
     .select('*', { count: 'planned', head: true })
@@ -428,6 +432,7 @@ export async function countOverdueCorrectiveActions(companyId: UUID, input?: { m
   const { count, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function deleteCorrectiveAction(

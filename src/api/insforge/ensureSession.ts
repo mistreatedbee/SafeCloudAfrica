@@ -1,4 +1,4 @@
-import { insforge } from './client';
+import { insforge, insforgeReady } from './client';
 
 const AUTH_BOOTSTRAP_DEBUG = (import.meta as any)?.env?.VITE_AUTH_BOOTSTRAP_DEBUG === '1';
 
@@ -186,3 +186,8 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
   return { accessToken: token, userId };
 }
 
+export async function withInsforgeSession<T>(reason: string, fn: () => Promise<T>): Promise<T> {
+  await insforgeReady;
+  await ensureInsforgeSession({ reason });
+  return fn();
+}

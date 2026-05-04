@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type { Incident, UUID } from '../models/entities';
 import type { IncidentCategory, IncidentStatus, ModuleKey, Severity, IncidentRiskCategory } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
@@ -19,6 +20,7 @@ export type ListIncidentsWithFiltersInput = ListIncidentsInput & {
 };
 
 export async function listIncidents(input: ListIncidentsInput): Promise<Incident[]> {
+  return withInsforgeSession('incidents:list', async () => {
   const q = insforge.database.from('incidents').select('*').eq('company_id', input.companyId).order('occurred_at', { ascending: false });
 
   const trimmed = input.search?.trim();
@@ -32,9 +34,11 @@ export async function listIncidents(input: ListIncidentsInput): Promise<Incident
   const { data, error } = await finalQ;
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Incident[];
+  });
 }
 
 export async function listIncidentsWithFilters(input: ListIncidentsWithFiltersInput): Promise<Incident[]> {
+  return withInsforgeSession('incidents:list-with-filters', async () => {
   let q = insforge.database
     .from('incidents')
     .select('*')
@@ -55,9 +59,11 @@ export async function listIncidentsWithFilters(input: ListIncidentsWithFiltersIn
   const { data, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Incident[];
+  });
 }
 
 export async function countIncidentsByStatus(companyId: UUID, status: IncidentStatus): Promise<number> {
+  return withInsforgeSession('incidents:count-by-status', async () => {
   const { count, error } = await insforge.database
     .from('incidents')
     .select('*', { count: 'planned', head: true })
@@ -65,9 +71,11 @@ export async function countIncidentsByStatus(companyId: UUID, status: IncidentSt
     .eq('status', status);
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countIncidentsByStatusForModule(companyId: UUID, module: ModuleKey, status: IncidentStatus): Promise<number> {
+  return withInsforgeSession('incidents:count-by-status-for-module', async () => {
   const { count, error } = await insforge.database
     .from('incidents')
     .select('*', { count: 'planned', head: true })
@@ -76,9 +84,11 @@ export async function countIncidentsByStatusForModule(companyId: UUID, module: M
     .eq('status', status);
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countNearMissesThisMonth(companyId: UUID): Promise<number> {
+  return withInsforgeSession('incidents:count-near-misses-this-month', async () => {
   const start = new Date();
   start.setDate(1);
   start.setHours(0, 0, 0, 0);
@@ -92,9 +102,11 @@ export async function countNearMissesThisMonth(companyId: UUID): Promise<number>
 
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export async function countMyIncidents(companyId: UUID, userId: UUID): Promise<number> {
+  return withInsforgeSession('incidents:count-my-incidents', async () => {
   const { count, error } = await insforge.database
     .from('incidents')
     .select('*', { count: 'planned', head: true })
@@ -102,6 +114,7 @@ export async function countMyIncidents(companyId: UUID, userId: UUID): Promise<n
     .eq('created_by_user_id', userId);
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export type GetIncidentCountsForKpiInput = {

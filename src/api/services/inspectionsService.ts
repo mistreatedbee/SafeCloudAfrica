@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type {
   Inspection,
   InspectionChecklistItem,
@@ -32,6 +33,7 @@ export type ListInspectionsInput = {
 };
 
 export async function listInspections(input: ListInspectionsInput): Promise<Inspection[]> {
+  return withInsforgeSession('inspections:list', async () => {
   const base = insforge.database.from('inspections').select('*').eq('company_id', input.companyId);
   const q1 = input.module ? base.eq('module', input.module) : base;
   const q2 = input.status ? q1.eq('status', input.status) : q1;
@@ -45,12 +47,14 @@ export async function listInspections(input: ListInspectionsInput): Promise<Insp
   const { data, error } = await q6.order('scheduled_at', { ascending: false }).limit(input.limit ?? 200);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Inspection[];
+  });
 }
 
 export async function countInspections(
   companyId: UUID,
   input?: { module?: ModuleKey; status?: Inspection['status'] }
 ): Promise<number> {
+  return withInsforgeSession('inspections:count', async () => {
   const base = insforge.database
     .from('inspections')
     .select('*', { count: 'planned', head: true })
@@ -60,6 +64,7 @@ export async function countInspections(
   const { count, error } = await q2;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
+  });
 }
 
 export type CreateInspectionInput = {

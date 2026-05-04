@@ -12,18 +12,22 @@ interface LicenseBannerProps {
  * Display license status and trial warnings
  */
 export function LicenseBanner({ compact = false }: LicenseBannerProps) {
-  const { activeCompanyId } = useTenant();
+  const { activeCompanyId, isTenantLoaded } = useTenant();
   const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
   const [inTrial, setInTrial] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadLicenseInfo();
-  }, [activeCompanyId]);
+    void loadLicenseInfo();
+  }, [activeCompanyId, isTenantLoaded]);
 
   async function loadLicenseInfo() {
-    if (!activeCompanyId) return;
+    if (!isTenantLoaded || !activeCompanyId) {
+      setLoading(false);
+      setLicenseInfo(null);
+      return;
+    }
     try {
       setLoading(true);
       const [license, trial, trialDays] = await Promise.all([
