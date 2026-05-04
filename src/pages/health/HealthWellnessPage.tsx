@@ -19,6 +19,7 @@ import {
   updateHealthVaccination
 } from '../../api/services/healthService';
 import { SelectOrType } from '../../components/ui/SelectOrType';
+import { EvidenceModal } from '../../components/evidence/EvidenceModal';
 import { getMergedOptions } from '../../api/services/dynamicOptionsService';
 import type { CompanyRole } from '../../api/models/core';
 import type { OptionItem } from '../../api/services/dynamicOptionsService';
@@ -37,6 +38,8 @@ export function HealthWellnessPage() {
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
   const [editingSubstanceId, setEditingSubstanceId] = useState<string | null>(null);
   const [editingVaccinationId, setEditingVaccinationId] = useState<string | null>(null);
+  const [substanceEvidenceId, setSubstanceEvidenceId] = useState<string | null>(null);
+  const [vaccinationEvidenceId, setVaccinationEvidenceId] = useState<string | null>(null);
   const [vaccineOptions, setVaccineOptions] = useState<OptionItem[]>([]);
   const [substanceOptions, setSubstanceOptions] = useState<OptionItem[]>([]);
   const [vaccineName, setVaccineName] = useState('');
@@ -478,7 +481,7 @@ export function HealthWellnessPage() {
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Employee</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Case type</th><th className="px-3 py-2 text-left">Result</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
-                <tbody className="divide-y divide-surface-100">{(substanceCases ?? []).map((s) => <tr key={s.id}><td className="px-3 py-2">{s.employee_name ?? '-'}</td><td className="px-3 py-2">{s.date_of_report}</td><td className="px-3 py-2">{s.type_of_case}</td><td className="px-3 py-2">{s.test_result}</td><td className="px-3 py-2"><div className="flex gap-2"><button type="button" onClick={() => { setEditingSubstanceId(s.id); setSubstanceForm({ employeeName: s.employee_name ?? '', dateOfReport: s.date_of_report ?? '', testConductedBy: s.test_conducted_by ?? '', typeOfCase: s.type_of_case ?? 'Reasonable Suspicion', substanceSuspected: s.substance_suspected ?? [], observedBehaviourSymptoms: s.observed_behaviour_symptoms ?? '', witnessNames: (s.witness_names ?? []).join(', '), typeOfTest: s.type_of_test ?? 'Breathalyser', testResult: s.test_result ?? 'Negative', immediateActionTaken: s.immediate_action_taken ?? '', outcome: s.outcome ?? 'Verbal Warning' }); setSubstanceManual(s.substance_suspected_other ?? ''); }} className="px-2 py-1 border rounded text-xs">Edit</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this substance case?')) return; await deleteHealthSubstanceCase(activeCompanyId, s.id, user.id); if (editingSubstanceId === s.id) setEditingSubstanceId(null); setRefreshKey((k) => k + 1); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}</tbody>
+                <tbody className="divide-y divide-surface-100">{(substanceCases ?? []).map((s) => <tr key={s.id}><td className="px-3 py-2">{s.employee_name ?? '-'}</td><td className="px-3 py-2">{s.date_of_report}</td><td className="px-3 py-2">{s.type_of_case}</td><td className="px-3 py-2">{s.test_result}</td><td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setEditingSubstanceId(s.id); setSubstanceForm({ employeeName: s.employee_name ?? '', dateOfReport: s.date_of_report ?? '', testConductedBy: s.test_conducted_by ?? '', typeOfCase: s.type_of_case ?? 'Reasonable Suspicion', substanceSuspected: s.substance_suspected ?? [], observedBehaviourSymptoms: s.observed_behaviour_symptoms ?? '', witnessNames: (s.witness_names ?? []).join(', '), typeOfTest: s.type_of_test ?? 'Breathalyser', testResult: s.test_result ?? 'Negative', immediateActionTaken: s.immediate_action_taken ?? '', outcome: s.outcome ?? 'Verbal Warning' }); setSubstanceManual(s.substance_suspected_other ?? ''); }} className="px-2 py-1 border rounded text-xs">Edit</button><button type="button" onClick={() => setSubstanceEvidenceId(s.id)} className="px-2 py-1 border rounded text-xs">Evidence</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this substance case?')) return; await deleteHealthSubstanceCase(activeCompanyId, s.id, user.id); if (editingSubstanceId === s.id) setEditingSubstanceId(null); setRefreshKey((k) => k + 1); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}</tbody>
               </table>
             </div>
           </div>
@@ -522,13 +525,33 @@ export function HealthWellnessPage() {
             </form>
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <table className="w-full text-sm">
-                <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Employee</th><th className="px-3 py-2 text-left">Vaccine</th><th className="px-3 py-2 text-left">Dose</th><th className="px-3 py-2 text-left">Administered</th><th className="px-3 py-2 text-left">Next due</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
-                <tbody className="divide-y divide-surface-100">{(vaccinations ?? []).map((v) => <tr key={v.id}><td className="px-3 py-2">{v.employee_name ?? '-'}</td><td className="px-3 py-2">{v.vaccine_name}</td><td className="px-3 py-2">{v.dose_no ?? '-'}</td><td className="px-3 py-2">{v.date_administered ?? '-'}</td><td className="px-3 py-2">{v.next_due_date ?? '-'}</td><td className="px-3 py-2"><div className="flex gap-2"><button type="button" onClick={() => { setEditingVaccinationId(v.id); setVaccineName(v.vaccine_name ?? ''); setVaccinationForm({ employeeName: v.employee_name ?? '', doseNo: v.dose_no != null ? String(v.dose_no) : '', dateAdministered: v.date_administered ?? '', batchNo: v.batch_no ?? '', administeredBy: v.administered_by ?? '', nextDueDate: v.next_due_date ?? '', validity: v.validity ?? '' }); }} className="px-2 py-1 border rounded text-xs">Edit</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this vaccination record?')) return; await deleteHealthVaccination(activeCompanyId, v.id, user.id); if (editingVaccinationId === v.id) setEditingVaccinationId(null); setRefreshKey((k) => k + 1); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}</tbody>
+                <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Employee</th><th className="px-3 py-2 text-left">Vaccine</th><th className="px-3 py-2 text-left">Dose</th><th className="px-3 py-2 text-left">Administered</th><th className="px-3 py-2 text-left">Next due</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
+                <tbody className="divide-y divide-surface-100">{(vaccinations ?? []).map((v) => <tr key={v.id} className={String((v as any).status ?? 'active') === 'archived' ? 'bg-surface-50 text-charcoal-500' : ''}><td className="px-3 py-2">{v.employee_name ?? '-'}</td><td className="px-3 py-2">{v.vaccine_name}</td><td className="px-3 py-2">{v.dose_no ?? '-'}</td><td className="px-3 py-2">{v.date_administered ?? '-'}</td><td className="px-3 py-2">{v.next_due_date ?? '-'}</td><td className="px-3 py-2">{String((v as any).status ?? 'active')}</td><td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setEditingVaccinationId(v.id); setVaccineName(v.vaccine_name ?? ''); setVaccinationForm({ employeeName: v.employee_name ?? '', doseNo: v.dose_no != null ? String(v.dose_no) : '', dateAdministered: v.date_administered ?? '', batchNo: v.batch_no ?? '', administeredBy: v.administered_by ?? '', nextDueDate: v.next_due_date ?? '', validity: v.validity ?? '' }); }} className="px-2 py-1 border rounded text-xs">Edit</button><button type="button" onClick={() => setVaccinationEvidenceId(v.id)} className="px-2 py-1 border rounded text-xs">Documents</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this vaccination record?')) return; await deleteHealthVaccination(activeCompanyId, v.id, user.id); if (editingVaccinationId === v.id) setEditingVaccinationId(null); setRefreshKey((k) => k + 1); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}</tbody>
               </table>
             </div>
           </div>
         )}
       </div>
+      {activeCompanyId && user?.id && (
+        <>
+          <EvidenceModal
+            open={Boolean(substanceEvidenceId)}
+            onClose={() => setSubstanceEvidenceId(null)}
+            companyId={activeCompanyId}
+            entityType="health_substance_case"
+            entityId={substanceEvidenceId ?? ''}
+            uploadedByUserId={user.id}
+          />
+          <EvidenceModal
+            open={Boolean(vaccinationEvidenceId)}
+            onClose={() => setVaccinationEvidenceId(null)}
+            companyId={activeCompanyId}
+            entityType="health_vaccination"
+            entityId={vaccinationEvidenceId ?? ''}
+            uploadedByUserId={user.id}
+          />
+        </>
+      )}
     </Layout>
   );
 }

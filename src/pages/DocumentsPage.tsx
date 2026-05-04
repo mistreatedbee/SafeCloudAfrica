@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDownIcon, ChevronRightIcon, FileTextIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, LockIcon, PencilIcon, PlusIcon, SearchIcon, ShieldAlertIcon, UploadIcon } from 'lucide-react';
 import { useUser } from '@insforge/react';
@@ -408,6 +408,7 @@ export function DocumentsPage() {
   const [expandedFolderIds, setExpandedFolderIds] = useState<Record<string, boolean>>({});
   const [selectedFolderId, setSelectedFolderId] = useState('');
   const [selectedDocId, setSelectedDocId] = useState('');
+  const selectedDocSectionRef = useRef<HTMLDivElement | null>(null);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [editChoiceOpen, setEditChoiceOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -437,6 +438,13 @@ export function DocumentsPage() {
     [folderList, folderMaps.byId, folderSearch]
   );
   const selectedDoc = useMemo(() => docList.find((doc) => doc.id === selectedDocId) ?? null, [docList, selectedDocId]);
+
+  useEffect(() => {
+    if (!selectedDocId) return;
+    window.requestAnimationFrame(() => {
+      selectedDocSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [selectedDocId]);
 
   const versionIds = useMemo(() => {
     const ids: string[] = [];
@@ -862,7 +870,7 @@ export function DocumentsPage() {
           </div>
 
           {selectedDoc && (
-            <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5 space-y-4">
+            <div ref={selectedDocSectionRef} className="bg-white rounded-xl border border-surface-300 shadow-card p-5 space-y-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">

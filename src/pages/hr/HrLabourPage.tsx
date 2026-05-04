@@ -15,6 +15,7 @@ import {
 } from '../../api/services/hrService';
 import { createNotification } from '../../api/services/notificationsService';
 import { SelectOrType } from '../../components/ui/SelectOrType';
+import { EvidenceModal } from '../../components/evidence/EvidenceModal';
 import type { UUID } from '../../api/models/core';
 import { downloadTextFile, toCsv } from '../../utils/csv';
 import { toUserFacingError } from '../../utils/userFacingMessage';
@@ -61,6 +62,7 @@ export function HrLabourPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedCaseId, setSelectedCaseId] = useState<UUID | null>(null);
+  const [evidenceCaseId, setEvidenceCaseId] = useState<UUID | null>(null);
   const [selectedCaseDraft, setSelectedCaseDraft] = useState<{
     status: string;
     description: string;
@@ -333,7 +335,10 @@ export function HrLabourPage() {
                   </td>
                   <td className="px-3 py-2">{String(row.status ?? '')}</td>
                   <td className="px-3 py-2">
-                    <button className="text-teal font-medium hover:underline" onClick={() => openCaseDetails(row)}>View details</button>
+                    <div className="flex flex-wrap gap-2">
+                      <button className="text-teal font-medium hover:underline" onClick={() => openCaseDetails(row)}>View details</button>
+                      <button className="text-charcoal-700 font-medium hover:underline" onClick={() => setEvidenceCaseId(row.id as UUID)}>Warnings/Evidence</button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -414,7 +419,20 @@ export function HrLabourPage() {
             <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onSaveSelected()} disabled={!canManage}>
               Save updates
             </button>
+            <button className="ml-2 px-4 py-2 rounded-lg border border-surface-300 text-sm" onClick={() => setEvidenceCaseId(selectedCase.id as UUID)}>
+              Attach warnings/evidence
+            </button>
           </div>
+        )}
+        {activeCompanyId && user?.id && (
+          <EvidenceModal
+            open={Boolean(evidenceCaseId)}
+            onClose={() => setEvidenceCaseId(null)}
+            companyId={activeCompanyId}
+            entityType="hr_disciplinary_case"
+            entityId={evidenceCaseId ?? ''}
+            uploadedByUserId={user.id}
+          />
         )}
       </div>
     </Layout>

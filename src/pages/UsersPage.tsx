@@ -10,6 +10,7 @@ import {
   getSeatLimitForCompany,
   listCompanyInvites,
   listCompanyMemberships,
+  removeMembership,
   resendInvite,
   updateMembershipHrManagerFlag,
   updateMembershipRole,
@@ -229,6 +230,27 @@ export function UsersPage() {
       });
     } catch (err: any) {
       setInviteFeedback({ type: 'error', text: err?.message || 'Failed to update user status.' });
+    } finally {
+      setMembershipActionLoadingId(null);
+    }
+  }
+
+  async function handleRemoveMembership(membershipId: string, roleRaw: CompanyRole) {
+    if (!activeCompanyId || !user?.id) return;
+    const roleLabel = formatRole(roleRaw);
+    if (!window.confirm(`Remove this ${roleLabel} from the company? This removes their membership access.`)) return;
+    setMembershipActionLoadingId(membershipId);
+    setInviteFeedback(null);
+    try {
+      await removeMembership({
+        companyId: activeCompanyId,
+        membershipId: membershipId as any,
+        actorUserId: user.id
+      });
+      await refreshUsersData();
+      setInviteFeedback({ type: 'success', text: `${roleLabel} removed successfully.` });
+    } catch (err: any) {
+      setInviteFeedback({ type: 'error', text: err?.message || `Failed to remove ${roleLabel}.` });
     } finally {
       setMembershipActionLoadingId(null);
     }
@@ -563,8 +585,18 @@ export function UsersPage() {
                                   onClick={() => void handleStatusToggle(u.membershipId, String(u.status))}
                                   className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50 disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
-                                  {String(u.status) === 'DISABLED' ? 'Reactivate' : 'Deactivate'}
+                                  {String(u.status) === 'DISABLED' ? 'Unblock' : ['consultant', 'auditor'].includes(String(u.roleRaw)) ? 'Block' : 'Deactivate'}
                                 </button>
+                                {['consultant', 'auditor'].includes(String(u.roleRaw)) && (
+                                  <button
+                                    type="button"
+                                    disabled={membershipActionLoadingId === u.membershipId}
+                                    onClick={() => void handleRemoveMembership(u.membershipId, u.roleRaw as CompanyRole)}
+                                    className="px-3 py-2 rounded-lg border border-critical/30 text-sm font-medium text-critical hover:bg-critical/5 disabled:opacity-60 disabled:cursor-not-allowed"
+                                  >
+                                    Remove
+                                  </button>
+                                )}
                               </>
                             )}
                           </div>
@@ -635,6 +667,16 @@ export function UsersPage() {
                                 className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50 disabled:opacity-60 disabled:cursor-not-allowed"
                               >
                                 Cancel
+                              </button>
+                            )}
+                            {activeInvite && ['consultant', 'auditor'].includes(String(invite.role)) && (
+                              <button
+                                type="button"
+                                disabled={inviteActionLoadingId === invite.id}
+                                onClick={() => void onCancelInvite(invite.id)}
+                                className="px-3 py-2 rounded-lg border border-critical/30 text-sm font-medium text-critical hover:bg-critical/5 disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                Remove
                               </button>
                             )}
                           </div>

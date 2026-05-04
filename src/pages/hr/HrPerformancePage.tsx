@@ -11,6 +11,36 @@ import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 
+type KpaRow = {
+  id: string;
+  keyPerformanceArea: string;
+  outcomeDeliverables: string;
+  employeeRating: string;
+  managerRating: string;
+};
+
+function createBlankKpaRow(): KpaRow {
+  return {
+    id: crypto.randomUUID(),
+    keyPerformanceArea: '',
+    outcomeDeliverables: '',
+    employeeRating: '',
+    managerRating: ''
+  };
+}
+
+function normalizeKpaRows(value: unknown): KpaRow[] {
+  if (!Array.isArray(value)) return [createBlankKpaRow()];
+  const rows = value.map((row: any) => ({
+    id: String(row.id || crypto.randomUUID()),
+    keyPerformanceArea: String(row.keyPerformanceArea ?? row.key_performance_area ?? ''),
+    outcomeDeliverables: String(row.outcomeDeliverables ?? row.outcome_deliverables ?? ''),
+    employeeRating: String(row.employeeRating ?? row.employee_rating ?? ''),
+    managerRating: String(row.managerRating ?? row.manager_rating ?? '')
+  }));
+  return rows.length > 0 ? rows : [createBlankKpaRow()];
+}
+
 export function HrPerformancePage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
@@ -18,6 +48,7 @@ export function HrPerformancePage() {
   const [employeeId, setEmployeeId] = useState('');
   const [cycle, setCycle] = useState('Annual');
   const [overallRating, setOverallRating] = useState('3');
+  const [kpaRows, setKpaRows] = useState<KpaRow[]>(() => [createBlankKpaRow()]);
   const [strengths, setStrengths] = useState('');
   const [assistanceRequired, setAssistanceRequired] = useState('');
   const [weaknesses, setWeaknesses] = useState('');
@@ -34,6 +65,7 @@ export function HrPerformancePage() {
     employeeId: string;
     cycle: string;
     overallRating: string;
+    kpaRows: KpaRow[];
     strengths: string;
     assistanceRequired: string;
     weaknesses: string;
@@ -52,6 +84,7 @@ export function HrPerformancePage() {
       employeeId,
       cycle,
       overallRating,
+      kpaRows,
       strengths,
       assistanceRequired,
       weaknesses,
@@ -65,6 +98,7 @@ export function HrPerformancePage() {
       employeeId,
       cycle,
       overallRating,
+      kpaRows,
       strengths,
       assistanceRequired,
       weaknesses,
@@ -103,6 +137,7 @@ export function HrPerformancePage() {
     setEmployeeId(restored.employeeId ?? '');
     setCycle(restored.cycle ?? 'Annual');
     setOverallRating(restored.overallRating ?? '3');
+    setKpaRows(normalizeKpaRows(restored.kpaRows));
     setStrengths(restored.strengths ?? '');
     setAssistanceRequired(restored.assistanceRequired ?? '');
     setWeaknesses(restored.weaknesses ?? '');
@@ -140,6 +175,7 @@ export function HrPerformancePage() {
     setEmployeeId('');
     setCycle('Annual');
     setOverallRating('3');
+    setKpaRows([createBlankKpaRow()]);
     setStrengths('');
     setAssistanceRequired('');
     setWeaknesses('');
@@ -155,6 +191,7 @@ export function HrPerformancePage() {
     setEmployeeId(String(row.employee_id ?? ''));
     setCycle(String(row.cycle ?? 'Annual'));
     setOverallRating(String(row.overall_rating ?? '3'));
+    setKpaRows(normalizeKpaRows(row.kpa_rows));
     setStrengths(String(row.strengths ?? ''));
     setAssistanceRequired(String(row.assistance_required ?? ''));
     setWeaknesses(String(row.weaknesses ?? ''));
@@ -203,6 +240,7 @@ export function HrPerformancePage() {
             employee_id: employeeId,
             cycle,
             overall_rating: Math.max(1, Math.min(5, Number(overallRating || 3))),
+            kpa_rows: kpaRows,
             strengths,
             assistance_required: assistanceRequired || null,
             weaknesses: weaknesses || null,
@@ -222,6 +260,7 @@ export function HrPerformancePage() {
           review_date: new Date().toISOString().slice(0, 10),
           reviewer_user_id: user.id,
           overall_rating: Math.max(1, Math.min(5, Number(overallRating || 3))),
+          kpa_rows: kpaRows,
           strengths,
           assistance_required: assistanceRequired || null,
           weaknesses: weaknesses || null,
@@ -248,6 +287,7 @@ export function HrPerformancePage() {
           employeeId: '',
           cycle: 'Annual',
           overallRating: '3',
+          kpaRows: [createBlankKpaRow()],
           strengths: '',
           assistanceRequired: '',
           weaknesses: '',
@@ -282,6 +322,10 @@ export function HrPerformancePage() {
     }
   }
 
+  function updateKpaRow(rowId: string, patch: Partial<KpaRow>) {
+    setKpaRows((rows) => rows.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
+  }
+
   return (
     <Layout title="Performance Management">
       <div className="space-y-4">
@@ -301,6 +345,40 @@ export function HrPerformancePage() {
             </label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Cycle</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={cycle} onChange={(e) => setCycle(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Overall rating (1-5)</span><input type="number" min={1} max={5} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={overallRating} onChange={(e) => setOverallRating(e.target.value)} /></label>
+            <div className="md:col-span-3 rounded-lg border border-surface-200 overflow-auto">
+              <div className="flex items-center justify-between gap-3 border-b border-surface-200 px-3 py-2">
+                <p className="text-sm font-semibold text-charcoal">Key performance areas</p>
+                <button type="button" className="rounded-lg border border-surface-300 px-3 py-1.5 text-xs" onClick={() => setKpaRows((rows) => [...rows, createBlankKpaRow()])}>
+                  Add row
+                </button>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-surface-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Key Performance Area</th>
+                    <th className="px-3 py-2 text-left">Outcome/Deliverables</th>
+                    <th className="px-3 py-2 text-left">Employee Rating</th>
+                    <th className="px-3 py-2 text-left">Manager Rating</th>
+                    <th className="px-3 py-2 text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-100">
+                  {kpaRows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="px-3 py-2"><input className="w-full rounded-lg border border-surface-300 px-3 py-2" value={row.keyPerformanceArea} onChange={(e) => updateKpaRow(row.id, { keyPerformanceArea: e.target.value })} /></td>
+                      <td className="px-3 py-2"><input className="w-full rounded-lg border border-surface-300 px-3 py-2" value={row.outcomeDeliverables} onChange={(e) => updateKpaRow(row.id, { outcomeDeliverables: e.target.value })} /></td>
+                      <td className="px-3 py-2"><input type="number" min={1} max={5} className="w-28 rounded-lg border border-surface-300 px-3 py-2" value={row.employeeRating} onChange={(e) => updateKpaRow(row.id, { employeeRating: e.target.value })} /></td>
+                      <td className="px-3 py-2"><input type="number" min={1} max={5} className="w-28 rounded-lg border border-surface-300 px-3 py-2" value={row.managerRating} onChange={(e) => updateKpaRow(row.id, { managerRating: e.target.value })} /></td>
+                      <td className="px-3 py-2">
+                        <button type="button" className="text-critical hover:underline" onClick={() => setKpaRows((rows) => rows.length > 1 ? rows.filter((item) => item.id !== row.id) : [createBlankKpaRow()])}>
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <label className="text-sm md:col-span-3"><span className="block text-xs text-charcoal-500 mb-1">Strengths</span><textarea rows={2} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={strengths} onChange={(e) => setStrengths(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Assistance required</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={assistanceRequired} onChange={(e) => setAssistanceRequired(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Weaknesses</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={weaknesses} onChange={(e) => setWeaknesses(e.target.value)} /></label>

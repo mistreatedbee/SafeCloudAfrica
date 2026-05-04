@@ -958,6 +958,28 @@ export async function updateMembershipStatus(input: {
   if (error) throw new Error(getErrorMessage(error));
 }
 
+export async function removeMembership(input: {
+  companyId: UUID;
+  membershipId: UUID;
+  actorUserId?: UUID;
+}): Promise<void> {
+  const { error } = await insforge.database
+    .from('company_memberships')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.membershipId);
+  if (error) throw new Error(getErrorMessage(error));
+  if (input.actorUserId) {
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.actorUserId,
+      action: 'company_memberships.remove',
+      entityType: 'company_membership',
+      entityId: input.membershipId
+    }).catch(() => undefined);
+  }
+}
+
 export async function updateMembershipHrManagerFlag(input: {
   companyId: UUID;
   membershipId: UUID;

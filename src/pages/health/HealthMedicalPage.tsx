@@ -338,8 +338,9 @@ export function HealthMedicalPage() {
                     } else if (String(m.expiry_date) <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)) {
                       expiryLabel = 'Expiring Soon';
                     }
+                    const recordStatus = String((m as any).status ?? 'active');
                     return (
-                      <tr key={m.id} className="align-top">
+                      <tr key={m.id} className={`align-top ${recordStatus === 'archived' ? 'bg-surface-50 text-charcoal-500' : ''}`}>
                         <td className="px-3 py-2">
                           <div className="flex flex-col">
                             <span>{m.employee_name ?? String(m.employee_user_id ?? '').slice(0, 8)}</span>
@@ -366,7 +367,12 @@ export function HealthMedicalPage() {
                             {expiryLabel}
                           </span>
                         </td>
-                        <td className="px-3 py-2">{m.fitness_status}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-col gap-1">
+                            <span>{m.fitness_status}</span>
+                            {recordStatus === 'archived' ? <span className="text-xs font-semibold text-charcoal-500">Archived</span> : null}
+                          </div>
+                        </td>
                         {canManageMedical && (
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-2">

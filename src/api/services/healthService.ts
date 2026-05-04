@@ -212,6 +212,35 @@ async function notifyUsers(input: {
   );
 }
 
+async function archivePreviousHealthRecords(input: {
+  table: 'health_medicals' | 'health_vaccinations';
+  companyId: UUID;
+  newRecordId: UUID;
+  actorUserId: UUID;
+  match: Record<string, unknown>;
+}): Promise<void> {
+  let query = insforge.database
+    .from(input.table)
+    .update({
+      status: 'archived',
+      archived_at: new Date().toISOString(),
+      archived_by_user_id: input.actorUserId,
+      superseded_by_id: input.newRecordId,
+      updated_at: new Date().toISOString()
+    })
+    .eq('company_id', input.companyId)
+    .neq('id', input.newRecordId)
+    .eq('status', 'active');
+
+  for (const [key, value] of Object.entries(input.match)) {
+    if (value == null || value === '') return;
+    query = query.eq(key, value as any);
+  }
+
+  const { error } = await query;
+  if (error) throw new Error(getErrorMessage(error));
+}
+
 export type ListHealthMedicalsInput = {
   companyId: UUID;
   employeeUserId?: UUID;
@@ -304,6 +333,17 @@ export async function createHealthMedical(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create health medical record.');
   const row = data as HealthMedical;
+  const medicalMatch: Record<string, unknown> = { medical_type: input.medicalType };
+  if (input.employeeId) medicalMatch.employee_id = input.employeeId;
+  else if (input.employeeUserId) medicalMatch.employee_user_id = input.employeeUserId;
+  else medicalMatch.employee_name = input.employeeName ?? null;
+  await archivePreviousHealthRecords({
+    table: 'health_medicals',
+    companyId: input.companyId,
+    newRecordId: row.id,
+    actorUserId: input.createdByUserId,
+    match: medicalMatch
+  }).catch(() => undefined);
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,
@@ -768,6 +808,18 @@ export async function createHealthVaccination(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create vaccination record.');
   const row = data as HealthVaccination;
+  const match: Record<string, unknown> = {
+    vaccine_name: input.vaccineName
+  };
+  if (input.employeeUserId) match.employee_user_id = input.employeeUserId;
+  else match.employee_name = input.employeeName ?? null;
+  await archivePreviousHealthRecords({
+    table: 'health_vaccinations',
+    companyId: input.companyId,
+    newRecordId: row.id,
+    actorUserId: input.createdByUserId,
+    match
+  }).catch(() => undefined);
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,

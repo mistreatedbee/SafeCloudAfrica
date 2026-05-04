@@ -16,6 +16,7 @@ import {
   listHrRecords
 } from '../../api/services/hrService';
 import { SelectOrType } from '../../components/ui/SelectOrType';
+import { EvidenceModal } from '../../components/evidence/EvidenceModal';
 import { downloadTextFile, toCsv } from '../../utils/csv';
 import type { UUID } from '../../api/models/core';
 import { useDraftManager } from '../../session/DraftManagerProvider';
@@ -32,6 +33,7 @@ export function HrLeavePage() {
   const [endDate, setEndDate] = useState(defaultLeaveDate);
   const [reason, setReason] = useState('');
   const [declineReasonByRow, setDeclineReasonByRow] = useState<Record<string, string>>({});
+  const [proofEvidenceRequestId, setProofEvidenceRequestId] = useState<UUID | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -204,6 +206,12 @@ export function HrLeavePage() {
     return leaveTypeIdByName.get(trimmedLeaveTypeName.toLowerCase()) ?? null;
   }, [leaveTypeIdByName, trimmedLeaveTypeName]);
 
+  const selectedLeaveType = useMemo(
+    () => (leaveTypes ?? []).find((row) => String(row.id) === String(selectedLeaveTypeId)) ?? null,
+    [leaveTypes, selectedLeaveTypeId]
+  );
+  const proofRequired = Boolean((selectedLeaveType as any)?.requires_proof);
+
   const selectedBalance = useMemo(() => {
     if (!selectedLeaveTypeId) return null;
     const key = `${selectedLeaveTypeId}:${currentYear}`;
@@ -258,7 +266,7 @@ export function HrLeavePage() {
         return;
       }
 
-      await createHrLeaveRequest({
+      const createdRequest = await createHrLeaveRequest({
         company_id: activeCompanyId,
         employee_id: activeEmployeeId as UUID,
         leave_type_id: leaveTypeId,
@@ -274,13 +282,16 @@ export function HrLeavePage() {
         hr_approval_status: 'PENDING',
         created_by_user_id: user.id as UUID
       });
+      if (proofRequired) {
+        setProofEvidenceRequestId(createdRequest.id as UUID);
+      }
       await refetch();
 
       // Mark the current values as "saved" so drafts don't immediately reappear.
       const baseline: HrLeaveCreateDraft = { employeeId, leaveTypeValue, startDate, endDate, reason };
       setCreateBaseline(baseline);
       clearDraft(draftKeyCreate);
-      setSuccess('Saved successfully');
+      setSuccess(proofRequired ? 'Leave request submitted. Attach the required proof before approval.' : 'Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to submit leave request right now. Please try again.'));
     }
@@ -404,6 +415,11 @@ export function HrLeavePage() {
               <span className="block text-xs text-charcoal-500 mb-1">Reason</span>
               <input className="w-full border border-surface-300 rounded-lg px-3 py-2" placeholder="Reason for leave" value={reason} onChange={(e) => setReason(e.target.value)} />
             </label>
+            {proofRequired && (
+              <div className="md:col-span-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Proof is required for this leave type. The proof upload window will open after submission.
+              </div>
+            )}
             <div className="text-xs text-charcoal-500 md:col-span-3">
               Total days requested: <span className="font-semibold">{totalDaysSelected}</span>
             </div>
@@ -463,6 +479,7 @@ export function HrLeavePage() {
                     />
                   </td>
                   <td className="px-3 py-2 space-x-2">
+                    <button className="text-charcoal-700" onClick={() => setProofEvidenceRequestId(row.id as UUID)}>Proof</button>
                     {canApprove && row.status === 'SUBMITTED' && <button className="text-teal" onClick={() => void onApprove(row)}>Approve</button>}
                     {canApprove && row.status === 'SUBMITTED' && <button className="text-critical" onClick={() => void onDecline(row)}>Decline</button>}
                   </td>
@@ -471,6 +488,16 @@ export function HrLeavePage() {
             </tbody>
           </table>
         </div>
+        {activeCompanyId && user?.id && (
+          <EvidenceModal
+            open={Boolean(proofEvidenceRequestId)}
+            onClose={() => setProofEvidenceRequestId(null)}
+            companyId={activeCompanyId}
+            entityType="hr_leave_request"
+            entityId={proofEvidenceRequestId ?? ''}
+            uploadedByUserId={user.id}
+          />
+        )}
       </div>
     </Layout>
   );
