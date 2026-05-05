@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { FloatingSupportChat } from '../support/FloatingSupportChat';
 import { subscribeToBackendUnavailable, type BackendUnavailableDetail } from '../../api/liveData';
 
 type LayoutProps = {
@@ -67,6 +68,8 @@ export function Layout({ children, title }: LayoutProps) {
           <div className="p-4 lg:p-6 w-full max-w-full">{children}</div>
         </main>
       </div>
-    </div>);
+      <FloatingSupportChat />
+    </div>
+  );
 
 }
