@@ -2,7 +2,8 @@ import { insforge } from '../insforge/client';
 import type { UUID } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createNotification } from './notificationsService';
-import { sendEmail } from './emailService';
+import { sendEmail, sendTemplatedNotificationEmail } from './emailService';
+import type { EmailTemplateKey, EmailTemplateVariables } from './emailTemplates';
 
 export type NotificationEventChannel = 'in_app' | 'email';
 
@@ -73,7 +74,7 @@ async function markNotificationEvent(id: UUID | undefined, status: 'sent' | 'fai
 }
 
 async function getRecipientEmail(userId: UUID): Promise<string | null> {
-  const { data } = await insforge.database.from('user_profiles').select('email').eq('id', userId).single();
+  const { data } = await insforge.database.from('user_profiles').select('email').eq('user_id', userId).maybeSingle();
   const email = String((data as any)?.email ?? '').trim();
   return email || null;
 }
@@ -113,6 +114,10 @@ export async function notifyRelevantUsers(input: {
   recipientUserIds: UUID[];
   channels?: NotificationEventChannel[];
   metadata?: Record<string, unknown>;
+  emailTemplateKey?: EmailTemplateKey;
+  emailVariables?: EmailTemplateVariables;
+  actionUrl?: string | null;
+  actionLabel?: string | null;
 }): Promise<void> {
   const channels = input.channels ?? ['in_app', 'email'];
   const recipients = Array.from(new Set(input.recipientUserIds.filter(Boolean)));
@@ -140,12 +145,27 @@ export async function notifyRelevantUsers(input: {
             await markNotificationEvent(event.id, 'skipped', 'Recipient email not found.');
             return;
           }
-          await sendEmail({
-            to: email,
-            subject: input.title,
-            text: `${input.message}\n\nSafe Cloud Africa`,
-            html: `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2933"><h2 style="color:#0f766e">${input.title}</h2><p>${input.message}</p><p style="font-size:12px;color:#52606d">Safe Cloud Africa</p></div>`
-          });
+          if (input.emailTemplateKey) {
+            await sendTemplatedNotificationEmail({
+              to: email,
+              templateKey: input.emailTemplateKey,
+              variables: {
+                title: input.title,
+                status: input.message,
+                ...(input.emailVariables ?? {})
+              },
+              actionUrl: input.actionUrl,
+              actionLabel: input.actionLabel,
+              meta: input.metadata
+            });
+          } else {
+            await sendEmail({
+              to: email,
+              subject: input.title,
+              text: `${input.message}\n\nSafe Cloud Africa`,
+              html: `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2933"><h2 style="color:#0f766e">${input.title}</h2><p>${input.message}</p><p style="font-size:12px;color:#52606d">Safe Cloud Africa</p></div>`
+            });
+          }
         }
         await markNotificationEvent(event.id, 'sent');
       } catch (err) {

@@ -6,6 +6,8 @@ import { createActivityLog } from './activityLogService';
 import { createEvidence } from './evidenceService';
 import { createQualityNcr } from './qualityNcrsService';
 import { uploadFile } from './storageService';
+import { sendTemplatedNotificationEmail } from './emailService';
+import type { EmailTemplateKey, EmailTemplateVariables } from './emailTemplates';
 
 export type EnvironmentAspectStatus = 'active' | 'closed';
 export type EnvironmentAspect = {
@@ -260,6 +262,19 @@ export async function upsertEnvImpactAssessment(input: any): Promise<any> {
   const data = await executeEnvMutationWithOptionalEmployeeFallback('env_impact_assessments', input.companyId, input.id, payload, input.actorUserId);
   if (!data) throw new Error('Failed to save EIA record.');
   await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: input.id ? 'environment.eia.update' : 'environment.eia.create', entityType: 'env_impact_assessment', entityId: (data as any).id as UUID });
+  await sendEnvironmentTemplate({
+    companyId: input.companyId,
+    userIds: [input.responsibleUserId],
+    templateKey: 'environment_eia',
+    variables: {
+      reference: (data as any).ref_number,
+      title: (data as any).activity_or_process,
+      owner: input.responsibleNameSnapshot,
+      dueDate: input.reviewDate
+    },
+    actionUrl: '/dashboard/environment/eia',
+    meta: { eiaId: (data as any).id, action: input.id ? 'update' : 'create' }
+  });
   return data;
 }
 
@@ -419,6 +434,20 @@ export async function upsertEnvWasteDisposal(input: any): Promise<any> {
     entityType: 'env_waste_disposal',
     entityId: (data as any).id as UUID
   });
+  await sendEnvironmentTemplate({
+    companyId: input.companyId,
+    userIds: [input.responsibleUserId, input.reviewedByUserId, input.approvedByUserId],
+    includeOwners: disposalStatus === 'Correctly Disposed' || input.status === 'Approved',
+    templateKey: 'environment_waste_disposal',
+    variables: {
+      reference: (data as any).ref_no,
+      title: (data as any).waste_type_name,
+      status: (data as any).disposal_status ?? (data as any).status,
+      location: (data as any).site_department
+    },
+    actionUrl: '/dashboard/environment/waste',
+    meta: { wasteDisposalId: (data as any).id, action: input.id ? 'update' : 'create' }
+  });
   return data;
 }
 
@@ -458,6 +487,53 @@ async function createNcrFromEnv(input: { companyId: UUID; actorUserId: UUID; sou
   });
   await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: 'environment.ncr.auto_create', entityType: 'quality_ncr', entityId: ncr.id });
   return ncr.id;
+}
+
+async function getNotificationEmails(companyId: UUID, userIds: Array<UUID | null | undefined>, includeOwners = false): Promise<string[]> {
+  const ids = new Set<string>(userIds.filter(Boolean).map(String));
+  if (includeOwners) {
+    const { data: memberships } = await insforge.database
+      .from('company_memberships')
+      .select('user_id')
+      .eq('company_id', companyId)
+      .eq('status', 'ACTIVE')
+      .in('role', ['owner', 'admin']);
+    for (const row of memberships ?? []) {
+      if ((row as any).user_id) ids.add(String((row as any).user_id));
+    }
+  }
+  const uniqueIds = Array.from(ids);
+  if (uniqueIds.length === 0) return [];
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('user_id, email')
+    .eq('company_id', companyId)
+    .in('user_id', uniqueIds);
+  return Array.from(new Set((data ?? []).map((row: any) => String(row.email ?? '').trim()).filter(Boolean)));
+}
+
+async function sendEnvironmentTemplate(input: {
+  companyId: UUID;
+  userIds: Array<UUID | null | undefined>;
+  includeOwners?: boolean;
+  templateKey: EmailTemplateKey;
+  variables: EmailTemplateVariables;
+  actionUrl: string;
+  meta?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const emails = await getNotificationEmails(input.companyId, input.userIds, input.includeOwners);
+    if (emails.length === 0) return;
+    await sendTemplatedNotificationEmail({
+      to: emails,
+      templateKey: input.templateKey,
+      variables: input.variables,
+      actionUrl: input.actionUrl,
+      meta: { companyId: input.companyId, ...(input.meta ?? {}) }
+    });
+  } catch {
+    // Email notifications should not block environmental records.
+  }
 }
 
 export async function createNcrFromEnvironmentalNonCompliance(input: { companyId: UUID; actorUserId: UUID; sourceType: 'Environmental Water Monitoring' | 'Environmental Air Quality'; referenceId: UUID; summary: string; riskLevel?: string | null; legalReference?: string | null; }): Promise<{ ncrId: UUID }> {
@@ -523,6 +599,20 @@ export async function upsertEnvWaterMonitoring(input: any): Promise<any> {
     const ncrId = await createNcrFromEnv({ companyId: input.companyId, actorUserId: input.actorUserId, source: 'env_water_monitoring', referenceId: saved.id, summary: `Water monitoring ${saved.reference_number} failed: ${failed}`, riskLevel: input.assessedEnvironmentalRisk, legalReference: input.legalReferenceSnapshot || input.breachedLegislationOrPermitReference });
     await insforge.database.from('env_water_monitoring').update({ system_generated_capa_id: ncrId, updated_at: new Date().toISOString() }).eq('company_id', input.companyId).eq('id', saved.id);
     saved.system_generated_capa_id = ncrId;
+    await sendEnvironmentTemplate({
+      companyId: input.companyId,
+      userIds: [input.reviewedByUserId, input.approvedByUserId],
+      includeOwners: true,
+      templateKey: 'environment_water_monitoring',
+      variables: {
+        reference: saved.reference_number,
+        status: 'Failed',
+        location: saved.gps_location_or_sampling_point_id || saved.site_facility_name,
+        findings: failed
+      },
+      actionUrl: '/dashboard/environment/water',
+      meta: { waterMonitoringId: saved.id, ncrId }
+    });
   }
 
   await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: input.id ? 'environment.water.update' : 'environment.water.create', entityType: 'env_water_monitoring', entityId: saved.id });
@@ -605,6 +695,20 @@ export async function upsertEnvAirQuality(input: any): Promise<any> {
     const ncrId = await createNcrFromEnv({ companyId: input.companyId, actorUserId: input.actorUserId, source: 'env_air_quality', referenceId: saved.id, summary: `Air quality ${saved.reference_number} exceedances: ${failed}`, riskLevel: 'high', legalReference: (input.legalReferencesSnapshot ?? []).join('; ') });
     await insforge.database.from('env_air_quality').update({ system_generated_capa_id: ncrId, updated_at: new Date().toISOString() }).eq('company_id', input.companyId).eq('id', saved.id);
     saved.system_generated_capa_id = ncrId;
+    await sendEnvironmentTemplate({
+      companyId: input.companyId,
+      userIds: [input.reviewedByUserId, input.approvedByUserId],
+      includeOwners: true,
+      templateKey: 'environment_air_quality',
+      variables: {
+        reference: saved.reference_number,
+        status: 'Failed',
+        location: saved.monitoring_location,
+        findings: failed
+      },
+      actionUrl: '/dashboard/environment/air',
+      meta: { airQualityId: saved.id, ncrId }
+    });
   }
 
   await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: input.id ? 'environment.air.update' : 'environment.air.create', entityType: 'env_air_quality', entityId: saved.id });

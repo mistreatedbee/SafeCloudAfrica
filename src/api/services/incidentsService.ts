@@ -4,6 +4,7 @@ import type { Incident, UUID } from '../models/entities';
 import type { IncidentCategory, IncidentStatus, ModuleKey, Severity, IncidentRiskCategory } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 export type ListIncidentsInput = {
   companyId: UUID;
@@ -288,6 +289,23 @@ async function updateIncidentWithSchemaFallback(companyId: UUID, incidentId: UUI
   throw new Error(getErrorMessage(error));
 }
 
+async function getIncidentNotificationEmails(companyId: UUID, userIds: Array<UUID | null | undefined>, extraEmails?: string[] | null): Promise<string[]> {
+  const emails = new Set<string>((extraEmails ?? []).map((email) => String(email).trim()).filter(Boolean));
+  const ids = Array.from(new Set(userIds.filter(Boolean).map(String)));
+  if (ids.length > 0) {
+    const { data } = await insforge.database
+      .from('user_profiles')
+      .select('user_id, email')
+      .eq('company_id', companyId)
+      .in('user_id', ids);
+    for (const row of data ?? []) {
+      const email = String((row as any).email ?? '').trim();
+      if (email) emails.add(email);
+    }
+  }
+  return Array.from(emails);
+}
+
 export async function createIncident(input: CreateIncidentInput): Promise<Incident> {
   const losses = input.losses ?? {};
   const insertPayload: Record<string, unknown> = {
@@ -377,6 +395,30 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
       source_entity_type: 'incident',
       source_entity_id: createdIncident.id
     });
+  }
+
+  try {
+    const emails = await getIncidentNotificationEmails(input.companyId, [input.assigneeUserId], input.copyToEmails);
+    if (emails.length > 0) {
+      await sendTemplatedNotificationEmail({
+        to: emails,
+        templateKey: 'incident_reporting',
+        variables: {
+          title: input.title,
+          severity: input.severity,
+          category: input.category,
+          location: input.location,
+          status: 'Open'
+        },
+        actionUrl: '/dashboard/safety/incidents',
+        meta: {
+          companyId: input.companyId,
+          incidentId: (data as any).id
+        }
+      });
+    }
+  } catch {
+    // Email notifications should not block incident creation.
   }
 
   return data as Incident;

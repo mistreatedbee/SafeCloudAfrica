@@ -3,6 +3,7 @@ import { withInsforgeSession } from '../insforge/ensureSession';
 import type { Audit, AuditInvitationToken, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 export interface AuditQuestion {
   id: UUID;
@@ -68,6 +69,23 @@ export async function listAudits(input: {
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Audit[];
   });
+}
+
+async function getAuditEmails(companyId: UUID, userIds: Array<UUID | null | undefined>, extraEmails?: Array<string | null | undefined>): Promise<string[]> {
+  const emails = new Set<string>((extraEmails ?? []).map((email) => String(email ?? '').trim()).filter(Boolean));
+  const ids = Array.from(new Set(userIds.filter(Boolean).map(String)));
+  if (ids.length > 0) {
+    const { data } = await insforge.database
+      .from('user_profiles')
+      .select('user_id, email')
+      .eq('company_id', companyId)
+      .in('user_id', ids);
+    for (const row of data ?? []) {
+      const email = String((row as any).email ?? '').trim();
+      if (email) emails.add(email);
+    }
+  }
+  return Array.from(emails);
 }
 
 export async function getAudit(auditId: UUID): Promise<Audit | null> {
@@ -151,6 +169,30 @@ export async function createAudit(input: {
       auditType: input.auditType
     }
   });
+
+  try {
+    const emails = await getAuditEmails(
+      input.companyId,
+      [input.leadAuditorUserId, ...input.auditorUserIds, ...(input.companyRepresentativeUserIds ?? [])],
+      [input.inviteeEmail]
+    );
+    if (emails.length > 0) {
+      await sendTemplatedNotificationEmail({
+        to: emails,
+        templateKey: 'audits',
+        variables: {
+          title: audit.title ?? audit.objectives,
+          status: audit.status,
+          owner: input.leadAuditorUserId ?? input.auditorUserIds[0],
+          dueDate: input.proposedDates[0] ?? input.documentSubmissionDeadline
+        },
+        actionUrl: '/dashboard/operations/audits',
+        meta: { companyId: input.companyId, auditId: audit.id }
+      });
+    }
+  } catch {
+    // Email notifications should not block audit creation.
+  }
 
   return audit;
 }

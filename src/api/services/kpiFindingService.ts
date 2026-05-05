@@ -4,6 +4,18 @@ import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { createTask } from './tasksService';
 import { createNotification } from './notificationsService';
+import { sendTemplatedNotificationEmail } from './emailService';
+
+async function getKpiRecipientEmail(companyId: UUID, userId: UUID): Promise<string | null> {
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('email')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  const email = String((data as any)?.email ?? '').trim();
+  return email || null;
+}
 
 export type CreateKPIFindingInput = {
   organizationId: UUID;
@@ -76,6 +88,30 @@ export async function createKPIFinding(input: CreateKPIFindingInput): Promise<KP
     'A KPI Questionnaire was marked Not Achieved and needs manager follow-up.',
     { assessmentId: input.assessmentId, findingId: finding.finding_id }
   ).catch(() => undefined);
+
+  try {
+    const email = await getKpiRecipientEmail(input.organizationId, input.assignedLineManagerId);
+    if (email) {
+      await sendTemplatedNotificationEmail({
+        to: email,
+        templateKey: 'kpi_updates',
+        variables: {
+          title: input.description.slice(0, 120),
+          status: 'Manager follow-up required',
+          owner: input.assignedLineManagerId,
+          dueDate: input.dueDate
+        },
+        actionUrl: '/dashboard/kpi/findings',
+        meta: {
+          companyId: input.organizationId,
+          assessmentId: input.assessmentId,
+          findingId: finding.finding_id
+        }
+      });
+    }
+  } catch {
+    // Email notifications should not block KPI finding creation.
+  }
 
   return finding;
 }

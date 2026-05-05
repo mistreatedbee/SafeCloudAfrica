@@ -15,6 +15,7 @@ import { createActivityLog } from './activityLogService';
 import { createTask } from './tasksService';
 import { createNotification } from './notificationsService';
 import { createHrRecord, getHrSettings, listHrRecords, recommendDisciplinaryAction, updateHrRecord } from './hrService';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 const OPEN_TASK_STATUSES = ['draft', 'assigned', 'accepted', 'in-progress', 'awaiting-evidence', 'under-review', 'approved', 'reopened', 'overdue'];
 const MEDICAL_RESTRICTED_VIEW_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
@@ -212,6 +213,40 @@ async function notifyUsers(input: {
   );
 }
 
+async function getHealthEmails(companyId: UUID, userIds: Array<UUID | null | undefined>): Promise<string[]> {
+  const ids = Array.from(new Set(userIds.filter(Boolean).map(String)));
+  if (ids.length === 0) return [];
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('user_id, email')
+    .eq('company_id', companyId)
+    .in('user_id', ids);
+  return Array.from(new Set((data ?? []).map((row: any) => String(row.email ?? '').trim()).filter(Boolean)));
+}
+
+async function sendHealthEmail(input: {
+  companyId: UUID;
+  userIds: Array<UUID | null | undefined>;
+  templateKey: 'health_medicals' | 'health_wellness_programme';
+  variables: Record<string, string | number | boolean | null | undefined>;
+  actionUrl: string;
+  meta?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const emails = await getHealthEmails(input.companyId, input.userIds);
+    if (emails.length === 0) return;
+    await sendTemplatedNotificationEmail({
+      to: emails,
+      templateKey: input.templateKey,
+      variables: input.variables,
+      actionUrl: input.actionUrl,
+      meta: { companyId: input.companyId, ...(input.meta ?? {}) }
+    });
+  } catch {
+    // Email notifications should not block health workflows.
+  }
+}
+
 async function archivePreviousHealthRecords(input: {
   table: 'health_medicals' | 'health_vaccinations';
   companyId: UUID;
@@ -351,6 +386,19 @@ export async function createHealthMedical(input: {
     entityType: 'health_medical',
     entityId: row.id
   });
+  await sendHealthEmail({
+    companyId: input.companyId,
+    userIds: [input.employeeUserId],
+    templateKey: 'health_medicals',
+    variables: {
+      employee: input.employeeName ?? input.employeeNumber,
+      status: input.fitnessStatus,
+      dueDate: input.expiryDate,
+      findings: input.restrictedDutyRequired ? 'Restricted duty required' : ''
+    },
+    actionUrl: '/dashboard/health/medical',
+    meta: { medicalId: row.id }
+  });
   return row;
 }
 
@@ -379,7 +427,21 @@ export async function updateHealthMedical(
       metadata: { fields: Object.keys(patch) }
     }).catch(() => undefined);
   }
-  return data as HealthMedical;
+  const row = data as HealthMedical;
+  await sendHealthEmail({
+    companyId,
+    userIds: [row.employee_user_id],
+    templateKey: 'health_medicals',
+    variables: {
+      employee: row.employee_name ?? row.employee_number,
+      status: row.fitness_status,
+      dueDate: row.expiry_date,
+      findings: row.restricted_duty_required ? 'Restricted duty required' : ''
+    },
+    actionUrl: '/dashboard/health/medical',
+    meta: { medicalId: row.id }
+  });
+  return row;
 }
 
 export async function deleteHealthMedical(companyId: UUID, medicalId: UUID, actorUserId?: UUID): Promise<void> {
@@ -424,7 +486,7 @@ async function autoCreateHygieneActionPlan(companyId: UUID, record: HealthHygien
     companyId,
     module: 'health',
     title: `Hygiene non-compliance: ${record.monitoring_type}`,
-    description: record.non_compliance_reason ?? record.results_summary ?? null,
+    description: record.non_compliance_reason ?? record.results_summary ?? undefined,
     category: 'capa',
     riskLevel: 'high',
     priority: 'high',
@@ -610,7 +672,21 @@ export async function createHealthWellnessCampaign(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create wellness campaign.');
-  return data as HealthWellnessCampaign;
+  const campaign = data as HealthWellnessCampaign;
+  const managementIds = await listManagementUserIds(input.companyId).catch(() => []);
+  await sendHealthEmail({
+    companyId: input.companyId,
+    userIds: managementIds,
+    templateKey: 'health_wellness_programme',
+    variables: {
+      title: campaign.title,
+      status: campaign.campaign_type,
+      dueDate: campaign.date_from
+    },
+    actionUrl: '/dashboard/health/wellness',
+    meta: { wellnessCampaignId: campaign.id }
+  });
+  return campaign;
 }
 
 export async function updateHealthWellnessCampaign(companyId: UUID, campaignId: UUID, patch: Partial<HealthWellnessCampaign>): Promise<HealthWellnessCampaign> {
@@ -623,7 +699,21 @@ export async function updateHealthWellnessCampaign(companyId: UUID, campaignId: 
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update wellness campaign.');
-  return data as HealthWellnessCampaign;
+  const campaign = data as HealthWellnessCampaign;
+  const managementIds = await listManagementUserIds(companyId).catch(() => []);
+  await sendHealthEmail({
+    companyId,
+    userIds: managementIds,
+    templateKey: 'health_wellness_programme',
+    variables: {
+      title: campaign.title,
+      status: campaign.campaign_type,
+      dueDate: campaign.date_from
+    },
+    actionUrl: '/dashboard/health/wellness',
+    meta: { wellnessCampaignId: campaign.id }
+  });
+  return campaign;
 }
 
 export async function deleteHealthWellnessCampaign(companyId: UUID, campaignId: UUID): Promise<void> {

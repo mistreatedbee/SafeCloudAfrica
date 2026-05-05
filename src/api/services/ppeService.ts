@@ -16,6 +16,19 @@ import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { createNotification } from './notificationsService';
 import { getMyProfile } from './profilesService';
+import { sendTemplatedNotificationEmail } from './emailService';
+
+async function getPpeEmail(companyId: UUID, userId?: UUID | null): Promise<string | null> {
+  if (!userId) return null;
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('email')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  const email = String((data as any)?.email ?? '').trim();
+  return email || null;
+}
 
 export async function listPpeItems(companyId: UUID): Promise<PPEItem[]> {
   const { data, error } = await insforge.database.from('ppe_items').select('*').eq('company_id', companyId).order('created_at', {
@@ -350,6 +363,26 @@ export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIss
     entityType: 'ppe_issue',
     entityId: issue.id
   });
+
+  try {
+    const email = await getPpeEmail(input.companyId, input.issuedToUserId);
+    if (email) {
+      await sendTemplatedNotificationEmail({
+        to: email,
+        templateKey: 'ppe_management',
+        variables: {
+          title: issue.ppe_item_name ?? ppeItemName,
+          status: 'Issued',
+          employee: issue.issued_to_employee_number ?? input.issuedToUserId ?? '',
+          dueDate: input.returnDueAt
+        },
+        actionUrl: '/dashboard/safety/ppe',
+        meta: { companyId: input.companyId, ppeIssueId: issue.id }
+      });
+    }
+  } catch {
+    // Email notifications should not block PPE issue capture.
+  }
 
   return issue;
 }

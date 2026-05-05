@@ -17,7 +17,7 @@ import { createQualityNcrFromInspectionItem } from './qualityNcrsService';
 import { createPpeIssueTracker } from './ppeIssueTrackerService';
 import { createCorrectiveAction } from './correctiveActionsService';
 import { createNotification } from './notificationsService';
-import { sendTemplatedEmail } from './emailService';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 export type ListInspectionsInput = {
   companyId: UUID;
@@ -769,7 +769,7 @@ export async function completeInspectionRun(input: {
         }
       }
 
-      const link = `${window.location.origin}/inspections/${run.inspection_id}`;
+      const link = `/dashboard/operations/inspections`;
       const emails: string[] = [];
       for (const userId of recipientUserIds) {
         const profile = byUserId.get(userId);
@@ -783,12 +783,20 @@ export async function completeInspectionRun(input: {
         );
       }
       if (emails.length > 0) {
-        await sendTemplatedEmail(emails, 'incident_created', {
-          incidentTitle: 'High risk inspection finding',
+        await sendTemplatedNotificationEmail({
+          to: emails,
+          templateKey: 'inspections',
+          variables: {
+          title: 'High risk inspection finding',
+          status: 'High risk',
+          owner: '',
+          dueDate: '',
           severity: 'high',
           category: run.module,
-          location: (run as any).location ?? '',
-          link
+          location: (run as any).location ?? ''
+          },
+          actionUrl: link,
+          meta: { companyId: input.companyId, inspectionRunId: run.id, inspectionId: run.inspection_id }
         });
       }
     }

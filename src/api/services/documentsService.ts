@@ -1,6 +1,7 @@
 import { insforge } from '../insforge/client';
 import type { Document, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 const DMS_MIGRATION_REQUIRED_MESSAGE = 'Document management database updates are missing. Please run the latest migration.';
 
@@ -23,6 +24,45 @@ function getDocumentMigrationError(error: unknown): string | null {
     return DMS_MIGRATION_REQUIRED_MESSAGE;
   }
   return null;
+}
+
+async function getDocumentOwnerEmail(companyId: UUID, ownerUserId?: UUID | null): Promise<string | null> {
+  if (!ownerUserId) return null;
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('email')
+    .eq('company_id', companyId)
+    .eq('user_id', ownerUserId)
+    .maybeSingle();
+  const email = String((data as any)?.email ?? '').trim();
+  return email || null;
+}
+
+async function notifyDocumentOwner(input: {
+  companyId: UUID;
+  ownerUserId?: UUID | null;
+  document: Document;
+  templateKey: 'document_control' | 'document_reviews';
+  status: string;
+}): Promise<void> {
+  try {
+    const email = await getDocumentOwnerEmail(input.companyId, input.ownerUserId);
+    if (!email) return;
+    await sendTemplatedNotificationEmail({
+      to: email,
+      templateKey: input.templateKey,
+      variables: {
+        title: input.document.title,
+        status: input.status,
+        owner: input.document.document_owner_name ?? input.ownerUserId ?? '',
+        dueDate: input.document.review_due_at ?? input.document.expiry_date ?? ''
+      },
+      actionUrl: input.templateKey === 'document_reviews' ? '/dashboard/management/document-reviews' : '/dashboard/documents',
+      meta: { companyId: input.companyId, documentId: input.document.id }
+    });
+  } catch {
+    // Email notifications should not block document changes.
+  }
 }
 
 export async function listDocuments(
@@ -87,7 +127,15 @@ export async function createDocument(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create document.');
-  return data as Document;
+  const document = data as Document;
+  await notifyDocumentOwner({
+    companyId: input.companyId,
+    ownerUserId: input.ownerUserId,
+    document,
+    templateKey: input.reviewDueAt ? 'document_reviews' : 'document_control',
+    status: input.reviewDueAt ? 'Review scheduled' : 'Draft created'
+  });
+  return document;
 }
 
 export async function createDocumentWithInitialVersion(input: {
@@ -140,7 +188,15 @@ export async function createDocumentWithInitialVersion(input: {
   });
   if (error) throw new Error(getDocumentMigrationError(error) ?? getErrorMessage(error));
   if (!data) throw new Error('Failed to create document.');
-  return data as Document;
+  const document = data as Document;
+  await notifyDocumentOwner({
+    companyId: input.companyId,
+    ownerUserId: input.ownerUserId,
+    document,
+    templateKey: 'document_control',
+    status: input.expiryDate ? 'Expiry date captured' : 'Draft created'
+  });
+  return document;
 }
 
 export async function updateDocument(input: {
@@ -195,6 +251,14 @@ export async function updateDocument(input: {
     .single();
   if (error) throw new Error(getDocumentMigrationError(error) ?? getErrorMessage(error));
   if (!data) throw new Error('Failed to update document.');
-  return data as Document;
+  const document = data as Document;
+  await notifyDocumentOwner({
+    companyId: input.companyId,
+    ownerUserId: document.owner_user_id,
+    document,
+    templateKey: document.review_due_at ? 'document_reviews' : 'document_control',
+    status: document.review_due_at ? 'Review updated' : 'Document updated'
+  });
+  return document;
 }
 

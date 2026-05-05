@@ -13,6 +13,7 @@ import type {
 } from '../models/entities';
 import type { CompanyRole } from '../models/core';
 import { createActivityLog } from './activityLogService';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 const FINAL_STATUSES: ImprovementWorkflowStatus[] = ['closed', 'monitoring_required', 'escalated'];
 const MANAGEMENT_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
@@ -211,6 +212,43 @@ async function createInAppNotification(input: {
   });
 }
 
+async function getImprovementEmails(companyId: UUID, userIds: Array<UUID | null | undefined>): Promise<string[]> {
+  const ids = Array.from(new Set(userIds.filter(Boolean).map(String)));
+  if (ids.length === 0) return [];
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('user_id, email')
+    .eq('company_id', companyId)
+    .in('user_id', ids);
+  return Array.from(new Set((data ?? []).map((row: any) => String(row.email ?? '').trim()).filter(Boolean)));
+}
+
+async function sendImprovementEmail(input: {
+  companyId: UUID;
+  userIds: Array<UUID | null | undefined>;
+  record: ImprovementRecord;
+  statusLabel?: string;
+}): Promise<void> {
+  try {
+    const emails = await getImprovementEmails(input.companyId, input.userIds);
+    if (emails.length === 0) return;
+    await sendTemplatedNotificationEmail({
+      to: emails,
+      templateKey: 'improvements',
+      variables: {
+        reference: input.record.reference_number,
+        status: input.statusLabel ?? IMPROVEMENT_STATUS_LABELS[input.record.status],
+        severity: input.record.risk_level,
+        owner: input.record.responsible_user_id ?? ''
+      },
+      actionUrl: '/dashboard/management/improvements',
+      meta: { companyId: input.companyId, improvementId: input.record.id }
+    });
+  } catch {
+    // Email notifications should not block improvement workflow changes.
+  }
+}
+
 export async function listImprovements(input: ImprovementListFilters): Promise<ImprovementRecord[]> {
   let q = insforge.database
     .from('improvements')
@@ -371,6 +409,12 @@ export async function createImprovement(input: {
       message: `You were assigned improvement ${created.reference_number}.`,
       severity: created.risk_level
     }).catch(() => undefined);
+    await sendImprovementEmail({
+      companyId: input.companyId,
+      userIds: [created.responsible_user_id],
+      record: created,
+      statusLabel: 'Assigned'
+    });
   }
 
   return created;
@@ -452,6 +496,12 @@ export async function updateImprovement(input: {
         message: `Verification requested for ${updated.reference_number}.`,
         severity: updated.risk_level
       }).catch(() => undefined);
+      await sendImprovementEmail({
+        companyId: input.companyId,
+        userIds: [updated.verified_by_user_id],
+        record: updated,
+        statusLabel: 'Verification requested'
+      });
     }
     if (updated.status === 'escalated') {
       const { data: admins } = await insforge.database
@@ -471,6 +521,12 @@ export async function updateImprovement(input: {
           }).catch(() => undefined)
         )
       );
+      await sendImprovementEmail({
+        companyId: input.companyId,
+        userIds: ids,
+        record: updated,
+        statusLabel: 'Escalated'
+      });
     }
     if (updated.status === 'closed' && updated.raised_by_user_id) {
       await createInAppNotification({
@@ -480,6 +536,12 @@ export async function updateImprovement(input: {
         message: `Improvement ${updated.reference_number} has been closed.`,
         severity: 'low'
       }).catch(() => undefined);
+      await sendImprovementEmail({
+        companyId: input.companyId,
+        userIds: [updated.raised_by_user_id],
+        record: updated,
+        statusLabel: 'Closed'
+      });
     }
   }
 

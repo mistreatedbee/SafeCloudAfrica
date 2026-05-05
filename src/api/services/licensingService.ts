@@ -13,6 +13,7 @@ import type { UUID } from '../models/core';
 import type { BillingInvoice, BillingPlanCatalog, BillingSubscription, BillingUsageSnapshot, Company } from '../models/entities';
 import { insforge } from '../insforge/client';
 import { withInsforgeSession } from '../insforge/ensureSession';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 export type LicenseType = 'starter_6m' | 'professional_12m' | 'enterprise_custom';
 export type LicenseStatus = 'trial' | 'active' | 'expired' | 'suspended';
@@ -327,14 +328,67 @@ export function formatLicenseType(licenseType: LicenseType): string {
   return labels[licenseType] || licenseType;
 }
 
+async function getOwnerAdminEmails(companyId: UUID): Promise<string[]> {
+  const { data: memberships } = await insforge.database
+    .from('company_memberships')
+    .select('user_id')
+    .eq('company_id', companyId)
+    .eq('status', 'ACTIVE')
+    .in('role', ['owner', 'admin']);
+  const userIds = Array.from(new Set((memberships ?? []).map((row: any) => row.user_id as UUID).filter(Boolean)));
+  if (userIds.length === 0) return [];
+  const { data: profiles } = await insforge.database
+    .from('user_profiles')
+    .select('user_id, email')
+    .eq('company_id', companyId)
+    .in('user_id', userIds);
+  return Array.from(new Set((profiles ?? []).map((row: any) => String(row.email ?? '').trim()).filter(Boolean)));
+}
+
+async function sendBillingEmail(input: {
+  companyId: UUID;
+  templateKey: 'billing_pricing' | 'software_license_expiry';
+  variables: Record<string, string | number | boolean | null | undefined>;
+  actionUrl: string;
+  meta?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const emails = await getOwnerAdminEmails(input.companyId);
+    if (emails.length === 0) return;
+    await sendTemplatedNotificationEmail({
+      to: emails,
+      templateKey: input.templateKey,
+      variables: input.variables,
+      actionUrl: input.actionUrl,
+      meta: { companyId: input.companyId, ...(input.meta ?? {}) }
+    });
+  } catch {
+    // Billing emails are best-effort and should not block billing updates.
+  }
+}
+
 /**
  * Trigger warning notifications for expiring licenses
  */
 export async function checkAndNotifyExpiringLicenses(): Promise<void> {
-  // This would typically run as a cron job
-  // Implementation depends on your notification system
-  // For now, just log
-  console.log('[Licensing] Expiration check would run here (implement as cron job)');
+  const renewals = await getRenewalsDueWithin(14);
+  await Promise.all(
+    renewals.map(async (renewal) => {
+      const daysRemaining = Math.max(0, Math.ceil((new Date(renewal.renews_at).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+      await sendBillingEmail({
+        companyId: renewal.company_id,
+        templateKey: 'software_license_expiry',
+        variables: {
+          title: 'SafeCloud Africa subscription',
+          status: 'Renewal due',
+          dueDate: renewal.renews_at,
+          daysRemaining
+        },
+        actionUrl: '/dashboard/admin/license',
+        meta: { renewsAt: renewal.renews_at }
+      });
+    })
+  );
 }
 
 export const BILLING_PLAN_DEFAULTS: Array<{
@@ -446,7 +500,20 @@ export async function upsertBillingSubscription(input: {
     .select('*')
     .single();
   if (error) throw error;
-  return data as BillingSubscription;
+  const subscription = data as BillingSubscription;
+  await sendBillingEmail({
+    companyId: input.companyId,
+    templateKey: 'billing_pricing',
+    variables: {
+      title: 'Billing subscription updated',
+      plan: subscription.plan_code,
+      status: subscription.status,
+      dueDate: subscription.renews_at
+    },
+    actionUrl: '/dashboard/admin/billing-pricing',
+    meta: { subscriptionId: subscription.id }
+  });
+  return subscription;
 }
 
 export async function captureBillingUsageSnapshot(companyId: UUID, snapshotMonth = new Date().toISOString().slice(0, 7) + '-01'): Promise<BillingUsageSnapshot> {
@@ -562,7 +629,20 @@ export async function generateInternalInvoice(input: {
     .select('*')
     .single();
   if (error) throw error;
-  return data as BillingInvoice;
+  const invoice = data as BillingInvoice;
+  await sendBillingEmail({
+    companyId: input.companyId,
+    templateKey: 'billing_pricing',
+    variables: {
+      title: `Invoice ${invoice.invoice_number}`,
+      amount: `${invoice.currency} ${invoice.total_amount}`,
+      dueDate: invoice.due_at,
+      status: invoice.status
+    },
+    actionUrl: '/dashboard/admin/billing-pricing',
+    meta: { invoiceId: invoice.id }
+  });
+  return invoice;
 }
 
 export async function getRenewalsDueWithin(days = 14): Promise<Array<{ company_id: UUID; renews_at: string }>> {

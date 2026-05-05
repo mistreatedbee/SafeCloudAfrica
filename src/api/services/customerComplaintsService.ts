@@ -6,7 +6,7 @@ import { createActivityLog } from './activityLogService';
 import { createQualityNcr } from './qualityNcrsService';
 import { createTask } from './tasksService';
 import { getMyProfile } from './profilesService';
-import { sendEmail } from './emailService';
+import { sendTemplatedNotificationEmail } from './emailService';
 import { resolveComplaintClosureFields } from './customerComplaintsService.helpers';
 
 export const CUSTOMER_COMPLAINT_STATUS_LABELS: Record<CustomerComplaintStatus, string> = {
@@ -151,11 +151,19 @@ async function notifyEscalation(input: {
 
     const emails = recipients.map((r) => r.email).filter((v): v is string => !!v);
     if (emails.length > 0) {
-      await sendEmail({
+      await sendTemplatedNotificationEmail({
         to: emails,
-        subject: `Customer Complaint Escalated: ${input.complaintRefNo}`,
-        html: `<p>Customer complaint <strong>${input.complaintRefNo}</strong> has been escalated to management.</p>
-<p><a href="/dashboard/quality/complaints">Open Customer Complaints</a></p>`
+        templateKey: 'quality_customer_complaints',
+        variables: {
+          reference: input.complaintRefNo,
+          status: 'Escalated to Management'
+        },
+        actionUrl: '/dashboard/quality/complaints',
+        meta: {
+          companyId: input.companyId,
+          complaintId: input.complaintId,
+          actorUserId: input.actorUserId
+        }
       });
     }
   } catch {

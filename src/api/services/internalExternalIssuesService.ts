@@ -9,6 +9,7 @@ import type {
 import { createActivityLog } from './activityLogService';
 import { getMyProfile } from './profilesService';
 import { listQualityNcrs } from './qualityNcrsService';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 export const IE_DOC_NO_DEFAULT = 'XYZ-IEIRA-F-002';
 export const IE_SCOPE_OPTIONS = ['Internal', 'External'] as const;
@@ -122,6 +123,17 @@ async function getOwnersAndAdmins(companyId: UUID): Promise<UUID[]> {
   return [...new Set((data ?? []).map((x: any) => x.user_id as UUID))];
 }
 
+async function getEmailsForUserIds(companyId: UUID, userIds: UUID[]): Promise<string[]> {
+  const ids = Array.from(new Set(userIds.filter(Boolean)));
+  if (ids.length === 0) return [];
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('user_id, email')
+    .eq('company_id', companyId)
+    .in('user_id', ids);
+  return Array.from(new Set((data ?? []).map((row: any) => String(row.email ?? '').trim()).filter(Boolean)));
+}
+
 async function notifyHighSeriousIssue(input: {
   companyId: UUID;
   registerId: UUID;
@@ -147,6 +159,25 @@ async function notifyHighSeriousIssue(input: {
       }
     }));
     await insforge.database.from('notifications').insert(payload);
+    const emails = await getEmailsForUserIds(input.companyId, userIds);
+    if (emails.length > 0) {
+      await sendTemplatedNotificationEmail({
+        to: emails,
+        templateKey: 'quality_internal_external_issues',
+        variables: {
+          reference: `Issue #${input.refNo}`,
+          severity: input.nature,
+          riskRating: input.riskRating,
+          status: 'High / serious rating'
+        },
+        actionUrl: '/dashboard/quality/issues',
+        meta: {
+          companyId: input.companyId,
+          registerId: input.registerId,
+          issueId: input.issueId
+        }
+      });
+    }
   } catch {
     // Notification should not block core write path.
   }

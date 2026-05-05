@@ -2,6 +2,18 @@ import { insforge } from '../insforge/client';
 import type { Approval, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { sendTemplatedNotificationEmail } from './emailService';
+
+async function getProfileEmail(companyId: UUID, userId: UUID): Promise<string | null> {
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('email')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  const email = String((data as any)?.email ?? '').trim();
+  return email || null;
+}
 
 export async function listApprovals(companyId: UUID): Promise<Approval[]> {
   const { data, error } = await insforge.database
@@ -43,6 +55,31 @@ export async function createApproval(input: {
     entityType: 'approval',
     entityId: (data as any).id as UUID
   });
+
+  try {
+    const email = await getProfileEmail(input.companyId, input.approverUserId);
+    if (email) {
+      await sendTemplatedNotificationEmail({
+        to: email,
+        templateKey: 'approvals',
+        variables: {
+          title: input.entityType,
+          itemType: input.entityType,
+          requester: input.requestedByUserId,
+          status: 'Pending'
+        },
+        actionUrl: '/dashboard/management/approvals',
+        meta: {
+          companyId: input.companyId,
+          approvalId: (data as any).id,
+          entityType: input.entityType,
+          entityId: input.entityId
+        }
+      });
+    }
+  } catch {
+    // Email delivery should not block approval creation.
+  }
 
   return data as Approval;
 }

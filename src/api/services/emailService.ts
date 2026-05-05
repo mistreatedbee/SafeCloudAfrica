@@ -1,7 +1,12 @@
 import { fetchWithInsforgeAuth } from '../insforge/authenticatedFetch';
+import {
+  type EmailTemplateKey,
+  type EmailTemplateVariables,
+  renderEmailTemplate
+} from './emailTemplates';
 
 export interface EmailTemplate {
-  type: 'overdue_task' | 'incident_created' | 'approval_request' | 'document_review' | 'training_expiry';
+  type: 'overdue_task' | 'incident_created' | 'approval_request' | 'document_review' | 'training_expiry' | EmailTemplateKey;
   subject: string;
   htmlBody: string;
 }
@@ -16,63 +21,12 @@ export interface EmailPayload {
   meta?: Record<string, unknown>;
 }
 
-const emailTemplates: Record<string, EmailTemplate> = {
-  overdue_task: {
-    type: 'overdue_task',
-    subject: 'Task Overdue: {{taskTitle}}',
-    htmlBody: `
-      <h2>Task Overdue</h2>
-      <p>The following task is now overdue:</p>
-      <p><strong>{{taskTitle}}</strong></p>
-      <p>Due date: {{dueDate}}</p>
-      <p><a href="{{link}}">View Task</a></p>
-    `
-  },
-  incident_created: {
-    type: 'incident_created',
-    subject: 'New Incident: {{incidentTitle}}',
-    htmlBody: `
-      <h2>New Incident Reported</h2>
-      <p><strong>{{incidentTitle}}</strong></p>
-      <p>Severity: <strong>{{severity}}</strong></p>
-      <p>Category: {{category}}</p>
-      <p>Location: {{location}}</p>
-      <p><a href="{{link}}">View Incident</a></p>
-    `
-  },
-  approval_request: {
-    type: 'approval_request',
-    subject: 'Approval Required: {{itemType}}',
-    htmlBody: `
-      <h2>Approval Required</h2>
-      <p>A {{itemType}} has been submitted for your approval:</p>
-      <p><strong>{{itemTitle}}</strong></p>
-      <p>Submitted by: {{requesterName}}</p>
-      <p><a href="{{link}}">Review & Approve</a></p>
-    `
-  },
-  document_review: {
-    type: 'document_review',
-    subject: 'Document Review Due: {{documentName}}',
-    htmlBody: `
-      <h2>Document Review Due</h2>
-      <p>The following document is due for review:</p>
-      <p><strong>{{documentName}}</strong></p>
-      <p>Due date: {{dueDate}}</p>
-      <p><a href="{{link}}">Review Document</a></p>
-    `
-  },
-  training_expiry: {
-    type: 'training_expiry',
-    subject: 'Training Expiring Soon: {{trainingName}}',
-    htmlBody: `
-      <h2>Training Expiring Soon</h2>
-      <p>The following training certification will expire soon:</p>
-      <p><strong>{{trainingName}}</strong></p>
-      <p>Expiry date: {{expiryDate}}</p>
-      <p><a href="{{link}}">Renew Training</a></p>
-    `
-  }
+const legacyTemplateMap: Record<string, EmailTemplateKey> = {
+  overdue_task: 'improvements',
+  incident_created: 'incident_reporting',
+  approval_request: 'approvals',
+  document_review: 'document_reviews',
+  training_expiry: 'hr_updates'
 };
 
 /**
@@ -99,6 +53,33 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
   throw new Error(`Email delivery failed. ${message}`);
 }
 
+export async function sendTemplatedNotificationEmail(input: {
+  to: string | string[];
+  templateKey: EmailTemplateKey;
+  variables?: EmailTemplateVariables;
+  actionUrl?: string | null;
+  actionLabel?: string | null;
+  meta?: Record<string, unknown>;
+}): Promise<void> {
+  const rendered = renderEmailTemplate({
+    templateKey: input.templateKey,
+    variables: input.variables,
+    actionUrl: input.actionUrl,
+    actionLabel: input.actionLabel
+  });
+
+  await sendEmail({
+    to: input.to,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    meta: {
+      ...(input.meta ?? {}),
+      templateKey: input.templateKey
+    }
+  });
+}
+
 /**
  * Send templated email
  */
@@ -107,25 +88,27 @@ export async function sendTemplatedEmail(
   templateType: string,
   variables: Record<string, string>
 ): Promise<void> {
-  const template = emailTemplates[templateType as keyof typeof emailTemplates];
-  if (!template) {
+  const templateKey = legacyTemplateMap[templateType] ?? templateType;
+  if (!templateKey) {
     throw new Error(`Unknown email template: ${templateType}`);
   }
 
-  let html = template.htmlBody;
-  let subject = template.subject;
-
-  // Replace variables
-  Object.entries(variables).forEach(([key, value]) => {
-    const regex = new RegExp(`{{${key}}}`, 'g');
-    html = html.replace(regex, value);
-    subject = subject.replace(regex, value);
-  });
-
-  await sendEmail({
+  await sendTemplatedNotificationEmail({
     to,
-    subject,
-    html
+    templateKey: templateKey as EmailTemplateKey,
+    variables: {
+      ...variables,
+      title: variables.taskTitle ?? variables.incidentTitle ?? variables.itemTitle ?? variables.documentName ?? variables.trainingName,
+      reference: variables.itemTitle ?? variables.documentName ?? variables.taskTitle,
+      dueDate: variables.dueDate ?? variables.expiryDate,
+      severity: variables.severity,
+      category: variables.category,
+      location: variables.location,
+      itemType: variables.itemType,
+      requester: variables.requesterName,
+      status: variables.status
+    },
+    actionUrl: variables.link
   });
 }
 
