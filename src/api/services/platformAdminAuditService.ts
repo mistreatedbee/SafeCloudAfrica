@@ -12,7 +12,12 @@ export type AuditAction =
   | 'user_role_changed'
   | 'user_disabled'
   | 'support_mode_entered'
-  | 'support_mode_exited';
+  | 'support_mode_exited'
+  | 'support_ticket_status_changed'
+  | 'support_ticket_escalated'
+  | 'support_ticket_assigned'
+  | 'support_license_processed'
+  | 'support_module_processed';
 
 export type AuditLogRow = {
   id: UUID;

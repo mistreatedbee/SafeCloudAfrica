@@ -60,6 +60,9 @@ export const ProfilePage = lazy(() =>
 export const HelpSupportPage = lazy(() =>
   import('../pages/HelpSupportPage').then((m) => ({ default: m.HelpSupportPage }))
 );
+export const SupportTicketDetailPage = lazy(() =>
+  import('../pages/SupportTicketDetailPage').then((m) => ({ default: m.SupportTicketDetailPage }))
+);
 export const NCRsPage = lazy(() => import('../pages/NCRsPage'));
 export const QualityCustomerComplaintsPage = lazy(() => import('../pages/QualityCustomerComplaintsPage'));
 export const QualityInternalExternalIssuesPage = lazy(() =>
@@ -291,6 +294,11 @@ export const SuperAdminAuditLogsPage = lazy(() =>
 );
 export const SuperAdminSupportModePage = lazy(() =>
   import('../pages/admin/superadmin/SuperAdminSupportModePage').then((m) => ({ default: m.SuperAdminSupportModePage }))
+);
+export const SuperAdminSupportTicketsPage = lazy(() =>
+  import('../pages/admin/superadmin/SuperAdminSupportTicketsPage').then((m) => ({
+    default: m.SuperAdminSupportTicketsPage,
+  }))
 );
 export const SuperAdminHealthPage = lazy(() =>
   import('../pages/admin/superadmin/SuperAdminHealthPage').then((m) => ({ default: m.SuperAdminHealthPage }))

@@ -155,7 +155,7 @@ export function UserMenu() {
               <button
                 onClick={() => {
                   setIsOpen(false);
-                  navigate('/help-support');
+                  navigate('/support');
                 }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-charcoal hover:bg-surface-50 transition-colors">
                 <HelpCircleIcon className="w-4 h-4 text-charcoal-400" />

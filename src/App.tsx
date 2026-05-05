@@ -34,6 +34,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { HelpSupportPage } from './pages/HelpSupportPage';
+import { SupportTicketDetailPage } from './pages/SupportTicketDetailPage';
 import NCRsPage from './pages/NCRsPage';
 import QualityCustomerComplaintsPage from './pages/QualityCustomerComplaintsPage';
 import QualityInternalExternalIssuesPage from './pages/QualityInternalExternalIssuesPage';
@@ -112,6 +113,7 @@ import { SuperAdminModuleControlPage } from './pages/admin/superadmin/SuperAdmin
 import { SuperAdminSellableFeaturesPage } from './pages/admin/superadmin/SuperAdminSellableFeaturesPage';
 import { SuperAdminAuditLogsPage } from './pages/admin/superadmin/SuperAdminAuditLogsPage';
 import { SuperAdminSupportModePage } from './pages/admin/superadmin/SuperAdminSupportModePage';
+import { SuperAdminSupportTicketsPage } from './pages/admin/superadmin/SuperAdminSupportTicketsPage';
 import { OwnerDashboardPage } from './pages/owner/OwnerDashboardPage';
 import { OwnerOnboardingWizardPage } from './pages/owner/OwnerOnboardingWizardPage';
 import { EmployeeDashboardPage } from './pages/employee/EmployeeDashboardPage';
@@ -215,6 +217,7 @@ export function App() {
             <Route path="module-control" element={<SuperAdminModuleControlPage />} />
             <Route path="sellable-features" element={<SuperAdminSellableFeaturesPage />} />
             <Route path="audit-logs" element={<SuperAdminAuditLogsPage />} />
+            <Route path="support-tickets" element={<SuperAdminSupportTicketsPage />} />
             <Route path="support-mode" element={<SuperAdminSupportModePage />} />
             <Route path="*" element={<Navigate to="overview" replace />} />
           </Route>
@@ -1769,6 +1772,26 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <ProfilePage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/support"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <HelpSupportPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/support/:ticketId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <SupportTicketDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

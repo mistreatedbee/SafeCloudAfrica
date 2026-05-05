@@ -35,7 +35,8 @@ import {
   IdCardIcon,
   PackageIcon,
   FlaskConicalIcon,
-  BriefcaseIcon
+  BriefcaseIcon,
+  HeadphonesIcon
 } from 'lucide-react';
 import { useTenant } from '../../tenant/TenantContext';
 import type { CompanyRole, ModuleKey } from '../../api/models/core';
@@ -214,6 +215,7 @@ const sellableFeatures: NavItem[] = [
 ];
 
 const settingsItems: NavItem[] = [
+  { name: 'Support Centre', path: '/support', icon: HeadphonesIcon },
   { name: 'Settings', path: '/settings', icon: SettingsIcon, roles: adminOnlyRoles },
   { name: 'Billing & Pricing', path: '/billing', icon: CreditCardIcon, roles: adminOnlyRoles },
   { name: 'License', path: '/admin/license', icon: CreditCardIcon, roles: adminOnlyRoles },
