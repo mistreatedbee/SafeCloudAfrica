@@ -1,5 +1,6 @@
 import { insforge } from '../insforge/client';
 import { ensureInsforgeSession } from '../insforge/ensureSession';
+import { fetchWithInsforgeAuth } from '../insforge/authenticatedFetch';
 
 type UploadStrategy = {
   method?: string;
@@ -102,11 +103,11 @@ async function requestInsforgeJson<T>(method: string, pathOrUrl: string, body?: 
   const headers = new Headers(http.getHeaders());
   headers.set('Content-Type', 'application/json;charset=UTF-8');
 
-  const response = await fetch(buildInsforgeUrl(pathOrUrl), {
+  const response = await fetchWithInsforgeAuth(buildInsforgeUrl(pathOrUrl), {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body)
-  });
+  }, 'storage-upload:http-json');
 
   const payload = await parseResponseBody(response);
   if (!response.ok) {
@@ -144,13 +145,14 @@ async function uploadDirect(bucket: string, key: string, file: File | Blob): Pro
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(
+  const response = await fetchWithInsforgeAuth(
     buildInsforgeUrl(`/api/storage/buckets/${encodeURIComponent(bucket)}/objects/${encodeURIComponent(key)}`),
     {
       method: 'PUT',
       headers,
       body: formData
-    }
+    },
+    'storage-upload:direct'
   );
 
   const payload = await parseResponseBody(response);

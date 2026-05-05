@@ -55,6 +55,11 @@ function isAuthFailureError(error: unknown): boolean {
 
 function emitAuthFailure(error: unknown): void {
   if (typeof window === 'undefined') return;
+  try {
+    if (sessionStorage.getItem('sca_session_expired') === '1') return;
+  } catch {
+    // ignore storage access errors
+  }
   window.dispatchEvent(
     new CustomEvent('sca:auth-failure', {
       detail: { message: String((error as any)?.message ?? error ?? 'Authentication failed') }

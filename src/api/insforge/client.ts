@@ -1,5 +1,6 @@
 import { createClient } from '@insforge/sdk';
 import { createFreshFetch, getNoStoreHeaders } from '../liveData';
+import { readBearerTokenFromHeaders, readStoredAccessToken } from './sessionState';
 
 // IMPORTANT:
 // - Vite injects env at build time; set VITE_INSFORGE_BASE_URL in .env / Vercel (no default tenant URL).
@@ -38,7 +39,23 @@ function resolveBaseUrl(rawBaseUrl: string): string {
 export const insforge = createClient({
   baseUrl: resolveBaseUrl(configuredBaseUrl),
   anonKey: configuredAnonKey,
-  fetch: createFreshFetch(globalThis.fetch.bind(globalThis)),
+  fetch: createFreshFetch(globalThis.fetch.bind(globalThis), {
+    getBaseUrl: () => (insforge.getHttpClient() as { baseUrl: string }).baseUrl,
+    getAccessToken: () => {
+      try {
+        const headers = insforge.getHttpClient().getHeaders();
+        const token = readBearerTokenFromHeaders(headers);
+        const anonKey = String(((insforge.getHttpClient() as unknown) as { anonKey?: string }).anonKey ?? '').trim();
+        if (token && token !== anonKey) return token;
+      } catch {
+        // fall through to persisted token
+      }
+      return readStoredAccessToken();
+    },
+    setAccessToken: (token) => {
+      insforge.getHttpClient().setAuthToken(token);
+    }
+  }),
   headers: Object.fromEntries(getNoStoreHeaders().entries()),
   // Use SDK-managed session persistence + refresh.
   persistSession: true,
@@ -58,7 +75,7 @@ type RuntimeClientConfig = {
 function applyRuntimeConfig(config: RuntimeClientConfig | null | undefined): void {
   const runtimeBaseUrl = String(config?.insforge?.baseUrl ?? '').trim();
   const runtimeAnonKey = String(config?.insforge?.anonKey ?? '').trim();
-  const httpClient = insforge.getHttpClient() as { baseUrl: string; anonKey?: string };
+  const httpClient = (insforge.getHttpClient() as unknown) as { baseUrl: string; anonKey?: string };
 
   if (runtimeBaseUrl) {
     httpClient.baseUrl = resolveBaseUrl(runtimeBaseUrl);

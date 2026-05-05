@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { useAuth } from '@insforge/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { insforge } from '../api/insforge/client';
+import { refreshSessionThroughProxy } from '../api/insforge/sessionState';
 import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY, USER_SIGNED_OUT_KEY } from '../auth/AuthSessionListener';
 import { useDraftManager } from './DraftManagerProvider';
 import { computeInactivityDecision } from './inactivityDecision';
@@ -270,7 +271,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       const message =
         reason === 'inactivity'
           ? 'Your session expired due to inactivity. Please log in again.'
-          : 'Your session expired. Please log in again.';
+          : 'Your session has expired. Please log in again.';
       sessionStorage.setItem(SESSION_EXPIRED_MESSAGE_KEY, message);
       sessionStorage.removeItem(USER_SIGNED_OUT_KEY);
     } catch {
@@ -357,84 +358,47 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         refreshRetryCountRef.current = 0;
         return refreshSucceeded();
       }
-      const authApi = insforge.auth as any;
-      if (typeof authApi.refreshSession === 'function') {
-        // If we cannot parse the JWT expiry, we can't reliably know if it's safe to wait.
-        // Use a conservative throttle to keep refreshes silent and not overly frequent.
-        if (!lastKnownExpiresAtMs) {
-          const sinceLast = now - lastExpiresParseFallbackAttemptRef.current;
-          if (sinceLast < EXPIRES_PARSE_THROTTLE_MS) {
-            refreshRetryCountRef.current = 0;
-            return refreshSucceeded();
-          }
-          lastExpiresParseFallbackAttemptRef.current = now;
+      // If we cannot parse the JWT expiry, we can't reliably know if it's safe to wait.
+      // Use a conservative throttle to keep refreshes silent and not overly frequent.
+      if (!lastKnownExpiresAtMs) {
+        const sinceLast = now - lastExpiresParseFallbackAttemptRef.current;
+        if (sinceLast < EXPIRES_PARSE_THROTTLE_MS) {
+          refreshRetryCountRef.current = 0;
+          return refreshSucceeded();
         }
-        try {
-          const refreshed = await authApi.refreshSession();
-          if (hasMalformedAuthResponse(refreshed)) {
-            const fallbackToken = existingClientToken ?? lastKnownToken;
-            if (fallbackToken) {
-              insforge.getHttpClient().setAuthToken(fallbackToken);
-            }
-            refreshRetryCountRef.current += 1;
-            console.warn('[session] malformed refresh response', refreshed);
-            return transientRefreshFailure();
-          }
-          const { accessToken: refreshedToken, userId: refreshedUserId } = readAuthSession(refreshed);
-          if (refreshedToken && refreshedUserId) {
-            insforge.getHttpClient().setAuthToken(refreshedToken);
-            refreshRetryCountRef.current = 0;
-            console.info('[session] refresh success');
-            return refreshSucceeded();
-          }
-          if (isInvalidSessionError(refreshed?.error)) {
-            insforge.getHttpClient().setAuthToken(null);
-            refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
-            console.warn('[session] refresh rejected', refreshed?.error);
-            return invalidSessionFailure();
-          }
-          const fallbackToken = existingClientToken ?? lastKnownToken;
-          if (fallbackToken) {
-            insforge.getHttpClient().setAuthToken(fallbackToken);
-          }
-          refreshRetryCountRef.current += 1;
-          console.warn('[session] refresh returned no usable session; treating as transient failure', refreshed);
-          return transientRefreshFailure();
-        } catch (error) {
-          if (isInvalidSessionError(error)) {
-            insforge.getHttpClient().setAuthToken(null);
-            refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
-            console.warn('[session] refresh rejected', error);
-            return invalidSessionFailure();
-          }
-          // If refresh fails but the existing token is still valid, don't force a logout.
-          // Network hiccups should not interrupt the user session while the JWT is alive.
-          const tokenStillValid = !!lastKnownExpiresAtMs && lastKnownExpiresAtMs > Date.now();
-          const fallbackToken = existingClientToken ?? lastKnownToken;
-          if (tokenStillValid && lastKnownToken) {
-            insforge.getHttpClient().setAuthToken(lastKnownToken);
-            refreshRetryCountRef.current = 0;
-            return refreshSucceeded();
-          }
-          if (fallbackToken) {
-            insforge.getHttpClient().setAuthToken(fallbackToken);
-          }
-          refreshRetryCountRef.current += 1;
-          console.warn('[session] refresh failed', error);
-          return transientRefreshFailure();
-        }
+        lastExpiresParseFallbackAttemptRef.current = now;
       }
 
-      // Fallback path if SDK only supports getCurrentSession auto-refresh internally.
-      if (token) {
-        // If we can't decode expiry, prefer to rely on SDK behavior rather than forcing logout.
-        const tokenStillValid = !lastKnownExpiresAtMs || lastKnownExpiresAtMs > Date.now();
-        insforge.getHttpClient().setAuthToken(token);
-        refreshRetryCountRef.current = tokenStillValid ? 0 : (refreshRetryCountRef.current + 1);
-        return tokenStillValid ? refreshSucceeded() : transientRefreshFailure();
+      const httpClient = insforge.getHttpClient() as { baseUrl: string };
+      const refreshed = await refreshSessionThroughProxy({
+        baseUrl: httpClient.baseUrl,
+        fetch: globalThis.fetch.bind(globalThis)
+      });
+      if (refreshed.ok && refreshed.accessToken && refreshed.userId) {
+        insforge.getHttpClient().setAuthToken(refreshed.accessToken);
+        refreshRetryCountRef.current = 0;
+        console.info('[session] refresh success');
+        return refreshSucceeded();
       }
-
-      throw new Error('No session token available after refresh attempt.');
+      if (!refreshed.ok && refreshed.reason === 'invalid_session') {
+        insforge.getHttpClient().setAuthToken(null);
+        refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
+        console.warn('[session] refresh rejected', refreshed.error);
+        return invalidSessionFailure();
+      }
+      const tokenStillValid = !!lastKnownExpiresAtMs && lastKnownExpiresAtMs > Date.now();
+      const fallbackToken = existingClientToken ?? lastKnownToken;
+      if (tokenStillValid && lastKnownToken) {
+        insforge.getHttpClient().setAuthToken(lastKnownToken);
+        refreshRetryCountRef.current = 0;
+        return refreshSucceeded();
+      }
+      if (fallbackToken) {
+        insforge.getHttpClient().setAuthToken(fallbackToken);
+      }
+      refreshRetryCountRef.current += 1;
+      console.warn('[session] refresh failed', refreshed);
+      return transientRefreshFailure();
     } catch (error) {
       if (isInvalidSessionError(error)) {
         insforge.getHttpClient().setAuthToken(null);

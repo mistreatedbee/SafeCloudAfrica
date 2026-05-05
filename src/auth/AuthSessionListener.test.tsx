@@ -86,7 +86,7 @@ describe('AuthSessionListener', () => {
 
     expect(flushAllDraftsMock).toHaveBeenCalledTimes(1);
     expect(sessionStorage.getItem('sca_session_expired')).toBe('1');
-    expect(sessionStorage.getItem('sca_session_expired_message')).toBe('Your session expired. Please log in again.');
+    expect(sessionStorage.getItem('sca_session_expired_message')).toBe('Your session has expired. Please log in again.');
   });
 
   it('does not set the expired-session banner when a client token is still present', async () => {

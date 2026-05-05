@@ -4,6 +4,7 @@ import type { CompanyRole, LicenseType, ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { ensureInsforgeSession, withInsforgeSession } from '../insforge/ensureSession';
+import { fetchWithInsforgeAuth } from '../insforge/authenticatedFetch';
 
 function normalizeInviteStatus(status: string | null | undefined): string {
   return String(status ?? '').trim().toUpperCase();
@@ -318,6 +319,7 @@ export async function createMembership(input: {
 }
 
 export async function listMembershipsForUser(userId: UUID): Promise<Array<CompanyMembership & { company?: Company }>> {
+  return withInsforgeSession('tenant-service:list-memberships-for-user', async () => {
   const { data, error } = await insforge.database
     .from('company_memberships')
     .select('*, companies(*)')
@@ -328,6 +330,7 @@ export async function listMembershipsForUser(userId: UUID): Promise<Array<Compan
     ...(row as CompanyMembership),
     company: row.companies as Company | undefined
   }));
+  });
 }
 
 export async function getCompanyById(companyId: UUID): Promise<Company | null> {
@@ -358,9 +361,11 @@ export async function updateCompanyProfile(input: {
 }
 
 export async function listCompanyMemberships(companyId: UUID): Promise<CompanyMembership[]> {
+  return withInsforgeSession('tenant-service:list-company-memberships', async () => {
   const { data, error } = await insforge.database.from('company_memberships').select('*').eq('company_id', companyId);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as CompanyMembership[];
+  });
 }
 
 export async function listCompanyInvites(companyId: UUID): Promise<CompanyInvite[]> {
@@ -600,7 +605,7 @@ export async function createInvite(input: {
 }): Promise<InviteCreateResult> {
   try {
     const headers = await getAuthHeaders();
-    const response = await fetch('/api/invites/create', {
+    const response = await fetchWithInsforgeAuth('/api/invites/create', {
       method: 'POST',
       cache: 'no-store',
       headers,
@@ -612,7 +617,7 @@ export async function createInvite(input: {
         siteId: input.siteId ?? null,
         modulesScope: input.modulesScope ?? []
       })
-    });
+    }, 'invites:create');
     const data = await response.json().catch(() => null as any);
     if (isRouteMissingError(response.status, data)) {
       return await createInviteFallback(input);
@@ -774,12 +779,12 @@ export async function acceptInvite(input: { inviteId: UUID; userId: UUID }): Pro
 
 export async function acceptInviteByToken(input: { token: string; userId: UUID }): Promise<CompanyMembership> {
   const headers = await getAuthHeaders();
-  const response = await fetch('/api/invites/accept', {
+  const response = await fetchWithInsforgeAuth('/api/invites/accept', {
     method: 'POST',
     cache: 'no-store',
     headers,
     body: JSON.stringify({ token: input.token })
-  });
+  }, 'invites:accept');
   const data = await response.json().catch(() => null as any);
   if (isApiRouteUnavailable(response.status, data)) {
     const inviteId = await getInviteIdByTokenRpc(input.token);
@@ -817,7 +822,7 @@ export type InviteResendResult = {
 
 export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID }): Promise<InviteResendResult> {
   const headers = await getAuthHeaders();
-  const response = await fetch('/api/invites/resend', {
+  const response = await fetchWithInsforgeAuth('/api/invites/resend', {
     method: 'POST',
     cache: 'no-store',
     headers,
@@ -825,7 +830,7 @@ export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID })
       inviteId: input.inviteId,
       sendEmail: true
     })
-  });
+  }, 'invites:resend');
   const data = await response.json().catch(() => null as any);
   if (isRouteMissingError(response.status, data)) {
     return await resendInviteFallback(input);
@@ -846,7 +851,7 @@ export async function resendInvite(input: { inviteId: UUID; actorUserId: UUID })
 
 export async function getInviteLinkForInviteId(input: { inviteId: UUID }): Promise<string> {
   const headers = await getAuthHeaders();
-  const response = await fetch('/api/invites/resend', {
+  const response = await fetchWithInsforgeAuth('/api/invites/resend', {
     method: 'POST',
     cache: 'no-store',
     headers,
@@ -854,7 +859,7 @@ export async function getInviteLinkForInviteId(input: { inviteId: UUID }): Promi
       inviteId: input.inviteId,
       sendEmail: false
     })
-  });
+  }, 'invites:get-link');
   const data = await response.json().catch(() => null as any);
   if (isRouteMissingError(response.status, data)) {
     const result = await resendInviteFallback({ inviteId: input.inviteId, actorUserId: (await ensureInsforgeSession()).userId as UUID });
@@ -938,7 +943,7 @@ export async function updateMembershipRole(input: {
 }): Promise<void> {
   const { error } = await insforge.database
     .from('company_memberships')
-    .update({ role })
+    .update({ role: input.role })
     .eq('company_id', input.companyId)
     .eq('id', input.membershipId);
   if (error) throw new Error(getErrorMessage(error));
@@ -952,7 +957,7 @@ export async function updateMembershipStatus(input: {
 }): Promise<void> {
   const { error } = await insforge.database
     .from('company_memberships')
-    .update({ status })
+    .update({ status: input.status })
     .eq('company_id', input.companyId)
     .eq('id', input.membershipId);
   if (error) throw new Error(getErrorMessage(error));

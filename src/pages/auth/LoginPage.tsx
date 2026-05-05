@@ -75,7 +75,7 @@ export function LoginPage() {
     try {
       if (typeof sessionStorage === 'undefined') return null;
       if (sessionStorage.getItem(SESSION_EXPIRED_KEY) !== '1') return null;
-      return sessionStorage.getItem(SESSION_EXPIRED_MESSAGE_KEY) || 'Your session expired. Please log in again.';
+      return sessionStorage.getItem(SESSION_EXPIRED_MESSAGE_KEY) || 'Your session has expired. Please log in again.';
     } catch {
       return null;
     }

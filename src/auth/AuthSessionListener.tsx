@@ -22,7 +22,7 @@ export function AuthSessionListener() {
       void (async () => {
         try {
           sessionStorage.setItem(SESSION_EXPIRED_KEY, '1');
-          sessionStorage.setItem(SESSION_EXPIRED_MESSAGE_KEY, 'Your session expired. Please log in again.');
+          sessionStorage.setItem(SESSION_EXPIRED_MESSAGE_KEY, 'Your session has expired. Please log in again.');
           sessionStorage.removeItem(USER_SIGNED_OUT_KEY);
         } catch {
           // ignore storage errors
@@ -88,7 +88,7 @@ export function AuthSessionListener() {
           if (!existingMessage) {
             sessionStorage.setItem(
               SESSION_EXPIRED_MESSAGE_KEY,
-              'Your session expired. Please log in again.'
+              'Your session has expired. Please log in again.'
             );
           }
         })();

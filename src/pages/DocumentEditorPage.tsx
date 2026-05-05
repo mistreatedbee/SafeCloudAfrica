@@ -1,7 +1,7 @@
 import React from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { DownloadIcon, EyeIcon, FileWarningIcon } from 'lucide-react';
-import { ensureInsforgeSession } from '../api/insforge/ensureSession';
+import { fetchWithInsforgeAuth } from '../api/insforge/authenticatedFetch';
 import { Layout } from '../components/layout/Layout';
 import { readEditorConfigResponse, toFriendlyEditorMessage } from './documentEditorResponse';
 
@@ -61,13 +61,11 @@ export function DocumentEditorPage() {
       setFileName(null);
       setSetupHint(null);
       try {
-        const { accessToken } = await ensureInsforgeSession({ reason: 'dms_onlyoffice_editor' });
-        const res = await fetch(`/api/documents/editor-config?versionId=${encodeURIComponent(versionId)}&mode=${encodeURIComponent(mode)}`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${accessToken}`
-          }
-        });
+        const res = await fetchWithInsforgeAuth(
+          `/api/documents/editor-config?versionId=${encodeURIComponent(versionId)}&mode=${encodeURIComponent(mode)}`,
+          { method: 'GET' },
+          'dms_onlyoffice_editor'
+        );
         const payload = await readEditorConfigResponse(res);
         if (!res.ok || !payload.ok) throw new Error(payload.error || 'Failed to load editor config.');
         setFallbackFileUrl(payload.fileUrl || null);

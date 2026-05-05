@@ -1,4 +1,11 @@
 import { insforge, insforgeReady } from './client';
+import {
+  decodeJwtSession,
+  isInvalidSessionError,
+  isJwtExpired,
+  readBearerTokenFromHeaders,
+  refreshSessionThroughProxy
+} from './sessionState';
 
 const AUTH_BOOTSTRAP_DEBUG = (import.meta as any)?.env?.VITE_AUTH_BOOTSTRAP_DEBUG === '1';
 
@@ -21,64 +28,20 @@ export class InsforgeAuthBootstrapError extends Error {
   }
 }
 
-function readJwtSub(token: string | null | undefined): string | null {
-  if (!token) return null;
-  try {
-    const [, payload] = token.split('.');
-    if (!payload) return null;
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
-    const parsed = JSON.parse(atob(padded)) as { sub?: string };
-    return typeof parsed.sub === 'string' && parsed.sub.trim() ? parsed.sub : null;
-  } catch {
-    return null;
-  }
-}
-
-function getAuthStatusCode(error: unknown): number {
-  const raw = Number((error as any)?.statusCode ?? (error as any)?.status ?? 0);
-  return Number.isFinite(raw) ? raw : 0;
-}
-
-function readBearerTokenFromHeaders(headers: Record<string, unknown>): string | null {
-  const raw = String(headers.Authorization ?? headers.authorization ?? '').trim();
-  const match = raw.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() || null;
-}
-
 function getAttachedUserToken(headers: Record<string, unknown>): string | null {
   const token = readBearerTokenFromHeaders(headers);
   if (!token) return null;
-  const anonKey = String((insforge.getHttpClient() as { anonKey?: string }).anonKey ?? '').trim();
+  const anonKey = String(((insforge.getHttpClient() as unknown) as { anonKey?: string }).anonKey ?? '').trim();
   if (anonKey && token === anonKey) return null;
+  if (isJwtExpired(token)) return null;
   return token;
 }
 
 function getAttachedSession(headers: Record<string, unknown>): { accessToken: string; userId: string } | null {
   const token = getAttachedUserToken(headers);
-  const userId = readJwtSub(token);
+  const userId = decodeJwtSession(token).sub;
   if (!token || !userId) return null;
   return { accessToken: token, userId };
-}
-
-function isInvalidSessionError(error: unknown): boolean {
-  const statusCode = getAuthStatusCode(error);
-  if (statusCode === 401 || statusCode === 403) return true;
-  const message = String(
-    (error as any)?.code ??
-      (error as any)?.error ??
-      (error as any)?.message ??
-      ''
-  ).toLowerCase();
-  return (
-    message.includes('invalid or expired session') ||
-    message.includes('session expired') ||
-    message.includes('refresh_unauthorized') ||
-    message.includes('refresh_forbidden') ||
-    message.includes('missing_refresh_cookie') ||
-    message.includes('invalid refresh token') ||
-    message.includes('unauthorized')
-  );
 }
 
 function debugAuthBootstrap(event: string, details?: Record<string, unknown>): void {
@@ -105,7 +68,20 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
   const hadAuthHeader = !!String((existingHeaders as any)?.Authorization ?? (existingHeaders as any)?.authorization ?? '').trim();
   debugAuthBootstrap('ensure-session:start', { reason, hadAuthHeader });
 
-  const result = await insforge.auth.getCurrentSession().catch((error) => {
+  async function tryProxyRefresh(): Promise<{ accessToken: string; userId: string } | null> {
+    const httpClient = insforge.getHttpClient() as { baseUrl: string; setAuthToken: (token: string | null) => void };
+    const refreshed = await refreshSessionThroughProxy({
+      baseUrl: httpClient.baseUrl,
+      fetch: globalThis.fetch.bind(globalThis)
+    });
+    if (!refreshed.ok || !refreshed.accessToken) return null;
+    const userId = refreshed.userId ?? decodeJwtSession(refreshed.accessToken).sub;
+    if (!userId) return null;
+    httpClient.setAuthToken(refreshed.accessToken);
+    return { accessToken: refreshed.accessToken, userId };
+  }
+
+  const result = await insforge.auth.getCurrentSession().catch(async (error) => {
     const attachedSession = getAttachedSession(existingHeaders);
     if (attachedSession && !isInvalidSessionError(error)) {
       insforge.getHttpClient().setAuthToken(attachedSession.accessToken);
@@ -115,6 +91,10 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
         tokenAttached: true
       });
       return { data: { session: { accessToken: attachedSession.accessToken, user: { id: attachedSession.userId } } }, error: null };
+    }
+    const refreshed = await tryProxyRefresh();
+    if (refreshed) {
+      return { data: { session: { accessToken: refreshed.accessToken, user: { id: refreshed.userId } } }, error: null };
     }
     debugAuthBootstrap('ensure-session:get-current-session-error', {
       reason,
@@ -160,9 +140,14 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
     ((typeof (result as any)?.user?.id === 'string' && (result as any).user.id.trim())
       ? (result as any).user.id
       : null) ??
-    readJwtSub(token);
+    decodeJwtSession(token).sub;
 
-  if (!token || !userId) {
+  if (token && isJwtExpired(token)) {
+    const refreshed = await tryProxyRefresh();
+    if (refreshed) return refreshed;
+  }
+
+  if (!token || !userId || isJwtExpired(token)) {
     const attachedSession = getAttachedSession(existingHeaders);
     if (attachedSession) return attachedSession;
     // Keep message user-friendly; UI can prompt a re-login.

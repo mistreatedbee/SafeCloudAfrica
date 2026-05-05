@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { CompanyRole, UUID } from '../models/core';
 import type {
@@ -195,6 +196,7 @@ type CalibrationListInput = {
 };
 
 export async function listCalibrationRecords(input: CalibrationListInput): Promise<CalibrationRecord[]> {
+  return withInsforgeSession('calibration:list-records', async () => {
   let q = insforge.database
     .from('calibration_records')
     .select('*')
@@ -223,6 +225,7 @@ export async function listCalibrationRecords(input: CalibrationListInput): Promi
 
   const membership = await getMembershipScope(input.companyId, input.actorUserId);
   return rows.filter((row) => canViewRecord(row, input.actorRole, input.actorUserId, membership));
+  });
 }
 
 export async function getCalibrationRecord(input: {
@@ -529,6 +532,7 @@ export async function getCalibrationSummary(input: {
 }
 
 export async function listCalibrationResponsiblePeople(companyId: UUID): Promise<Array<{ userId: UUID; role: CompanyRole; displayName: string }>> {
+  return withInsforgeSession('calibration:list-responsible-people', async () => {
   const { data: memberships, error: membersErr } = await insforge.database
     .from('company_memberships')
     .select('user_id, role')
@@ -566,6 +570,7 @@ export async function listCalibrationResponsiblePeople(companyId: UUID): Promise
       role: member.role as CompanyRole,
       displayName
     };
+  });
   });
 }
 
@@ -755,7 +760,7 @@ export async function uploadCalibrationAttachments(input: {
       entityType: 'calibration_record',
       entityId: input.recordId,
       storageBucket: CALIBRATION_EVIDENCE_BUCKET,
-      storageKey: data?.path ?? key,
+      storageKey: (data as any)?.path ?? key,
       createdByUserId: input.actorUserId,
       originalFilename: input.itemPictureFile.name,
       displayTitle: 'Item Picture',
@@ -774,7 +779,7 @@ export async function uploadCalibrationAttachments(input: {
       entityType: 'calibration_record',
       entityId: input.recordId,
       storageBucket: CALIBRATION_EVIDENCE_BUCKET,
-      storageKey: data?.path ?? key,
+      storageKey: (data as any)?.path ?? key,
       createdByUserId: input.actorUserId,
       originalFilename: file.name,
       displayTitle: `Calibration Certificate: ${file.name}`,

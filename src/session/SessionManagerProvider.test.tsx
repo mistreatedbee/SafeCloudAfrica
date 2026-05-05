@@ -1,5 +1,4 @@
 /* @vitest-environment jsdom */
-import React from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,7 +19,7 @@ const navigateMock = vi.fn();
 const flushAllDraftsMock = vi.fn().mockResolvedValue(undefined);
 const getSessionTimeoutMinutesMock = vi.fn().mockResolvedValue(120);
 const getCurrentSessionMock = vi.fn();
-const refreshSessionMock = vi.fn();
+const fetchMock = vi.fn();
 
 const httpClientState = {
   authorization: ''
@@ -48,8 +47,7 @@ vi.mock('react-router-dom', () => ({
 vi.mock('../api/insforge/client', () => ({
   insforge: {
     auth: {
-      getCurrentSession: (...args: unknown[]) => getCurrentSessionMock(...args),
-      refreshSession: (...args: unknown[]) => refreshSessionMock(...args)
+      getCurrentSession: (...args: unknown[]) => getCurrentSessionMock(...args)
     },
     getHttpClient: () => httpClient
   }
@@ -93,6 +91,7 @@ async function flushAsyncWork(): Promise<void> {
 describe('SessionManagerProvider', () => {
   let container: HTMLDivElement;
   let root: Root;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -110,7 +109,9 @@ describe('SessionManagerProvider', () => {
     getSessionTimeoutMinutesMock.mockReset();
     getSessionTimeoutMinutesMock.mockResolvedValue(120);
     getCurrentSessionMock.mockReset();
-    refreshSessionMock.mockReset();
+    fetchMock.mockReset();
+    fetchMock.mockRejectedValue(new Error('Service temporarily unavailable'));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
     sessionStorage.clear();
     localStorage.clear();
     httpClientState.authorization = '';
@@ -131,6 +132,7 @@ describe('SessionManagerProvider', () => {
       await flushAsyncWork();
     });
     container.remove();
+    globalThis.fetch = originalFetch;
     vi.useRealTimers();
   });
 
@@ -145,8 +147,6 @@ describe('SessionManagerProvider', () => {
         }
       }
     });
-    refreshSessionMock.mockRejectedValue(new Error('Service temporarily unavailable'));
-
     await act(async () => {
       vi.advanceTimersByTime(15_000);
       await flushAsyncWork();
@@ -188,7 +188,7 @@ describe('SessionManagerProvider', () => {
     expect(authState.signOut).toHaveBeenCalledTimes(1);
     expect(navigateMock).toHaveBeenCalledWith('/login?redirect=%2Fapp%2Fwork%3Ftab%3Deditor', { replace: true });
     expect(sessionStorage.getItem('sca_session_expired')).toBe('1');
-    expect(sessionStorage.getItem('sca_session_expired_message')).toBe('Your session expired. Please log in again.');
+    expect(sessionStorage.getItem('sca_session_expired_message')).toBe('Your session has expired. Please log in again.');
   });
 
   it('still logs the user out after real inactivity', async () => {

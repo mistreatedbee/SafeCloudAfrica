@@ -1,3 +1,10 @@
+import {
+  clearAuthStorage,
+  emitAuthFailure,
+  markSessionExpired,
+  refreshSessionThroughProxy
+} from './insforge/sessionState';
+
 const LIVE_DATA_MUTATED_EVENT = 'sca:data-mutated';
 const BACKEND_UNAVAILABLE_EVENT = 'sca:backend-unavailable';
 
@@ -49,6 +56,12 @@ export function getNoStoreHeaders(headers?: HeadersInit): Headers {
   return merged;
 }
 
+export type AuthenticatedFetchHandlers = {
+  getBaseUrl: () => string;
+  getAccessToken: () => string | null;
+  setAccessToken: (token: string | null) => void;
+};
+
 export function emitLiveDataMutation(detail: Omit<LiveDataMutationDetail, 'at' | 'release'>): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(
@@ -93,11 +106,35 @@ export function subscribeToBackendUnavailable(listener: (detail: BackendUnavaila
   return () => window.removeEventListener(BACKEND_UNAVAILABLE_EVENT, handler as EventListener);
 }
 
-export function createFreshFetch(baseFetch: typeof fetch): typeof fetch {
+function cloneBodyForRetry(request: Request | null, init?: RequestInit): RequestInit['body'] {
+  if (init && 'body' in init) return init.body;
+  if (!request) return undefined;
+  return undefined;
+}
+
+function shouldAttemptRefresh(response: Response): boolean {
+  return response.status === 401 || response.status === 403;
+}
+
+function isAuthRefreshRequest(input: RequestInfo | URL): boolean {
+  const raw = input instanceof Request ? input.url : String(input);
+  try {
+    const url = new URL(raw, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+    return url.pathname === '/api/auth/refresh';
+  } catch {
+    return raw.includes('/api/auth/refresh');
+  }
+}
+
+export function createFreshFetch(baseFetch: typeof fetch, auth?: AuthenticatedFetchHandlers): typeof fetch {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : null;
     const method = normalizeMethod(init?.method ?? request?.method);
     const headers = getNoStoreHeaders(init?.headers ?? request?.headers);
+    const accessToken = auth?.getAccessToken();
+    if (accessToken && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${accessToken}`);
+    }
     const nextInit: RequestInit = {
       ...init,
       credentials: init?.credentials ?? request?.credentials ?? 'include',
@@ -118,6 +155,37 @@ export function createFreshFetch(baseFetch: typeof fetch): typeof fetch {
         url
       });
       throw err;
+    }
+
+    if (auth && shouldAttemptRefresh(response) && !isAuthRefreshRequest(input)) {
+      const refresh = await refreshSessionThroughProxy({
+        baseUrl: auth.getBaseUrl(),
+        fetch: baseFetch
+      });
+      if (refresh.ok) {
+        auth.setAccessToken(refresh.accessToken);
+        const retryHeaders = getNoStoreHeaders(init?.headers ?? request?.headers);
+        retryHeaders.set('Authorization', `Bearer ${refresh.accessToken}`);
+        const retryInit: RequestInit = {
+          ...init,
+          credentials: init?.credentials ?? request?.credentials ?? 'include',
+          cache: 'no-store',
+          headers: retryHeaders,
+          body: cloneBodyForRetry(request, init)
+        };
+        response = request
+          ? await baseFetch(new Request(request, retryInit))
+          : await baseFetch(input, retryInit);
+      }
+
+      if (!refresh.ok || shouldAttemptRefresh(response)) {
+        if ((!refresh.ok && refresh.reason === 'invalid_session') || shouldAttemptRefresh(response)) {
+          auth.setAccessToken(null);
+          clearAuthStorage();
+          markSessionExpired();
+          emitAuthFailure((!refresh.ok ? refresh.error : null) ?? response.statusText);
+        }
+      }
     }
 
     if (response.status === 502 || response.status === 503 || response.status === 504) {

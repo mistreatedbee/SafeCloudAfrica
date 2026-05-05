@@ -1,3 +1,5 @@
+import { fetchWithInsforgeAuth } from '../insforge/authenticatedFetch';
+
 export interface EmailTemplate {
   type: 'overdue_task' | 'incident_created' | 'approval_request' | 'document_review' | 'training_expiry';
   subject: string;
@@ -77,7 +79,7 @@ const emailTemplates: Record<string, EmailTemplate> = {
  * Send email using the canonical Vercel API endpoint.
  */
 export async function sendEmail(payload: EmailPayload): Promise<void> {
-  const response = await fetch('/api/email/send', {
+  const response = await fetchWithInsforgeAuth('/api/email/send', {
     method: 'POST',
     cache: 'no-store',
     headers: {
@@ -87,7 +89,7 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
       Expires: '0'
     },
     body: JSON.stringify(payload)
-  });
+  }, 'email:send');
   const data = await response.json().catch(() => null as any);
   if (response.ok && data?.ok !== false) return;
   const message = data?.error || `${response.status} ${response.statusText}`;

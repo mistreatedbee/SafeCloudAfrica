@@ -6,6 +6,7 @@ const authMock = vi.hoisted(() => ({
 
 const httpMock = vi.hoisted(() => ({
   anonKey: '',
+  baseUrl: 'https://safecloud.test',
   getHeaders: vi.fn(),
   setAuthToken: vi.fn()
 }));
@@ -31,11 +32,14 @@ function createJwt(payload: Record<string, unknown>): string {
 }
 
 describe('ensureInsforgeSession', () => {
+  const originalFetch = globalThis.fetch;
+
   beforeEach(() => {
     authMock.getCurrentSession.mockReset();
     httpMock.getHeaders.mockReset();
     httpMock.setAuthToken.mockReset();
     httpMock.anonKey = createJwt({ sub: 'anon-user' });
+    globalThis.fetch = originalFetch;
   });
 
   it('falls back to an attached bearer user token when SDK session storage is empty', async () => {
@@ -74,5 +78,28 @@ describe('ensureInsforgeSession', () => {
 
     expect(httpMock.setAuthToken).toHaveBeenCalledWith(userToken);
     expect(guarded).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes an expired stored session before attaching it', async () => {
+    const expiredToken = createJwt({ sub: 'user-1', exp: Math.floor((Date.now() - 60_000) / 1000) });
+    const refreshedToken = createJwt({ sub: 'user-1', exp: Math.floor((Date.now() + 60_000) / 1000) });
+    authMock.getCurrentSession.mockResolvedValue({
+      data: { session: { accessToken: expiredToken, user: { id: 'user-1' } } },
+      error: null
+    });
+    httpMock.getHeaders.mockReturnValue({ Authorization: `Bearer ${expiredToken}` });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ accessToken: refreshedToken, user: { id: 'user-1' } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    ) as unknown as typeof fetch;
+
+    const { ensureInsforgeSession } = await import('./ensureSession');
+    await expect(ensureInsforgeSession({ reason: 'test' })).resolves.toEqual({
+      accessToken: refreshedToken,
+      userId: 'user-1'
+    });
+    expect(httpMock.setAuthToken).toHaveBeenCalledWith(refreshedToken);
   });
 });

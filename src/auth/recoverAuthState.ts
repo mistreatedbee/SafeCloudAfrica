@@ -2,6 +2,7 @@ import type { useAuth } from '@insforge/react';
 import { insforge } from '../api/insforge/client';
 import { clearSession } from './session';
 import { USER_SIGNED_OUT_KEY } from './AuthSessionListener';
+import { clearAuthStorage } from '../api/insforge/sessionState';
 
 type SignOutFn = ReturnType<typeof useAuth>['signOut'];
 
@@ -16,18 +17,8 @@ function clearStorage(): void {
   }
 
   try {
-    for (const key of LOCAL_KEYS_TO_CLEAR) {
-      localStorage.removeItem(key);
-    }
-    // Clear stale SDK auth keys if present.
-    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
-      const key = localStorage.key(i);
-      if (!key) continue;
-      const normalized = key.toLowerCase();
-      if (normalized.includes('insforge') && normalized.includes('auth')) {
-        localStorage.removeItem(key);
-      }
-    }
+    for (const key of LOCAL_KEYS_TO_CLEAR) localStorage.removeItem(key);
+    clearAuthStorage();
   } catch {
     // ignore
   }
