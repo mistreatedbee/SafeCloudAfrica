@@ -129,6 +129,7 @@ import { DraftManagerProvider } from './session/DraftManagerProvider';
 import { DraftExperience } from './session/DraftExperience';
 import { SessionManagerProvider } from './session/SessionManagerProvider';
 import { IdentityProvider } from './hooks/useIdentity';
+import { FloatingSupportChat } from './components/support/FloatingSupportChat';
 export function App() {
   return (
     <BrowserRouter>
@@ -140,7 +141,7 @@ export function App() {
               <DraftExperience />
               <Routes>
           {/* Public */}
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<><LandingPage /><FloatingSupportChat /></>} />
 
           {/* Auth */}
           <Route path="/login" element={<LoginPage />} />
