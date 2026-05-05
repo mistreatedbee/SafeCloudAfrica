@@ -31,17 +31,21 @@ export function EvidenceModal(props: {
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const hasEntityContext = Boolean(props.open && props.companyId && props.entityType && props.entityId);
 
   const { data, loading: listLoading } = useAsync<EvidenceAttachment[]>(
-    async () => listEvidence(props.companyId, { entityType: props.entityType, entityId: props.entityId, limit: 200 }),
-    [props.companyId, props.entityType, props.entityId, refreshKey]
+    async () => {
+      if (!hasEntityContext) return [];
+      return listEvidence(props.companyId, { entityType: props.entityType, entityId: props.entityId, limit: 200 });
+    },
+    [hasEntityContext, props.companyId, props.entityType, props.entityId, refreshKey]
   );
   const evidence = data ?? [];
 
-  const canUpload = useMemo(() => files.length > 0, [files]);
+  const canUpload = useMemo(() => hasEntityContext && files.length > 0, [files, hasEntityContext]);
 
   async function upload() {
-    if (files.length === 0) return;
+    if (files.length === 0 || !hasEntityContext) return;
     setError(null);
     try {
       setLoading(true);

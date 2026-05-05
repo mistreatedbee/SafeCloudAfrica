@@ -534,22 +534,26 @@ export function HealthWellnessPage() {
       </div>
       {activeCompanyId && user?.id && (
         <>
-          <EvidenceModal
-            open={Boolean(substanceEvidenceId)}
-            onClose={() => setSubstanceEvidenceId(null)}
-            companyId={activeCompanyId}
-            entityType="health_substance_case"
-            entityId={substanceEvidenceId ?? ''}
-            uploadedByUserId={user.id}
-          />
-          <EvidenceModal
-            open={Boolean(vaccinationEvidenceId)}
-            onClose={() => setVaccinationEvidenceId(null)}
-            companyId={activeCompanyId}
-            entityType="health_vaccination"
-            entityId={vaccinationEvidenceId ?? ''}
-            uploadedByUserId={user.id}
-          />
+          {substanceEvidenceId && (
+            <EvidenceModal
+              open={Boolean(substanceEvidenceId)}
+              onClose={() => setSubstanceEvidenceId(null)}
+              companyId={activeCompanyId}
+              actorUserId={user.id}
+              entityType="health_substance_case"
+              entityId={substanceEvidenceId}
+            />
+          )}
+          {vaccinationEvidenceId && (
+            <EvidenceModal
+              open={Boolean(vaccinationEvidenceId)}
+              onClose={() => setVaccinationEvidenceId(null)}
+              companyId={activeCompanyId}
+              actorUserId={user.id}
+              entityType="health_vaccination"
+              entityId={vaccinationEvidenceId}
+            />
+          )}
         </>
       )}
     </Layout>

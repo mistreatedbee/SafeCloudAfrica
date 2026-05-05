@@ -424,14 +424,14 @@ export function HrLabourPage() {
             </button>
           </div>
         )}
-        {activeCompanyId && user?.id && (
+        {activeCompanyId && user?.id && evidenceCaseId && (
           <EvidenceModal
             open={Boolean(evidenceCaseId)}
             onClose={() => setEvidenceCaseId(null)}
             companyId={activeCompanyId}
+            actorUserId={user.id}
             entityType="hr_disciplinary_case"
-            entityId={evidenceCaseId ?? ''}
-            uploadedByUserId={user.id}
+            entityId={evidenceCaseId}
           />
         )}
       </div>

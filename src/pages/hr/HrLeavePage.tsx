@@ -488,14 +488,14 @@ export function HrLeavePage() {
             </tbody>
           </table>
         </div>
-        {activeCompanyId && user?.id && (
+        {activeCompanyId && user?.id && proofEvidenceRequestId && (
           <EvidenceModal
             open={Boolean(proofEvidenceRequestId)}
             onClose={() => setProofEvidenceRequestId(null)}
             companyId={activeCompanyId}
+            actorUserId={user.id}
             entityType="hr_leave_request"
-            entityId={proofEvidenceRequestId ?? ''}
-            uploadedByUserId={user.id}
+            entityId={proofEvidenceRequestId}
           />
         )}
       </div>
