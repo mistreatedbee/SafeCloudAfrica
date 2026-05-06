@@ -123,6 +123,11 @@ function maybeThrow(error: unknown): void {
   if (error) throw new Error(getErrorMessage(error));
 }
 
+export function isChatbotLogsSchemaMissingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : getErrorMessage(error);
+  return /404|not found|chatbot_conversations|chatbot_messages/i.test(message);
+}
+
 function normalizeConversation(row: unknown, linkedTicket?: SupportTicket | null): ChatbotConversation {
   const r = row as Record<string, any>;
   return {

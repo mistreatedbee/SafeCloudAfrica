@@ -9,7 +9,7 @@ export type ListEmptyStateProps = {
   icon: LucideIcon;
   title: string;
   description: string;
-  primaryAction: ListEmptyAction;
+  primaryAction?: ListEmptyAction;
   secondaryAction?: ListEmptyAction;
   /** Omit outer card when this sits inside an existing bordered panel */
   embedded?: boolean;
@@ -53,10 +53,12 @@ function Inner({
       </div>
       <h3 className="text-lg font-semibold text-charcoal">{title}</h3>
       <p className="text-sm text-charcoal-500 mt-2">{description}</p>
-      <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
-        {renderAction(primaryAction, 'primary')}
-        {secondaryAction ? renderAction(secondaryAction, 'secondary') : null}
-      </div>
+      {(primaryAction || secondaryAction) && (
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
+          {primaryAction ? renderAction(primaryAction, 'primary') : null}
+          {secondaryAction ? renderAction(secondaryAction, 'secondary') : null}
+        </div>
+      )}
     </div>
   );
 }

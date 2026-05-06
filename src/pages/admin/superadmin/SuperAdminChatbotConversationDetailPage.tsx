@@ -11,6 +11,7 @@ import {
 import type { UUID } from '../../../api/models/entities';
 import {
   getChatbotConversationWithMessages,
+  isChatbotLogsSchemaMissingError,
   updateChatbotConversation,
   type ChatbotConversationWithMessages
 } from '../../../api/services/chatbotLogsService';
@@ -51,7 +52,9 @@ export function SuperAdminChatbotConversationDetailPage() {
     try {
       setRecord(await getChatbotConversationWithMessages(conversationId as UUID));
     } catch (err) {
-      setError((err as Error)?.message ?? 'Failed to load chatbot conversation.');
+      setError(isChatbotLogsSchemaMissingError(err)
+        ? 'Chatbot log tables are not available yet. Apply docs/migrations/chatbot_logs_super_admin_2026_05_06.sql to the active InsForge database, then refresh this page.'
+        : (err as Error)?.message ?? 'Failed to load chatbot conversation.');
     } finally {
       setLoading(false);
     }

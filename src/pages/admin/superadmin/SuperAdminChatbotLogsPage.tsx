@@ -13,8 +13,7 @@ import type { LucideIcon } from 'lucide-react';
 import { insforge } from '../../../api/insforge/client';
 import type { Company, UUID } from '../../../api/models/entities';
 import {
-  getChatbotActivityStats,
-  getChatbotDashboardStats,
+  isChatbotLogsSchemaMissingError,
   listChatbotConversationsForSuperAdmin,
   type ChatbotActivityStats,
   type ChatbotConversation,
@@ -56,24 +55,32 @@ export function SuperAdminChatbotLogsPage() {
   const [activity, setActivity] = useState<ChatbotActivityStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [schemaMissing, setSchemaMissing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setSchemaMissing(false);
     try {
-      const [rows, statRows, activityRows, companyResult] = await Promise.all([
+      const [rows, companyResult] = await Promise.all([
         listChatbotConversationsForSuperAdmin(filters),
-        getChatbotDashboardStats(filters),
-        getChatbotActivityStats(filters),
         insforge.database.from('companies').select('*').order('name').limit(300)
       ]);
       setConversations(rows);
-      setStats(statRows);
-      setActivity(activityRows);
+      setStats(buildDashboardStats(rows));
+      setActivity(buildActivityStats(rows));
       if (companyResult.error) throw companyResult.error;
       setCompanies((companyResult.data ?? []) as Company[]);
     } catch (err) {
-      setError((err as Error)?.message ?? 'Failed to load chatbot logs.');
+      if (isChatbotLogsSchemaMissingError(err)) {
+        setSchemaMissing(true);
+        setConversations([]);
+        setStats(null);
+        setActivity(null);
+        setError('Chatbot log tables are not available yet. Apply docs/migrations/chatbot_logs_super_admin_2026_05_06.sql to the active InsForge database, then refresh this page.');
+      } else {
+        setError((err as Error)?.message ?? 'Failed to load chatbot logs.');
+      }
     } finally {
       setLoading(false);
     }
@@ -173,7 +180,11 @@ export function SuperAdminChatbotLogsPage() {
         </div>
       </div>
 
-      {error && <div className="rounded-lg border border-critical/20 bg-critical/10 p-3 text-sm text-critical">{error}</div>}
+      {error && (
+        <div className={`rounded-lg border p-3 text-sm ${schemaMissing ? 'border-warning-200 bg-warning-50 text-warning' : 'border-critical/20 bg-critical/10 text-critical'}`}>
+          {error}
+        </div>
+      )}
 
       {activity && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
@@ -187,6 +198,14 @@ export function SuperAdminChatbotLogsPage() {
       <div className="overflow-hidden rounded-lg border border-surface-300 bg-white">
         {loading ? (
           <div className="p-6 text-sm text-charcoal-500">Loading chatbot logs...</div>
+        ) : schemaMissing ? (
+          <ListEmptyState
+            icon={BotIcon}
+            title="Chatbot log setup needed"
+            description="The application is ready, but the active database is missing the chatbot_conversations and chatbot_messages tables."
+            primaryAction={{ kind: 'button', label: 'Refresh after migration', onClick: () => void load() }}
+            embedded
+          />
         ) : conversations.length === 0 ? (
           <ListEmptyState
             icon={BotIcon}
@@ -241,6 +260,43 @@ export function SuperAdminChatbotLogsPage() {
       </div>
     </div>
   );
+}
+
+function buildDashboardStats(conversations: ChatbotConversation[]): ChatbotDashboardStats {
+  return {
+    totalConversations: conversations.length,
+    ticketsCreated: conversations.filter((item) => Boolean(item.support_ticket_id)).length,
+    newRequests: conversations.filter((item) => item.status === 'new').length,
+    inProgress: conversations.filter((item) => item.status === 'open' || item.status === 'in_progress' || item.status === 'waiting_for_user').length,
+    escalated: conversations.filter((item) => item.status === 'escalated' || item.escalated).length,
+    resolved: conversations.filter((item) => item.status === 'resolved' || item.linked_ticket?.status === 'resolved').length
+  };
+}
+
+function buildActivityStats(conversations: ChatbotConversation[]): ChatbotActivityStats {
+  const countBy = (items: Array<string | null | undefined>) => {
+    const counts = new Map<string, number>();
+    items.filter(Boolean).forEach((item) => counts.set(String(item), (counts.get(String(item)) ?? 0) + 1));
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  };
+
+  const categoryCounts = new Map<SupportTicketCategory, number>();
+  conversations.forEach((conversation) => {
+    categoryCounts.set(conversation.category, (categoryCounts.get(conversation.category) ?? 0) + 1);
+  });
+
+  return {
+    topUsers: countBy(conversations.map((item) => item.user_name || item.user_email || item.user_id)),
+    topOrganisations: countBy(conversations.map((item) => item.company_name_snapshot || item.company_id)),
+    commonCategories: Array.from(categoryCounts.entries())
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5),
+    commonOptions: countBy(conversations.map((item) => item.selected_option))
+  };
 }
 
 function ActivityPanel({ title, items }: { title: string; items: Array<{ label: string; count: number }> }) {
