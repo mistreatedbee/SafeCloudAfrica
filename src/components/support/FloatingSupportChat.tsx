@@ -9,6 +9,7 @@ import {
   Loader2Icon,
   MessageCircleIcon,
   PaperclipIcon,
+  RotateCcwIcon,
   SendIcon,
   UserIcon,
   XIcon,
@@ -299,6 +300,22 @@ export function FloatingSupportChat() {
       setIsLoadingRecent(false);
     }
   }, [activeCompanyId, user?.id]);
+
+  const handleStartOver = useCallback(() => {
+    if (isSubmitting || isTyping) return;
+
+    setMessages([WELCOME_MESSAGE]);
+    setInputValue('');
+    setSelectedOption(null);
+    setGuidedAnswers([]);
+    setPromptIndex(0);
+    setLastAssistantResponse(null);
+    setConversationId(null);
+    setPendingFiles([]);
+    setSuccessReference(null);
+    setError(null);
+    void loadRecentTickets();
+  }, [isSubmitting, isTyping, loadRecentTickets]);
 
   useEffect(() => {
     if (isOpen) {
@@ -609,14 +626,26 @@ export function FloatingSupportChat() {
                 <p className="text-xs text-white/75">AI guidance with admin handoff</p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => handleOpenChange(false)}
-              className="rounded-full p-2 text-white/75 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white"
-              aria-label="Close support chat"
-            >
-              <XIcon className="h-4 w-4" aria-hidden="true" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleStartOver}
+                disabled={isSubmitting || isTyping}
+                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium text-white/85 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Start a new support chat"
+              >
+                <RotateCcwIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                New chat
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenChange(false)}
+                className="rounded-full p-2 text-white/75 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white"
+                aria-label="Close support chat"
+              >
+                <XIcon className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col">
