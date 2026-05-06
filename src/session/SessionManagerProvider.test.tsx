@@ -191,7 +191,7 @@ describe('SessionManagerProvider', () => {
     expect(sessionStorage.getItem('sca_session_expired_message')).toBe('Your session has expired. Please log in again.');
   });
 
-  it('still logs the user out after real inactivity', async () => {
+  it('does not log the user out after long inactivity', async () => {
     const longLivedToken = createJwt(Date.now() + 24 * 60 * 60 * 1000);
     httpClient.setAuthToken(longLivedToken);
     getCurrentSessionMock.mockResolvedValue({
@@ -208,9 +208,9 @@ describe('SessionManagerProvider', () => {
       await flushAsyncWork();
     });
 
-    expect(authState.signOut).toHaveBeenCalledTimes(1);
-    expect(sessionStorage.getItem('sca_session_expired_message')).toBe(
-      'Your session expired due to inactivity. Please log in again.'
-    );
+    expect(authState.signOut).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('sca_session_expired')).toBeNull();
+    expect(sessionStorage.getItem('sca_session_expired_message')).toBeNull();
   });
 });
