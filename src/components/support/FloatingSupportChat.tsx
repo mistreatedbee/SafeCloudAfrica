@@ -31,6 +31,12 @@ import {
   type SupportAssistantMessage,
   type SupportAssistantAiResponse,
 } from '../../api/services/supportAssistantAiService';
+import {
+  createChatbotConversation,
+  logChatbotMessage,
+  updateChatbotConversation,
+  type ChatbotResponseSource,
+} from '../../api/services/chatbotLogsService';
 
 type ChatRole = 'bot' | 'user';
 
@@ -175,6 +181,7 @@ export function FloatingSupportChat() {
   const [guidedAnswers, setGuidedAnswers] = useState<string[]>([]);
   const [promptIndex, setPromptIndex] = useState(0);
   const [lastAssistantResponse, setLastAssistantResponse] = useState<SupportAssistantAiResponse | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [recentTickets, setRecentTickets] = useState<SupportTicket[]>([]);
   const [isLoadingRecent, setIsLoadingRecent] = useState(false);
@@ -187,20 +194,80 @@ export function FloatingSupportChat() {
   const canUseSupport = Boolean(activeCompanyId && user?.id);
 
   const userName = useMemo(() => {
-    const metadata = user?.user_metadata as Record<string, unknown> | undefined;
+    const metadata = (user as any)?.user_metadata as Record<string, unknown> | undefined;
     const name = metadata?.full_name || metadata?.name;
     return typeof name === 'string' && name.trim() ? name.trim() : user?.email ?? null;
   }, [user]);
 
   const validFiles = useMemo(() => pendingFiles.filter((item) => !item.error), [pendingFiles]);
 
+  const ensureConversation = useCallback(async (option?: SupportOption | null) => {
+    if (!activeCompanyId || !user?.id) return null;
+    if (conversationId) return conversationId;
+
+    try {
+      const conversation = await createChatbotConversation({
+        companyId: activeCompanyId,
+        companyName: activeCompany?.name ?? null,
+        userId: user.id,
+        userName,
+        userEmail: user.email ?? null,
+        selectedOption: option?.label ?? null,
+        category: option?.category ?? 'general_query',
+        status: 'new',
+        priority: option?.priority ?? 'medium',
+        aiEnabled: true
+      });
+      setConversationId(conversation.id);
+      await logChatbotMessage({
+        conversationId: conversation.id,
+        companyId: activeCompanyId,
+        userId: user.id,
+        role: 'bot',
+        body: WELCOME_MESSAGE.content,
+        responseSource: 'guided'
+      });
+      return conversation.id;
+    } catch (logError) {
+      console.warn('Unable to create chatbot conversation log', logError);
+      return null;
+    }
+  }, [activeCompany?.name, activeCompanyId, conversationId, user?.email, user?.id, userName]);
+
+  const logMessage = useCallback(async (
+    role: ChatRole,
+    body: string,
+    source: ChatbotResponseSource,
+    metadata?: Record<string, unknown>,
+    option?: SupportOption | null
+  ) => {
+    if (!activeCompanyId || !user?.id) return;
+    try {
+      const id = await ensureConversation(option ?? selectedOption);
+      if (!id) return;
+      await logChatbotMessage({
+        conversationId: id,
+        companyId: activeCompanyId,
+        userId: user.id,
+        role,
+        body,
+        responseSource: source,
+        metadata
+      });
+    } catch (logError) {
+      console.warn('Unable to log chatbot message', logError);
+    }
+  }, [activeCompanyId, ensureConversation, selectedOption, user?.id]);
+
   const addBotMessage = useCallback((content: string) => {
     setMessages((current) => [...current, createMessage('bot', content)]);
-  }, []);
+    void logMessage('bot', content, 'guided');
+  }, [logMessage]);
 
   const addUserMessage = useCallback((content: string) => {
     setMessages((current) => [...current, createMessage('user', content)]);
-  }, []);
+    void logMessage('user', content, 'user');
+  }, [logMessage]);
 
   const loadRecentTickets = useCallback(async () => {
     if (!activeCompanyId || !user?.id) {
@@ -222,8 +289,9 @@ export function FloatingSupportChat() {
   useEffect(() => {
     if (isOpen) {
       void loadRecentTickets();
+      if (canUseSupport) void ensureConversation(selectedOption);
     }
-  }, [isOpen, loadRecentTickets]);
+  }, [canUseSupport, ensureConversation, isOpen, loadRecentTickets, selectedOption]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -243,10 +311,23 @@ export function FloatingSupportChat() {
         : getRuleBasedSupportAssistantResponse(latestUserText(nextMessages));
       setLastAssistantResponse(response);
       setMessages((current) => [...current, createMessage('bot', response.reply)]);
+      void logMessage('bot', response.reply, response.source ?? 'fallback', {
+        suggestedCategory: response.suggestedCategory ?? null,
+        suggestedPriority: response.suggestedPriority ?? null,
+        shouldEscalate: response.shouldEscalate ?? false,
+        model: response.model ?? null
+      }, option);
+      if (response.model && conversationId) {
+        void updateChatbotConversation({
+          conversationId,
+          aiModel: response.model,
+          aiEnabled: response.source === 'ai'
+        }).catch((logError) => console.warn('Unable to update chatbot AI metadata', logError));
+      }
     } finally {
       setIsTyping(false);
     }
-  }, [activeCompany?.name, activeRole, canUseSupport, recentTickets]);
+  }, [activeCompany?.name, activeRole, canUseSupport, conversationId, logMessage, recentTickets]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     setIsOpen(nextOpen);
@@ -274,6 +355,35 @@ export function FloatingSupportChat() {
       createMessage('bot', `${option.openingReply}\n\n${option.prompts[0]}`)
     ];
     setMessages(nextMessages);
+    void (async () => {
+      const id = await ensureConversation(option);
+      if (!id || !activeCompanyId || !user?.id) return;
+      await updateChatbotConversation({
+        conversationId: id,
+        selectedOption: option.label,
+        category: option.category,
+        priority: option.priority,
+        status: 'open'
+      });
+      await logChatbotMessage({
+        conversationId: id,
+        companyId: activeCompanyId,
+        userId: user.id,
+        role: 'user',
+        body: option.label,
+        responseSource: 'user',
+        metadata: { selectedOption: option.key }
+      });
+      await logChatbotMessage({
+        conversationId: id,
+        companyId: activeCompanyId,
+        userId: user.id,
+        role: 'bot',
+        body: `${option.openingReply}\n\n${option.prompts[0]}`,
+        responseSource: 'guided',
+        metadata: { promptIndex: 0, selectedOption: option.key }
+      });
+    })().catch((logError) => console.warn('Unable to log chatbot option flow', logError));
   };
 
   const handleFileChange = (files: FileList | null) => {
@@ -306,6 +416,10 @@ export function FloatingSupportChat() {
     const userMessage = createMessage('user', trimmed);
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
+    void logMessage('user', trimmed, 'user', selectedOption ? {
+      selectedOption: selectedOption.key,
+      promptIndex
+    } : undefined);
 
     if (selectedOption && promptIndex < selectedOption.prompts.length) {
       const nextAnswers = [...guidedAnswers, trimmed];
@@ -325,6 +439,10 @@ export function FloatingSupportChat() {
         'Thanks, I have enough detail to send this to the administrator. You can add more information, attach files, or send it now.'
       );
       setMessages((current) => [...current, readyMessage]);
+      void logMessage('bot', readyMessage.content, 'guided', {
+        selectedOption: selectedOption.key,
+        guidedAnswers: nextAnswers.length
+      });
       setLastAssistantResponse({
         reply: readyMessage.content,
         suggestedCategory: selectedOption.category,
@@ -377,6 +495,7 @@ export function FloatingSupportChat() {
     setError(null);
 
     try {
+      const activeConversationId = await ensureConversation(selectedOption);
       const ticket = await createSupportTicket({
         companyId: activeCompanyId,
         companyName: activeCompany?.name ?? undefined,
@@ -390,6 +509,18 @@ export function FloatingSupportChat() {
         priority,
         source: 'assistant',
       });
+
+      if (activeConversationId) {
+        await updateChatbotConversation({
+          conversationId: activeConversationId,
+          supportTicketId: ticket.id,
+          escalated: true,
+          status: 'escalated',
+          category,
+          priority,
+          messagePreview: `Escalated to ${ticket.reference_number}: ${subject}`
+        });
+      }
 
       let failedAttachmentCount = 0;
       for (const pending of validFiles) {

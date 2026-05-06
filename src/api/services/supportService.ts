@@ -624,6 +624,43 @@ export async function assignSupportTicket(input: {
   return ticket;
 }
 
+export async function updateSupportTicketPriority(input: {
+  ticketId: UUID;
+  priority: SupportTicketPriority;
+  actorUserId: UUID;
+  actorName?: string | null;
+}): Promise<SupportTicket> {
+  const current = await getSupportTicketWithThread(input.ticketId);
+  if (!current) throw new Error('Support ticket not found.');
+  const { data, error } = await insforge.database
+    .from('support_tickets')
+    .update({
+      priority: input.priority,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', input.ticketId)
+    .select('*')
+    .single();
+  maybeThrow(error);
+  if (!data) throw new Error('Failed to update support ticket priority.');
+  const ticket = normalizeTicket(data);
+  await createTicketEvent({
+    ticketId: ticket.id,
+    companyId: ticket.company_id,
+    actorUserId: input.actorUserId,
+    actorName: input.actorName,
+    eventType: 'priority_changed',
+    fromValue: current.ticket.priority,
+    toValue: ticket.priority
+  });
+  await logPlatformAdminAction(input.actorUserId, {
+    action: 'support_ticket_status_changed',
+    target_company_id: ticket.company_id,
+    details: { ticket_id: ticket.id, reference_number: ticket.reference_number, priority: ticket.priority }
+  });
+  return ticket;
+}
+
 export async function escalateSupportTicket(input: {
   ticketId: UUID;
   actorUserId: UUID;

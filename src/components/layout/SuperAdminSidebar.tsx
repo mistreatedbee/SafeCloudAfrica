@@ -9,6 +9,7 @@ import {
   LockIcon,
   FileTextIcon,
   HeadphonesIcon,
+  MessageSquareTextIcon,
   XIcon,
   ShieldCheckIcon,
   ActivityIcon
@@ -20,7 +21,10 @@ const superAdminNav: { name: string; path: string; icon: React.ComponentType<{ c
   { name: 'Licenses & Subscriptions', path: '/super-admin/licenses', icon: CreditCardIcon },
   { name: 'Module Controls', path: '/super-admin/module-control', icon: ToggleLeftIcon },
   { name: 'Sellable Features', path: '/super-admin/sellable-features', icon: LockIcon },
-  { name: 'Admin Support Centre', path: '/super-admin/support-tickets', icon: HeadphonesIcon },
+  { name: 'Chatbot Logs', path: '/super-admin/chatbot-logs', icon: MessageSquareTextIcon },
+  { name: 'Support Tickets', path: '/super-admin/support-tickets', icon: HeadphonesIcon },
+  { name: 'License Requests', path: '/super-admin/license-requests', icon: CreditCardIcon },
+  { name: 'Module Requests', path: '/super-admin/module-requests', icon: ToggleLeftIcon },
   { name: 'Platform Audit Logs', path: '/super-admin/audit-logs', icon: FileTextIcon },
   { name: 'Platform health', path: '/super-admin/platform-health', icon: ActivityIcon },
   { name: 'Support Mode', path: '/super-admin/support-mode', icon: HeadphonesIcon }

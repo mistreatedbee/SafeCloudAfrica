@@ -114,6 +114,9 @@ import { SuperAdminSellableFeaturesPage } from './pages/admin/superadmin/SuperAd
 import { SuperAdminAuditLogsPage } from './pages/admin/superadmin/SuperAdminAuditLogsPage';
 import { SuperAdminSupportModePage } from './pages/admin/superadmin/SuperAdminSupportModePage';
 import { SuperAdminSupportTicketsPage } from './pages/admin/superadmin/SuperAdminSupportTicketsPage';
+import { SuperAdminChatbotLogsPage } from './pages/admin/superadmin/SuperAdminChatbotLogsPage';
+import { SuperAdminChatbotConversationDetailPage } from './pages/admin/superadmin/SuperAdminChatbotConversationDetailPage';
+import { SuperAdminLicenseRequestsPage, SuperAdminModuleRequestsPage } from './pages/admin/superadmin/SuperAdminCategoryRequestsPage';
 import { OwnerDashboardPage } from './pages/owner/OwnerDashboardPage';
 import { OwnerOnboardingWizardPage } from './pages/owner/OwnerOnboardingWizardPage';
 import { EmployeeDashboardPage } from './pages/employee/EmployeeDashboardPage';
@@ -218,6 +221,10 @@ export function App() {
             <Route path="module-control" element={<SuperAdminModuleControlPage />} />
             <Route path="sellable-features" element={<SuperAdminSellableFeaturesPage />} />
             <Route path="audit-logs" element={<SuperAdminAuditLogsPage />} />
+            <Route path="chatbot-logs" element={<SuperAdminChatbotLogsPage />} />
+            <Route path="chatbot-logs/:conversationId" element={<SuperAdminChatbotConversationDetailPage />} />
+            <Route path="license-requests" element={<SuperAdminLicenseRequestsPage />} />
+            <Route path="module-requests" element={<SuperAdminModuleRequestsPage />} />
             <Route path="support-tickets" element={<SuperAdminSupportTicketsPage />} />
             <Route path="support-mode" element={<SuperAdminSupportModePage />} />
             <Route path="*" element={<Navigate to="overview" replace />} />

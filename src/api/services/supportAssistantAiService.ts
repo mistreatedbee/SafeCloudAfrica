@@ -24,6 +24,8 @@ export type SupportAssistantAiResponse = {
   suggestedPriority?: SupportTicketPriority;
   shouldEscalate?: boolean;
   quickActions?: string[];
+  source?: 'ai' | 'fallback';
+  model?: string;
 };
 
 const DEFAULT_REPLY =
@@ -149,7 +151,8 @@ export function getRuleBasedSupportAssistantResponse(text: string): SupportAssis
       suggestedCategory: matched.category,
       suggestedPriority: matched.priority,
       shouldEscalate: true,
-      quickActions: matched.quickActions ?? ['Send to administrator', 'Add more details']
+      quickActions: matched.quickActions ?? ['Send to administrator', 'Add more details'],
+      source: 'fallback'
     };
   }
 
@@ -158,7 +161,8 @@ export function getRuleBasedSupportAssistantResponse(text: string): SupportAssis
     suggestedCategory: 'general_query',
     suggestedPriority: 'medium',
     shouldEscalate: true,
-    quickActions: ['Yes, contact admin', 'Try again']
+    quickActions: ['Yes, contact admin', 'Try again'],
+    source: 'fallback'
   };
 }
 
@@ -188,12 +192,12 @@ export async function askSupportAssistant(input: SupportAssistantAiInput): Promi
         }
       ],
       temperature: 0.2,
-      max_tokens: 220
+      maxTokens: 220
     });
 
     const content = String(response?.choices?.[0]?.message?.content ?? '').trim();
     if (!content) return fallback;
-    return parseAiResponse(content);
+    return { ...parseAiResponse(content), source: 'ai', model: SUPPORT_ASSISTANT_MODEL };
   } catch (error) {
     console.warn('Support assistant AI fallback used', error);
     return fallback;
