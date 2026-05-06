@@ -33,6 +33,7 @@ import {
 } from '../../api/services/supportAssistantAiService';
 import {
   createChatbotConversation,
+  isChatbotLogsSchemaMissingError,
   logChatbotMessage,
   updateChatbotConversation,
   type ChatbotResponseSource,
@@ -182,6 +183,7 @@ export function FloatingSupportChat() {
   const [promptIndex, setPromptIndex] = useState(0);
   const [lastAssistantResponse, setLastAssistantResponse] = useState<SupportAssistantAiResponse | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [chatbotLoggingDisabled, setChatbotLoggingDisabled] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [recentTickets, setRecentTickets] = useState<SupportTicket[]>([]);
   const [isLoadingRecent, setIsLoadingRecent] = useState(false);
@@ -201,7 +203,18 @@ export function FloatingSupportChat() {
 
   const validFiles = useMemo(() => pendingFiles.filter((item) => !item.error), [pendingFiles]);
 
+  const handleChatbotLogError = useCallback((logError: unknown, context: string) => {
+    if (isChatbotLogsSchemaMissingError(logError)) {
+      setChatbotLoggingDisabled(true);
+      setConversationId(null);
+      console.warn(`${context}; chatbot log schema is not available yet. Logging disabled for this page session.`, logError);
+      return;
+    }
+    console.warn(context, logError);
+  }, []);
+
   const ensureConversation = useCallback(async (option?: SupportOption | null) => {
+    if (chatbotLoggingDisabled) return null;
     if (!activeCompanyId || !user?.id) return null;
     if (conversationId) return conversationId;
 
@@ -229,10 +242,10 @@ export function FloatingSupportChat() {
       });
       return conversation.id;
     } catch (logError) {
-      console.warn('Unable to create chatbot conversation log', logError);
+      handleChatbotLogError(logError, 'Unable to create chatbot conversation log');
       return null;
     }
-  }, [activeCompany?.name, activeCompanyId, conversationId, user?.email, user?.id, userName]);
+  }, [activeCompany?.name, activeCompanyId, chatbotLoggingDisabled, conversationId, handleChatbotLogError, user?.email, user?.id, userName]);
 
   const logMessage = useCallback(async (
     role: ChatRole,
@@ -241,6 +254,7 @@ export function FloatingSupportChat() {
     metadata?: Record<string, unknown>,
     option?: SupportOption | null
   ) => {
+    if (chatbotLoggingDisabled) return;
     if (!activeCompanyId || !user?.id) return;
     try {
       const id = await ensureConversation(option ?? selectedOption);
@@ -255,9 +269,9 @@ export function FloatingSupportChat() {
         metadata
       });
     } catch (logError) {
-      console.warn('Unable to log chatbot message', logError);
+      handleChatbotLogError(logError, 'Unable to log chatbot message');
     }
-  }, [activeCompanyId, ensureConversation, selectedOption, user?.id]);
+  }, [activeCompanyId, chatbotLoggingDisabled, ensureConversation, handleChatbotLogError, selectedOption, user?.id]);
 
   const addBotMessage = useCallback((content: string) => {
     setMessages((current) => [...current, createMessage('bot', content)]);
@@ -322,12 +336,12 @@ export function FloatingSupportChat() {
           conversationId,
           aiModel: response.model,
           aiEnabled: response.source === 'ai'
-        }).catch((logError) => console.warn('Unable to update chatbot AI metadata', logError));
+        }).catch((logError) => handleChatbotLogError(logError, 'Unable to update chatbot AI metadata'));
       }
     } finally {
       setIsTyping(false);
     }
-  }, [activeCompany?.name, activeRole, canUseSupport, conversationId, logMessage, recentTickets]);
+  }, [activeCompany?.name, activeRole, canUseSupport, conversationId, handleChatbotLogError, logMessage, recentTickets]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     setIsOpen(nextOpen);
@@ -383,7 +397,7 @@ export function FloatingSupportChat() {
         responseSource: 'guided',
         metadata: { promptIndex: 0, selectedOption: option.key }
       });
-    })().catch((logError) => console.warn('Unable to log chatbot option flow', logError));
+    })().catch((logError) => handleChatbotLogError(logError, 'Unable to log chatbot option flow'));
   };
 
   const handleFileChange = (files: FileList | null) => {
@@ -519,7 +533,7 @@ export function FloatingSupportChat() {
           category,
           priority,
           messagePreview: `Escalated to ${ticket.reference_number}: ${subject}`
-        });
+        }).catch((logError) => handleChatbotLogError(logError, 'Unable to update chatbot escalation log'));
       }
 
       let failedAttachmentCount = 0;
