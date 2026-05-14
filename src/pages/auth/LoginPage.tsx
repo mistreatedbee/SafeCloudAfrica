@@ -39,20 +39,27 @@ function readJwtSub(token: string | null | undefined): string | null {
 
 function readAuthSession(result: unknown): { accessToken: string | null; userId: string | null } {
   const session = (result as any)?.data?.session;
+  // SDK 1.2.x returns raw response in data (no session wrapper): { data: { accessToken, user } }
+  const dataToken = (result as any)?.data?.accessToken;
+  const dataUserId = (result as any)?.data?.user?.id;
   const topLevelToken = (result as any)?.accessToken;
   const topLevelUserId = (result as any)?.user?.id;
   const accessToken =
     typeof session?.accessToken === 'string' && session.accessToken.trim()
       ? session.accessToken
-      : typeof topLevelToken === 'string' && topLevelToken.trim()
-        ? topLevelToken
-        : null;
+      : typeof dataToken === 'string' && dataToken.trim()
+        ? dataToken
+        : typeof topLevelToken === 'string' && topLevelToken.trim()
+          ? topLevelToken
+          : null;
   const userId =
     typeof session?.user?.id === 'string' && session.user.id.trim()
       ? session.user.id
-      : typeof topLevelUserId === 'string' && topLevelUserId.trim()
-        ? topLevelUserId
-        : readJwtSub(accessToken);
+      : typeof dataUserId === 'string' && dataUserId.trim()
+        ? dataUserId
+        : typeof topLevelUserId === 'string' && topLevelUserId.trim()
+          ? topLevelUserId
+          : readJwtSub(accessToken);
   return { accessToken, userId };
 }
 
@@ -101,7 +108,10 @@ export function LoginPage() {
 
     for (let attempt = 0; attempt < SESSION_RESOLVE_RETRIES; attempt += 1) {
       if (attempt > 0) await wait(SESSION_RESOLVE_DELAY_MS);
-      const currentSessionResult = await insforge.auth.getCurrentSession().catch(() => null);
+      const getSession = (insforge.auth as any).getCurrentSession;
+      const currentSessionResult = await (
+        typeof getSession === 'function' ? getSession.call(insforge.auth) : insforge.auth.getCurrentUser()
+      ).catch(() => null);
       const nextSession = readAuthSession(currentSessionResult);
       if (nextSession.accessToken) {
         insforge.getHttpClient().setAuthToken(nextSession.accessToken);
