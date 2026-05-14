@@ -99,7 +99,7 @@ export function ActivateLicensePage() {
           email,
           password,
           name: primaryContactName.trim(),
-          ...(isLinkMode ? { redirectTo: `${window.location.origin}/activate` } : {}),
+          ...(isLinkMode ? { redirectTo: window.location.origin } : {}),
         });
         if (error) {
           if (error.message?.toLowerCase().includes('already registered') || error.message?.toLowerCase().includes('already exists')) {

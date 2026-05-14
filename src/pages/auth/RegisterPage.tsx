@@ -10,9 +10,6 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const redirect = searchParams.get('redirect');
   const inviteEmail = searchParams.get('email');
-  const emailRedirectTo = redirect
-    ? `${window.location.origin}${decodeURIComponent(redirect)}`
-    : `${window.location.origin}/app`;
 
   const { verifyEmail } = useInsforge();
 
@@ -33,7 +30,10 @@ export function RegisterPage() {
       const { data, error: signUpError } = await insforge.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
-        ...(isLinkMode ? { redirectTo: emailRedirectTo } : {}),
+        // In link mode use only the root origin — sub-paths like /app are rarely in the
+        // InsForge allowedRedirectUrls list. Switch to "code" mode in /super-admin/auth-config
+        // to avoid the allowlist requirement entirely and preserve the invite redirect.
+        ...(isLinkMode ? { redirectTo: window.location.origin } : {}),
       });
       if (signUpError) {
         setError(signUpError.message ?? 'Sign up failed. Please try again.');
