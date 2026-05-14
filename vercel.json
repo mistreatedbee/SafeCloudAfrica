@@ -84,24 +84,8 @@
       "destination": "/api/email/send"
     },
     {
-      "source": "/api/invites/create",
-      "destination": "/api/invites/create"
-    },
-    {
-      "source": "/api/invites/validate",
-      "destination": "/api/invites/validate"
-    },
-    {
-      "source": "/api/invites/validate/(.*)",
-      "destination": "/api/invites/validate/$1"
-    },
-    {
-      "source": "/api/invites/accept",
-      "destination": "/api/invites/accept"
-    },
-    {
-      "source": "/api/invites/resend",
-      "destination": "/api/invites/resend"
+      "source": "/api/invites/(.*)",
+      "destination": "/api/invites-router?action=$1"
     },
     {
       "source": "/api/client-log",
