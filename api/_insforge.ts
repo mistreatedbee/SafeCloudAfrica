@@ -108,8 +108,11 @@ function decodeBearerJwtClaims(token: string | null | undefined): BearerJwtClaim
 
 export async function resolveServerUser(insforge: InsforgeClient, authToken: string): Promise<{ userId: string | null; email: string | null }> {
   try {
-    const sessionResult = await insforge.auth.getCurrentSession();
-    const sessionUser = sessionResult.data?.session?.user;
+    const getSession = (insforge.auth as any).getCurrentSession;
+    const sessionResult = await (typeof getSession === 'function'
+      ? getSession.call(insforge.auth)
+      : insforge.auth.getCurrentUser());
+    const sessionUser = sessionResult.data?.session?.user ?? sessionResult.data?.user ?? null;
     const userId = sessionUser?.id ? String(sessionUser.id) : null;
     const email = sessionUser?.email ? String(sessionUser.email).trim().toLowerCase() : null;
     if (userId) {

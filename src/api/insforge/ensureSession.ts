@@ -81,7 +81,13 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
     return { accessToken: refreshed.accessToken, userId };
   }
 
-  const result = await insforge.auth.getCurrentSession().catch(async (error) => {
+  // getCurrentSession() was removed in @insforge/sdk 1.2.x; getCurrentUser() is the replacement.
+  const callGetSession = (): Promise<unknown> => {
+    const method = (insforge.auth as any).getCurrentSession;
+    if (typeof method === 'function') return method.call(insforge.auth);
+    return insforge.auth.getCurrentUser();
+  };
+  const result = await callGetSession().catch(async (error) => {
     const attachedSession = getAttachedSession(existingHeaders);
     if (attachedSession && !isInvalidSessionError(error)) {
       insforge.getHttpClient().setAuthToken(attachedSession.accessToken);
@@ -113,7 +119,7 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
     debugAuthBootstrap('ensure-session:missing-result', { reason, hadAuthHeader });
     throw new InsforgeAuthBootstrapError('AUTH_SESSION_MISSING', 'Your session is not available. Please sign in again.');
   }
-  const { data, error } = result;
+  const { data, error } = result as any;
   if (error) {
     const attachedSession = getAttachedSession(existingHeaders);
     if (attachedSession && !isInvalidSessionError(error)) return attachedSession;
