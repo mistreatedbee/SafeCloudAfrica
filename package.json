@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@insforge/react": "^1.1.8",
-    "@insforge/sdk": "latest",
+    "@insforge/sdk": "^1.2.9",
     "framer-motion": "^11.5.4",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
