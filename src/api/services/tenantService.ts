@@ -16,7 +16,8 @@ function isSeatExemptRole(role: string | null | undefined, seatExempt: boolean |
 }
 
 function isRouteMissingError(status: number, data: any): boolean {
-  return status === 404 || String(data?.error || '').toLowerCase().includes('not found');
+  // Only fall back when the route itself is missing, not for handler-level 404s like "Invite not found"
+  return data?.code === 'ROUTE_NOT_FOUND' || (status === 404 && data?.error === 'Not found');
 }
 
 function isApiRouteUnavailable(status: number, data: any): boolean {

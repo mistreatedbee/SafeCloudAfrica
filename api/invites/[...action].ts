@@ -32,5 +32,5 @@ export default async function handler(req: any, res: any) {
     return validateInviteHandler(req, res, tokenValue);
   }
 
-  return res.status(404).json({ ok: false, error: 'Not found' });
+  return res.status(404).json({ ok: false, error: 'Not found', code: 'ROUTE_NOT_FOUND' });
 }
