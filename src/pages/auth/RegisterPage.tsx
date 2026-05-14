@@ -28,10 +28,12 @@ export function RegisterPage() {
     setError('');
     setSubmitting(true);
     try {
+      const { data: authCfg } = await insforge.auth.getPublicAuthConfig();
+      const isLinkMode = authCfg?.verifyEmailMethod === 'link';
       const { data, error: signUpError } = await insforge.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
-        redirectTo: emailRedirectTo,
+        ...(isLinkMode ? { redirectTo: emailRedirectTo } : {}),
       });
       if (signUpError) {
         setError(signUpError.message ?? 'Sign up failed. Please try again.');

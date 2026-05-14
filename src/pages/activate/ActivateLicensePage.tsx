@@ -93,11 +93,13 @@ export function ActivateLicensePage() {
           setSubmitting(false);
           return;
         }
+        const { data: authCfg } = await insforge.auth.getPublicAuthConfig();
+        const isLinkMode = authCfg?.verifyEmailMethod === 'link';
         const { data: signUpData, error } = await insforge.auth.signUp({
           email,
           password,
           name: primaryContactName.trim(),
-          redirectTo: `${window.location.origin}/activate`
+          ...(isLinkMode ? { redirectTo: `${window.location.origin}/activate` } : {}),
         });
         if (error) {
           if (error.message?.toLowerCase().includes('already registered') || error.message?.toLowerCase().includes('already exists')) {
