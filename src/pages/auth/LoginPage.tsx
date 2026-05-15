@@ -211,6 +211,25 @@ export function LoginPage() {
     };
   }, [isLoaded, isSignedIn, redirectAfterLogin, redirecting, submitting, user?.id]);
 
+  // When autoRefreshToken=false, the SDK won't flip isSignedIn after a proxy refresh succeeds.
+  // This effect restores the session from the stored/refreshed token so the redirect fires
+  // without requiring the user to manually re-enter their password.
+  useEffect(() => {
+    if (!isLoaded || isSignedIn || redirecting || submitting) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await insforgeReady;
+        const session = await ensureInsforgeSession({ reason: 'login:auto-restore' });
+        if (cancelled || !session.userId) return;
+        await redirectAfterLogin(session.userId as UUID);
+      } catch {
+        // No recoverable session — show login form normally.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isLoaded, isSignedIn, redirecting, submitting, redirectAfterLogin]);
+
   const activated = searchParams.get('activated') === '1';
 
   const handleSignInError = (error: unknown) => {
