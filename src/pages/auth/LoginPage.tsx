@@ -216,7 +216,7 @@ export function LoginPage() {
   const handleSignInError = (error: unknown) => {
     setRedirecting(false);
     setRedirectError(null);
-    setAuthError(`${LOGIN_FAILED_MESSAGE} ${formatAuthError(error)}`);
+    setAuthError(formatAuthError(error));
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

@@ -103,14 +103,15 @@ async function checkCompanyBillingStatus(companyId: UUID): Promise<CompanyBillin
 export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId?: UUID | null): Promise<LoginRedirectResult> {
   try {
     await ensureInsforgeSession({ reason: 'platform-admin:get-login-redirect' });
-    const { data: memberships, error: mErr } = await insforge.database
+    const { data: membershipData, error: mErr } = await insforge.database
       .from('company_memberships')
-      .select('company_id, role')
-      .eq('user_id', userId)
-      .not('status', 'in', '(REVOKED,DECLINED,EXPIRED)');
-    if (mErr || !memberships?.length) return { path: '/activate', reason: 'no_org' };
-
-    const membershipRows = memberships as { company_id: UUID; role: string }[];
+      .select('company_id, role, status')
+      .eq('user_id', userId);
+    if (mErr) return { path: '/activate', reason: 'no_org' };
+    // Mirror TenantContext: treat ACTIVE, null, and '' as live memberships.
+    const membershipRows = ((membershipData ?? []) as { company_id: UUID; role: string; status?: string | null }[])
+      .filter((m) => m.status === 'ACTIVE' || m.status == null || m.status === '');
+    if (!membershipRows.length) return { path: '/activate', reason: 'no_org' };
     if (preferredOrganizationId) {
       const preferredMembership = membershipRows.find((m) => m.company_id === preferredOrganizationId);
       if (preferredMembership) {
@@ -165,14 +166,10 @@ export async function ensureMeAsSuperAdmin(): Promise<EnsureSuperAdminResult> {
       return { status: 'auth_failed', error };
     }
     if (isAuthDeniedError(error)) {
-      return {
-        status: 'auth_failed',
-        error: new InsforgeAuthBootstrapError(
-          'AUTH_SESSION_INVALID',
-          'Your session is not available. Please sign in again.',
-          { cause: error }
-        )
-      };
+      // RPC may return 403 when the calling user lacks EXECUTE permission (not in the
+      // super-admin allowlist).  Treat this as a no-op rather than an auth failure so
+      // regular users are not signed out immediately after a successful login.
+      return { status: 'compat_ignored' };
     }
     const msg = getErrorMessage(error).toLowerCase();
     if (
@@ -197,8 +194,13 @@ export async function isPlatformAdmin(userId: UUID): Promise<boolean> {
     const msg = getErrorMessage(err);
     // If the table doesn't exist yet, treat as not a platform admin.
     if (msg.toLowerCase().includes('does not exist')) return false;
-    if (err instanceof InsforgeAuthBootstrapError || isAuthDeniedError(err)) {
+    if (err instanceof InsforgeAuthBootstrapError) {
       throw err;
+    }
+    if (isAuthDeniedError(err)) {
+      // RLS may deny SELECT on platform_admins for regular users.
+      // Treat as "not a platform admin" rather than propagating the error.
+      return false;
     }
     return false;
   }
