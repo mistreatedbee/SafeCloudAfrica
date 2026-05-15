@@ -5,10 +5,12 @@ import { getDashboardRoute } from '../api/services/platformAdminService';
 
 /**
  * Redirects /app to the role-based dashboard so users always land on the correct home.
- * Uses single source of truth for role -> path.
+ * Falls back to the first available membership role when activeRole is null (e.g. stale
+ * localStorage active company) to prevent an infinite /app → /app redirect loop.
  */
 export function AppDashboardRedirect() {
-  const { activeRole } = useTenant();
-  const path = getDashboardRoute(activeRole ?? '');
-  return <Navigate to={path} replace />;
+  const { activeRole, memberships, isTenantLoaded } = useTenant();
+  if (!isTenantLoaded) return null;
+  const role = activeRole ?? memberships?.[0]?.role ?? '';
+  return <Navigate to={getDashboardRoute(role)} replace />;
 }

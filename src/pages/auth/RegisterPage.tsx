@@ -10,6 +10,7 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const redirect = searchParams.get('redirect');
   const inviteEmail = searchParams.get('email');
+  const inviteToken = searchParams.get('inviteToken');
 
   const { verifyEmail } = useInsforge();
 
@@ -25,6 +26,9 @@ export function RegisterPage() {
     setError('');
     setSubmitting(true);
     try {
+      if (inviteToken) {
+        try { sessionStorage.setItem('sca_pending_invite_token', inviteToken); } catch {}
+      }
       const { data: authCfg } = await insforge.auth.getPublicAuthConfig();
       const isLinkMode = authCfg?.verifyEmailMethod === 'link';
       const { data, error: signUpError } = await insforge.auth.signUp({
