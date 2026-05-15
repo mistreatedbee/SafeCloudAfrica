@@ -80,6 +80,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/auth/platform-admin",
+      "destination": "/api/auth/platform-admin"
+    },
+    {
       "source": "/api/email/send",
       "destination": "/api/email/send"
     },

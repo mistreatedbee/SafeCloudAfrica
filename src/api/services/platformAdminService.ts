@@ -184,7 +184,33 @@ export async function ensureMeAsSuperAdmin(): Promise<EnsureSuperAdminResult> {
   }
 }
 
+async function checkPlatformAdminViaApi(userId: UUID): Promise<boolean | null> {
+  try {
+    const { accessToken } = await ensureInsforgeSession({ reason: 'platform-admin:api-check' });
+    const response = await fetch('/api/auth/platform-admin', {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Cache-Control': 'no-store'
+      }
+    });
+    if (!response.ok) return null;
+    const data = await response.json().catch(() => null);
+    if (typeof data?.isPlatformAdmin === 'boolean') return data.isPlatformAdmin;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function isPlatformAdmin(userId: UUID): Promise<boolean> {
+  // Try the server-side endpoint first — it uses the service role key to bypass RLS on
+  // the platform_admins table, which is not directly queryable by regular users.
+  const apiResult = await checkPlatformAdminViaApi(userId);
+  if (apiResult !== null) return apiResult;
+
+  // Fallback: direct DB query (works when RLS allows own-row SELECT).
   try {
     await ensureInsforgeSession({ reason: 'platform-admin:is-platform-admin' });
     const { data, error } = await insforge.database.from('platform_admins').select('user_id').eq('user_id', userId).maybeSingle();
@@ -192,16 +218,8 @@ export async function isPlatformAdmin(userId: UUID): Promise<boolean> {
     return !!data;
   } catch (err) {
     const msg = getErrorMessage(err);
-    // If the table doesn't exist yet, treat as not a platform admin.
     if (msg.toLowerCase().includes('does not exist')) return false;
-    if (err instanceof InsforgeAuthBootstrapError) {
-      throw err;
-    }
-    if (isAuthDeniedError(err)) {
-      // RLS may deny SELECT on platform_admins for regular users.
-      // Treat as "not a platform admin" rather than propagating the error.
-      return false;
-    }
+    if (err instanceof InsforgeAuthBootstrapError) throw err;
     return false;
   }
 }
