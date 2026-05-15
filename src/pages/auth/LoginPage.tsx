@@ -6,17 +6,24 @@ import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY } from '../../auth/Aut
 import { formatAuthError } from '../../auth/authMessages';
 import { recoverAuthState } from '../../auth/recoverAuthState';
 import { useTenant } from '../../tenant/TenantContext';
-import { ensureInsforgeSession } from '../../api/insforge/ensureSession';
+import { ensureInsforgeSession, InsforgeAuthBootstrapError } from '../../api/insforge/ensureSession';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getLoginRedirectPath } from '../../api/services/platformAdminService';
 import { insforge, insforgeReady } from '../../api/insforge/client';
-import { getCurrentAuthSession, readAuthSessionResult } from '../../api/insforge/sessionState';
+import {
+  getCurrentAuthSession,
+  isInvalidSessionError,
+  readAuthSessionResult,
+  saveStoredSession
+} from '../../api/insforge/sessionState';
 import type { UUID } from '../../api/models/entities';
 
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
+const LOGIN_SETUP_MESSAGE = 'You are signed in, but we could not finish opening your dashboard. Please try again.';
 const ACTIVE_COMPANY_KEY = 'sca_active_company_id_v3';
 const SESSION_RESOLVE_RETRIES = 4;
 const SESSION_RESOLVE_DELAY_MS = 200;
 const TENANT_REFRESH_MAX_WAIT_MS = 1500;
+const AUTH_BOOTSTRAP_DEBUG = (import.meta as any)?.env?.VITE_AUTH_BOOTSTRAP_DEBUG === '1';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -28,9 +35,14 @@ function redirectToPath(path: string): void {
   window.location.replace(path);
 }
 
+function debugLogin(event: string, details?: Record<string, unknown>): void {
+  if (!AUTH_BOOTSTRAP_DEBUG) return;
+  console.debug('[login-bootstrap]', event, details ?? {});
+}
+
 export function LoginPage() {
-  const { isLoaded, isSignedIn, signIn, signOut } = useAuth();
-  const { user } = useUser();
+  const { isLoaded, isSignedIn, signOut } = useAuth();
+  const { user, setUser } = useUser();
   const { setActiveCompanyId, refreshTenant } = useTenant();
   const [searchParams] = useSearchParams();
   const [redirecting, setRedirecting] = useState(false);
@@ -61,24 +73,32 @@ export function LoginPage() {
   }, [sessionExpiredMessage]);
 
   const resolveSignedInUserId = React.useCallback(async (initialResult: unknown): Promise<UUID | null> => {
-    const initialSession = readAuthSessionResult(initialResult);
+    const initialSession = readAuthSessionResult(initialResult, { allowStoredTokenFallback: true });
     if (initialSession.accessToken) {
       insforge.getHttpClient().setAuthToken(initialSession.accessToken);
+      saveStoredSession(initialSession.accessToken, initialSession.user);
+    }
+    if (initialSession.user && typeof initialSession.user === 'object') {
+      setUser(initialSession.user as any);
     }
     if (initialSession.userId) return initialSession.userId as UUID;
 
     for (let attempt = 0; attempt < SESSION_RESOLVE_RETRIES; attempt += 1) {
       if (attempt > 0) await wait(SESSION_RESOLVE_DELAY_MS);
       const currentSessionResult = await getCurrentAuthSession(insforge.auth as any).catch(() => null);
-      const nextSession = readAuthSessionResult(currentSessionResult);
+      const nextSession = readAuthSessionResult(currentSessionResult, { allowStoredTokenFallback: true });
       if (nextSession.accessToken) {
         insforge.getHttpClient().setAuthToken(nextSession.accessToken);
+        saveStoredSession(nextSession.accessToken, nextSession.user);
+      }
+      if (nextSession.user && typeof nextSession.user === 'object') {
+        setUser(nextSession.user as any);
       }
       if (nextSession.userId) return nextSession.userId as UUID;
     }
 
     return null;
-  }, []);
+  }, [setUser]);
 
   const redirectAfterLogin = React.useCallback(async (resolvedUserId: UUID) => {
     setAuthError(null);
@@ -125,15 +145,24 @@ export function LoginPage() {
         wait(TENANT_REFRESH_MAX_WAIT_MS)
       ]);
       redirectToPath(finalPath);
-    } catch {
-      await recoverAuthState(signOut, refreshTenant);
-      setRedirectError(LOGIN_FAILED_MESSAGE);
+    } catch (error) {
+      debugLogin('redirect-after-login:error', {
+        invalidSession: isInvalidSessionError(error),
+        bootstrapError: error instanceof InsforgeAuthBootstrapError,
+        message: String((error as any)?.message ?? error ?? '')
+      });
+      if (error instanceof InsforgeAuthBootstrapError || isInvalidSessionError(error)) {
+        await recoverAuthState(signOut, refreshTenant);
+        setRedirectError(LOGIN_FAILED_MESSAGE);
+      } else {
+        setRedirectError(LOGIN_SETUP_MESSAGE);
+      }
       setRedirecting(false);
     }
   }, [refreshTenant, searchParams, setActiveCompanyId, signOut]);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !user?.id) return;
+    if (!isLoaded || !isSignedIn || !user?.id || redirecting || submitting) return;
     let cancelled = false;
     (async () => {
       try {
@@ -146,7 +175,7 @@ export function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, redirectAfterLogin, user?.id]);
+  }, [isLoaded, isSignedIn, redirectAfterLogin, redirecting, submitting, user?.id]);
 
   const activated = searchParams.get('activated') === '1';
 
@@ -172,20 +201,30 @@ export function LoginPage() {
 
     try {
       await insforgeReady;
-      const signInResult = await signIn(normalizedEmail, password);
+      debugLogin('sign-in:start', { email: normalizedEmail });
+      const signInResult = await (insforge.auth as any).signInWithPassword({
+        email: normalizedEmail,
+        password
+      });
       const error = (signInResult as any)?.error ?? null;
 
       if (error) {
+        debugLogin('sign-in:error', {
+          message: String((error as any)?.message ?? error ?? ''),
+          status: (error as any)?.status ?? (error as any)?.statusCode
+        });
         handleSignInError(error);
         return;
       }
 
       const resolvedUserId = await resolveSignedInUserId(signInResult);
       if (resolvedUserId) {
+        debugLogin('sign-in:resolved-user', { hasUserId: true });
         await redirectAfterLogin(resolvedUserId);
         return;
       }
 
+      debugLogin('sign-in:missing-user');
       await recoverAuthState(signOut, refreshTenant);
       setRedirectError(LOGIN_FAILED_MESSAGE);
     } catch (error) {

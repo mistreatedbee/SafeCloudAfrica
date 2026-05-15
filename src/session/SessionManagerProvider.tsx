@@ -188,7 +188,9 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         return transientRefreshFailure();
       }
       const currentError = getAuthResultError(current);
-      const { accessToken: token, userId: currentUserId } = readAuthSessionResult(current);
+      const { accessToken: token, userId: currentUserId } = readAuthSessionResult(current, {
+        fallbackAccessToken: existingClientToken
+      });
       lastKnownToken = token;
       lastKnownExpiresAtMs = decodeTokenExpiryMs(token);
       if (currentError) {

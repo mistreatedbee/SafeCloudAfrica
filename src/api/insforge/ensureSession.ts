@@ -132,7 +132,9 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
     );
   }
 
-  const { accessToken: token, userId } = readAuthSessionResult(result);
+  const { accessToken: token, userId } = readAuthSessionResult(result, {
+    fallbackAccessToken: getAttachedUserToken(existingHeaders)
+  });
 
   if (token && isJwtExpired(token)) {
     const refreshed = await tryProxyRefresh();

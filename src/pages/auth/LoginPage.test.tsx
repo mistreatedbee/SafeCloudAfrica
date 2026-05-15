@@ -12,7 +12,8 @@ const useAuthState = {
 };
 
 const useUserState = {
-  user: { id: 'user-1', email: 'user@example.com' }
+  user: { id: 'user-1', email: 'user@example.com' } as any,
+  setUser: vi.fn()
 };
 
 const tenantState = {
@@ -29,6 +30,7 @@ const callOrder: string[] = [];
 const setAuthTokenMock = vi.fn();
 const getCurrentSessionMock = vi.fn();
 const getCurrentUserMock = vi.fn();
+const signInWithPasswordMock = vi.fn();
 const searchParamsMock = new URLSearchParams();
 
 vi.mock('@insforge/react', () => ({
@@ -70,6 +72,7 @@ vi.mock('../../api/insforge/client', () => ({
       setAuthToken: setAuthTokenMock
     }),
     auth: {
+      signInWithPassword: (...args: unknown[]) => signInWithPasswordMock(...args),
       getCurrentSession: (...args: unknown[]) => getCurrentSessionMock(...args),
       getCurrentUser: (...args: unknown[]) => getCurrentUserMock(...args)
     }
@@ -106,9 +109,11 @@ describe('LoginPage', () => {
     useAuthState.signOut.mockReset();
     useAuthState.signOut.mockResolvedValue(undefined);
     useUserState.user = { id: 'user-1', email: 'user@example.com' };
+    useUserState.setUser.mockReset();
     setAuthTokenMock.mockReset();
     getCurrentSessionMock.mockReset();
     getCurrentUserMock.mockReset();
+    signInWithPasswordMock.mockReset();
 
     tenantState.setActiveCompanyId.mockReset();
     tenantState.refreshTenant.mockReset();
@@ -173,7 +178,7 @@ describe('LoginPage', () => {
   it('accepts SDK 1.2 raw sign-in data and redirects through post-login checks', async () => {
     useAuthState.isSignedIn = false;
     useUserState.user = null as any;
-    useAuthState.signIn.mockResolvedValue({
+    signInWithPasswordMock.mockResolvedValue({
       data: { accessToken: 'token-from-sign-in', user: { id: 'user-1' } },
       error: null
     });
@@ -193,16 +198,56 @@ describe('LoginPage', () => {
       await flushAsyncWork();
     });
 
-    expect(useAuthState.signIn).toHaveBeenCalledWith('user@example.com', 'secret');
+    expect(signInWithPasswordMock).toHaveBeenCalledWith({
+      email: 'user@example.com',
+      password: 'secret'
+    });
+    expect(useUserState.setUser).toHaveBeenCalledWith({ id: 'user-1' });
     expect(setAuthTokenMock).toHaveBeenCalledWith('token-from-sign-in');
     expect(replaceMock).toHaveBeenCalledWith('/org/dashboard');
+  });
+
+  it('uses getCurrentUser after sign-in when getCurrentSession is not available', async () => {
+    useAuthState.isSignedIn = false;
+    useUserState.user = null as any;
+    signInWithPasswordMock.mockResolvedValue({ data: { accessToken: 'token-from-sign-in' }, error: null });
+    const { insforge } = await import('../../api/insforge/client');
+    const originalGetCurrentSession = (insforge.auth as any).getCurrentSession;
+    delete (insforge.auth as any).getCurrentSession;
+    getCurrentUserMock.mockResolvedValue({
+      data: {
+        user: { id: 'user-1', email: 'user@example.com' }
+      },
+      error: null
+    });
+
+    await act(async () => {
+      root.render(<LoginPage />);
+      await flushAsyncWork();
+    });
+
+    const emailInput = container.querySelector('#login-email') as HTMLInputElement;
+    const passwordInput = container.querySelector('#login-password') as HTMLInputElement;
+    const form = container.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      setInputValue(emailInput, 'user@example.com');
+      setInputValue(passwordInput, 'secret');
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await flushAsyncWork();
+    });
+
+    expect(getCurrentUserMock).toHaveBeenCalledTimes(1);
+    expect(useUserState.setUser).toHaveBeenCalledWith({ id: 'user-1', email: 'user@example.com' });
+    expect(replaceMock).toHaveBeenCalledWith('/org/dashboard');
+
+    (insforge.auth as any).getCurrentSession = originalGetCurrentSession;
   });
 
   it('does not blindly redirect to /app when sign-in succeeds but no session user can be resolved', async () => {
     vi.useFakeTimers();
     useAuthState.isSignedIn = false;
     useUserState.user = null as any;
-    useAuthState.signIn.mockResolvedValue({ data: {}, error: null });
+    signInWithPasswordMock.mockResolvedValue({ data: {}, error: null });
     getCurrentSessionMock.mockResolvedValue({ data: {}, error: null });
 
     await act(async () => {

@@ -9,6 +9,11 @@ export type AuthSessionSnapshot = {
   user?: unknown;
 };
 
+type ReadAuthSessionOptions = {
+  fallbackAccessToken?: string | null;
+  allowStoredTokenFallback?: boolean;
+};
+
 export type RefreshSessionResult =
   | { ok: true; accessToken: string; userId: string | null; user?: unknown }
   | { ok: false; reason: 'invalid_session' | 'refresh_unavailable' | 'transient_failure'; status?: number; error?: unknown };
@@ -71,13 +76,19 @@ export function saveStoredSession(accessToken: string, user?: unknown): void {
   }
 }
 
-export function readAuthSessionResult(result: unknown): AuthSessionSnapshot {
+export function readAuthSessionResult(result: unknown, options: ReadAuthSessionOptions = {}): AuthSessionSnapshot {
   const session = (result as any)?.data?.session;
   // SDK 1.2.x can return raw response in data: { data: { accessToken, user } }.
   const dataToken = (result as any)?.data?.accessToken;
   const dataUser = (result as any)?.data?.user;
   const topLevelToken = (result as any)?.accessToken;
   const topLevelUser = (result as any)?.user;
+  const fallbackAccessToken =
+    typeof options.fallbackAccessToken === 'string' && options.fallbackAccessToken.trim()
+      ? options.fallbackAccessToken
+      : options.allowStoredTokenFallback
+        ? readStoredAccessToken()
+        : null;
   const accessToken =
     typeof session?.accessToken === 'string' && session.accessToken.trim()
       ? session.accessToken
@@ -85,7 +96,7 @@ export function readAuthSessionResult(result: unknown): AuthSessionSnapshot {
         ? dataToken
         : typeof topLevelToken === 'string' && topLevelToken.trim()
           ? topLevelToken
-          : null;
+          : fallbackAccessToken;
   const user = session?.user ?? dataUser ?? topLevelUser ?? null;
   const userId =
     typeof user?.id === 'string' && user.id.trim()

@@ -103,6 +103,26 @@ describe('ensureInsforgeSession', () => {
     authMock.getCurrentSession = originalGetCurrentSession;
   });
 
+  it('uses the attached token when getCurrentUser returns only a user object', async () => {
+    const userToken = createJwt({ sub: 'user-1' });
+    const originalGetCurrentSession = authMock.getCurrentSession;
+    delete (authMock as any).getCurrentSession;
+    authMock.getCurrentUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+      error: null
+    });
+    httpMock.getHeaders.mockReturnValue({ Authorization: `Bearer ${userToken}` });
+
+    const { ensureInsforgeSession } = await import('./ensureSession');
+    await expect(ensureInsforgeSession({ reason: 'test' })).resolves.toEqual({
+      accessToken: userToken,
+      userId: 'user-1'
+    });
+    expect(httpMock.setAuthToken).toHaveBeenCalledWith(userToken);
+
+    authMock.getCurrentSession = originalGetCurrentSession;
+  });
+
   it('refreshes an expired stored session before attaching it', async () => {
     const expiredToken = createJwt({ sub: 'user-1', exp: Math.floor((Date.now() - 60_000) / 1000) });
     const refreshedToken = createJwt({ sub: 'user-1', exp: Math.floor((Date.now() + 60_000) / 1000) });

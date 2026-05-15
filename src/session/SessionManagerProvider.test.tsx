@@ -219,12 +219,12 @@ describe('SessionManagerProvider', () => {
 
   it('uses getCurrentUser when getCurrentSession is not available', async () => {
     const longLivedToken = createJwt(Date.now() + 24 * 60 * 60 * 1000);
+    httpClient.setAuthToken(longLivedToken);
     const auth = (await import('../api/insforge/client')).insforge.auth as any;
     const originalGetCurrentSession = auth.getCurrentSession;
     delete auth.getCurrentSession;
     getCurrentUserMock.mockResolvedValue({
       data: {
-        accessToken: longLivedToken,
         user: { id: 'user-1' }
       },
       error: null
