@@ -40,6 +40,32 @@ function debugLogin(event: string, details?: Record<string, unknown>): void {
   console.debug('[login-bootstrap]', event, details ?? {});
 }
 
+async function resolveUserFromBearerToken(accessToken: string): Promise<{ userId: UUID; user: unknown } | null> {
+  const response = await fetch('/api/auth/me', {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+      Pragma: 'no-cache',
+      Expires: '0'
+    }
+  });
+  if (!response.ok) return null;
+  const payload = await response.json().catch(() => null);
+  const user = (payload as any)?.user ?? payload;
+  const userId =
+    typeof user?.id === 'string' && user.id.trim()
+      ? user.id.trim()
+      : typeof (payload as any)?.user_id === 'string' && (payload as any).user_id.trim()
+        ? (payload as any).user_id.trim()
+        : typeof (payload as any)?.id === 'string' && (payload as any).id.trim()
+          ? (payload as any).id.trim()
+          : null;
+  return userId ? { userId: userId as UUID, user } : null;
+}
+
 export function LoginPage() {
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user, setUser } = useUser();
@@ -82,6 +108,14 @@ export function LoginPage() {
       setUser(initialSession.user as any);
     }
     if (initialSession.userId) return initialSession.userId as UUID;
+    if (initialSession.accessToken) {
+      const resolvedUser = await resolveUserFromBearerToken(initialSession.accessToken).catch(() => null);
+      if (resolvedUser) {
+        saveStoredSession(initialSession.accessToken, resolvedUser.user);
+        setUser(resolvedUser.user as any);
+        return resolvedUser.userId;
+      }
+    }
 
     for (let attempt = 0; attempt < SESSION_RESOLVE_RETRIES; attempt += 1) {
       if (attempt > 0) await wait(SESSION_RESOLVE_DELAY_MS);

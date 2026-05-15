@@ -97,6 +97,7 @@ describe('LoginPage', () => {
   let container: HTMLDivElement;
   let root: Root;
   let replaceMock: ReturnType<typeof vi.fn>;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     container = document.createElement('div');
@@ -148,6 +149,7 @@ describe('LoginPage', () => {
       configurable: true,
       value: { replace: replaceMock }
     });
+    globalThis.fetch = originalFetch;
   });
 
   afterEach(async () => {
@@ -156,6 +158,7 @@ describe('LoginPage', () => {
       await flushAsyncWork();
     });
     container.remove();
+    globalThis.fetch = originalFetch;
     vi.useRealTimers();
   });
 
@@ -241,6 +244,70 @@ describe('LoginPage', () => {
     expect(replaceMock).toHaveBeenCalledWith('/org/dashboard');
 
     (insforge.auth as any).getCurrentSession = originalGetCurrentSession;
+  });
+
+  it('accepts legacy token and user_id fields from the proxied login response', async () => {
+    useAuthState.isSignedIn = false;
+    useUserState.user = null as any;
+    signInWithPasswordMock.mockResolvedValue({
+      data: { token: 'legacy-token', user_id: 'user-1', user: { id: 'user-1' } },
+      error: null
+    });
+
+    await act(async () => {
+      root.render(<LoginPage />);
+      await flushAsyncWork();
+    });
+
+    const emailInput = container.querySelector('#login-email') as HTMLInputElement;
+    const passwordInput = container.querySelector('#login-password') as HTMLInputElement;
+    const form = container.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      setInputValue(emailInput, 'user@example.com');
+      setInputValue(passwordInput, 'secret');
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await flushAsyncWork();
+    });
+
+    expect(setAuthTokenMock).toHaveBeenCalledWith('legacy-token');
+    expect(useUserState.setUser).toHaveBeenCalledWith({ id: 'user-1' });
+    expect(replaceMock).toHaveBeenCalledWith('/org/dashboard');
+  });
+
+  it('resolves the current user from /api/auth/me when login returns only a token', async () => {
+    useAuthState.isSignedIn = false;
+    useUserState.user = null as any;
+    signInWithPasswordMock.mockResolvedValue({
+      data: { access_token: 'legacy-token' },
+      error: null
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'user-1', email: 'user@example.com' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    ) as unknown as typeof fetch;
+
+    await act(async () => {
+      root.render(<LoginPage />);
+      await flushAsyncWork();
+    });
+
+    const emailInput = container.querySelector('#login-email') as HTMLInputElement;
+    const passwordInput = container.querySelector('#login-password') as HTMLInputElement;
+    const form = container.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      setInputValue(emailInput, 'user@example.com');
+      setInputValue(passwordInput, 'secret');
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await flushAsyncWork();
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer legacy-token' })
+    }));
+    expect(useUserState.setUser).toHaveBeenCalledWith({ id: 'user-1', email: 'user@example.com' });
+    expect(replaceMock).toHaveBeenCalledWith('/org/dashboard');
   });
 
   it('does not blindly redirect to /app when sign-in succeeds but no session user can be resolved', async () => {

@@ -76,32 +76,63 @@ export function saveStoredSession(accessToken: string, user?: unknown): void {
   }
 }
 
+function firstNonEmptyString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
+function getObjectId(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  return firstNonEmptyString(
+    (value as any).id,
+    (value as any).userId,
+    (value as any).user_id,
+    (value as any).sub
+  );
+}
+
 export function readAuthSessionResult(result: unknown, options: ReadAuthSessionOptions = {}): AuthSessionSnapshot {
   const session = (result as any)?.data?.session;
+  const data = (result as any)?.data;
   // SDK 1.2.x can return raw response in data: { data: { accessToken, user } }.
-  const dataToken = (result as any)?.data?.accessToken;
-  const dataUser = (result as any)?.data?.user;
-  const topLevelToken = (result as any)?.accessToken;
-  const topLevelUser = (result as any)?.user;
   const fallbackAccessToken =
     typeof options.fallbackAccessToken === 'string' && options.fallbackAccessToken.trim()
       ? options.fallbackAccessToken
       : options.allowStoredTokenFallback
         ? readStoredAccessToken()
         : null;
-  const accessToken =
-    typeof session?.accessToken === 'string' && session.accessToken.trim()
-      ? session.accessToken
-      : typeof dataToken === 'string' && dataToken.trim()
-        ? dataToken
-        : typeof topLevelToken === 'string' && topLevelToken.trim()
-          ? topLevelToken
-          : fallbackAccessToken;
-  const user = session?.user ?? dataUser ?? topLevelUser ?? null;
+  const accessToken = firstNonEmptyString(
+    session?.accessToken,
+    session?.access_token,
+    session?.token,
+    data?.accessToken,
+    data?.access_token,
+    data?.token,
+    data?.jwt,
+    (result as any)?.accessToken,
+    (result as any)?.access_token,
+    (result as any)?.token,
+    (result as any)?.jwt,
+    fallbackAccessToken
+  );
+  const user = session?.user ?? data?.user ?? (result as any)?.user ?? null;
   const userId =
-    typeof user?.id === 'string' && user.id.trim()
-      ? user.id
-      : decodeJwtSession(accessToken).sub;
+    getObjectId(user) ??
+    firstNonEmptyString(
+      session?.userId,
+      session?.user_id,
+      data?.userId,
+      data?.user_id,
+      data?.sub,
+      (result as any)?.userId,
+      (result as any)?.user_id,
+      (result as any)?.sub
+    ) ??
+    decodeJwtSession(accessToken).sub;
   return { accessToken, userId, user };
 }
 
@@ -110,7 +141,9 @@ export function hasMalformedAuthSessionResult(result: unknown): boolean {
   if (
     !('data' in (result as Record<string, unknown>)) &&
     !('error' in (result as Record<string, unknown>)) &&
-    !('accessToken' in (result as Record<string, unknown>))
+    !('accessToken' in (result as Record<string, unknown>)) &&
+    !('access_token' in (result as Record<string, unknown>)) &&
+    !('token' in (result as Record<string, unknown>))
   ) {
     return true;
   }
