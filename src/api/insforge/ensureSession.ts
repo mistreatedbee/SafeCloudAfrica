@@ -156,6 +156,17 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
   if (!token || !userId || isJwtExpired(token)) {
     const attachedSession = getAttachedSession(existingHeaders);
     if (attachedSession) return attachedSession;
+    // getCurrentUser() may have internally called refreshSession() which called setAuthToken().
+    // existingHeaders was captured before that call, so re-read the live HTTP client headers.
+    const liveHeaders = (() => {
+      try { return insforge.getHttpClient().getHeaders(); } catch { return {}; }
+    })();
+    const liveSession = getAttachedSession(liveHeaders);
+    if (liveSession) {
+      insforge.getHttpClient().setAuthToken(liveSession.accessToken);
+      debugAuthBootstrap('ensure-session:live-headers-fallback', { reason, hadAuthHeader, tokenAttached: true });
+      return liveSession;
+    }
     // Keep message user-friendly; UI can prompt a re-login.
     debugAuthBootstrap('ensure-session:missing-token-or-user', {
       reason,
