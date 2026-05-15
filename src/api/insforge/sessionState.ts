@@ -3,6 +3,12 @@ export type JwtSessionClaims = {
   expMs: number | null;
 };
 
+export type AuthSessionSnapshot = {
+  accessToken: string | null;
+  userId: string | null;
+  user?: unknown;
+};
+
 export type RefreshSessionResult =
   | { ok: true; accessToken: string; userId: string | null; user?: unknown }
   | { ok: false; reason: 'invalid_session' | 'refresh_unavailable' | 'transient_failure'; status?: number; error?: unknown };
@@ -63,6 +69,55 @@ export function saveStoredSession(accessToken: string, user?: unknown): void {
   } catch {
     // ignore storage errors
   }
+}
+
+export function readAuthSessionResult(result: unknown): AuthSessionSnapshot {
+  const session = (result as any)?.data?.session;
+  // SDK 1.2.x can return raw response in data: { data: { accessToken, user } }.
+  const dataToken = (result as any)?.data?.accessToken;
+  const dataUser = (result as any)?.data?.user;
+  const topLevelToken = (result as any)?.accessToken;
+  const topLevelUser = (result as any)?.user;
+  const accessToken =
+    typeof session?.accessToken === 'string' && session.accessToken.trim()
+      ? session.accessToken
+      : typeof dataToken === 'string' && dataToken.trim()
+        ? dataToken
+        : typeof topLevelToken === 'string' && topLevelToken.trim()
+          ? topLevelToken
+          : null;
+  const user = session?.user ?? dataUser ?? topLevelUser ?? null;
+  const userId =
+    typeof user?.id === 'string' && user.id.trim()
+      ? user.id
+      : decodeJwtSession(accessToken).sub;
+  return { accessToken, userId, user };
+}
+
+export function hasMalformedAuthSessionResult(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return true;
+  if (
+    !('data' in (result as Record<string, unknown>)) &&
+    !('error' in (result as Record<string, unknown>)) &&
+    !('accessToken' in (result as Record<string, unknown>))
+  ) {
+    return true;
+  }
+  const data = (result as any)?.data;
+  if (data == null) return false;
+  return typeof data !== 'object';
+}
+
+export function getAuthResultError(result: unknown): unknown {
+  return (result as any)?.error ?? null;
+}
+
+export function getCurrentAuthSession(auth: {
+  getCurrentSession?: () => Promise<unknown>;
+  getCurrentUser: () => Promise<unknown>;
+}): Promise<unknown> {
+  if (typeof auth.getCurrentSession === 'function') return auth.getCurrentSession.call(auth);
+  return auth.getCurrentUser.call(auth);
 }
 
 function clearCsrfTokenCookie(): void {
@@ -149,18 +204,7 @@ export function isInvalidSessionError(error: unknown): boolean {
 }
 
 function parseRefreshPayload(payload: unknown): { accessToken: string | null; userId: string | null; user?: unknown } {
-  const accessToken =
-    typeof (payload as any)?.accessToken === 'string' && (payload as any).accessToken.trim()
-      ? (payload as any).accessToken
-      : typeof (payload as any)?.data?.session?.accessToken === 'string' && (payload as any).data.session.accessToken.trim()
-        ? (payload as any).data.session.accessToken
-        : null;
-  const user = (payload as any)?.user ?? (payload as any)?.data?.session?.user ?? null;
-  const userId =
-    typeof user?.id === 'string' && user.id.trim()
-      ? user.id
-      : decodeJwtSession(accessToken).sub;
-  return { accessToken, userId, user };
+  return readAuthSessionResult(payload);
 }
 
 export async function refreshSessionThroughProxy(input: {
@@ -199,4 +243,3 @@ export async function refreshSessionThroughProxy(input: {
   saveStoredSession(parsed.accessToken, parsed.user);
   return { ok: true, accessToken: parsed.accessToken, userId: parsed.userId, user: parsed.user };
 }
-

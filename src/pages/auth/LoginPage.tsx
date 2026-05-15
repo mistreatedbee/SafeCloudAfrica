@@ -9,6 +9,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import { ensureInsforgeSession } from '../../api/insforge/ensureSession';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getLoginRedirectPath } from '../../api/services/platformAdminService';
 import { insforge, insforgeReady } from '../../api/insforge/client';
+import { getCurrentAuthSession, readAuthSessionResult } from '../../api/insforge/sessionState';
 import type { UUID } from '../../api/models/entities';
 
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
@@ -21,46 +22,6 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
-}
-
-function readJwtSub(token: string | null | undefined): string | null {
-  if (!token) return null;
-  try {
-    const [, payload] = token.split('.');
-    if (!payload) return null;
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
-    const parsed = JSON.parse(atob(padded)) as { sub?: string };
-    return typeof parsed.sub === 'string' && parsed.sub.trim() ? parsed.sub : null;
-  } catch {
-    return null;
-  }
-}
-
-function readAuthSession(result: unknown): { accessToken: string | null; userId: string | null } {
-  const session = (result as any)?.data?.session;
-  // SDK 1.2.x returns raw response in data (no session wrapper): { data: { accessToken, user } }
-  const dataToken = (result as any)?.data?.accessToken;
-  const dataUserId = (result as any)?.data?.user?.id;
-  const topLevelToken = (result as any)?.accessToken;
-  const topLevelUserId = (result as any)?.user?.id;
-  const accessToken =
-    typeof session?.accessToken === 'string' && session.accessToken.trim()
-      ? session.accessToken
-      : typeof dataToken === 'string' && dataToken.trim()
-        ? dataToken
-        : typeof topLevelToken === 'string' && topLevelToken.trim()
-          ? topLevelToken
-          : null;
-  const userId =
-    typeof session?.user?.id === 'string' && session.user.id.trim()
-      ? session.user.id
-      : typeof dataUserId === 'string' && dataUserId.trim()
-        ? dataUserId
-        : typeof topLevelUserId === 'string' && topLevelUserId.trim()
-          ? topLevelUserId
-          : readJwtSub(accessToken);
-  return { accessToken, userId };
 }
 
 function redirectToPath(path: string): void {
@@ -100,7 +61,7 @@ export function LoginPage() {
   }, [sessionExpiredMessage]);
 
   const resolveSignedInUserId = React.useCallback(async (initialResult: unknown): Promise<UUID | null> => {
-    const initialSession = readAuthSession(initialResult);
+    const initialSession = readAuthSessionResult(initialResult);
     if (initialSession.accessToken) {
       insforge.getHttpClient().setAuthToken(initialSession.accessToken);
     }
@@ -108,11 +69,8 @@ export function LoginPage() {
 
     for (let attempt = 0; attempt < SESSION_RESOLVE_RETRIES; attempt += 1) {
       if (attempt > 0) await wait(SESSION_RESOLVE_DELAY_MS);
-      const getSession = (insforge.auth as any).getCurrentSession;
-      const currentSessionResult = await (
-        typeof getSession === 'function' ? getSession.call(insforge.auth) : insforge.auth.getCurrentUser()
-      ).catch(() => null);
-      const nextSession = readAuthSession(currentSessionResult);
+      const currentSessionResult = await getCurrentAuthSession(insforge.auth as any).catch(() => null);
+      const nextSession = readAuthSessionResult(currentSessionResult);
       if (nextSession.accessToken) {
         insforge.getHttpClient().setAuthToken(nextSession.accessToken);
       }
@@ -228,8 +186,8 @@ export function LoginPage() {
         return;
       }
 
-      setRedirecting(true);
-      redirectToPath('/app');
+      await recoverAuthState(signOut, refreshTenant);
+      setRedirectError(LOGIN_FAILED_MESSAGE);
     } catch (error) {
       handleSignInError(error);
     } finally {

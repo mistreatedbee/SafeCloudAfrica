@@ -19,6 +19,7 @@ const navigateMock = vi.fn();
 const flushAllDraftsMock = vi.fn().mockResolvedValue(undefined);
 const getSessionTimeoutMinutesMock = vi.fn().mockResolvedValue(120);
 const getCurrentSessionMock = vi.fn();
+const getCurrentUserMock = vi.fn();
 const fetchMock = vi.fn();
 
 const httpClientState = {
@@ -47,7 +48,8 @@ vi.mock('react-router-dom', () => ({
 vi.mock('../api/insforge/client', () => ({
   insforge: {
     auth: {
-      getCurrentSession: (...args: unknown[]) => getCurrentSessionMock(...args)
+      getCurrentSession: (...args: unknown[]) => getCurrentSessionMock(...args),
+      getCurrentUser: (...args: unknown[]) => getCurrentUserMock(...args)
     },
     getHttpClient: () => httpClient
   }
@@ -109,6 +111,7 @@ describe('SessionManagerProvider', () => {
     getSessionTimeoutMinutesMock.mockReset();
     getSessionTimeoutMinutesMock.mockResolvedValue(120);
     getCurrentSessionMock.mockReset();
+    getCurrentUserMock.mockReset();
     fetchMock.mockReset();
     fetchMock.mockRejectedValue(new Error('Service temporarily unavailable'));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -212,5 +215,30 @@ describe('SessionManagerProvider', () => {
     expect(navigateMock).not.toHaveBeenCalled();
     expect(sessionStorage.getItem('sca_session_expired')).toBeNull();
     expect(sessionStorage.getItem('sca_session_expired_message')).toBeNull();
+  });
+
+  it('uses getCurrentUser when getCurrentSession is not available', async () => {
+    const longLivedToken = createJwt(Date.now() + 24 * 60 * 60 * 1000);
+    const auth = (await import('../api/insforge/client')).insforge.auth as any;
+    const originalGetCurrentSession = auth.getCurrentSession;
+    delete auth.getCurrentSession;
+    getCurrentUserMock.mockResolvedValue({
+      data: {
+        accessToken: longLivedToken,
+        user: { id: 'user-1' }
+      },
+      error: null
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+      await flushAsyncWork();
+    });
+
+    expect(getCurrentUserMock).toHaveBeenCalledTimes(1);
+    expect(httpClient.getHeaders()).toEqual({ Authorization: `Bearer ${longLivedToken}` });
+    expect(authState.signOut).not.toHaveBeenCalled();
+
+    auth.getCurrentSession = originalGetCurrentSession;
   });
 });

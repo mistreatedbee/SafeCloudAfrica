@@ -2,7 +2,14 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { useAuth } from '@insforge/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { insforge } from '../api/insforge/client';
-import { refreshSessionThroughProxy } from '../api/insforge/sessionState';
+import {
+  getAuthResultError,
+  getCurrentAuthSession,
+  hasMalformedAuthSessionResult,
+  isInvalidSessionError,
+  readAuthSessionResult,
+  refreshSessionThroughProxy
+} from '../api/insforge/sessionState';
 import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY, USER_SIGNED_OUT_KEY } from '../auth/AuthSessionListener';
 import { useDraftManager } from './DraftManagerProvider';
 
@@ -46,30 +53,6 @@ function decodeTokenExpiryMs(token: string | null | undefined): number | null {
   }
 }
 
-function getAuthStatusCode(error: unknown): number {
-  const raw = Number((error as any)?.statusCode ?? (error as any)?.status ?? 0);
-  return Number.isFinite(raw) ? raw : 0;
-}
-
-type AuthSessionShape = {
-  accessToken: string | null;
-  userId: string | null;
-};
-
-function readJwtSub(token: string | null | undefined): string | null {
-  if (!token) return null;
-  try {
-    const [, payload] = token.split('.');
-    if (!payload) return null;
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
-    const parsed = JSON.parse(atob(padded)) as { sub?: string };
-    return typeof parsed.sub === 'string' && parsed.sub.trim() ? parsed.sub : null;
-  } catch {
-    return null;
-  }
-}
-
 function readClientAuthToken(): string | null {
   try {
     const headers = insforge.getHttpClient().getHeaders();
@@ -81,61 +64,6 @@ function readClientAuthToken(): string | null {
   } catch {
     return null;
   }
-}
-
-function readAuthSession(result: unknown): AuthSessionShape {
-  const session = (result as any)?.data?.session;
-  const topLevelToken = (result as any)?.accessToken;
-  const topLevelUserId = (result as any)?.user?.id;
-  const accessToken =
-    typeof session?.accessToken === 'string' && session.accessToken.trim()
-      ? session.accessToken
-      : typeof topLevelToken === 'string' && topLevelToken.trim()
-        ? topLevelToken
-        : null;
-  const userId =
-    typeof session?.user?.id === 'string' && session.user.id.trim()
-      ? session.user.id
-      : typeof topLevelUserId === 'string' && topLevelUserId.trim()
-        ? topLevelUserId
-        : readJwtSub(accessToken);
-  return {
-    accessToken,
-    userId
-  };
-}
-
-function hasMalformedAuthResponse(result: unknown): boolean {
-  if (!result || typeof result !== 'object') return true;
-  if (
-    !('data' in (result as Record<string, unknown>)) &&
-    !('error' in (result as Record<string, unknown>)) &&
-    !('accessToken' in (result as Record<string, unknown>))
-  ) {
-    return true;
-  }
-  const data = (result as any)?.data;
-  if (data == null) return false;
-  return typeof data !== 'object';
-}
-
-function isInvalidSessionError(error: unknown): boolean {
-  const statusCode = getAuthStatusCode(error);
-  if (statusCode === 401 || statusCode === 403) return true;
-  const message = String(
-    (error as any)?.code ??
-      (error as any)?.error ??
-      (error as any)?.message ??
-      ''
-  ).toLowerCase();
-  return (
-    message.includes('invalid or expired session') ||
-    message.includes('session expired') ||
-    message.includes('refresh_unauthorized') ||
-    message.includes('refresh_forbidden') ||
-    message.includes('missing_refresh_cookie') ||
-    message.includes('invalid refresh token')
-  );
 }
 
 function refreshSucceeded(): RefreshSessionOutcome {
@@ -248,10 +176,10 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     let lastKnownToken: string | null = null;
     let lastKnownExpiresAtMs: number | null = null;
     try {
-      const current = await insforge.auth.getCurrentSession();
+      const current = await getCurrentAuthSession(insforge.auth as any);
       const existingTokenStillValid =
         !!existingClientToken && !!existingClientTokenExpiresAtMs && existingClientTokenExpiresAtMs > Date.now();
-      if (hasMalformedAuthResponse(current)) {
+      if (hasMalformedAuthSessionResult(current)) {
         if (existingClientToken) {
           insforge.getHttpClient().setAuthToken(existingClientToken);
         }
@@ -259,8 +187,8 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         console.warn('[session] malformed current session response', current);
         return transientRefreshFailure();
       }
-      const currentError = current.error ?? null;
-      const { accessToken: token, userId: currentUserId } = readAuthSession(current);
+      const currentError = getAuthResultError(current);
+      const { accessToken: token, userId: currentUserId } = readAuthSessionResult(current);
       lastKnownToken = token;
       lastKnownExpiresAtMs = decodeTokenExpiryMs(token);
       if (currentError) {
@@ -299,6 +227,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       }
       const now = Date.now();
       if (lastKnownExpiresAtMs && lastKnownExpiresAtMs - now > REFRESH_LEEWAY_MS) {
+        insforge.getHttpClient().setAuthToken(token);
         refreshRetryCountRef.current = 0;
         return refreshSucceeded();
       }

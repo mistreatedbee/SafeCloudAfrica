@@ -1,4 +1,5 @@
 import { insforge } from '../api/insforge/client';
+import { getCurrentAuthSession, readAuthSessionResult } from '../api/insforge/sessionState';
 import { ACTIVE_COMPANY_STORAGE_KEY } from '../tenant/TenantContext';
 
 export type ReportClientErrorInput = {
@@ -12,8 +13,8 @@ export function reportClientError(payload: ReportClientErrorInput): void {
   void (async () => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     try {
-      const { data } = await insforge.auth.getCurrentSession();
-      const token = data?.session?.accessToken;
+      const current = await getCurrentAuthSession(insforge.auth as any);
+      const token = readAuthSessionResult(current).accessToken;
       if (token) headers.Authorization = `Bearer ${token}`;
     } catch {
       // not signed in

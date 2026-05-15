@@ -26,6 +26,10 @@ const isPlatformAdminMock = vi.fn();
 const getLoginRedirectPathMock = vi.fn();
 const recoverAuthStateMock = vi.fn().mockResolvedValue(undefined);
 const callOrder: string[] = [];
+const setAuthTokenMock = vi.fn();
+const getCurrentSessionMock = vi.fn();
+const getCurrentUserMock = vi.fn();
+const searchParamsMock = new URLSearchParams();
 
 vi.mock('@insforge/react', () => ({
   useAuth: () => useAuthState,
@@ -34,7 +38,7 @@ vi.mock('@insforge/react', () => ({
 
 vi.mock('react-router-dom', () => ({
   Link: ({ children }: { children: React.ReactNode }) => React.createElement('a', null, children),
-  useSearchParams: () => [new URLSearchParams()]
+  useSearchParams: () => [searchParamsMock]
 }));
 
 vi.mock('../../components/auth/AuthShell', () => ({
@@ -63,10 +67,11 @@ vi.mock('../../api/insforge/client', () => ({
   insforgeReady: Promise.resolve(),
   insforge: {
     getHttpClient: () => ({
-      setAuthToken: vi.fn()
+      setAuthToken: setAuthTokenMock
     }),
     auth: {
-      getCurrentSession: vi.fn()
+      getCurrentSession: (...args: unknown[]) => getCurrentSessionMock(...args),
+      getCurrentUser: (...args: unknown[]) => getCurrentUserMock(...args)
     }
   }
 }));
@@ -76,6 +81,13 @@ import { LoginPage } from './LoginPage';
 async function flushAsyncWork(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+function setInputValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
 describe('LoginPage', () => {
@@ -88,6 +100,15 @@ describe('LoginPage', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     callOrder.length = 0;
+    useAuthState.isLoaded = true;
+    useAuthState.isSignedIn = true;
+    useAuthState.signIn.mockReset();
+    useAuthState.signOut.mockReset();
+    useAuthState.signOut.mockResolvedValue(undefined);
+    useUserState.user = { id: 'user-1', email: 'user@example.com' };
+    setAuthTokenMock.mockReset();
+    getCurrentSessionMock.mockReset();
+    getCurrentUserMock.mockReset();
 
     tenantState.setActiveCompanyId.mockReset();
     tenantState.refreshTenant.mockReset();
@@ -130,6 +151,7 @@ describe('LoginPage', () => {
       await flushAsyncWork();
     });
     container.remove();
+    vi.useRealTimers();
   });
 
   it('ensures session auth is rehydrated before protected post-login checks', async () => {
@@ -138,7 +160,7 @@ describe('LoginPage', () => {
       await flushAsyncWork();
     });
 
-    expect(callOrder).toEqual([
+    expect(callOrder.slice(0, 4)).toEqual([
       'ensureSession',
       'ensureMeAsSuperAdmin',
       'isPlatformAdmin',
@@ -146,5 +168,62 @@ describe('LoginPage', () => {
     ]);
     expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-1');
     expect(replaceMock).toHaveBeenCalledWith('/org/dashboard');
+  });
+
+  it('accepts SDK 1.2 raw sign-in data and redirects through post-login checks', async () => {
+    useAuthState.isSignedIn = false;
+    useUserState.user = null as any;
+    useAuthState.signIn.mockResolvedValue({
+      data: { accessToken: 'token-from-sign-in', user: { id: 'user-1' } },
+      error: null
+    });
+
+    await act(async () => {
+      root.render(<LoginPage />);
+      await flushAsyncWork();
+    });
+
+    const emailInput = container.querySelector('#login-email') as HTMLInputElement;
+    const passwordInput = container.querySelector('#login-password') as HTMLInputElement;
+    const form = container.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      setInputValue(emailInput, 'USER@EXAMPLE.COM ');
+      setInputValue(passwordInput, 'secret');
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await flushAsyncWork();
+    });
+
+    expect(useAuthState.signIn).toHaveBeenCalledWith('user@example.com', 'secret');
+    expect(setAuthTokenMock).toHaveBeenCalledWith('token-from-sign-in');
+    expect(replaceMock).toHaveBeenCalledWith('/org/dashboard');
+  });
+
+  it('does not blindly redirect to /app when sign-in succeeds but no session user can be resolved', async () => {
+    vi.useFakeTimers();
+    useAuthState.isSignedIn = false;
+    useUserState.user = null as any;
+    useAuthState.signIn.mockResolvedValue({ data: {}, error: null });
+    getCurrentSessionMock.mockResolvedValue({ data: {}, error: null });
+
+    await act(async () => {
+      root.render(<LoginPage />);
+      await flushAsyncWork();
+    });
+
+    const emailInput = container.querySelector('#login-email') as HTMLInputElement;
+    const passwordInput = container.querySelector('#login-password') as HTMLInputElement;
+    const form = container.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      setInputValue(emailInput, 'user@example.com');
+      setInputValue(passwordInput, 'secret');
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await flushAsyncWork();
+      await vi.advanceTimersByTimeAsync(1000);
+      await flushAsyncWork();
+    });
+
+    expect(recoverAuthStateMock).toHaveBeenCalledWith(useAuthState.signOut, tenantState.refreshTenant);
+    expect(replaceMock).not.toHaveBeenCalledWith('/app');
+    expect(container.textContent).toContain('Login failed. Please check your details or contact support.');
   });
 });

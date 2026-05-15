@@ -1,8 +1,11 @@
 import { insforge, insforgeReady } from './client';
 import {
   decodeJwtSession,
+  getAuthResultError,
+  getCurrentAuthSession,
   isInvalidSessionError,
   isJwtExpired,
+  readAuthSessionResult,
   readBearerTokenFromHeaders,
   refreshSessionThroughProxy
 } from './sessionState';
@@ -81,13 +84,7 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
     return { accessToken: refreshed.accessToken, userId };
   }
 
-  // getCurrentSession() was removed in @insforge/sdk 1.2.x; getCurrentUser() is the replacement.
-  const callGetSession = (): Promise<unknown> => {
-    const method = (insforge.auth as any).getCurrentSession;
-    if (typeof method === 'function') return method.call(insforge.auth);
-    return insforge.auth.getCurrentUser();
-  };
-  const result = await callGetSession().catch(async (error) => {
+  const result = await getCurrentAuthSession(insforge.auth as any).catch(async (error) => {
     const attachedSession = getAttachedSession(existingHeaders);
     if (attachedSession && !isInvalidSessionError(error)) {
       insforge.getHttpClient().setAuthToken(attachedSession.accessToken);
@@ -119,7 +116,7 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
     debugAuthBootstrap('ensure-session:missing-result', { reason, hadAuthHeader });
     throw new InsforgeAuthBootstrapError('AUTH_SESSION_MISSING', 'Your session is not available. Please sign in again.');
   }
-  const { data, error } = result as any;
+  const error = getAuthResultError(result);
   if (error) {
     const attachedSession = getAttachedSession(existingHeaders);
     if (attachedSession && !isInvalidSessionError(error)) return attachedSession;
@@ -135,18 +132,7 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
     );
   }
 
-  const session = data?.session ?? null;
-  const token =
-    (typeof session?.accessToken === 'string' && session.accessToken.trim() ? session.accessToken : null) ??
-    ((typeof (result as any)?.accessToken === 'string' && (result as any).accessToken.trim())
-      ? (result as any).accessToken
-      : null);
-  const userId =
-    (typeof session?.user?.id === 'string' && session.user.id.trim() ? session.user.id : null) ??
-    ((typeof (result as any)?.user?.id === 'string' && (result as any).user.id.trim())
-      ? (result as any).user.id
-      : null) ??
-    decodeJwtSession(token).sub;
+  const { accessToken: token, userId } = readAuthSessionResult(result);
 
   if (token && isJwtExpired(token)) {
     const refreshed = await tryProxyRefresh();
