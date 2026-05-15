@@ -63,6 +63,39 @@ export async function getRoleBasedRedirectPath(userId: UUID): Promise<string> {
 
 export type LoginRedirectResult = { path: string; organizationId?: UUID; reason?: string };
 
+type CompanyBillingStatus =
+  | { kind: 'not_found' }
+  | { kind: 'ok' }
+  | { kind: 'redirect'; path: string; reason: string };
+
+/** Checks company status and license, returning a 3-way result for the caller to act on. */
+async function checkCompanyBillingStatus(companyId: UUID): Promise<CompanyBillingStatus> {
+  const { data: company, error: cErr } = await insforge.database
+    .from('companies')
+    .select('id, status')
+    .eq('id', companyId)
+    .maybeSingle();
+  if (cErr || !company) return { kind: 'not_found' };
+  if ((company as { status?: string }).status === 'suspended') {
+    return { kind: 'redirect', path: '/billing/status', reason: 'suspended' };
+  }
+  const { data: licenses } = await insforge.database
+    .from('org_licenses')
+    .select('id, status, end_date')
+    .eq('company_id', companyId)
+    .order('end_date', { ascending: false })
+    .limit(1);
+  const license = Array.isArray(licenses) && licenses.length > 0 ? (licenses[0] as { status: string; end_date: string }) : null;
+  if (license) {
+    const endDate = new Date(license.end_date);
+    const now = new Date();
+    if (license.status === 'suspended' || license.status === 'expired' || endDate < now) {
+      return { kind: 'redirect', path: '/billing/status', reason: license.status === 'suspended' ? 'suspended' : 'expired' };
+    }
+  }
+  return { kind: 'ok' };
+}
+
 /**
  * Resolves post-login redirect: no org → /activate; subscription expired/suspended → /billing/status; else role path.
  * Returns organizationId so the client can set active company before navigating (correct org/tenant for dashboard).
@@ -80,8 +113,13 @@ export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId
     if (preferredOrganizationId) {
       const preferredMembership = membershipRows.find((m) => m.company_id === preferredOrganizationId);
       if (preferredMembership) {
-        const path = ROLE_PATH_MAP[preferredMembership.role] ?? '/app';
-        return { path, organizationId: preferredMembership.company_id };
+        const billing = await checkCompanyBillingStatus(preferredMembership.company_id);
+        if (billing.kind === 'redirect') return { path: billing.path, organizationId: preferredMembership.company_id, reason: billing.reason };
+        if (billing.kind === 'ok') {
+          const path = ROLE_PATH_MAP[preferredMembership.role] ?? '/app';
+          return { path, organizationId: preferredMembership.company_id };
+        }
+        // 'not_found': stored preferred org no longer valid — fall through to best-role logic
       }
     }
 
@@ -98,32 +136,9 @@ export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId
     }
     if (!bestCompanyId) return { path: '/activate', reason: 'no_org' };
 
-    const { data: company, error: cErr } = await insforge.database
-      .from('companies')
-      .select('id, status')
-      .eq('id', bestCompanyId)
-      .maybeSingle();
-    if (cErr || !company) return { path: '/activate', reason: 'no_org' };
-    const companyStatus = (company as { status?: string }).status;
-    if (companyStatus === 'suspended') {
-      return { path: '/billing/status', organizationId: bestCompanyId, reason: 'suspended' };
-    }
-
-    const { data: licenses } = await insforge.database
-      .from('org_licenses')
-      .select('id, status, end_date')
-      .eq('company_id', bestCompanyId)
-      .order('end_date', { ascending: false })
-      .limit(1);
-    const license = Array.isArray(licenses) && licenses.length > 0 ? (licenses[0] as { status: string; end_date: string }) : null;
-    if (license) {
-      const endDate = new Date(license.end_date);
-      const now = new Date();
-      if (license.status === 'suspended' || license.status === 'expired' || endDate < now) {
-        return { path: '/billing/status', organizationId: bestCompanyId, reason: license.status === 'suspended' ? 'suspended' : 'expired' };
-      }
-    }
-    /* No org_licenses row = legacy company; allow role-based redirect */
+    const billing = await checkCompanyBillingStatus(bestCompanyId);
+    if (billing.kind === 'not_found') return { path: '/activate', reason: 'no_org' };
+    if (billing.kind === 'redirect') return { path: billing.path, organizationId: bestCompanyId, reason: billing.reason };
 
     const path = bestRole ? (ROLE_PATH_MAP[bestRole] ?? '/app') : '/app';
     return { path, organizationId: bestCompanyId };

@@ -154,17 +154,25 @@ export function LoginPage() {
       const pathWithReason = reason
         ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`)
         : target;
+      const redirectParam = searchParams.get('redirect');
+      const safeRedirect =
+        redirectParam &&
+        redirectParam.startsWith('/') &&
+        !redirectParam.startsWith('//')
+          ? redirectParam
+          : null;
+      const finalPath = safeRedirect ?? pathWithReason;
       await Promise.race([
         refreshTenant(),
         wait(TENANT_REFRESH_MAX_WAIT_MS)
       ]);
-      redirectToPath(pathWithReason);
+      redirectToPath(finalPath);
     } catch {
       await recoverAuthState(signOut, refreshTenant);
       setRedirectError(LOGIN_FAILED_MESSAGE);
       setRedirecting(false);
     }
-  }, [refreshTenant, setActiveCompanyId, signOut]);
+  }, [refreshTenant, searchParams, setActiveCompanyId, signOut]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user?.id) return;

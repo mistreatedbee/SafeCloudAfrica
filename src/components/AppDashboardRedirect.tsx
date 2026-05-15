@@ -9,6 +9,6 @@ import { getDashboardRoute } from '../api/services/platformAdminService';
  */
 export function AppDashboardRedirect() {
   const { activeRole } = useTenant();
-  const path = activeRole ? getDashboardRoute(activeRole) : '/org/dashboard';
+  const path = getDashboardRoute(activeRole ?? '');
   return <Navigate to={path} replace />;
 }
