@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -12,8 +12,7 @@ import {
   MessageSquareTextIcon,
   XIcon,
   ShieldCheckIcon,
-  ActivityIcon,
-  KeyIcon
+  ActivityIcon
 } from 'lucide-react';
 
 const superAdminNav: { name: string; path: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -28,7 +27,6 @@ const superAdminNav: { name: string; path: string; icon: React.ComponentType<{ c
   { name: 'Module Requests', path: '/super-admin/module-requests', icon: ToggleLeftIcon },
   { name: 'Platform Audit Logs', path: '/super-admin/audit-logs', icon: FileTextIcon },
   { name: 'Platform health', path: '/super-admin/platform-health', icon: ActivityIcon },
-  { name: 'Auth Settings', path: '/super-admin/auth-config', icon: KeyIcon },
   { name: 'Support Mode', path: '/super-admin/support-mode', icon: HeadphonesIcon }
 ];
 

@@ -19,7 +19,7 @@ const DEFAULT_COUNTRY = 'South Africa';
 
 export function ActivateLicensePage() {
   const navigate = useNavigate();
-  const { isSignedIn, signOut } = useAuth();
+  const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
   const { setActiveCompanyId, refreshTenant } = useTenant();
 
@@ -93,13 +93,10 @@ export function ActivateLicensePage() {
           setSubmitting(false);
           return;
         }
-        const { data: authCfg } = await insforge.auth.getPublicAuthConfig();
-        const isLinkMode = authCfg?.verifyEmailMethod === 'link';
-        const { data: signUpData, error } = await insforge.auth.signUp({
+        const { error } = await insforge.auth.signUp({
           email,
           password,
-          name: primaryContactName.trim(),
-          ...(isLinkMode ? { redirectTo: window.location.origin } : {}),
+          options: { data: { full_name: primaryContactName.trim() } }
         });
         if (error) {
           if (error.message?.toLowerCase().includes('already registered') || error.message?.toLowerCase().includes('already exists')) {
@@ -107,11 +104,6 @@ export function ActivateLicensePage() {
           } else {
             setSubmitError(error.message ?? 'Could not create account.');
           }
-          setSubmitting(false);
-          return;
-        }
-        if ((signUpData as any)?.requireEmailVerification) {
-          setSubmitError(`A verification email has been sent to ${email}. Please verify your email, then return to this page and sign in to continue activation.`);
           setSubmitting(false);
           return;
         }

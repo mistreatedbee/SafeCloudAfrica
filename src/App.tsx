@@ -117,7 +117,6 @@ import { SuperAdminSupportTicketsPage } from './pages/admin/superadmin/SuperAdmi
 import { SuperAdminChatbotLogsPage } from './pages/admin/superadmin/SuperAdminChatbotLogsPage';
 import { SuperAdminChatbotConversationDetailPage } from './pages/admin/superadmin/SuperAdminChatbotConversationDetailPage';
 import { SuperAdminLicenseRequestsPage, SuperAdminModuleRequestsPage } from './pages/admin/superadmin/SuperAdminCategoryRequestsPage';
-import { SuperAdminAuthConfigPage } from './pages/admin/superadmin/SuperAdminAuthConfigPage';
 import { OwnerDashboardPage } from './pages/owner/OwnerDashboardPage';
 import { OwnerOnboardingWizardPage } from './pages/owner/OwnerOnboardingWizardPage';
 import { EmployeeDashboardPage } from './pages/employee/EmployeeDashboardPage';
@@ -227,7 +226,6 @@ export function App() {
             <Route path="license-requests" element={<SuperAdminLicenseRequestsPage />} />
             <Route path="module-requests" element={<SuperAdminModuleRequestsPage />} />
             <Route path="support-tickets" element={<SuperAdminSupportTicketsPage />} />
-            <Route path="auth-config" element={<SuperAdminAuthConfigPage />} />
             <Route path="support-mode" element={<SuperAdminSupportModePage />} />
             <Route path="*" element={<Navigate to="overview" replace />} />
           </Route>
