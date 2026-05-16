@@ -29,13 +29,7 @@ export function RequireWorkspace({ children }: { children: React.ReactElement })
     );
   }
   if (isPlatformAdmin) return <Navigate to="/super-admin/overview" replace />;
-  if (!memberships || memberships.length === 0) {
-    try {
-      const t = sessionStorage.getItem('sca_pending_invite_token');
-      if (t) return <Navigate to={`/invite/accept?token=${encodeURIComponent(t)}`} replace />;
-    } catch {}
-    return <Navigate to="/activate?reason=no_org" replace />;
-  }
+  if (!memberships || memberships.length === 0) return <Navigate to="/activate?reason=no_org" replace />;
 
   return children;
 }

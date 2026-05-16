@@ -126,19 +126,12 @@ export function InviteAcceptPage() {
         if (cancelled) return;
         setActiveCompanyId(membership.company_id);
         await refreshTenant();
-        try { sessionStorage.removeItem('sca_pending_invite_token'); } catch {}
         setSuccess(true);
         setTimeout(() => {
           navigate(getDashboardRoute(membership.role), { replace: true });
         }, 900);
       } catch (err: any) {
-        if (!cancelled) {
-          const msg = String(err?.message ?? '');
-          if (msg.includes('INVITE_ACCEPTED') || msg.includes('INVITE_INVALID')) {
-            try { sessionStorage.removeItem('sca_pending_invite_token'); } catch {}
-          }
-          setError(toUserInviteMessage(msg || 'Failed to accept invite.'));
-        }
+        if (!cancelled) setError(toUserInviteMessage(err?.message || 'Failed to accept invite.'));
       } finally {
         if (!cancelled) setAccepting(false);
       }

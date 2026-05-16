@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const authMock = vi.hoisted(() => ({
-  getCurrentSession: vi.fn(),
-  getCurrentUser: vi.fn()
+  getCurrentSession: vi.fn()
 }));
 
 const httpMock = vi.hoisted(() => ({
@@ -37,7 +36,6 @@ describe('ensureInsforgeSession', () => {
 
   beforeEach(() => {
     authMock.getCurrentSession.mockReset();
-    authMock.getCurrentUser.mockReset();
     httpMock.getHeaders.mockReset();
     httpMock.setAuthToken.mockReset();
     httpMock.anonKey = createJwt({ sub: 'anon-user' });
@@ -80,47 +78,6 @@ describe('ensureInsforgeSession', () => {
 
     expect(httpMock.setAuthToken).toHaveBeenCalledWith(userToken);
     expect(guarded).toHaveBeenCalledTimes(1);
-  });
-
-  it('uses getCurrentUser when getCurrentSession is not available', async () => {
-    const userToken = createJwt({ sub: 'user-1' });
-    const originalGetCurrentSession = authMock.getCurrentSession;
-    delete (authMock as any).getCurrentSession;
-    authMock.getCurrentUser.mockResolvedValue({
-      data: { accessToken: userToken, user: { id: 'user-1' } },
-      error: null
-    });
-    httpMock.getHeaders.mockReturnValue({});
-
-    const { ensureInsforgeSession } = await import('./ensureSession');
-    await expect(ensureInsforgeSession({ reason: 'test' })).resolves.toEqual({
-      accessToken: userToken,
-      userId: 'user-1'
-    });
-    expect(httpMock.setAuthToken).toHaveBeenCalledWith(userToken);
-    expect(authMock.getCurrentUser).toHaveBeenCalledTimes(1);
-
-    authMock.getCurrentSession = originalGetCurrentSession;
-  });
-
-  it('uses the attached token when getCurrentUser returns only a user object', async () => {
-    const userToken = createJwt({ sub: 'user-1' });
-    const originalGetCurrentSession = authMock.getCurrentSession;
-    delete (authMock as any).getCurrentSession;
-    authMock.getCurrentUser.mockResolvedValue({
-      data: { user: { id: 'user-1' } },
-      error: null
-    });
-    httpMock.getHeaders.mockReturnValue({ Authorization: `Bearer ${userToken}` });
-
-    const { ensureInsforgeSession } = await import('./ensureSession');
-    await expect(ensureInsforgeSession({ reason: 'test' })).resolves.toEqual({
-      accessToken: userToken,
-      userId: 'user-1'
-    });
-    expect(httpMock.setAuthToken).toHaveBeenCalledWith(userToken);
-
-    authMock.getCurrentSession = originalGetCurrentSession;
   });
 
   it('refreshes an expired stored session before attaching it', async () => {

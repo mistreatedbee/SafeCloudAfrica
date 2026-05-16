@@ -3,17 +3,6 @@ export type JwtSessionClaims = {
   expMs: number | null;
 };
 
-export type AuthSessionSnapshot = {
-  accessToken: string | null;
-  userId: string | null;
-  user?: unknown;
-};
-
-type ReadAuthSessionOptions = {
-  fallbackAccessToken?: string | null;
-  allowStoredTokenFallback?: boolean;
-};
-
 export type RefreshSessionResult =
   | { ok: true; accessToken: string; userId: string | null; user?: unknown }
   | { ok: false; reason: 'invalid_session' | 'refresh_unavailable' | 'transient_failure'; status?: number; error?: unknown };
@@ -74,94 +63,6 @@ export function saveStoredSession(accessToken: string, user?: unknown): void {
   } catch {
     // ignore storage errors
   }
-}
-
-function firstNonEmptyString(...values: unknown[]): string | null {
-  for (const value of values) {
-    if (typeof value !== 'string') continue;
-    const trimmed = value.trim();
-    if (trimmed) return trimmed;
-  }
-  return null;
-}
-
-function getObjectId(value: unknown): string | null {
-  if (!value || typeof value !== 'object') return null;
-  return firstNonEmptyString(
-    (value as any).id,
-    (value as any).userId,
-    (value as any).user_id,
-    (value as any).sub
-  );
-}
-
-export function readAuthSessionResult(result: unknown, options: ReadAuthSessionOptions = {}): AuthSessionSnapshot {
-  const session = (result as any)?.data?.session;
-  const data = (result as any)?.data;
-  // SDK 1.2.x can return raw response in data: { data: { accessToken, user } }.
-  const fallbackAccessToken =
-    typeof options.fallbackAccessToken === 'string' && options.fallbackAccessToken.trim()
-      ? options.fallbackAccessToken
-      : options.allowStoredTokenFallback
-        ? readStoredAccessToken()
-        : null;
-  const accessToken = firstNonEmptyString(
-    session?.accessToken,
-    session?.access_token,
-    session?.token,
-    data?.accessToken,
-    data?.access_token,
-    data?.token,
-    data?.jwt,
-    (result as any)?.accessToken,
-    (result as any)?.access_token,
-    (result as any)?.token,
-    (result as any)?.jwt,
-    fallbackAccessToken
-  );
-  const user = session?.user ?? data?.user ?? (result as any)?.user ?? null;
-  const userId =
-    getObjectId(user) ??
-    firstNonEmptyString(
-      session?.userId,
-      session?.user_id,
-      data?.userId,
-      data?.user_id,
-      data?.sub,
-      (result as any)?.userId,
-      (result as any)?.user_id,
-      (result as any)?.sub
-    ) ??
-    decodeJwtSession(accessToken).sub;
-  return { accessToken, userId, user };
-}
-
-export function hasMalformedAuthSessionResult(result: unknown): boolean {
-  if (!result || typeof result !== 'object') return true;
-  if (
-    !('data' in (result as Record<string, unknown>)) &&
-    !('error' in (result as Record<string, unknown>)) &&
-    !('accessToken' in (result as Record<string, unknown>)) &&
-    !('access_token' in (result as Record<string, unknown>)) &&
-    !('token' in (result as Record<string, unknown>))
-  ) {
-    return true;
-  }
-  const data = (result as any)?.data;
-  if (data == null) return false;
-  return typeof data !== 'object';
-}
-
-export function getAuthResultError(result: unknown): unknown {
-  return (result as any)?.error ?? null;
-}
-
-export function getCurrentAuthSession(auth: {
-  getCurrentSession?: () => Promise<unknown>;
-  getCurrentUser: () => Promise<unknown>;
-}): Promise<unknown> {
-  if (typeof auth.getCurrentSession === 'function') return auth.getCurrentSession.call(auth);
-  return auth.getCurrentUser.call(auth);
 }
 
 function clearCsrfTokenCookie(): void {
@@ -248,7 +149,18 @@ export function isInvalidSessionError(error: unknown): boolean {
 }
 
 function parseRefreshPayload(payload: unknown): { accessToken: string | null; userId: string | null; user?: unknown } {
-  return readAuthSessionResult(payload);
+  const accessToken =
+    typeof (payload as any)?.accessToken === 'string' && (payload as any).accessToken.trim()
+      ? (payload as any).accessToken
+      : typeof (payload as any)?.data?.session?.accessToken === 'string' && (payload as any).data.session.accessToken.trim()
+        ? (payload as any).data.session.accessToken
+        : null;
+  const user = (payload as any)?.user ?? (payload as any)?.data?.session?.user ?? null;
+  const userId =
+    typeof user?.id === 'string' && user.id.trim()
+      ? user.id
+      : decodeJwtSession(accessToken).sub;
+  return { accessToken, userId, user };
 }
 
 export async function refreshSessionThroughProxy(input: {
@@ -287,3 +199,4 @@ export async function refreshSessionThroughProxy(input: {
   saveStoredSession(parsed.accessToken, parsed.user);
   return { ok: true, accessToken: parsed.accessToken, userId: parsed.userId, user: parsed.user };
 }
+

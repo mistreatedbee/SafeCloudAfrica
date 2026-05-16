@@ -1,11 +1,8 @@
 import { insforge, insforgeReady } from './client';
 import {
   decodeJwtSession,
-  getAuthResultError,
-  getCurrentAuthSession,
   isInvalidSessionError,
   isJwtExpired,
-  readAuthSessionResult,
   readBearerTokenFromHeaders,
   refreshSessionThroughProxy
 } from './sessionState';
@@ -84,7 +81,7 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
     return { accessToken: refreshed.accessToken, userId };
   }
 
-  const result = await getCurrentAuthSession(insforge.auth as any).catch(async (error) => {
+  const result = await insforge.auth.getCurrentSession().catch(async (error) => {
     const attachedSession = getAttachedSession(existingHeaders);
     if (attachedSession && !isInvalidSessionError(error)) {
       insforge.getHttpClient().setAuthToken(attachedSession.accessToken);
@@ -116,7 +113,7 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
     debugAuthBootstrap('ensure-session:missing-result', { reason, hadAuthHeader });
     throw new InsforgeAuthBootstrapError('AUTH_SESSION_MISSING', 'Your session is not available. Please sign in again.');
   }
-  const error = getAuthResultError(result);
+  const { data, error } = result;
   if (error) {
     const attachedSession = getAttachedSession(existingHeaders);
     if (attachedSession && !isInvalidSessionError(error)) return attachedSession;
@@ -132,9 +129,18 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
     );
   }
 
-  const { accessToken: token, userId } = readAuthSessionResult(result, {
-    fallbackAccessToken: getAttachedUserToken(existingHeaders)
-  });
+  const session = data?.session ?? null;
+  const token =
+    (typeof session?.accessToken === 'string' && session.accessToken.trim() ? session.accessToken : null) ??
+    ((typeof (result as any)?.accessToken === 'string' && (result as any).accessToken.trim())
+      ? (result as any).accessToken
+      : null);
+  const userId =
+    (typeof session?.user?.id === 'string' && session.user.id.trim() ? session.user.id : null) ??
+    ((typeof (result as any)?.user?.id === 'string' && (result as any).user.id.trim())
+      ? (result as any).user.id
+      : null) ??
+    decodeJwtSession(token).sub;
 
   if (token && isJwtExpired(token)) {
     const refreshed = await tryProxyRefresh();
@@ -144,17 +150,6 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
   if (!token || !userId || isJwtExpired(token)) {
     const attachedSession = getAttachedSession(existingHeaders);
     if (attachedSession) return attachedSession;
-    // getCurrentUser() may have internally called refreshSession() which called setAuthToken().
-    // existingHeaders was captured before that call, so re-read the live HTTP client headers.
-    const liveHeaders = (() => {
-      try { return insforge.getHttpClient().getHeaders(); } catch { return {}; }
-    })();
-    const liveSession = getAttachedSession(liveHeaders);
-    if (liveSession) {
-      insforge.getHttpClient().setAuthToken(liveSession.accessToken);
-      debugAuthBootstrap('ensure-session:live-headers-fallback', { reason, hadAuthHeader, tokenAttached: true });
-      return liveSession;
-    }
     // Keep message user-friendly; UI can prompt a re-login.
     debugAuthBootstrap('ensure-session:missing-token-or-user', {
       reason,

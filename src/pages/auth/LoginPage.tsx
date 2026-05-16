@@ -6,24 +6,16 @@ import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY } from '../../auth/Aut
 import { formatAuthError } from '../../auth/authMessages';
 import { recoverAuthState } from '../../auth/recoverAuthState';
 import { useTenant } from '../../tenant/TenantContext';
-import { ensureInsforgeSession, InsforgeAuthBootstrapError } from '../../api/insforge/ensureSession';
+import { ensureInsforgeSession } from '../../api/insforge/ensureSession';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getLoginRedirectPath } from '../../api/services/platformAdminService';
 import { insforge, insforgeReady } from '../../api/insforge/client';
-import {
-  getCurrentAuthSession,
-  isInvalidSessionError,
-  readAuthSessionResult,
-  saveStoredSession
-} from '../../api/insforge/sessionState';
 import type { UUID } from '../../api/models/entities';
 
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
-const LOGIN_SETUP_MESSAGE = 'You are signed in, but we could not finish opening your dashboard. Please try again.';
 const ACTIVE_COMPANY_KEY = 'sca_active_company_id_v3';
 const SESSION_RESOLVE_RETRIES = 4;
 const SESSION_RESOLVE_DELAY_MS = 200;
 const TENANT_REFRESH_MAX_WAIT_MS = 1500;
-const AUTH_BOOTSTRAP_DEBUG = (import.meta as any)?.env?.VITE_AUTH_BOOTSTRAP_DEBUG === '1';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -31,44 +23,46 @@ function wait(ms: number): Promise<void> {
   });
 }
 
+function readJwtSub(token: string | null | undefined): string | null {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
+    const parsed = JSON.parse(atob(padded)) as { sub?: string };
+    return typeof parsed.sub === 'string' && parsed.sub.trim() ? parsed.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+function readAuthSession(result: unknown): { accessToken: string | null; userId: string | null } {
+  const session = (result as any)?.data?.session;
+  const topLevelToken = (result as any)?.accessToken;
+  const topLevelUserId = (result as any)?.user?.id;
+  const accessToken =
+    typeof session?.accessToken === 'string' && session.accessToken.trim()
+      ? session.accessToken
+      : typeof topLevelToken === 'string' && topLevelToken.trim()
+        ? topLevelToken
+        : null;
+  const userId =
+    typeof session?.user?.id === 'string' && session.user.id.trim()
+      ? session.user.id
+      : typeof topLevelUserId === 'string' && topLevelUserId.trim()
+        ? topLevelUserId
+        : readJwtSub(accessToken);
+  return { accessToken, userId };
+}
+
 function redirectToPath(path: string): void {
   window.location.replace(path);
 }
 
-function debugLogin(event: string, details?: Record<string, unknown>): void {
-  if (!AUTH_BOOTSTRAP_DEBUG) return;
-  console.debug('[login-bootstrap]', event, details ?? {});
-}
-
-async function resolveUserFromBearerToken(accessToken: string): Promise<{ userId: UUID; user: unknown } | null> {
-  const response = await fetch('/api/auth/me', {
-    method: 'GET',
-    credentials: 'include',
-    cache: 'no-store',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-      Pragma: 'no-cache',
-      Expires: '0'
-    }
-  });
-  if (!response.ok) return null;
-  const payload = await response.json().catch(() => null);
-  const user = (payload as any)?.user ?? payload;
-  const userId =
-    typeof user?.id === 'string' && user.id.trim()
-      ? user.id.trim()
-      : typeof (payload as any)?.user_id === 'string' && (payload as any).user_id.trim()
-        ? (payload as any).user_id.trim()
-        : typeof (payload as any)?.id === 'string' && (payload as any).id.trim()
-          ? (payload as any).id.trim()
-          : null;
-  return userId ? { userId: userId as UUID, user } : null;
-}
-
 export function LoginPage() {
-  const { isLoaded, isSignedIn, signOut } = useAuth();
-  const { user, setUser } = useUser();
+  const { isLoaded, isSignedIn, signIn, signOut } = useAuth();
+  const { user } = useUser();
   const { setActiveCompanyId, refreshTenant } = useTenant();
   const [searchParams] = useSearchParams();
   const [redirecting, setRedirecting] = useState(false);
@@ -99,40 +93,24 @@ export function LoginPage() {
   }, [sessionExpiredMessage]);
 
   const resolveSignedInUserId = React.useCallback(async (initialResult: unknown): Promise<UUID | null> => {
-    const initialSession = readAuthSessionResult(initialResult, { allowStoredTokenFallback: true });
+    const initialSession = readAuthSession(initialResult);
     if (initialSession.accessToken) {
       insforge.getHttpClient().setAuthToken(initialSession.accessToken);
-      saveStoredSession(initialSession.accessToken, initialSession.user);
-    }
-    if (initialSession.user && typeof initialSession.user === 'object') {
-      setUser(initialSession.user as any);
     }
     if (initialSession.userId) return initialSession.userId as UUID;
-    if (initialSession.accessToken) {
-      const resolvedUser = await resolveUserFromBearerToken(initialSession.accessToken).catch(() => null);
-      if (resolvedUser) {
-        saveStoredSession(initialSession.accessToken, resolvedUser.user);
-        setUser(resolvedUser.user as any);
-        return resolvedUser.userId;
-      }
-    }
 
     for (let attempt = 0; attempt < SESSION_RESOLVE_RETRIES; attempt += 1) {
       if (attempt > 0) await wait(SESSION_RESOLVE_DELAY_MS);
-      const currentSessionResult = await getCurrentAuthSession(insforge.auth as any).catch(() => null);
-      const nextSession = readAuthSessionResult(currentSessionResult, { allowStoredTokenFallback: true });
+      const currentSessionResult = await insforge.auth.getCurrentSession().catch(() => null);
+      const nextSession = readAuthSession(currentSessionResult);
       if (nextSession.accessToken) {
         insforge.getHttpClient().setAuthToken(nextSession.accessToken);
-        saveStoredSession(nextSession.accessToken, nextSession.user);
-      }
-      if (nextSession.user && typeof nextSession.user === 'object') {
-        setUser(nextSession.user as any);
       }
       if (nextSession.userId) return nextSession.userId as UUID;
     }
 
     return null;
-  }, [setUser]);
+  }, []);
 
   const redirectAfterLogin = React.useCallback(async (resolvedUserId: UUID) => {
     setAuthError(null);
@@ -166,37 +144,20 @@ export function LoginPage() {
       const pathWithReason = reason
         ? (target.includes('?') ? `${target}&reason=${reason}` : `${target}?reason=${reason}`)
         : target;
-      const redirectParam = searchParams.get('redirect');
-      const safeRedirect =
-        redirectParam &&
-        redirectParam.startsWith('/') &&
-        !redirectParam.startsWith('//')
-          ? redirectParam
-          : null;
-      const finalPath = safeRedirect ?? pathWithReason;
       await Promise.race([
         refreshTenant(),
         wait(TENANT_REFRESH_MAX_WAIT_MS)
       ]);
-      redirectToPath(finalPath);
-    } catch (error) {
-      debugLogin('redirect-after-login:error', {
-        invalidSession: isInvalidSessionError(error),
-        bootstrapError: error instanceof InsforgeAuthBootstrapError,
-        message: String((error as any)?.message ?? error ?? '')
-      });
-      if (error instanceof InsforgeAuthBootstrapError || isInvalidSessionError(error)) {
-        await recoverAuthState(signOut, refreshTenant);
-        setRedirectError(LOGIN_FAILED_MESSAGE);
-      } else {
-        setRedirectError(LOGIN_SETUP_MESSAGE);
-      }
+      redirectToPath(pathWithReason);
+    } catch {
+      await recoverAuthState(signOut, refreshTenant);
+      setRedirectError(LOGIN_FAILED_MESSAGE);
       setRedirecting(false);
     }
-  }, [refreshTenant, searchParams, setActiveCompanyId, signOut]);
+  }, [refreshTenant, setActiveCompanyId, signOut]);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !user?.id || redirecting || submitting) return;
+    if (!isLoaded || !isSignedIn || !user?.id) return;
     let cancelled = false;
     (async () => {
       try {
@@ -209,33 +170,14 @@ export function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, redirectAfterLogin, redirecting, submitting, user?.id]);
-
-  // When autoRefreshToken=false, the SDK won't flip isSignedIn after a proxy refresh succeeds.
-  // This effect restores the session from the stored/refreshed token so the redirect fires
-  // without requiring the user to manually re-enter their password.
-  useEffect(() => {
-    if (!isLoaded || isSignedIn || redirecting || submitting) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        await insforgeReady;
-        const session = await ensureInsforgeSession({ reason: 'login:auto-restore' });
-        if (cancelled || !session.userId) return;
-        await redirectAfterLogin(session.userId as UUID);
-      } catch {
-        // No recoverable session — show login form normally.
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [isLoaded, isSignedIn, redirecting, submitting, redirectAfterLogin]);
+  }, [isLoaded, isSignedIn, redirectAfterLogin, user?.id]);
 
   const activated = searchParams.get('activated') === '1';
 
   const handleSignInError = (error: unknown) => {
     setRedirecting(false);
     setRedirectError(null);
-    setAuthError(formatAuthError(error));
+    setAuthError(`${LOGIN_FAILED_MESSAGE} ${formatAuthError(error)}`);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -254,32 +196,22 @@ export function LoginPage() {
 
     try {
       await insforgeReady;
-      debugLogin('sign-in:start', { email: normalizedEmail });
-      const signInResult = await (insforge.auth as any).signInWithPassword({
-        email: normalizedEmail,
-        password
-      });
+      const signInResult = await signIn(normalizedEmail, password);
       const error = (signInResult as any)?.error ?? null;
 
       if (error) {
-        debugLogin('sign-in:error', {
-          message: String((error as any)?.message ?? error ?? ''),
-          status: (error as any)?.status ?? (error as any)?.statusCode
-        });
         handleSignInError(error);
         return;
       }
 
       const resolvedUserId = await resolveSignedInUserId(signInResult);
       if (resolvedUserId) {
-        debugLogin('sign-in:resolved-user', { hasUserId: true });
         await redirectAfterLogin(resolvedUserId);
         return;
       }
 
-      debugLogin('sign-in:missing-user');
-      await recoverAuthState(signOut, refreshTenant);
-      setRedirectError(LOGIN_FAILED_MESSAGE);
+      setRedirecting(true);
+      redirectToPath('/app');
     } catch (error) {
       handleSignInError(error);
     } finally {

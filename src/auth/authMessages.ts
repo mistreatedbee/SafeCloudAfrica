@@ -18,31 +18,10 @@ export function formatAuthError(err: unknown): string {
   if (lowered.includes('user') && lowered.includes('exists')) {
     return 'This email is already registered. Please sign in instead.';
   }
-  if (
-    (lowered.includes('invalid') && (lowered.includes('password') || lowered.includes('credentials'))) ||
-    lowered.includes('wrong password') ||
-    lowered.includes('invalid login')
-  ) {
+  if (lowered.includes('invalid') && (lowered.includes('password') || lowered.includes('credentials'))) {
     return 'Incorrect email or password. Please check and try again.';
   }
-  if (
-    lowered.includes('email not confirmed') ||
-    lowered.includes('not verified') ||
-    lowered.includes('confirm your email') ||
-    lowered.includes('email confirmation')
-  ) {
-    return 'Your account has not been verified. Please check your email for a verification link.';
-  }
-  if (lowered.includes('user not found') || lowered.includes('no user found') || (lowered.includes('user') && lowered.includes('not found'))) {
-    return 'No account found with that email address. Please register first.';
-  }
-  if (lowered.includes('deactivated') || lowered.includes('disabled') || lowered.includes('banned')) {
-    return 'This account has been deactivated. Please contact support.';
-  }
-  if (statusCode === 401) return 'Session expired or not authorised. Please sign in again.';
-  if (statusCode === 400 && (lowered.includes('invalid') || lowered.includes('credentials'))) {
-    return 'Incorrect email or password. Please check and try again.';
-  }
+  if (statusCode === 401) return 'You are not authorised. Please sign in again.';
   if (statusCode === 502 || statusCode === 503 || statusCode === 504) {
     return 'Service temporarily unavailable. Please try again.';
   }

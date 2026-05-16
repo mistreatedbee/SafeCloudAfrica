@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { KeyIcon, PlusIcon, Trash2Icon, Loader2Icon, CheckCircle2Icon, AlertTriangleIcon } from 'lucide-react';
+import { KeyIcon, PlusIcon, Trash2Icon, Loader2Icon, CheckCircle2Icon } from 'lucide-react';
 import { readStoredAccessToken } from '../../../api/insforge/sessionState';
 import { getNoStoreHeaders } from '../../../api/liveData';
 
@@ -42,7 +42,6 @@ export function SuperAdminAuthConfigPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [fixingNow, setFixingNow] = useState(false);
   const [newUrl, setNewUrl] = useState('');
   const [urlError, setUrlError] = useState('');
 
@@ -113,23 +112,6 @@ export function SuperAdminAuthConfigPage() {
 
   if (!config) return null;
 
-  const isBroken =
-    config.verifyEmailMethod === 'link' &&
-    (!config.allowedRedirectUrls || config.allowedRedirectUrls.length === 0);
-
-  const handleFixNow = async () => {
-    setFixingNow(true);
-    try {
-      await saveAuthConfig({ verifyEmailMethod: 'code' });
-      setConfig((prev) => prev ? { ...prev, verifyEmailMethod: 'code' } : prev);
-    } catch (err) {
-      setSaveError((err as Error).message);
-      setSaveStatus('error');
-    } finally {
-      setFixingNow(false);
-    }
-  };
-
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 max-w-2xl">
       <div className="flex items-center gap-2">
@@ -139,33 +121,6 @@ export function SuperAdminAuthConfigPage() {
       <p className="text-sm text-charcoal-500">
         Manage InsForge authentication settings. Changes apply immediately to all signup and password-reset flows.
       </p>
-
-      {isBroken && (
-        <div className="rounded-xl border border-critical/40 bg-critical/10 p-4 space-y-3">
-          <div className="flex items-start gap-2">
-            <AlertTriangleIcon className="w-5 h-5 text-critical shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-critical">Registration is broken</p>
-              <p className="text-sm text-critical/90 mt-0.5">
-                Email verification is set to <strong>link</strong> mode but no redirect URLs are
-                allowlisted. Every signup attempt fails with 400. Click below to fix immediately.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleFixNow}
-            disabled={fixingNow}
-            className="inline-flex items-center gap-2 rounded-lg bg-critical px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 disabled:pointer-events-none"
-          >
-            {fixingNow ? (
-              <><Loader2Icon className="w-4 h-4 animate-spin" /> Applying fix…</>
-            ) : (
-              'Switch to code (OTP) verification →'
-            )}
-          </button>
-        </div>
-      )}
 
       {/* Email verification method */}
       <div className="rounded-xl border border-surface-300 bg-white p-5 shadow-sm space-y-4">

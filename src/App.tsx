@@ -1,6 +1,4 @@
-import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { useAuth } from '@insforge/react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { RequirePlatformAdmin } from './auth/RequirePlatformAdmin';
 import { RequireWorkspace } from './auth/RequireWorkspace';
 import { RequireSignedIn } from './auth/RequireSignedIn';
@@ -136,20 +134,6 @@ import { DraftExperience } from './session/DraftExperience';
 import { SessionManagerProvider } from './session/SessionManagerProvider';
 import { IdentityProvider } from './hooks/useIdentity';
 import { FloatingSupportChat } from './components/support/FloatingSupportChat';
-
-function PendingInviteRedirector() {
-  const { isLoaded, isSignedIn } = useAuth();
-  const navigate = useNavigate();
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    try {
-      const t = sessionStorage.getItem('sca_pending_invite_token');
-      if (t) navigate(`/invite/accept?token=${encodeURIComponent(t)}`, { replace: true });
-    } catch {}
-  }, [isLoaded, isSignedIn, navigate]);
-  return null;
-}
-
 export function App() {
   return (
     <BrowserRouter>
@@ -158,7 +142,6 @@ export function App() {
           <DraftManagerProvider>
             <SessionManagerProvider>
               <AuthSessionListener />
-              <PendingInviteRedirector />
               <DraftExperience />
               <Routes>
           {/* Public */}

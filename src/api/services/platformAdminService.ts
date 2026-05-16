@@ -63,39 +63,6 @@ export async function getRoleBasedRedirectPath(userId: UUID): Promise<string> {
 
 export type LoginRedirectResult = { path: string; organizationId?: UUID; reason?: string };
 
-type CompanyBillingStatus =
-  | { kind: 'not_found' }
-  | { kind: 'ok' }
-  | { kind: 'redirect'; path: string; reason: string };
-
-/** Checks company status and license, returning a 3-way result for the caller to act on. */
-async function checkCompanyBillingStatus(companyId: UUID): Promise<CompanyBillingStatus> {
-  const { data: company, error: cErr } = await insforge.database
-    .from('companies')
-    .select('id, status')
-    .eq('id', companyId)
-    .maybeSingle();
-  if (cErr || !company) return { kind: 'not_found' };
-  if ((company as { status?: string }).status === 'suspended') {
-    return { kind: 'redirect', path: '/billing/status', reason: 'suspended' };
-  }
-  const { data: licenses } = await insforge.database
-    .from('org_licenses')
-    .select('id, status, end_date')
-    .eq('company_id', companyId)
-    .order('end_date', { ascending: false })
-    .limit(1);
-  const license = Array.isArray(licenses) && licenses.length > 0 ? (licenses[0] as { status: string; end_date: string }) : null;
-  if (license) {
-    const endDate = new Date(license.end_date);
-    const now = new Date();
-    if (license.status === 'suspended' || license.status === 'expired' || endDate < now) {
-      return { kind: 'redirect', path: '/billing/status', reason: license.status === 'suspended' ? 'suspended' : 'expired' };
-    }
-  }
-  return { kind: 'ok' };
-}
-
 /**
  * Resolves post-login redirect: no org → /activate; subscription expired/suspended → /billing/status; else role path.
  * Returns organizationId so the client can set active company before navigating (correct org/tenant for dashboard).
@@ -103,25 +70,18 @@ async function checkCompanyBillingStatus(companyId: UUID): Promise<CompanyBillin
 export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId?: UUID | null): Promise<LoginRedirectResult> {
   try {
     await ensureInsforgeSession({ reason: 'platform-admin:get-login-redirect' });
-    const { data: membershipData, error: mErr } = await insforge.database
+    const { data: memberships, error: mErr } = await insforge.database
       .from('company_memberships')
-      .select('company_id, role, status')
+      .select('company_id, role')
       .eq('user_id', userId);
-    if (mErr) return { path: '/activate', reason: 'no_org' };
-    // Mirror TenantContext: treat ACTIVE, null, and '' as live memberships.
-    const membershipRows = ((membershipData ?? []) as { company_id: UUID; role: string; status?: string | null }[])
-      .filter((m) => m.status === 'ACTIVE' || m.status == null || m.status === '');
-    if (!membershipRows.length) return { path: '/activate', reason: 'no_org' };
+    if (mErr || !memberships?.length) return { path: '/activate', reason: 'no_org' };
+
+    const membershipRows = memberships as { company_id: UUID; role: string }[];
     if (preferredOrganizationId) {
       const preferredMembership = membershipRows.find((m) => m.company_id === preferredOrganizationId);
       if (preferredMembership) {
-        const billing = await checkCompanyBillingStatus(preferredMembership.company_id);
-        if (billing.kind === 'redirect') return { path: billing.path, organizationId: preferredMembership.company_id, reason: billing.reason };
-        if (billing.kind === 'ok') {
-          const path = ROLE_PATH_MAP[preferredMembership.role] ?? '/app';
-          return { path, organizationId: preferredMembership.company_id };
-        }
-        // 'not_found': stored preferred org no longer valid — fall through to best-role logic
+        const path = ROLE_PATH_MAP[preferredMembership.role] ?? '/app';
+        return { path, organizationId: preferredMembership.company_id };
       }
     }
 
@@ -138,9 +98,32 @@ export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId
     }
     if (!bestCompanyId) return { path: '/activate', reason: 'no_org' };
 
-    const billing = await checkCompanyBillingStatus(bestCompanyId);
-    if (billing.kind === 'not_found') return { path: '/activate', reason: 'no_org' };
-    if (billing.kind === 'redirect') return { path: billing.path, organizationId: bestCompanyId, reason: billing.reason };
+    const { data: company, error: cErr } = await insforge.database
+      .from('companies')
+      .select('id, status')
+      .eq('id', bestCompanyId)
+      .maybeSingle();
+    if (cErr || !company) return { path: '/activate', reason: 'no_org' };
+    const companyStatus = (company as { status?: string }).status;
+    if (companyStatus === 'suspended') {
+      return { path: '/billing/status', organizationId: bestCompanyId, reason: 'suspended' };
+    }
+
+    const { data: licenses } = await insforge.database
+      .from('org_licenses')
+      .select('id, status, end_date')
+      .eq('company_id', bestCompanyId)
+      .order('end_date', { ascending: false })
+      .limit(1);
+    const license = Array.isArray(licenses) && licenses.length > 0 ? (licenses[0] as { status: string; end_date: string }) : null;
+    if (license) {
+      const endDate = new Date(license.end_date);
+      const now = new Date();
+      if (license.status === 'suspended' || license.status === 'expired' || endDate < now) {
+        return { path: '/billing/status', organizationId: bestCompanyId, reason: license.status === 'suspended' ? 'suspended' : 'expired' };
+      }
+    }
+    /* No org_licenses row = legacy company; allow role-based redirect */
 
     const path = bestRole ? (ROLE_PATH_MAP[bestRole] ?? '/app') : '/app';
     return { path, organizationId: bestCompanyId };
@@ -166,10 +149,14 @@ export async function ensureMeAsSuperAdmin(): Promise<EnsureSuperAdminResult> {
       return { status: 'auth_failed', error };
     }
     if (isAuthDeniedError(error)) {
-      // RPC may return 403 when the calling user lacks EXECUTE permission (not in the
-      // super-admin allowlist).  Treat this as a no-op rather than an auth failure so
-      // regular users are not signed out immediately after a successful login.
-      return { status: 'compat_ignored' };
+      return {
+        status: 'auth_failed',
+        error: new InsforgeAuthBootstrapError(
+          'AUTH_SESSION_INVALID',
+          'Your session is not available. Please sign in again.',
+          { cause: error }
+        )
+      };
     }
     const msg = getErrorMessage(error).toLowerCase();
     if (
@@ -184,33 +171,7 @@ export async function ensureMeAsSuperAdmin(): Promise<EnsureSuperAdminResult> {
   }
 }
 
-async function checkPlatformAdminViaApi(userId: UUID): Promise<boolean | null> {
-  try {
-    const { accessToken } = await ensureInsforgeSession({ reason: 'platform-admin:api-check' });
-    const response = await fetch('/api/auth/platform-admin', {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Cache-Control': 'no-store'
-      }
-    });
-    if (!response.ok) return null;
-    const data = await response.json().catch(() => null);
-    if (typeof data?.isPlatformAdmin === 'boolean') return data.isPlatformAdmin;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export async function isPlatformAdmin(userId: UUID): Promise<boolean> {
-  // Try the server-side endpoint first — it uses the service role key to bypass RLS on
-  // the platform_admins table, which is not directly queryable by regular users.
-  const apiResult = await checkPlatformAdminViaApi(userId);
-  if (apiResult !== null) return apiResult;
-
-  // Fallback: direct DB query (works when RLS allows own-row SELECT).
   try {
     await ensureInsforgeSession({ reason: 'platform-admin:is-platform-admin' });
     const { data, error } = await insforge.database.from('platform_admins').select('user_id').eq('user_id', userId).maybeSingle();
@@ -218,8 +179,11 @@ export async function isPlatformAdmin(userId: UUID): Promise<boolean> {
     return !!data;
   } catch (err) {
     const msg = getErrorMessage(err);
+    // If the table doesn't exist yet, treat as not a platform admin.
     if (msg.toLowerCase().includes('does not exist')) return false;
-    if (err instanceof InsforgeAuthBootstrapError) throw err;
+    if (err instanceof InsforgeAuthBootstrapError || isAuthDeniedError(err)) {
+      throw err;
+    }
     return false;
   }
 }
