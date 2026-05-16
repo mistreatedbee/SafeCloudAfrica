@@ -194,7 +194,6 @@ export default async function handler(req: any, res: any) {
     await writeUpstreamResponse(res, upstreamRes, method);
   } catch (err: any) {
     const msg = String(err?.name === 'AbortError' ? 'Upstream request timed out' : err?.message ?? err);
-    const debugEnabled = String(req?.headers?.['x-safecloud-debug'] ?? '').trim() === '1';
     logStructuredLine({
       module: MODULE,
       level: 'error',
@@ -204,8 +203,7 @@ export default async function handler(req: any, res: any) {
     res.status(503).json({
       ok: false,
       error: 'Service temporarily unavailable. Please try again.',
-      requestId: started.requestId,
-      ...(debugEnabled ? { debug: msg } : {})
+      requestId: started.requestId
     });
   } finally {
     clearTimeout(t);
