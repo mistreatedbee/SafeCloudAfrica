@@ -97,6 +97,25 @@ describe('api/_insforge-proxy', () => {
     expect(sharedMocks.writeUpstreamResponse).toHaveBeenCalledTimes(1);
   });
 
+  it('passes auth/sessions authentication failures through without converting them to 503', async () => {
+    const { default: handler } = await import('../../../api/insforge-proxy');
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'AUTH_UNAUTHORIZED' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' }
+    }));
+
+    const req = { method: 'POST', query: { path: 'auth/sessions' }, body: { email: 'a', password: 'b' }, headers: {} };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://insforge.example/api/auth/sessions');
+    expect(res.statusCode).toBe(401);
+    expect(res.bodyText).toBe(JSON.stringify({ error: 'AUTH_UNAUTHORIZED' }));
+    expect(sharedMocks.writeUpstreamResponse).toHaveBeenCalledTimes(1);
+  });
+
   it('falls back from auth/sessions/current to legacy auth/me on upstream 405 and normalizes payload', async () => {
     const { default: handler } = await import('../../../api/insforge-proxy');
     fetchMock
