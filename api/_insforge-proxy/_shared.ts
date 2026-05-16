@@ -14,7 +14,10 @@ const HOP_BY_HOP = new Set([
   'upgrade',
   // These are request-specific and should be recomputed by `fetch`.
   'host',
-  'content-length'
+  'content-length',
+  // Let the server runtime negotiate encodings it can decode. Forwarding browser/CDN
+  // values here can make upstream body reads fail and turn auth errors into 503s.
+  'accept-encoding'
 ]);
 
 const DROP_RESPONSE_HEADERS = new Set([

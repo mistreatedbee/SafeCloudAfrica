@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildUpstreamUrl, getProxyBody } from '../../api/_insforge-proxy/_shared';
+import { buildForwardHeaders, buildUpstreamUrl, getProxyBody } from '../../api/_insforge-proxy/_shared';
 
 describe('api/_insforge-proxy/_shared getProxyBody', () => {
   it('converts raw Buffer payloads into fetch-compatible body data', () => {
@@ -12,6 +12,24 @@ describe('api/_insforge-proxy/_shared getProxyBody', () => {
 
     expect(body).toBeInstanceOf(Uint8Array);
     expect(Buffer.from(body as Uint8Array).toString('utf8')).toBe('raw-payload');
+  });
+});
+
+describe('api/_insforge-proxy/_shared buildForwardHeaders', () => {
+  it('does not forward accept-encoding to upstream fetch', () => {
+    const headers = buildForwardHeaders({
+      headers: {
+        accept: 'application/json',
+        'accept-encoding': 'gzip, deflate, br, zstd',
+        'content-length': '42',
+        authorization: 'Bearer token-1'
+      }
+    });
+
+    expect(headers.get('accept')).toBe('application/json');
+    expect(headers.get('authorization')).toBe('Bearer token-1');
+    expect(headers.has('accept-encoding')).toBe(false);
+    expect(headers.has('content-length')).toBe(false);
   });
 });
 
