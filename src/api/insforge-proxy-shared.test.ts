@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildForwardHeaders, buildUpstreamUrl, getProxyBody } from '../../api/_insforge-proxy/_shared';
+import { buildForwardHeaders, buildUpstreamUrl, getProxyBody, readRawProxyBody } from '../../api/_insforge-proxy/_shared';
 
 describe('api/_insforge-proxy/_shared getProxyBody', () => {
   it('converts raw Buffer payloads into fetch-compatible body data', () => {
@@ -12,6 +12,22 @@ describe('api/_insforge-proxy/_shared getProxyBody', () => {
 
     expect(body).toBeInstanceOf(Uint8Array);
     expect(Buffer.from(body as Uint8Array).toString('utf8')).toBe('raw-payload');
+  });
+});
+
+describe('api/_insforge-proxy/_shared readRawProxyBody', () => {
+  it('reads raw request streams into fetch-compatible bytes', async () => {
+    async function* chunks() {
+      yield Buffer.from('{"email":');
+      yield Buffer.from('"user@example.com"}');
+    }
+
+    const body = await readRawProxyBody({
+      method: 'POST',
+      [Symbol.asyncIterator]: chunks
+    });
+
+    expect(Buffer.from(body as Uint8Array).toString('utf8')).toBe('{"email":"user@example.com"}');
   });
 });
 

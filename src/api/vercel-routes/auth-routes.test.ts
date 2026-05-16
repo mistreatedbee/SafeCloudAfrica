@@ -12,6 +12,7 @@ vi.mock('../../../api/_insforge-proxy/_shared.js', () => ({
   buildForwardHeaders: vi.fn(() => new Headers()),
   buildUpstreamUrl: vi.fn((origin: string, path: string) => `${origin}${path}`),
   getProxyBody: vi.fn((req: any) => req.body),
+  readRawProxyBody: vi.fn(async () => undefined),
   startProxy: vi.fn(() => ({ requestId: 'req-1', upstreamOrigin: 'https://insforge.example' })),
   writeUpstreamResponse: sharedMocks.writeUpstreamResponse
 }));

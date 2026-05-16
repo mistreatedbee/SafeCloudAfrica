@@ -96,7 +96,12 @@ export function getProxyBody(req: any): BodyInit | undefined {
   const method = String(req?.method ?? 'GET').toUpperCase();
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return undefined;
 
-  const body = (req as any)?.body;
+  let body: any;
+  try {
+    body = (req as any)?.body;
+  } catch {
+    return undefined;
+  }
   if (body == null) return undefined;
   // Vercel may parse an empty body as `{}`; avoid sending a synthetic `{}` payload.
   if (typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 0) {
@@ -113,6 +118,23 @@ export function getProxyBody(req: any): BodyInit | undefined {
   } catch {
     return String(body);
   }
+}
+
+export async function readRawProxyBody(req: any): Promise<Uint8Array | undefined> {
+  const method = String(req?.method ?? 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return undefined;
+
+  if (!req || typeof req[Symbol.asyncIterator] !== 'function') return undefined;
+
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of req as AsyncIterable<Buffer | Uint8Array | string>) {
+    if (typeof chunk === 'string') chunks.push(Buffer.from(chunk));
+    else if (Buffer.isBuffer(chunk)) chunks.push(new Uint8Array(chunk));
+    else chunks.push(chunk);
+  }
+
+  if (!chunks.length) return undefined;
+  return new Uint8Array(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
 
 export async function writeUpstreamResponse(res: any, upstreamRes: Response, method: string): Promise<void> {

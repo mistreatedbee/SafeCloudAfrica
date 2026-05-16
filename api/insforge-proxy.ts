@@ -9,12 +9,19 @@ import {
   buildForwardHeaders,
   buildUpstreamUrl,
   getProxyBody,
+  readRawProxyBody,
   startProxy,
   writeUpstreamResponse
 } from './_insforge-proxy/_shared.js';
 
 const MODULE = 'api.insforge-proxy.api';
 const UPSTREAM_TIMEOUT_MS = 15_000;
+
+export const config = {
+  api: {
+    bodyParser: false
+  }
+};
 
 function normalizeRawPathValue(rawValue: string): string {
   const value = rawValue.trim();
@@ -82,7 +89,7 @@ export default async function handler(req: any, res: any) {
     const headers = buildForwardHeaders(req, {
       'x-safecloud-request-id': started.requestId
     });
-    const proxyBody = getProxyBody(req);
+    const proxyBody = getProxyBody(req) ?? await readRawProxyBody(req);
 
     const upstreamRes = await fetch(upstreamUrl, {
       method,
