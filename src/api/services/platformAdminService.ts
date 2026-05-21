@@ -73,7 +73,8 @@ export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId
     const { data: memberships, error: mErr } = await insforge.database
       .from('company_memberships')
       .select('company_id, role')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('status', 'ACTIVE');
     if (mErr || !memberships?.length) return { path: '/activate', reason: 'no_org' };
 
     const membershipRows = memberships as { company_id: UUID; role: string }[];

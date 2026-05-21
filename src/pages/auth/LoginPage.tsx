@@ -131,6 +131,20 @@ export function LoginPage() {
         redirectToPath('/super-admin/overview');
         return;
       }
+
+      const redirectParam = searchParams.get('redirect');
+      if (redirectParam) {
+        try {
+          const url = new URL(redirectParam, window.location.origin);
+          if (url.origin === window.location.origin) {
+            redirectToPath(redirectParam);
+            return;
+          }
+        } catch {
+          // invalid URL — fall through to normal redirect
+        }
+      }
+
       const storedCompanyId = (() => {
         try {
           return (localStorage.getItem(ACTIVE_COMPANY_KEY) as UUID | null) ?? null;
@@ -154,7 +168,7 @@ export function LoginPage() {
       setRedirectError(LOGIN_FAILED_MESSAGE);
       setRedirecting(false);
     }
-  }, [refreshTenant, setActiveCompanyId, signOut]);
+  }, [searchParams, refreshTenant, setActiveCompanyId, signOut]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user?.id) return;
