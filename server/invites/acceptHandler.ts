@@ -83,7 +83,7 @@ export default async function handler(req: any, res: any) {
     const companyId = String(invite.company_id);
 
     const [companyRes, activeBillableMembers, existingMembershipRes] = await Promise.all([
-      insforge.database.from('companies').select('employee_limit, license_user_limit').eq('id', companyId).maybeSingle(),
+      insforge.database.from('companies').select('employee_limit').eq('id', companyId).maybeSingle(),
       countBillableActiveMembers(insforge, companyId),
       insforge.database.from('company_memberships').select('*').eq('company_id', companyId).eq('user_id', userId).maybeSingle()
     ]);
