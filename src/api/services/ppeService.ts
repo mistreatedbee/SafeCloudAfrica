@@ -473,7 +473,7 @@ export async function createPpeStock(input: {
       site_id: input.siteId ?? null,
       department_id: input.departmentId ?? null,
       ppe_item_id: input.ppeItemId,
-      on_hand_qty: typeof input.onHandQty === 'number' ? input.onHandQty : 0,
+      on_hand_qty: 0,
       reserved_qty: 0,
       reorder_level: typeof input.reorderLevel === 'number' ? input.reorderLevel : 0,
       reorder_qty: typeof input.reorderQty === 'number' ? input.reorderQty : 0,
@@ -505,6 +505,19 @@ export async function createPpeStock(input: {
     entityType: 'ppe_stock',
     entityId: (data as any).id as UUID
   });
+
+  const initialQty = typeof input.onHandQty === 'number' ? input.onHandQty : 0;
+  if (initialQty > 0) {
+    await createPpeStockMovement({
+      companyId: input.companyId,
+      stockId: (data as any).id as UUID,
+      movementType: 'in',
+      quantity: initialQty,
+      reason: 'Opening stock',
+      actorUserId: input.createdByUserId,
+      transactionDate: input.dateStockReceived ?? null
+    });
+  }
 
   return data as PpeStock;
 }
@@ -651,6 +664,13 @@ export async function createPpeStockMovement(input: {
   } else if (input.movementType === 'ordered') {
     // ordered: no change to on_hand_qty
     newQty = currentQty;
+  } else if (input.movementType === 'damage' || input.movementType === 'expired') {
+    newQty = currentQty - input.quantity;
+    if (newQty < 0 && !input.allowNegativeStock) {
+      const e = new Error('Insufficient stock for this write-off.') as Error & { insufficientStock?: boolean };
+      e.insufficientStock = true;
+      throw e;
+    }
   }
 
   const nowIso = new Date().toISOString();

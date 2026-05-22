@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
@@ -113,6 +113,7 @@ export function RiskAssessmentEditPage() {
   const [rows, setRows] = useState<DraftRow[]>([]);
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `risk-assessment-edit:${id ?? 'unknown'}:${user?.id ?? 'anon'}`;
+  const manualSavingRef = useRef(false);
 
   const columns = useMemo(() => columnsForType(type), [type]);
 
@@ -260,6 +261,7 @@ export function RiskAssessmentEditPage() {
     if (msg.includes('access denied')) return 'You do not have permission to save this risk assessment.';
     if (msg.includes('closed')) return 'This risk assessment is closed and cannot be edited.';
     if (msg.includes('network')) return 'Network error. Please check your connection and try again.';
+    if (msg.includes('duplicate') || msg.includes('unique')) return 'A record with these details already exists.';
     return 'Failed to save risk assessment. Please try again.';
   }
 
@@ -274,6 +276,7 @@ export function RiskAssessmentEditPage() {
       return;
     }
 
+    manualSavingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -343,6 +346,7 @@ export function RiskAssessmentEditPage() {
       setError(friendlySaveError(e));
     } finally {
       setSaving(false);
+      manualSavingRef.current = false;
     }
   }
 
@@ -370,6 +374,7 @@ export function RiskAssessmentEditPage() {
       if (!header.title?.trim()) return;
 
       try {
+        if (manualSavingRef.current) return;
         // Best-effort autosave: update the record contents but avoid patching `status`
         // to prevent repeatedly rewriting `submitted_at`.
 	        await updateRiskAssessment({

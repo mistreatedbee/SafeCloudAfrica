@@ -1387,7 +1387,7 @@ export type PpeStock = {
   expiry_date?: string | null;
 };
 
-export type PpeStockMovementType = 'in' | 'out' | 'adjust' | 'return' | 'ordered';
+export type PpeStockMovementType = 'in' | 'out' | 'adjust' | 'return' | 'ordered' | 'damage' | 'expired';
 
 export type PpeStockMovement = {
   id: UUID;

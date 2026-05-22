@@ -312,7 +312,7 @@ export function PpeStockCreateModal(props: {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">On-hand quantity</label>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Initial quantity</label>
               <input
                 type="number"
                 min={0}

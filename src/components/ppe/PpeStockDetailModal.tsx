@@ -25,7 +25,7 @@ export function PpeStockDetailModal(props: {
   onChanged?: () => void;
 }) {
   const [refreshKey, setRefreshKey] = useState(0);
-  const [movementType, setMovementType] = useState<'in' | 'out' | 'adjust' | 'return'>('out');
+  const [movementType, setMovementType] = useState<'in' | 'out' | 'adjust' | 'return' | 'damage' | 'expired'>('out');
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState('');
   const [movementLoading, setMovementLoading] = useState(false);
@@ -322,10 +322,12 @@ export function PpeStockDetailModal(props: {
                     onChange={(e) => setMovementType(e.target.value as any)}
                     className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                   >
-                    <option value="in">In</option>
-                    <option value="out">Out</option>
+                    <option value="in">In (stock received)</option>
+                    <option value="out">Out (manual removal)</option>
                     <option value="return">Return</option>
                     <option value="adjust">Adjust (set quantity)</option>
+                    <option value="damage">Write off (damaged)</option>
+                    <option value="expired">Write off (expired)</option>
                   </select>
                 </div>
                 <div>

@@ -103,6 +103,7 @@ export function RiskAssessmentCreatePage() {
   const draftKey = `risk-assessment-create:${user?.id ?? 'anon'}:${type}`;
   const serverDraftAssessmentIdStorageKey = `sca_server_risk_assessment_draft_id:${draftKey}`;
   const serverDraftAssessmentIdRef = useRef<UUID | null>(null);
+  const manualSavingRef = useRef(false);
 
   // If a server-side draft was created by autosave, reuse that record to avoid duplicates.
   useEffect(() => {
@@ -160,6 +161,7 @@ export function RiskAssessmentCreatePage() {
       const companyId = activeCompanyId as UUID;
 
       try {
+        if (manualSavingRef.current) return;
         if (!serverDraftAssessmentIdRef.current) {
 	          const created = await createRiskAssessment({
 	            companyId,
@@ -321,6 +323,7 @@ export function RiskAssessmentCreatePage() {
     if (msg.includes('access denied')) return 'You do not have permission to save this risk assessment.';
     if (msg.includes('closed')) return 'This risk assessment is closed and cannot be edited.';
     if (msg.includes('network')) return 'Network error. Please check your connection and try again.';
+    if (msg.includes('duplicate') || msg.includes('unique')) return 'A record with these details already exists.';
     return 'Failed to save risk assessment. Please try again.';
   }
 
@@ -343,6 +346,7 @@ export function RiskAssessmentCreatePage() {
       // ignore
     }
 
+    manualSavingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -482,6 +486,7 @@ export function RiskAssessmentCreatePage() {
       setError(friendlySaveError(e));
     } finally {
       setSaving(false);
+      manualSavingRef.current = false;
     }
   }
 
