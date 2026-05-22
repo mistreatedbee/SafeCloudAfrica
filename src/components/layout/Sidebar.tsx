@@ -491,7 +491,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapsed }: Sid
 
   return (
     <>
-      <aside className={`hidden lg:flex lg:flex-shrink-0 lg:relative lg:z-40 transition-[width] duration-300 ease-in-out ${isCollapsed ? 'lg:w-[88px]' : 'lg:w-[280px]'}`}>
+      <aside className={`hidden lg:flex lg:flex-shrink-0 lg:relative lg:z-[70] transition-[width] duration-300 ease-in-out ${isCollapsed ? 'lg:w-[88px]' : 'lg:w-[280px]'}`}>
         {sidebarContent}
       </aside>
 
