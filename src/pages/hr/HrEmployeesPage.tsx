@@ -147,12 +147,13 @@ export function HrEmployeesPage() {
             </div>
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <table className="w-full text-sm">
-              <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">No</th><th className="text-left px-3 py-2">Name</th><th className="text-left px-3 py-2">Email</th><th className="text-left px-3 py-2">Department</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
+              <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">No</th><th className="text-left px-3 py-2">Name</th><th className="text-left px-3 py-2">Job Title</th><th className="text-left px-3 py-2">Email</th><th className="text-left px-3 py-2">Department</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
                 <tbody>
                   {active.map((row) => (
                     <tr key={row.id} className="border-t border-surface-100">
                       <td className="px-3 py-2">{row.employee_no}</td>
                       <td className="px-3 py-2">{row.first_name} {row.last_name}</td>
+                      <td className="px-3 py-2">{row.job_title ?? '-'}</td>
                       <td className="px-3 py-2">{row.email}</td>
                       <td className="px-3 py-2">{row.department_id ? (departmentById.get(String(row.department_id)) ?? String(row.department_id)) : '-'}</td>
                       <td className="px-3 py-2">{row.employment_status}</td>

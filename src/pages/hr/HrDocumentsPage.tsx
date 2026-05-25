@@ -10,6 +10,7 @@ import {
   deleteHrAcknowledgementDocument,
   deleteHrPersonalDocument,
   getDocumentExpiryStatus,
+  getHrEmployeeByUserId,
   listHrAcknowledgementDocuments,
   listHrEmployees,
   listHrPersonalDocuments,
@@ -23,6 +24,7 @@ import { createEvidence, listEvidence } from '../../api/services/evidenceService
 import { uploadFile, getPublicUrl, type StorageBucket } from '../../api/services/storageService';
 import type { UUID, CompanyRole } from '../../api/models/core';
 import { downloadTextFile, toCsv } from '../../utils/csv';
+import { createActivityLog } from '../../api/services/activityLogService';
 
 type Tab = 'personal' | 'acknowledgement';
 
@@ -67,13 +69,18 @@ export function HrDocumentsPage() {
   const [ackFile, setAckFile] = useState<File | null>(null);
   const [deletingAckId, setDeletingAckId] = useState<UUID | null>(null);
 
-  const canEdit = isFullAccess(activeRole ?? null);
+  const canEdit = isFullAccess(activeRole ?? null) || Boolean((user as any)?.is_hr_manager);
   const ownerSummaryOnly = isOwnerSummary(activeRole ?? null);
 
   const { data: employees } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listHrEmployees(activeCompanyId);
   }, [activeCompanyId]);
+
+  const { data: selfEmployee } = useAsync(async () => {
+    if (!activeCompanyId || !user?.id) return null;
+    return getHrEmployeeByUserId(activeCompanyId, user.id as UUID);
+  }, [activeCompanyId, user?.id]);
 
   const { data: departments } = useAsync(async () => {
     if (!activeCompanyId) return [];
@@ -323,6 +330,17 @@ export function HrDocumentsPage() {
     return getPublicUrl(ev.storage_bucket as StorageBucket, ev.storage_key);
   }
 
+  async function logDocumentAccess(docId: UUID) {
+    if (!activeCompanyId || !user?.id) return;
+    await createActivityLog({
+      companyId: activeCompanyId,
+      actorUserId: user.id as UUID,
+      action: 'hr.personal_document.view',
+      entityType: 'hr_employee_document',
+      entityId: docId
+    }).catch(() => undefined);
+  }
+
   async function onSendExpiryAlerts() {
     if (!activeCompanyId || !user?.id) return;
     const count = await sendHrDocumentExpiryAlerts(activeCompanyId, user.id as UUID);
@@ -416,6 +434,7 @@ export function HrDocumentsPage() {
                     <th className="text-left px-3 py-2">Type</th>
                     <th className="text-left px-3 py-2">Issue / Expiry</th>
                     <th className="text-left px-3 py-2">Status</th>
+                    <th className="text-left px-3 py-2">Acknowledgement</th>
                     <th className="text-left px-3 py-2">Actions</th>
                   </tr>
                 </thead>
@@ -440,10 +459,37 @@ export function HrDocumentsPage() {
                           <span className={`px-2 py-1 rounded text-xs ${exp === 'expired' ? 'bg-critical/20 text-critical' : exp === 'expiring_7' ? 'bg-warning/20 text-warning' : exp === 'expiring_30' ? 'bg-yellow-100 text-yellow-700' : 'bg-surface-100 text-charcoal-600'}`}>{exp}</span>
                         </td>
                         <td className="px-3 py-2">
+                          {(row as any).acknowledged_by_employee ? (
+                            <span className="text-xs text-emerald-700">Acknowledged {(row as any).acknowledged_at ? new Date(String((row as any).acknowledged_at)).toLocaleDateString() : ''}</span>
+                          ) : selfEmployee && String(row.employee_id) === String(selfEmployee.id) ? (
+                            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                              <input
+                                type="checkbox"
+                                onChange={async () => {
+                                  await updateHrPersonalDocument({
+                                    companyId: activeCompanyId!,
+                                    documentId: row.id as UUID,
+                                    actorUserId: user!.id as UUID,
+                                    patch: {
+                                      acknowledged_by_employee: true,
+                                      acknowledged_at: new Date().toISOString()
+                                    } as any
+                                  });
+                                  await refetchPersonal();
+                                }}
+                              />
+                              I have read this
+                            </label>
+                          ) : (
+                            <span className="text-xs text-charcoal-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-3">
                             <button
                               className="text-teal underline"
                               onClick={async () => {
+                                void logDocumentAccess(row.id as UUID);
                                 const url = await firstEvidenceUrl('hr_employee_document', row.id as UUID);
                                 if (url) window.open(url, '_blank', 'noopener,noreferrer');
                                 else alert('No file uploaded for this document.');

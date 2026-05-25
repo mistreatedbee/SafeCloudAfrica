@@ -5,6 +5,7 @@ import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { createHrRecord, deleteHrRecord, listHrEmployees, listHrRecords, updateHrRecord } from '../../api/services/hrService';
+import { listDepartments } from '../../api/services/departmentsService';
 import { createTask } from '../../api/services/tasksService';
 import type { UUID } from '../../api/models/core';
 import { useDraftManager } from '../../session/DraftManagerProvider';
@@ -47,7 +48,6 @@ export function HrPerformancePage() {
   const canManage = ['owner', 'admin', 'manager', 'supervisor'].includes(activeRole ?? '');
   const [employeeId, setEmployeeId] = useState('');
   const [cycle, setCycle] = useState('Annual');
-  const [overallRating, setOverallRating] = useState('3');
   const [kpaRows, setKpaRows] = useState<KpaRow[]>(() => [createBlankKpaRow()]);
   const [strengths, setStrengths] = useState('');
   const [assistanceRequired, setAssistanceRequired] = useState('');
@@ -64,7 +64,6 @@ export function HrPerformancePage() {
   type HrPerformanceDraftPayload = {
     employeeId: string;
     cycle: string;
-    overallRating: string;
     kpaRows: KpaRow[];
     strengths: string;
     assistanceRequired: string;
@@ -83,7 +82,6 @@ export function HrPerformancePage() {
     () => ({
       employeeId,
       cycle,
-      overallRating,
       kpaRows,
       strengths,
       assistanceRequired,
@@ -97,7 +95,6 @@ export function HrPerformancePage() {
     [
       employeeId,
       cycle,
-      overallRating,
       kpaRows,
       strengths,
       assistanceRequired,
@@ -136,7 +133,6 @@ export function HrPerformancePage() {
 
     setEmployeeId(restored.employeeId ?? '');
     setCycle(restored.cycle ?? 'Annual');
-    setOverallRating(restored.overallRating ?? '3');
     setKpaRows(normalizeKpaRows(restored.kpaRows));
     setStrengths(restored.strengths ?? '');
     setAssistanceRequired(restored.assistanceRequired ?? '');
@@ -154,6 +150,16 @@ export function HrPerformancePage() {
     if (!activeCompanyId) return [];
     return listHrEmployees(activeCompanyId);
   }, [activeCompanyId]);
+
+  const { data: departments } = useAsync(async () => {
+    if (!activeCompanyId) return [];
+    return listDepartments(activeCompanyId);
+  }, [activeCompanyId]);
+
+  const departmentLabel = useMemo(
+    () => new Map((departments ?? []).map((d) => [String(d.id), d.name])),
+    [departments]
+  );
 
   const { data: reviews, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
@@ -174,7 +180,6 @@ export function HrPerformancePage() {
     setEditingReviewId(null);
     setEmployeeId('');
     setCycle('Annual');
-    setOverallRating('3');
     setKpaRows([createBlankKpaRow()]);
     setStrengths('');
     setAssistanceRequired('');
@@ -190,7 +195,6 @@ export function HrPerformancePage() {
     setEditingReviewId(row.id as UUID);
     setEmployeeId(String(row.employee_id ?? ''));
     setCycle(String(row.cycle ?? 'Annual'));
-    setOverallRating(String(row.overall_rating ?? '3'));
     setKpaRows(normalizeKpaRows(row.kpa_rows));
     setStrengths(String(row.strengths ?? ''));
     setAssistanceRequired(String(row.assistance_required ?? ''));
@@ -239,7 +243,7 @@ export function HrPerformancePage() {
           patch: {
             employee_id: employeeId,
             cycle,
-            overall_rating: Math.max(1, Math.min(5, Number(overallRating || 3))),
+            overall_rating: null,
             kpa_rows: kpaRows,
             strengths,
             assistance_required: assistanceRequired || null,
@@ -259,7 +263,7 @@ export function HrPerformancePage() {
           cycle,
           review_date: new Date().toISOString().slice(0, 10),
           reviewer_user_id: user.id,
-          overall_rating: Math.max(1, Math.min(5, Number(overallRating || 3))),
+          overall_rating: null,
           kpa_rows: kpaRows,
           strengths,
           assistance_required: assistanceRequired || null,
@@ -286,7 +290,6 @@ export function HrPerformancePage() {
         JSON.stringify({
           employeeId: '',
           cycle: 'Annual',
-          overallRating: '3',
           kpaRows: [createBlankKpaRow()],
           strengths: '',
           assistanceRequired: '',
@@ -343,8 +346,27 @@ export function HrPerformancePage() {
                 {(employees ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.first_name} {employee.last_name}</option>)}
               </select>
             </label>
-            <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Cycle</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={cycle} onChange={(e) => setCycle(e.target.value)} /></label>
-            <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Overall rating (1-5)</span><input type="number" min={1} max={5} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={overallRating} onChange={(e) => setOverallRating(e.target.value)} /></label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Department</span>
+              <input
+                className="w-full border border-surface-300 rounded-lg px-3 py-2 bg-surface-50"
+                readOnly
+                value={(() => {
+                  const emp = (employees ?? []).find((e) => String(e.id) === employeeId);
+                  if (!emp?.department_id) return '';
+                  return departmentLabel.get(String(emp.department_id)) ?? '';
+                })()}
+                placeholder="Auto-filled from employee"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Cycle</span>
+              <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={cycle} onChange={(e) => setCycle(e.target.value)}>
+                <option value="Annual">Annual</option>
+                <option value="Quarterly">Quarterly</option>
+                <option value="Monthly">Monthly</option>
+              </select>
+            </label>
             <div className="md:col-span-3 rounded-lg border border-surface-200 overflow-auto">
               <div className="flex items-center justify-between gap-3 border-b border-surface-200 px-3 py-2">
                 <p className="text-sm font-semibold text-charcoal">Key performance areas</p>
