@@ -16,8 +16,11 @@ import { createModuleTarget } from '../../api/services/moduleTargetsService';
 const STATUS_OPTIONS: Array<{ value: ModuleTargetStatus; label: string }> = [
   { value: 'not_started', label: 'Not Started' },
   { value: 'in_progress', label: 'In Progress' },
+  { value: 'on_hold', label: 'On Hold' },
   { value: 'completed', label: 'Completed' },
-  { value: 'not_achieved', label: 'Not Achieved' }
+  { value: 'not_achieved', label: 'Not Achieved' },
+  { value: 'achieved', label: 'Achieved' },
+  { value: 'closed', label: 'Closed' }
 ];
 
 const ACTION_STATUS_OPTIONS: Array<{ value: ModuleTargetReviewActionStatus; label: string }> = [

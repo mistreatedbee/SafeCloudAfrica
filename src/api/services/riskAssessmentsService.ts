@@ -537,6 +537,14 @@ export async function replaceRiskAssessmentRows(input: {
     throw new Error('Access denied');
   }
 
+  // Snapshot existing rows before deletion so we can restore on partial failure.
+  const { data: snapshotData } = await insforge.database
+    .from('risk_assessment_rows')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('risk_assessment_id', input.assessmentId);
+  const snapshot = snapshotData ?? [];
+
   const { error: deleteError } = await insforge.database
     .from('risk_assessment_rows')
     .delete()
@@ -575,7 +583,13 @@ export async function replaceRiskAssessmentRows(input: {
   });
 
   const { data, error } = await insforge.database.from('risk_assessment_rows').insert(payload).select('*');
-  if (error) throw new Error(getErrorMessage(error));
+  if (error) {
+    // Attempt to restore the snapshot so the assessment is not left with zero rows.
+    if (snapshot.length > 0) {
+      await insforge.database.from('risk_assessment_rows').insert(snapshot).select('id');
+    }
+    throw new Error('Row save failed; previous rows have been restored. Please try again.');
+  }
 
   await createActivityLog({
     companyId: input.companyId,

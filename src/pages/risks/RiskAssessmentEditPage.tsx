@@ -266,17 +266,20 @@ export function RiskAssessmentEditPage() {
   }
 
   async function save(nextStatus?: RiskAssessmentStatus) {
-    if (!activeCompanyId || !user?.id || !id) return;
+    if (saving) return;
+    manualSavingRef.current = true;
+    if (!activeCompanyId || !user?.id || !id) { manualSavingRef.current = false; return; }
     if (!activeRole) {
       setError('Please select an active role to save this risk assessment.');
+      manualSavingRef.current = false;
       return;
     }
     if (!header.title.trim()) {
       setError('Title is required.');
+      manualSavingRef.current = false;
       return;
     }
 
-    manualSavingRef.current = true;
     setSaving(true);
     setError(null);
     try {

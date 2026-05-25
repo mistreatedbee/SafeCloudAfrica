@@ -30,8 +30,21 @@ export function PpeStockCreateModal(props: {
   const [reorderQty, setReorderQty] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [capturedEmployeeId, setCapturedEmployeeId] = useState('');
+  const [sizeQtys, setSizeQtys] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedItem = useMemo(
+    () => props.items.find((i) => i.id === ppeItemId) ?? null,
+    [props.items, ppeItemId]
+  );
+  const itemSizes = useMemo(() => {
+    if (!selectedItem) return [];
+    const fromPrices = (selectedItem.sizes_with_prices ?? []).map((s) => s.size).filter(Boolean) as string[];
+    const fromAvail = (selectedItem.sizes_available ?? []) as string[];
+    return fromPrices.length > 0 ? fromPrices : fromAvail;
+  }, [selectedItem]);
+  const hasSizes = itemSizes.length > 0;
 
   type PpeStockCreateDraft = {
     ppeItemId: string;
@@ -44,6 +57,7 @@ export function PpeStockCreateModal(props: {
     reorderQty: string;
     expiryDate: string;
     capturedEmployeeId: string;
+    sizeQtys: Record<string, string>;
   };
 
   const { restoreDraft, clearDraft } = useDraftManager();
@@ -60,9 +74,10 @@ export function PpeStockCreateModal(props: {
       reorderLevel.trim().length > 0 ||
       reorderQty.trim().length > 0 ||
       expiryDate.trim().length > 0 ||
-      capturedEmployeeId.trim().length > 0
+      capturedEmployeeId.trim().length > 0 ||
+      Object.values(sizeQtys).some((v) => v.trim().length > 0)
     );
-  }, [capturedEmployeeId, dateOrdered, dateStockReceived, departmentId, expiryDate, onHandQty, ppeItemId, reorderLevel, reorderQty, siteId]);
+  }, [capturedEmployeeId, dateOrdered, dateStockReceived, departmentId, expiryDate, onHandQty, ppeItemId, reorderLevel, reorderQty, siteId, sizeQtys]);
 
   useDraftRegistration({
     key: draftKey,
@@ -79,7 +94,8 @@ export function PpeStockCreateModal(props: {
         reorderLevel,
         reorderQty,
         expiryDate,
-        capturedEmployeeId
+        capturedEmployeeId,
+        sizeQtys
       }) satisfies PpeStockCreateDraft
   });
 
@@ -98,6 +114,7 @@ export function PpeStockCreateModal(props: {
     setReorderQty(restored.reorderQty ?? '');
     setExpiryDate(restored.expiryDate ?? '');
     setCapturedEmployeeId(restored.capturedEmployeeId ?? '');
+    setSizeQtys(restored.sizeQtys ?? {});
   }, [draftKey, props.open, restoreDraft]);
 
   const closeWithDraftClear = () => {
@@ -140,12 +157,11 @@ export function PpeStockCreateModal(props: {
     setError(null);
     try {
       setLoading(true);
-      await createPpeStock({
+      const basePayload = {
         companyId: props.companyId,
         siteId: siteId ? (siteId as UUID) : null,
         departmentId: departmentId ? (departmentId as UUID) : null,
         ppeItemId: ppeItemId as UUID,
-        onHandQty: onHandQty ? Number(onHandQty) : 0,
         reorderLevel: reorderLevel ? Number(reorderLevel) : 0,
         reorderQty: reorderQty ? Number(reorderQty) : 0,
         createdByUserId: props.createdByUserId,
@@ -153,7 +169,21 @@ export function PpeStockCreateModal(props: {
         dateOrdered: dateOrdered || null,
         dateStockReceived: dateStockReceived || null,
         expiryDate: expiryDate || null
-      });
+      };
+
+      if (hasSizes) {
+        const sizesToCreate = itemSizes.filter((s) => Number(sizeQtys[s] ?? 0) > 0);
+        if (sizesToCreate.length > 0) {
+          for (const size of sizesToCreate) {
+            await createPpeStock({ ...basePayload, onHandQty: Number(sizeQtys[size]), size });
+          }
+        } else {
+          await createPpeStock({ ...basePayload, onHandQty: 0, size: null });
+        }
+      } else {
+        await createPpeStock({ ...basePayload, onHandQty: onHandQty ? Number(onHandQty) : 0, size: null });
+      }
+
       props.onCreated?.();
       clearDraft(draftKey);
       props.onClose();
@@ -167,6 +197,7 @@ export function PpeStockCreateModal(props: {
       setReorderQty('');
       setExpiryDate('');
       setCapturedEmployeeId('');
+      setSizeQtys({});
     } catch (err: unknown) {
       setError(formatAuthError(err as Error));
     } finally {
@@ -311,17 +342,41 @@ export function PpeStockCreateModal(props: {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Initial quantity</label>
-              <input
-                type="number"
-                min={0}
-                value={onHandQty}
-                onChange={(e) => setOnHandQty(e.target.value)}
-                placeholder="0"
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
-            </div>
+            {hasSizes ? (
+              <div className="sm:col-span-3">
+                <label className="block text-sm font-medium text-charcoal mb-1.5">
+                  Initial quantity per size
+                </label>
+                <div className="space-y-2">
+                  {itemSizes.map((size) => (
+                    <div key={size} className="flex items-center gap-3">
+                      <span className="w-28 text-sm text-charcoal-600 shrink-0">{size}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={sizeQtys[size] ?? ''}
+                        onChange={(e) => setSizeQtys((prev) => ({ ...prev, [size]: e.target.value }))}
+                        placeholder="0"
+                        className="w-32 px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-charcoal-400 mt-1">Each size creates a separate stock record tracked independently.</p>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Initial quantity</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={onHandQty}
+                  onChange={(e) => setOnHandQty(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Reorder level</label>
               <input

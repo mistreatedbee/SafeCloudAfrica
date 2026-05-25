@@ -65,6 +65,7 @@ import { PpeStockDetailModal } from '../components/ppe/PpeStockDetailModal';
 import { PpeIssueTrackerCreateModal } from '../components/ppe/PpeIssueTrackerCreateModal';
 import { PpeIssueTrackerDetailModal } from '../components/ppe/PpeIssueTrackerDetailModal';
 import { useDraftManager } from '../session/DraftManagerProvider';
+import { OrgStructureManager } from '../components/org/OrgStructureManager';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -146,7 +147,7 @@ export function PPEPage() {
     activeRole === 'supervisor' ||
     activeRole === 'consultant';
   const canAuditorConfirm = activeRole === 'auditor';
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'register' | 'inventory'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'register' | 'inventory' | 'sites'>('dashboard');
   const initialQuick = getQuickRange('this_month');
   const [reportQuickFilter, setReportQuickFilter] = useState<
     'this_month' | 'last_month' | 'this_year' | 'last_year' | 'custom'
@@ -177,6 +178,7 @@ export function PPEPage() {
     dateTo: string;
     siteId: string;
     departmentId: string;
+    personName: string;
   }>(() => {
     const now = new Date();
     const first = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -184,7 +186,8 @@ export function PPEPage() {
       dateFrom: first.toISOString().slice(0, 10),
       dateTo: now.toISOString().slice(0, 10),
       siteId: '',
-      departmentId: ''
+      departmentId: '',
+      personName: ''
     };
   });
   const [inventoryExpiryFilter, setInventoryExpiryFilter] = useState<
@@ -471,6 +474,12 @@ export function PPEPage() {
     };
   });
 
+  const filteredIssueRows = useMemo(() => {
+    if (!registerFilters.personName.trim()) return issueRows;
+    const q = registerFilters.personName.toLowerCase();
+    return issueRows.filter((r) => r.issuedTo.toLowerCase().includes(q));
+  }, [issueRows, registerFilters.personName]);
+
   const stockRows = (stocks ?? []).map((s) => {
     const item = itemById.get(s.ppe_item_id);
     const site = s.site_id ? siteById.get(s.site_id) : null;
@@ -528,7 +537,8 @@ export function PPEPage() {
       expiryDate: s.expiry_date ?? '?',
       expiryStatus,
       expiryLabel,
-      expiryClass
+      expiryClass,
+      size: s.size ?? null
     };
   });
 
@@ -779,6 +789,17 @@ export function PPEPage() {
               }`}
             >
               Inventory &amp; Reorders
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('sites')}
+              className={`pb-1 border-b-2 ${
+                activeTab === 'sites'
+                  ? 'border-teal text-teal font-semibold'
+                  : 'border-transparent text-charcoal-500'
+              }`}
+            >
+              Sites
             </button>
           </div>
           {activeTab === 'inventory' && (
@@ -1318,8 +1339,21 @@ export function PPEPage() {
                       </option>
                     ))}
                   </select>
+                  <input
+                    type="text"
+                    value={registerFilters.personName}
+                    onChange={(e) =>
+                      setRegisterFilters((f) => ({ ...f, personName: e.target.value }))
+                    }
+                    placeholder="Filter by person name..."
+                    className="px-2 py-1.5 border border-surface-300 rounded-lg min-w-[160px]"
+                  />
                 </div>
-                <span className="text-sm text-charcoal-400">{issueRows.length} issues</span>
+                <span className="text-sm text-charcoal-400">
+                  {registerFilters.personName.trim()
+                    ? `${filteredIssueRows.length} of ${issueRows.length} issues`
+                    : `${issueRows.length} issues`}
+                </span>
                 <button
                   type="button"
                   onClick={() => {
@@ -1387,14 +1421,14 @@ export function PPEPage() {
                         </td>
                       </tr>
                     )}
-                    {!loading && !error && issueRows.length === 0 && (
+                    {!loading && !error && filteredIssueRows.length === 0 && (
                       <tr>
                         <td colSpan={11} className="px-5 py-4 text-sm text-charcoal-500">
-                          No PPE issues yet.
+                          {registerFilters.personName.trim() ? 'No issues match the person name filter.' : 'No PPE issues yet.'}
                         </td>
                       </tr>
                     )}
-                    {issueRows.map((row) => (
+                    {filteredIssueRows.map((row) => (
                       <tr
                         key={row.raw.id}
                         className="hover:bg-surface-50 transition-colors cursor-pointer"
@@ -1555,13 +1589,16 @@ export function PPEPage() {
                       Item
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
+                      Size
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
                       Site
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
                       Department
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
-                      On hand
+                      Current stock
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
                       Reserved
@@ -1595,21 +1632,21 @@ export function PPEPage() {
                 <tbody className="divide-y divide-surface-100">
                   {stocksLoading && (
                     <tr>
-                      <td colSpan={13} className="px-5 py-4 text-sm text-charcoal-500">
+                      <td colSpan={14} className="px-5 py-4 text-sm text-charcoal-500">
                         Loading inventory?
                       </td>
                     </tr>
                   )}
                   {stocksError && (
                     <tr>
-                      <td colSpan={13} className="px-5 py-4 text-sm text-critical">
+                      <td colSpan={14} className="px-5 py-4 text-sm text-critical">
                         {stocksError.message}
                       </td>
                     </tr>
                   )}
                   {!stocksLoading && !stocksError && filteredStockRows.length === 0 && (
                     <tr>
-                      <td colSpan={13} className="px-5 py-4 text-sm text-charcoal-500">
+                      <td colSpan={14} className="px-5 py-4 text-sm text-charcoal-500">
                         No PPE stock records yet. Use &quot;Add Stock&quot; to create one.
                       </td>
                     </tr>
@@ -1618,6 +1655,7 @@ export function PPEPage() {
                     <tr key={row.id} className="hover:bg-surface-50 transition-colors">
                       <td className="px-5 py-4 text-sm font-medium text-teal">{row.id}</td>
                       <td className="px-5 py-4 text-sm text-charcoal">{row.itemName}</td>
+                      <td className="px-5 py-4 text-sm text-charcoal-500">{row.size ?? '—'}</td>
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.siteName}</td>
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.departmentName}</td>
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.onHand}</td>
@@ -1667,6 +1705,18 @@ export function PPEPage() {
             </div>
           </motion.div>
           </>
+        )}
+        {activeTab === 'sites' && activeCompanyId && user?.id && (
+          <motion.div variants={itemVariants}>
+            <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
+              <h3 className="font-semibold text-charcoal mb-4">Sites Management</h3>
+              <OrgStructureManager
+                companyId={activeCompanyId}
+                actorUserId={user.id as string}
+                canManage={canManage}
+              />
+            </div>
+          </motion.div>
         )}
       </motion.div>
     </Layout>

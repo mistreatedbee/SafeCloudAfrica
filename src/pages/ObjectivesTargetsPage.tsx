@@ -10,9 +10,10 @@ import { HrEmployeeSelect } from '../components/ui/HrEmployeeSelect';
 import { ObjectiveCreateModal } from '../components/general/ObjectiveCreateModal';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { listModuleTargets, updateModuleTarget } from '../api/services/moduleTargetsService';
+import { createModuleTargetNote, listModuleTargetNotes, listModuleTargets, updateModuleTarget } from '../api/services/moduleTargetsService';
 import type {
   ModuleTarget,
+  ModuleTargetNote,
   ModuleTargetReviewActionStatus,
   ModuleTargetStatus,
   UUID
@@ -40,8 +41,11 @@ const MODULE_OPTIONS: Array<{ value: ModuleKey; label: string }> = [
 const STATUS_OPTIONS: Array<{ value: ModuleTargetStatus; label: string }> = [
   { value: 'not_started', label: 'Not Started' },
   { value: 'in_progress', label: 'In Progress' },
+  { value: 'on_hold', label: 'On Hold' },
   { value: 'completed', label: 'Completed' },
-  { value: 'not_achieved', label: 'Not Achieved' }
+  { value: 'not_achieved', label: 'Not Achieved' },
+  { value: 'achieved', label: 'Achieved' },
+  { value: 'closed', label: 'Closed' }
 ];
 
 const ACTION_STATUS_OPTIONS: Array<{ value: ModuleTargetReviewActionStatus; label: string }> = [
@@ -57,8 +61,10 @@ function statusLabel(status: ModuleTargetStatus | undefined, achieved?: boolean)
 
 function statusClass(status: ModuleTargetStatus | undefined, achieved?: boolean) {
   const normalized = status ?? (achieved ? 'completed' : 'not_started');
-  if (normalized === 'completed') return 'bg-success/10 text-success border-success/20';
+  if (normalized === 'completed' || normalized === 'achieved') return 'bg-success/10 text-success border-success/20';
+  if (normalized === 'closed') return 'bg-charcoal/10 text-charcoal border-charcoal/20';
   if (normalized === 'in_progress') return 'bg-warning/10 text-warning border-warning/20';
+  if (normalized === 'on_hold') return 'bg-surface-200 text-charcoal-600 border-surface-300';
   if (normalized === 'not_achieved') return 'bg-critical/10 text-critical border-critical/20';
   return 'bg-surface-100 text-charcoal-500 border-surface-200';
 }
@@ -69,7 +75,8 @@ function todayKey() {
 
 function isOverdue(target: ModuleTarget) {
   const status = target.status ?? (target.achieved ? 'completed' : 'not_started');
-  return Boolean(target.target_date && target.target_date < todayKey() && status !== 'completed');
+  const doneStatuses: ModuleTargetStatus[] = ['completed', 'achieved', 'closed'];
+  return Boolean(target.target_date && target.target_date < todayKey() && !doneStatuses.includes(status));
 }
 
 function ReviewEditor(props: {
@@ -211,6 +218,86 @@ function ReviewEditor(props: {
   );
 }
 
+function NotesPanel(props: {
+  companyId: UUID;
+  targetId: UUID;
+  actorUserId?: UUID;
+  actorName?: string | null;
+}) {
+  const [notes, setNotes] = useState<ModuleTargetNote[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoadingNotes(true);
+    listModuleTargetNotes({ companyId: props.companyId, moduleTargetId: props.targetId })
+      .then(setNotes)
+      .catch(() => setNotes([]))
+      .finally(() => setLoadingNotes(false));
+  }, [props.companyId, props.targetId]);
+
+  async function addNote() {
+    if (!noteText.trim() || !props.actorUserId) return;
+    setSubmitting(true);
+    setNoteError(null);
+    try {
+      const created = await createModuleTargetNote({
+        companyId: props.companyId,
+        moduleTargetId: props.targetId,
+        note: noteText.trim(),
+        createdByUserId: props.actorUserId,
+        createdByName: props.actorName ?? null
+      });
+      setNotes((prev) => [created, ...prev]);
+      setNoteText('');
+    } catch (err: unknown) {
+      setNoteError(err instanceof Error ? err.message : 'Failed to add note.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Progress Notes</p>
+      {noteError && <p className="text-xs text-critical">{noteError}</p>}
+      <div className="flex gap-2">
+        <textarea
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          rows={2}
+          placeholder="Add a progress update..."
+          className="flex-1 px-3 py-2 border border-surface-300 rounded-lg text-sm resize-none"
+        />
+        <button
+          type="button"
+          onClick={() => void addNote()}
+          disabled={submitting || !noteText.trim()}
+          className="px-3 py-2 rounded-lg bg-teal text-white text-xs font-semibold hover:bg-teal-600 disabled:opacity-60 self-end"
+        >
+          {submitting ? '...' : 'Add'}
+        </button>
+      </div>
+      {loadingNotes && <p className="text-xs text-charcoal-400">Loading notes...</p>}
+      {!loadingNotes && notes.length === 0 && (
+        <p className="text-xs text-charcoal-400 italic">No progress notes yet.</p>
+      )}
+      <div className="space-y-2 max-h-48 overflow-y-auto">
+        {notes.map((n) => (
+          <div key={n.id} className="bg-white border border-surface-200 rounded-lg p-3">
+            <p className="text-sm text-charcoal">{n.note}</p>
+            <p className="text-xs text-charcoal-400 mt-1">
+              {n.created_by_name ?? 'Unknown'} &middot; {new Date(n.created_at).toLocaleString()}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ObjectivesTargetsPage() {
   const { activeCompanyId } = useTenant();
   const { user } = useUser();
@@ -219,6 +306,7 @@ export function ObjectivesTargetsPage() {
   const [createModule, setCreateModule] = useState<ModuleKey>('safety');
   const [createOpen, setCreateOpen] = useState(false);
   const [expandedReviewId, setExpandedReviewId] = useState<string | null>(null);
+  const [expandedNotesId, setExpandedNotesId] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
 
@@ -388,7 +476,23 @@ export function ObjectivesTargetsPage() {
                             </p>
                           </td>
                           <td className="px-4 py-3 text-sm text-charcoal-600 align-top">
-                            {objective.target_text || `${objective.target_value}${objective.unit ?? ''}`}
+                            <span>{objective.target_text || `${objective.target_value}${objective.unit ?? ''}`}</span>
+                            {objective.target_value > 0 && (
+                              <div className="mt-2">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs text-charcoal-400">Progress</span>
+                                  <span className="text-xs font-semibold text-charcoal-600">
+                                    {Math.min(100, Math.round((objective.current_value / objective.target_value) * 100))}%
+                                  </span>
+                                </div>
+                                <div className="w-full bg-surface-200 rounded-full h-1.5">
+                                  <div
+                                    className="bg-teal h-1.5 rounded-full transition-all"
+                                    style={{ width: `${Math.min(100, Math.round((objective.current_value / objective.target_value) * 100))}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-sm text-charcoal-600 align-top">
                             {objective.responsible_name || '-'}
@@ -424,6 +528,13 @@ export function ObjectivesTargetsPage() {
                                   Review
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => setExpandedNotesId((cur) => (cur === objective.id ? null : objective.id))}
+                                className="px-2 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"
+                              >
+                                {expandedNotesId === objective.id ? 'Hide Notes' : 'Notes'}
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -435,6 +546,18 @@ export function ObjectivesTargetsPage() {
                                 target={objective}
                                 actorUserId={user?.id}
                                 onSaved={() => setRefreshKey((k) => k + 1)}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                        {expandedNotesId === objective.id && activeCompanyId && (
+                          <tr>
+                            <td colSpan={5} className="px-4 py-4 bg-surface-50">
+                              <NotesPanel
+                                companyId={activeCompanyId}
+                                targetId={objective.id}
+                                actorUserId={user?.id as UUID | undefined}
+                                actorName={(user as any)?.user_metadata?.full_name ?? null}
                               />
                             </td>
                           </tr>

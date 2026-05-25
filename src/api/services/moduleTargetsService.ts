@@ -3,6 +3,7 @@ import { withInsforgeSession } from '../insforge/ensureSession';
 import type {
   ModuleTarget,
   ModuleTargetCategory,
+  ModuleTargetNote,
   ModuleTargetReviewActionStatus,
   ModuleTargetStatus,
   UUID
@@ -18,7 +19,16 @@ function statusPatch(status: ModuleTargetStatus | undefined) {
   if (status === 'completed') {
     return { status, achieved: true, completed_at: now, closed_at: now };
   }
+  if (status === 'achieved') {
+    return { status, achieved: true, completed_at: now, closed_at: null };
+  }
+  if (status === 'closed') {
+    return { status, achieved: true, completed_at: now, closed_at: now };
+  }
   if (status === 'not_achieved') {
+    return { status, achieved: false, completed_at: null, closed_at: null };
+  }
+  if (status === 'on_hold') {
     return { status, achieved: false, completed_at: null, closed_at: null };
   }
   return { status, achieved: false, completed_at: null, closed_at: null };
@@ -193,5 +203,46 @@ export async function updateModuleTarget(input: {
     }
 
     return data as ModuleTarget;
+  });
+}
+
+export async function createModuleTargetNote(input: {
+  companyId: UUID;
+  moduleTargetId: UUID;
+  note: string;
+  createdByUserId: UUID;
+  createdByName?: string | null;
+}): Promise<ModuleTargetNote> {
+  return withInsforgeSession('module-target-notes:create', async () => {
+    const { data, error } = await insforge.database
+      .from('module_target_notes')
+      .insert({
+        company_id: input.companyId,
+        module_target_id: input.moduleTargetId,
+        note: input.note.trim(),
+        created_by_user_id: input.createdByUserId,
+        created_by_name: input.createdByName ?? null
+      })
+      .select('*')
+      .single();
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to create note.');
+    return data as ModuleTargetNote;
+  });
+}
+
+export async function listModuleTargetNotes(input: {
+  companyId: UUID;
+  moduleTargetId: UUID;
+}): Promise<ModuleTargetNote[]> {
+  return withInsforgeSession('module-target-notes:list', async () => {
+    const { data, error } = await insforge.database
+      .from('module_target_notes')
+      .select('*')
+      .eq('company_id', input.companyId)
+      .eq('module_target_id', input.moduleTargetId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as ModuleTargetNote[];
   });
 }

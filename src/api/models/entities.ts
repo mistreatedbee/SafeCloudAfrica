@@ -1385,6 +1385,7 @@ export type PpeStock = {
   qty_ordered?: number | null;
   qty_received?: number | null;
   expiry_date?: string | null;
+  size?: string | null;
 };
 
 export type PpeStockMovementType = 'in' | 'out' | 'adjust' | 'return' | 'ordered' | 'damage' | 'expired';
@@ -1833,7 +1834,7 @@ export type Notification = {
   created_at: string;
 };
 
-export type ModuleTargetStatus = 'not_started' | 'in_progress' | 'completed' | 'not_achieved';
+export type ModuleTargetStatus = 'not_started' | 'in_progress' | 'completed' | 'not_achieved' | 'on_hold' | 'achieved' | 'closed';
 export type ModuleTargetCategory = 'Safety' | 'Health' | 'Environment' | 'Quality';
 export type ModuleTargetReviewActionStatus = 'not_started' | 'in_progress' | 'completed';
 
@@ -1869,6 +1870,16 @@ export type ModuleTarget = {
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;
+};
+
+export type ModuleTargetNote = {
+  id: UUID;
+  company_id: UUID;
+  module_target_id: UUID;
+  note: string;
+  created_by_user_id: UUID;
+  created_by_name: string | null;
+  created_at: string;
 };
 
 export type PlanningPlanPeriod = 'annual' | 'quarterly' | 'monthly';

@@ -328,13 +328,17 @@ export function RiskAssessmentCreatePage() {
   }
 
   async function save(status: RiskAssessmentStatus) {
-    if (!activeCompanyId || !user?.id) return;
+    if (saving) return;
+    manualSavingRef.current = true;
+    if (!activeCompanyId || !user?.id) { manualSavingRef.current = false; return; }
     if (!activeRole) {
       setError('Please select an active role to save this risk assessment.');
+      manualSavingRef.current = false;
       return;
     }
     if (!header.title?.trim()) {
       setError('Title is required.');
+      manualSavingRef.current = false;
       return;
     }
 
@@ -346,7 +350,6 @@ export function RiskAssessmentCreatePage() {
       // ignore
     }
 
-    manualSavingRef.current = true;
     setSaving(true);
     setError(null);
     try {

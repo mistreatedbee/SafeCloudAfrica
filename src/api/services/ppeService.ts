@@ -397,6 +397,7 @@ export async function listPpeStock(input: {
   departmentId?: UUID | null;
   includeInactive?: boolean;
   ppeItemId?: UUID | null;
+  size?: string | null;
 }): Promise<PpeStock[]> {
   let query = insforge.database.from('ppe_stock').select('*').eq('company_id', input.companyId);
 
@@ -409,6 +410,9 @@ export async function listPpeStock(input: {
   if (input.ppeItemId !== undefined && input.ppeItemId !== null) {
     query = query.eq('ppe_item_id', input.ppeItemId);
   }
+  if (input.size !== undefined && input.size !== null) {
+    query = query.eq('size', input.size);
+  }
   if (!input.includeInactive) {
     query = query.eq('is_active', true);
   }
@@ -418,18 +422,20 @@ export async function listPpeStock(input: {
   return (data ?? []) as PpeStock[];
 }
 
-/** Resolve a stock record by location and item (e.g. for issuing). Returns first match. */
+/** Resolve a stock record by location, item, and optional size (e.g. for issuing). Returns first match. */
 export async function getPpeStockByLocation(input: {
   companyId: UUID;
   siteId?: UUID | null;
   departmentId?: UUID | null;
   ppeItemId: UUID;
+  size?: string | null;
 }): Promise<PpeStock | null> {
   const list = await listPpeStock({
     companyId: input.companyId,
     siteId: input.siteId,
     departmentId: input.departmentId,
     ppeItemId: input.ppeItemId,
+    size: input.size ?? null,
     includeInactive: false
   });
   return list.length > 0 ? list[0] : null;
@@ -453,6 +459,7 @@ export async function createPpeStock(input: {
   qtyOrdered?: number | null;
   qtyReceived?: number | null;
   expiryDate?: string | null;
+  size?: string | null;
 }): Promise<PpeStock> {
   const capturedByUserId = input.capturedByUserId ?? input.createdByUserId;
   let capturedByName = input.capturedByName ?? null;
@@ -490,7 +497,8 @@ export async function createPpeStock(input: {
       opening_stock_qty: input.openingStockQty ?? null,
       qty_ordered: input.qtyOrdered ?? null,
       qty_received: input.qtyReceived ?? null,
-      expiry_date: input.expiryDate ?? null
+      expiry_date: input.expiryDate ?? null,
+      size: input.size ?? null
     })
     .select('*')
     .single();

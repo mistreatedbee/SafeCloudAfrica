@@ -19,7 +19,6 @@ export function PpeItemCreateModal(props: {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
-  const [sizesText, setSizesText] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [stockLocation, setStockLocation] = useState('');
   const [unitCost, setUnitCost] = useState('');
@@ -36,7 +35,6 @@ export function PpeItemCreateModal(props: {
     name: string;
     category: string;
     description: string;
-    sizesText: string;
     supplierName: string;
     stockLocation: string;
     unitCost: string;
@@ -53,7 +51,6 @@ export function PpeItemCreateModal(props: {
       setName(item.name ?? '');
       setCategory(item.category ?? '');
       setDescription(item.description ?? '');
-      setSizesText((item.sizes_available ?? []).join(', '));
       setSupplierName(item.supplier_name ?? '');
       setStockLocation(item.stock_location ?? '');
       setUnitCost(item.unit_cost != null ? String(item.unit_cost) : '');
@@ -76,7 +73,6 @@ export function PpeItemCreateModal(props: {
     setName('');
     setCategory('');
     setDescription('');
-    setSizesText('');
     setSupplierName('');
     setStockLocation('');
     setUnitCost('');
@@ -92,7 +88,6 @@ export function PpeItemCreateModal(props: {
       name,
       category,
       description,
-      sizesText,
       supplierName,
       stockLocation,
       unitCost,
@@ -102,7 +97,6 @@ export function PpeItemCreateModal(props: {
       name,
       category,
       description,
-      sizesText,
       supplierName,
       stockLocation,
       unitCost,
@@ -126,16 +120,11 @@ export function PpeItemCreateModal(props: {
   });
 
   const sizesAvailable = useMemo(() => {
-    const manual = sizesText.trim();
-    if (manual) {
-      const tokens = manual.split(/[\s,]+/).filter(Boolean);
-      if (tokens.length > 0) return tokens;
-    }
     const fromRows = sizeRows
       .map((row) => row.size.trim())
       .filter((v, idx, arr) => v && arr.indexOf(v) === idx);
     return fromRows.length > 0 ? fromRows : null;
-  }, [sizesText, sizeRows]);
+  }, [sizeRows]);
 
   const sizesWithPrices: PpeSizeWithPrice[] | null = useMemo(() => {
     const rows = sizeRows
@@ -158,7 +147,6 @@ export function PpeItemCreateModal(props: {
         name: props.item?.name ?? '',
         category: props.item?.category ?? '',
         description: props.item?.description ?? '',
-        sizesText: (props.item?.sizes_available ?? []).join(', '),
         supplierName: props.item?.supplier_name ?? '',
         stockLocation: props.item?.stock_location ?? '',
         unitCost: props.item?.unit_cost != null ? String(props.item.unit_cost) : '',
@@ -189,7 +177,6 @@ export function PpeItemCreateModal(props: {
     setName(restored.name ?? '');
     setCategory(restored.category ?? '');
     setDescription(restored.description ?? '');
-    setSizesText(restored.sizesText ?? '');
     setSupplierName(restored.supplierName ?? '');
     setStockLocation(restored.stockLocation ?? '');
     setUnitCost(restored.unitCost ?? '');
@@ -380,21 +367,6 @@ export function PpeItemCreateModal(props: {
                 </button>
               )}
             </div>
-            <p className="text-xs text-charcoal-500">
-              You can still type a quick list of sizes in the field below if you prefer.
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">
-              Sizes available (optional quick list)
-            </label>
-            <input
-              value={sizesText}
-              onChange={(e) => setSizesText(e.target.value)}
-              placeholder="e.g. S, M, L, XL"
-              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

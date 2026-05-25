@@ -278,7 +278,8 @@ export function PpeIssueModal(props: {
         companyId: props.companyId,
         siteId: siteId || null,
         departmentId: departmentId || null,
-        ppeItemId: ppeItemId as UUID
+        ppeItemId: ppeItemId as UUID,
+        size: size || null
       });
       if (cancelled) return;
       if (!stock) {
@@ -297,7 +298,7 @@ export function PpeIssueModal(props: {
     return () => {
       cancelled = true;
     };
-  }, [props.open, props.companyId, ppeItemId, siteId, departmentId, quantityIssued]);
+  }, [props.open, props.companyId, ppeItemId, siteId, departmentId, quantityIssued, size]);
 
   const canSubmit = useMemo(
     () =>
