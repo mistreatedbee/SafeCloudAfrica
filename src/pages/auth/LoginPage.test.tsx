@@ -24,8 +24,12 @@ const ensureInsforgeSessionMock = vi.fn();
 const ensureMeAsSuperAdminMock = vi.fn();
 const isPlatformAdminMock = vi.fn();
 const getLoginRedirectPathMock = vi.fn();
+const acceptInviteByTokenMock = vi.fn();
 const recoverAuthStateMock = vi.fn().mockResolvedValue(undefined);
 const callOrder: string[] = [];
+const routerState = vi.hoisted(() => ({
+  searchParams: new URLSearchParams()
+}));
 
 vi.mock('@insforge/react', () => ({
   useAuth: () => useAuthState,
@@ -34,7 +38,7 @@ vi.mock('@insforge/react', () => ({
 
 vi.mock('react-router-dom', () => ({
   Link: ({ children }: { children: React.ReactNode }) => React.createElement('a', null, children),
-  useSearchParams: () => [new URLSearchParams()]
+  useSearchParams: () => [routerState.searchParams]
 }));
 
 vi.mock('../../components/auth/AuthShell', () => ({
@@ -52,7 +56,12 @@ vi.mock('../../api/insforge/ensureSession', () => ({
 vi.mock('../../api/services/platformAdminService', () => ({
   ensureMeAsSuperAdmin: (...args: unknown[]) => ensureMeAsSuperAdminMock(...args),
   isPlatformAdmin: (...args: unknown[]) => isPlatformAdminMock(...args),
+  getDashboardRoute: (role: string) => `/${String(role).toLowerCase()}/dashboard`,
   getLoginRedirectPath: (...args: unknown[]) => getLoginRedirectPathMock(...args)
+}));
+
+vi.mock('../../api/services/tenantService', () => ({
+  acceptInviteByToken: (...args: unknown[]) => acceptInviteByTokenMock(...args)
 }));
 
 vi.mock('../../auth/recoverAuthState', () => ({
@@ -88,6 +97,9 @@ describe('LoginPage', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     callOrder.length = 0;
+    routerState.searchParams = new URLSearchParams();
+    localStorage.clear();
+    sessionStorage.clear();
 
     tenantState.setActiveCompanyId.mockReset();
     tenantState.refreshTenant.mockReset();
@@ -97,6 +109,7 @@ describe('LoginPage', () => {
     ensureMeAsSuperAdminMock.mockReset();
     isPlatformAdminMock.mockReset();
     getLoginRedirectPathMock.mockReset();
+    acceptInviteByTokenMock.mockReset();
     recoverAuthStateMock.mockReset();
 
     ensureInsforgeSessionMock.mockImplementation(async () => {
@@ -115,12 +128,16 @@ describe('LoginPage', () => {
       callOrder.push('getLoginRedirectPath');
       return { path: '/org/dashboard', organizationId: 'company-1' };
     });
+    acceptInviteByTokenMock.mockImplementation(async () => {
+      callOrder.push('acceptInviteByToken');
+      return { company_id: 'company-invite', role: 'employee' };
+    });
     recoverAuthStateMock.mockResolvedValue(undefined);
 
     replaceMock = vi.fn();
     Object.defineProperty(window, 'location', {
       configurable: true,
-      value: { replace: replaceMock }
+      value: { origin: 'http://localhost', replace: replaceMock }
     });
   });
 
@@ -146,5 +163,28 @@ describe('LoginPage', () => {
     ]);
     expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-1');
     expect(replaceMock).toHaveBeenCalledWith('/org/dashboard');
+  });
+
+  it('accepts invite redirects before normal post-login routing', async () => {
+    routerState.searchParams = new URLSearchParams(`redirect=${encodeURIComponent('/invite/accept?token=invite-token-1')}`);
+
+    await act(async () => {
+      root.render(<LoginPage />);
+      await flushAsyncWork();
+    });
+
+    expect(callOrder).toEqual([
+      'ensureSession',
+      'ensureMeAsSuperAdmin',
+      'isPlatformAdmin',
+      'acceptInviteByToken'
+    ]);
+    expect(acceptInviteByTokenMock).toHaveBeenCalledWith({
+      token: 'invite-token-1',
+      userId: 'user-1'
+    });
+    expect(getLoginRedirectPathMock).not.toHaveBeenCalled();
+    expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-invite');
+    expect(replaceMock).toHaveBeenCalledWith('/employee/dashboard');
   });
 });

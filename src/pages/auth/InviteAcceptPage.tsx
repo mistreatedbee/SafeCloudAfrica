@@ -17,6 +17,7 @@ import {
 import { useTenant } from '../../tenant/TenantContext';
 import type { CompanyInvite } from '../../api/models/entities';
 import { getDashboardRoute } from '../../api/services/platformAdminService';
+import { clearPendingInviteContext, savePendingInviteContext } from '../../auth/pendingAuthRedirect';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -55,6 +56,14 @@ export function InviteAcceptPage() {
 
   const redirectToLogin = useMemo(() => `/login?redirect=${encodeURIComponent(`/invite/accept?token=${token}`)}`, [token]);
   const redirectToRegister = useMemo(() => `/register?redirect=${encodeURIComponent(`/invite/accept?token=${token}`)}&inviteToken=${encodeURIComponent(token)}&email=${encodeURIComponent(invite?.email ?? '')}`, [token, invite?.email]);
+  const saveInviteContinuation = React.useCallback(() => {
+    if (!token) return;
+    savePendingInviteContext({
+      token,
+      email: invite?.email ?? null,
+      redirectPath: `/invite/accept?token=${encodeURIComponent(token)}`
+    });
+  }, [invite?.email, token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +85,11 @@ export function InviteAcceptPage() {
           }
           setInvite(validation.invite as CompanyInvite);
           setCompanyName(validation.invite.organization_name ?? validation.invite.company_name ?? 'Organization');
+          savePendingInviteContext({
+            token,
+            email: validation.invite.email,
+            redirectPath: `/invite/accept?token=${encodeURIComponent(token)}`
+          });
           setLoading(false);
           return;
         }
@@ -126,6 +140,7 @@ export function InviteAcceptPage() {
         if (cancelled) return;
         setActiveCompanyId(membership.company_id);
         await refreshTenant();
+        clearPendingInviteContext();
         setSuccess(true);
         setTimeout(() => {
           navigate(getDashboardRoute(membership.role), { replace: true });
@@ -212,8 +227,8 @@ export function InviteAcceptPage() {
                     Use <strong>{invite.email}</strong> to sign in or create your account, then the invite will be accepted automatically.
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    <Link to={redirectToLogin} className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">Login to accept invite</Link>
-                    <Link to={redirectToRegister} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-semibold text-charcoal hover:bg-surface-50">Create account</Link>
+                    <Link to={redirectToLogin} onClick={saveInviteContinuation} className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">Login to accept invite</Link>
+                    <Link to={redirectToRegister} onClick={saveInviteContinuation} className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-semibold text-charcoal hover:bg-surface-50">Create account</Link>
                   </div>
                 </motion.div>
               ) : !emailMatches ? (
@@ -223,7 +238,7 @@ export function InviteAcceptPage() {
                     This invite is for <strong>{invite.email}</strong>, but you're signed in as <strong>{user?.email}</strong>. Please sign out and sign in with the invited email.
                   </p>
                   <div className="mt-4">
-                    <Link to={redirectToLogin} className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">Sign in with invited email</Link>
+                    <Link to={redirectToLogin} onClick={saveInviteContinuation} className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600">Sign in with invited email</Link>
                   </div>
                 </motion.div>
               ) : (

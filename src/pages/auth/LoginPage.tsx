@@ -7,10 +7,18 @@ import { formatAuthError } from '../../auth/authMessages';
 import { recoverAuthState } from '../../auth/recoverAuthState';
 import { useTenant } from '../../tenant/TenantContext';
 import { ensureInsforgeSession } from '../../api/insforge/ensureSession';
-import { ensureMeAsSuperAdmin, isPlatformAdmin, getLoginRedirectPath } from '../../api/services/platformAdminService';
+import { ensureMeAsSuperAdmin, isPlatformAdmin, getDashboardRoute, getLoginRedirectPath } from '../../api/services/platformAdminService';
+import { acceptInviteByToken } from '../../api/services/tenantService';
 import { insforge, insforgeReady } from '../../api/insforge/client';
 import type { UUID } from '../../api/models/entities';
-import { consumePendingAuthRedirect } from '../../auth/pendingAuthRedirect';
+import {
+  clearPendingInviteContext,
+  consumePendingAuthRedirect,
+  getPendingInviteContext,
+  getPendingInviteContextFromRedirect,
+  savePendingInviteContext,
+  type PendingInviteContext
+} from '../../auth/pendingAuthRedirect';
 
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
 const ACTIVE_COMPANY_KEY = 'sca_active_company_id_v3';
@@ -59,6 +67,11 @@ function readAuthSession(result: unknown): { accessToken: string | null; userId:
 
 function redirectToPath(path: string): void {
   window.location.replace(path);
+}
+
+function isInviteAlreadyAcceptedError(error: unknown): boolean {
+  const message = String((error as any)?.message ?? error ?? '').toLowerCase();
+  return message.includes('invite_accepted') || message.includes('already been accepted');
 }
 
 export function LoginPage() {
@@ -134,7 +147,36 @@ export function LoginPage() {
       }
 
       const redirectParam = searchParams.get('redirect');
-      if (redirectParam) {
+      const redirectInviteContext = getPendingInviteContextFromRedirect(redirectParam);
+      if (redirectInviteContext) {
+        savePendingInviteContext(redirectInviteContext);
+      }
+      const pendingInviteContext: PendingInviteContext | null = redirectInviteContext ?? getPendingInviteContext();
+
+      if (pendingInviteContext) {
+        try {
+          const membership = await acceptInviteByToken({
+            token: pendingInviteContext.token,
+            userId: effectiveUserId
+          });
+          setActiveCompanyId(membership.company_id);
+          await Promise.race([
+            refreshTenant(),
+            wait(TENANT_REFRESH_MAX_WAIT_MS)
+          ]);
+          clearPendingInviteContext();
+          redirectToPath(getDashboardRoute(membership.role));
+          return;
+        } catch (error) {
+          if (!isInviteAlreadyAcceptedError(error)) {
+            redirectToPath(pendingInviteContext.redirectPath);
+            return;
+          }
+          clearPendingInviteContext();
+        }
+      }
+
+      if (redirectParam && !redirectInviteContext) {
         try {
           const url = new URL(redirectParam, window.location.origin);
           if (url.origin === window.location.origin) {

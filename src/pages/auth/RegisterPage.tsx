@@ -3,13 +3,19 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { formatAuthError } from '../../auth/authMessages';
 import { insforge, insforgeReady } from '../../api/insforge/client';
-import { getVerificationRedirectUrl, safeAuthRedirectPath, savePendingAuthRedirect } from '../../auth/pendingAuthRedirect';
+import {
+  getVerificationRedirectUrl,
+  safeAuthRedirectPath,
+  savePendingAuthRedirect,
+  savePendingInviteContext
+} from '../../auth/pendingAuthRedirect';
 
 export function RegisterPage() {
   const [searchParams] = useSearchParams();
   const redirectPath = useMemo(() => safeAuthRedirectPath(searchParams.get('redirect')), [searchParams]);
+  const inviteToken = searchParams.get('inviteToken')?.trim() ?? '';
   const inviteEmail = searchParams.get('email')?.trim().toLowerCase() ?? '';
-  const isInviteSignup = !!inviteEmail || redirectPath.startsWith('/invite/');
+  const isInviteSignup = !!inviteEmail || !!inviteToken || redirectPath.startsWith('/invite/');
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState(inviteEmail);
@@ -36,6 +42,13 @@ export function RegisterPage() {
     try {
       await insforgeReady;
       savePendingAuthRedirect(redirectPath);
+      if (isInviteSignup) {
+        savePendingInviteContext({
+          token: inviteToken,
+          email: normalizedEmail,
+          redirectPath
+        });
+      }
       const { data, error: signUpError } = await insforge.auth.signUp({
         email: normalizedEmail,
         password,
