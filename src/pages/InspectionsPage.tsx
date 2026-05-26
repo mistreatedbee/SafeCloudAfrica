@@ -68,6 +68,7 @@ export function InspectionsPage() {
     const checklistName = i.checklist_name || i.title.replace('[INSPECTION]', '').trim();
     return {
       id: `INS-${String(i.id).slice(0, 8)}`,
+      rawId: i.id,
       title: checklistName,
       module: i.module,
       scheduledDate: i.scheduled_at ? new Date(i.scheduled_at).toLocaleDateString('en-ZA') : new Date(i.created_at).toLocaleDateString('en-ZA'),
@@ -245,7 +246,7 @@ export function InspectionsPage() {
                   <div
                     key={inspection.id}
                     className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer"
-              onClick={() => navigate(`/inspections/${inspection.id.replace('INS-', '')}`)}
+              onClick={() => navigate(`/inspections/${(inspection as any).rawId}`)}
                   >
                     <div className="flex items-start gap-4">
                       <div className="p-2 bg-surface-100 rounded-lg">

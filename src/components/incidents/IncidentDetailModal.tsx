@@ -242,10 +242,10 @@ export function IncidentDetailModal(props: {
           setRisk(inv.risk ?? '');
           setRiskProfile(inv.risk_profile ?? '');
           setPotentialConsequence(inv.potential_consequence ?? '');
-          setImmediateCauses(Array.isArray(inv.immediate_causes) ? inv.immediate_causes.join(', ') : '');
-          setRootHuman(Array.isArray(inv.root_causes_human) ? inv.root_causes_human.join(', ') : '');
-          setRootWorkplace(Array.isArray(inv.root_causes_workplace) ? inv.root_causes_workplace.join(', ') : '');
-          setSystemFailures(Array.isArray(inv.system_failures) ? inv.system_failures.join(', ') : '');
+          setImmediateCauses(Array.isArray(inv.immediate_causes) ? inv.immediate_causes.join('\n') : '');
+          setRootHuman(Array.isArray(inv.root_causes_human) ? inv.root_causes_human.join('\n') : '');
+          setRootWorkplace(Array.isArray(inv.root_causes_workplace) ? inv.root_causes_workplace.join('\n') : '');
+          setSystemFailures(Array.isArray(inv.system_failures) ? inv.system_failures.join('\n') : '');
           setContributingFactors(inv.contributing_factors ?? '');
           setLessonsLearnt(inv.lessons_learnt ?? '');
           setConclusion(inv.conclusion ?? '');
@@ -370,19 +370,19 @@ export function IncidentDetailModal(props: {
           risk_profile: riskProfile.trim() || null,
           potential_consequence: potentialConsequence.trim() || null,
           immediate_causes: immediateCauses
-            .split(',')
+            .split('\n')
             .map((s) => s.trim())
             .filter(Boolean),
           root_causes_human: rootHuman
-            .split(',')
+            .split('\n')
             .map((s) => s.trim())
             .filter(Boolean),
           root_causes_workplace: rootWorkplace
-            .split(',')
+            .split('\n')
             .map((s) => s.trim())
             .filter(Boolean),
           system_failures: systemFailures
-            .split(',')
+            .split('\n')
             .map((s) => s.trim())
             .filter(Boolean),
           contributing_factors: contributingFactors.trim() || null,

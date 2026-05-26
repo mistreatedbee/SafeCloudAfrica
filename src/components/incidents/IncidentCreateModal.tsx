@@ -2261,7 +2261,7 @@ export function IncidentCreateModal(props: {
                     onChange={(e) => setGenerateNcr(e.target.checked)}
                     className="w-4 h-4 text-teal border-surface-300 rounded focus:ring-teal"
                   />
-                  <span>Generate/link NCR for this incident</span>
+                  <span>Generate a new NCR from this incident</span>
                 </label>
               </div>
             </div>
