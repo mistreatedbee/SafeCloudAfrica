@@ -1,4 +1,4 @@
-import acceptInviteHandler from '../../server/invites/acceptHandler.js';
+import acceptInviteHandler, { acceptPendingInviteHandler } from '../../server/invites/acceptHandler.js';
 import createInviteHandler from '../../server/invites/createHandler.js';
 import resendInviteHandler from '../../server/invites/resendHandler.js';
 import { validateInviteHandler } from '../../server/invites/validateHandler.js';
@@ -19,6 +19,7 @@ export default async function handler(req: any, res: any) {
 
   if (action === 'create' && rest.length === 0) return createInviteHandler(req, res);
   if (action === 'accept' && rest.length === 0) return acceptInviteHandler(req, res);
+  if (action === 'accept-pending' && rest.length === 0) return acceptPendingInviteHandler(req, res);
   if (action === 'resend' && rest.length === 0) return resendInviteHandler(req, res);
 
   if (action === 'validate') {

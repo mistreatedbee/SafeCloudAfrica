@@ -813,6 +813,39 @@ export async function acceptInviteByToken(input: { token: string; userId: UUID }
   } as CompanyMembership;
 }
 
+export async function acceptPendingInviteForCurrentUser(input: { userId: UUID }): Promise<CompanyMembership | null> {
+  const headers = await getAuthHeaders();
+  const response = await fetchWithInsforgeAuth('/api/invites/accept-pending', {
+    method: 'POST',
+    cache: 'no-store',
+    headers,
+    body: JSON.stringify({})
+  }, 'invites:accept-pending');
+  const data = await response.json().catch(() => null as any);
+
+  if (isApiRouteUnavailable(response.status, data)) return null;
+  if (response.status === 404 && String(data?.reason ?? '').toLowerCase() === 'no_pending_invite') return null;
+  if (!response.ok || !data?.ok) {
+    const reason = String(data?.reason ?? '').toLowerCase();
+    if (reason === 'expired') throw new Error('INVITE_EXPIRED: This invitation has expired.');
+    if (reason === 'accepted') throw new Error('INVITE_ACCEPTED: This invitation has already been accepted.');
+    if (reason === 'revoked') throw new Error('INVITE_INVALID: This invite link is invalid.');
+    if (response.status >= 500 || reason === 'backend_unavailable') {
+      throw new Error('INVITE_BACKEND_UNAVAILABLE: We could not validate this invite right now.');
+    }
+    throw new Error(`INVITE_INVALID: ${data?.error || 'Invalid invite.'}`);
+  }
+
+  return {
+    id: '' as UUID,
+    company_id: data.orgId as UUID,
+    user_id: input.userId,
+    role: data.role as CompanyRole,
+    status: 'ACTIVE',
+    created_at: new Date().toISOString()
+  } as CompanyMembership;
+}
+
 export type InviteResendResult = {
   emailSent: boolean;
   invite: CompanyInvite;

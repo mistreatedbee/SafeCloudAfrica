@@ -8,7 +8,7 @@ import { recoverAuthState } from '../../auth/recoverAuthState';
 import { useTenant } from '../../tenant/TenantContext';
 import { ensureInsforgeSession } from '../../api/insforge/ensureSession';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getDashboardRoute, getLoginRedirectPath } from '../../api/services/platformAdminService';
-import { acceptInviteByToken } from '../../api/services/tenantService';
+import { acceptInviteByToken, acceptPendingInviteForCurrentUser } from '../../api/services/tenantService';
 import { insforge, insforgeReady } from '../../api/insforge/client';
 import type { UUID } from '../../api/models/entities';
 import {
@@ -174,6 +174,17 @@ export function LoginPage() {
           }
           clearPendingInviteContext();
         }
+      }
+
+      const pendingEmailInviteMembership = await acceptPendingInviteForCurrentUser({ userId: effectiveUserId });
+      if (pendingEmailInviteMembership) {
+        setActiveCompanyId(pendingEmailInviteMembership.company_id);
+        await Promise.race([
+          refreshTenant(),
+          wait(TENANT_REFRESH_MAX_WAIT_MS)
+        ]);
+        redirectToPath(getDashboardRoute(pendingEmailInviteMembership.role));
+        return;
       }
 
       if (redirectParam && !redirectInviteContext) {

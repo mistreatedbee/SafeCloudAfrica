@@ -25,6 +25,7 @@ const ensureMeAsSuperAdminMock = vi.fn();
 const isPlatformAdminMock = vi.fn();
 const getLoginRedirectPathMock = vi.fn();
 const acceptInviteByTokenMock = vi.fn();
+const acceptPendingInviteForCurrentUserMock = vi.fn();
 const recoverAuthStateMock = vi.fn().mockResolvedValue(undefined);
 const callOrder: string[] = [];
 const routerState = vi.hoisted(() => ({
@@ -61,7 +62,8 @@ vi.mock('../../api/services/platformAdminService', () => ({
 }));
 
 vi.mock('../../api/services/tenantService', () => ({
-  acceptInviteByToken: (...args: unknown[]) => acceptInviteByTokenMock(...args)
+  acceptInviteByToken: (...args: unknown[]) => acceptInviteByTokenMock(...args),
+  acceptPendingInviteForCurrentUser: (...args: unknown[]) => acceptPendingInviteForCurrentUserMock(...args)
 }));
 
 vi.mock('../../auth/recoverAuthState', () => ({
@@ -110,6 +112,7 @@ describe('LoginPage', () => {
     isPlatformAdminMock.mockReset();
     getLoginRedirectPathMock.mockReset();
     acceptInviteByTokenMock.mockReset();
+    acceptPendingInviteForCurrentUserMock.mockReset();
     recoverAuthStateMock.mockReset();
 
     ensureInsforgeSessionMock.mockImplementation(async () => {
@@ -131,6 +134,10 @@ describe('LoginPage', () => {
     acceptInviteByTokenMock.mockImplementation(async () => {
       callOrder.push('acceptInviteByToken');
       return { company_id: 'company-invite', role: 'employee' };
+    });
+    acceptPendingInviteForCurrentUserMock.mockImplementation(async () => {
+      callOrder.push('acceptPendingInviteForCurrentUser');
+      return null;
     });
     recoverAuthStateMock.mockResolvedValue(undefined);
 
@@ -159,6 +166,7 @@ describe('LoginPage', () => {
       'ensureSession',
       'ensureMeAsSuperAdmin',
       'isPlatformAdmin',
+      'acceptPendingInviteForCurrentUser',
       'getLoginRedirectPath'
     ]);
     expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-1');
@@ -186,5 +194,28 @@ describe('LoginPage', () => {
     expect(getLoginRedirectPathMock).not.toHaveBeenCalled();
     expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-invite');
     expect(replaceMock).toHaveBeenCalledWith('/employee/dashboard');
+  });
+
+  it('accepts pending email invites before no-org activation routing', async () => {
+    acceptPendingInviteForCurrentUserMock.mockImplementation(async () => {
+      callOrder.push('acceptPendingInviteForCurrentUser');
+      return { company_id: 'company-pending', role: 'admin' };
+    });
+
+    await act(async () => {
+      root.render(<LoginPage />);
+      await flushAsyncWork();
+    });
+
+    expect(callOrder).toEqual([
+      'ensureSession',
+      'ensureMeAsSuperAdmin',
+      'isPlatformAdmin',
+      'acceptPendingInviteForCurrentUser'
+    ]);
+    expect(acceptPendingInviteForCurrentUserMock).toHaveBeenCalledWith({ userId: 'user-1' });
+    expect(getLoginRedirectPathMock).not.toHaveBeenCalled();
+    expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-pending');
+    expect(replaceMock).toHaveBeenCalledWith('/admin/dashboard');
   });
 });
