@@ -193,6 +193,8 @@ export type HrPersonalDocumentRow = HrSimpleRecord & {
   status: 'ACTIVE' | 'EXPIRED' | 'ARCHIVED';
   uploaded_by_user_id: UUID;
   visible_to_employee: boolean;
+  acknowledged_by_employee: boolean | null;
+  acknowledged_at: string | null;
 };
 
 export type HrAckDocumentRow = HrSimpleRecord & {
@@ -1050,6 +1052,7 @@ export async function getHrDashboardStats(companyId: UUID, selectedFromDate?: st
     .from('hr_employee_documents')
     .select('*', { count: 'planned', head: true })
     .eq('company_id', companyId)
+    .gte('expiry_date', now.toISOString().slice(0, 10))
     .lte('expiry_date', date30.toISOString().slice(0, 10));
 
   const { count: hrDocsExpired } = await insforge.database
@@ -1338,7 +1341,7 @@ export async function listHrPersonalDocuments(input: {
   return ((data ?? []) as HrPersonalDocumentRow[]).map((row) => ({
     ...row,
     doc_name: row.doc_name ?? row.title,
-    status: getDocumentExpiryStatus(row) === 'expired' ? 'EXPIRED' : row.status
+    status: getDocumentExpiryStatus(row) === 'expired' && row.status === 'ACTIVE' ? 'EXPIRED' : row.status
   }));
 }
 
@@ -1388,7 +1391,7 @@ export async function updateHrPersonalDocument(input: {
   companyId: UUID;
   documentId: UUID;
   actorUserId: UUID;
-  patch: Partial<Pick<HrPersonalDocumentRow, 'doc_name' | 'doc_type' | 'issue_date' | 'expiry_date' | 'notes' | 'status'>>;
+  patch: Partial<Pick<HrPersonalDocumentRow, 'doc_name' | 'doc_type' | 'issue_date' | 'expiry_date' | 'notes' | 'status' | 'acknowledged_by_employee' | 'acknowledged_at'>>;
 }): Promise<HrPersonalDocumentRow> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (typeof input.patch.doc_name !== 'undefined') {
@@ -1400,6 +1403,8 @@ export async function updateHrPersonalDocument(input: {
   if (typeof input.patch.expiry_date !== 'undefined') patch.expiry_date = input.patch.expiry_date;
   if (typeof input.patch.notes !== 'undefined') patch.notes = input.patch.notes;
   if (typeof input.patch.status !== 'undefined') patch.status = input.patch.status;
+  if (typeof input.patch.acknowledged_by_employee !== 'undefined') patch.acknowledged_by_employee = input.patch.acknowledged_by_employee;
+  if (typeof input.patch.acknowledged_at !== 'undefined') patch.acknowledged_at = input.patch.acknowledged_at;
 
   const { data, error } = await insforge.database
     .from('hr_employee_documents')

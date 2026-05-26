@@ -473,7 +473,7 @@ export function HrDocumentsPage() {
                                     patch: {
                                       acknowledged_by_employee: true,
                                       acknowledged_at: new Date().toISOString()
-                                    } as any
+                                    }
                                   });
                                   await refetchPersonal();
                                 }}

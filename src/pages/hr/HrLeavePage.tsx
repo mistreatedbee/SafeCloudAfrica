@@ -338,8 +338,10 @@ export function HrLeavePage() {
       });
       await refetch();
 
-      const baseline: HrLeaveDeclineDraft = { ...declineReasonByRow };
-      setDeclineBaseline(baseline);
+      const updated: HrLeaveDeclineDraft = { ...declineReasonByRow };
+      delete updated[String(row.id)];
+      setDeclineReasonByRow(updated);
+      setDeclineBaseline(updated);
       clearDraft(draftKeyDecline);
       setSuccess('Saved successfully');
     } catch (err) {
