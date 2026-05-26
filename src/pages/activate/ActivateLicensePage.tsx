@@ -96,7 +96,8 @@ export function ActivateLicensePage() {
         const { error } = await insforge.auth.signUp({
           email,
           password,
-          options: { data: { full_name: primaryContactName.trim() } }
+          name: primaryContactName.trim(),
+          redirectTo: `${window.location.origin}/login?verified=1&redirect=${encodeURIComponent('/activate')}`
         });
         if (error) {
           if (error.message?.toLowerCase().includes('already registered') || error.message?.toLowerCase().includes('already exists')) {

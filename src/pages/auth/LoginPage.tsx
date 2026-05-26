@@ -187,6 +187,8 @@ export function LoginPage() {
   }, [isLoaded, isSignedIn, redirectAfterLogin, user?.id]);
 
   const activated = searchParams.get('activated') === '1';
+  const verified = searchParams.get('verified') === '1';
+  const registered = searchParams.get('registered') === '1';
 
   const handleSignInError = (error: unknown) => {
     setRedirecting(false);
@@ -247,6 +249,16 @@ export function LoginPage() {
       {activated && (
         <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
           License activated. Please log in to continue.
+        </div>
+      )}
+      {verified && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
+          Email verified. Sign in to continue{searchParams.get('redirect')?.includes('/invite/') ? ' and accept your invite.' : '.'}
+        </div>
+      )}
+      {registered && !verified && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
+          Account created. Please sign in to continue.
         </div>
       )}
       {authError && (
