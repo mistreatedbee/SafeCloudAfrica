@@ -1,4 +1,4 @@
-import { getServerInsforge, nowIso, readBearerToken, resolveServerUser } from '../../api/_insforge.js';
+import { getServerInsforge, getServiceInsforge, nowIso, readBearerToken, resolveServerUser } from '../../api/_insforge.js';
 import { logStructuredLine, sendAlertWebhook } from '../../api/_observability.js';
 import { applyNoStoreHeaders } from '../../api/_response.js';
 import { normalizeInviteStatus } from '../../api/invites/_shared.js';
@@ -6,6 +6,18 @@ import { resolveInviteToken } from './resolver.js';
 
 const MODULE = 'api.invites.accept';
 const PENDING_INVITE_STATUSES = ['PENDING', 'SENT'];
+
+function getInviteServiceClient(): any {
+  const service = getServiceInsforge();
+  if (!service) {
+    const err = new Error('Invite acceptance is not configured. Missing service role key.');
+    (err as any).status = 500;
+    (err as any).reason = 'service_role_missing';
+    (err as any).code = 'SERVICE_ROLE_MISSING';
+    throw err;
+  }
+  return service;
+}
 
 function normalizeRole(role: unknown): string {
   return String(role ?? '').trim().toLowerCase();
@@ -182,13 +194,14 @@ export async function acceptPendingInviteHandler(req: any, res: any) {
   let logOrgId: string | null = null;
 
   try {
-    const insforge = getServerInsforge(authToken);
-    const actor = await resolveServerUser(insforge, authToken);
+    const authInsforge = getServerInsforge(authToken);
+    const actor = await resolveServerUser(authInsforge, authToken);
     const userId = actor.userId;
     const userEmail = String(actor.email || '').trim().toLowerCase();
     if (!userId || !userEmail) return res.status(401).json({ ok: false, error: 'Unauthorized' });
 
     logUserId = String(userId);
+    const insforge = getInviteServiceClient();
 
     const invitesRes = await insforge.database
       .from('company_invites')
@@ -255,13 +268,14 @@ export default async function handler(req: any, res: any) {
   let logOrgId: string | null = null;
 
   try {
-    const insforge = getServerInsforge(authToken);
-    const actor = await resolveServerUser(insforge, authToken);
+    const authInsforge = getServerInsforge(authToken);
+    const actor = await resolveServerUser(authInsforge, authToken);
     const userId = actor.userId;
     const userEmail = String(actor.email || '').trim().toLowerCase();
     if (!userId || !userEmail) return res.status(401).json({ ok: false, error: 'Unauthorized' });
 
     logUserId = String(userId);
+    const insforge = getInviteServiceClient();
 
     const inviteResult = await resolveInviteToken(insforge, token);
     if (inviteResult.ok === false) {
@@ -292,6 +306,11 @@ export default async function handler(req: any, res: any) {
       user_id: logUserId,
       organization_id: logOrgId
     });
-    return res.status(500).json({ ok: false, error: msg });
+    return res.status(Number(err?.status || 500)).json({
+      ok: false,
+      reason: err?.reason,
+      code: err?.code,
+      error: msg
+    });
   }
 }

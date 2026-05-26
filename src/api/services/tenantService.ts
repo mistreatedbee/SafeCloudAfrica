@@ -514,6 +514,17 @@ function mapInviteErrorCode(message: string): 'INVITE_EXPIRED' | 'INVITE_INVALID
   return 'UNKNOWN';
 }
 
+export class PendingInviteAcceptanceError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly status: number
+  ) {
+    super(message);
+    this.name = 'PendingInviteAcceptanceError';
+  }
+}
+
 type InviteResolverRow = {
   invite_id?: UUID | null;
   company_id?: UUID | null;
@@ -827,11 +838,22 @@ export async function acceptPendingInviteForCurrentUser(input: { userId: UUID })
   if (response.status === 404 && String(data?.reason ?? '').toLowerCase() === 'no_pending_invite') return null;
   if (!response.ok || !data?.ok) {
     const reason = String(data?.reason ?? '').toLowerCase();
+    if (reason === 'service_role_missing') {
+      throw new PendingInviteAcceptanceError(
+        'Invite acceptance is not configured. Please contact support.',
+        'SERVICE_ROLE_MISSING',
+        response.status
+      );
+    }
     if (reason === 'expired') throw new Error('INVITE_EXPIRED: This invitation has expired.');
     if (reason === 'accepted') throw new Error('INVITE_ACCEPTED: This invitation has already been accepted.');
     if (reason === 'revoked') throw new Error('INVITE_INVALID: This invite link is invalid.');
     if (response.status >= 500 || reason === 'backend_unavailable') {
-      throw new Error('INVITE_BACKEND_UNAVAILABLE: We could not validate this invite right now.');
+      throw new PendingInviteAcceptanceError(
+        'We could not accept your invitation right now. Please try again or contact support.',
+        'INVITE_BACKEND_UNAVAILABLE',
+        response.status
+      );
     }
     throw new Error(`INVITE_INVALID: ${data?.error || 'Invalid invite.'}`);
   }

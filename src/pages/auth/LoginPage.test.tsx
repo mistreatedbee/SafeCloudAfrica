@@ -63,7 +63,13 @@ vi.mock('../../api/services/platformAdminService', () => ({
 
 vi.mock('../../api/services/tenantService', () => ({
   acceptInviteByToken: (...args: unknown[]) => acceptInviteByTokenMock(...args),
-  acceptPendingInviteForCurrentUser: (...args: unknown[]) => acceptPendingInviteForCurrentUserMock(...args)
+  acceptPendingInviteForCurrentUser: (...args: unknown[]) => acceptPendingInviteForCurrentUserMock(...args),
+  PendingInviteAcceptanceError: class PendingInviteAcceptanceError extends Error {
+    constructor(message: string, public readonly code: string, public readonly status: number) {
+      super(message);
+      this.name = 'PendingInviteAcceptanceError';
+    }
+  }
 }));
 
 vi.mock('../../auth/recoverAuthState', () => ({
@@ -217,5 +223,28 @@ describe('LoginPage', () => {
     expect(getLoginRedirectPathMock).not.toHaveBeenCalled();
     expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-pending');
     expect(replaceMock).toHaveBeenCalledWith('/admin/dashboard');
+  });
+
+  it('shows pending invite backend errors without continuing to activation routing', async () => {
+    const { PendingInviteAcceptanceError } = await import('../../api/services/tenantService');
+    acceptPendingInviteForCurrentUserMock.mockImplementation(async () => {
+      callOrder.push('acceptPendingInviteForCurrentUser');
+      throw new PendingInviteAcceptanceError('Invite acceptance is not configured. Please contact support.', 'SERVICE_ROLE_MISSING', 500);
+    });
+
+    await act(async () => {
+      root.render(<LoginPage />);
+      await flushAsyncWork();
+    });
+
+    expect(callOrder).toEqual([
+      'ensureSession',
+      'ensureMeAsSuperAdmin',
+      'isPlatformAdmin',
+      'acceptPendingInviteForCurrentUser'
+    ]);
+    expect(getLoginRedirectPathMock).not.toHaveBeenCalled();
+    expect(replaceMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Invite acceptance is not configured. Please contact support.');
   });
 });
