@@ -7,6 +7,7 @@ import { validateLicenseKey, activateLicenseKey, type ValidatedKeyInfo } from '.
 import { getDashboardRoute } from '../../api/services/platformAdminService';
 import { useTenant } from '../../tenant/TenantContext';
 import { insforge } from '../../api/insforge/client';
+import { getVerificationRedirectUrl, savePendingAuthRedirect } from '../../auth/pendingAuthRedirect';
 
 const PLAN_LABELS: Record<string, string> = {
   base: 'Base',
@@ -93,11 +94,12 @@ export function ActivateLicensePage() {
           setSubmitting(false);
           return;
         }
-        const { error } = await insforge.auth.signUp({
+        savePendingAuthRedirect('/activate');
+        const { data: signUpData, error } = await insforge.auth.signUp({
           email,
           password,
           name: primaryContactName.trim(),
-          redirectTo: `${window.location.origin}/login?verified=1&redirect=${encodeURIComponent('/activate')}`
+          redirectTo: getVerificationRedirectUrl()
         });
         if (error) {
           if (error.message?.toLowerCase().includes('already registered') || error.message?.toLowerCase().includes('already exists')) {
@@ -105,6 +107,11 @@ export function ActivateLicensePage() {
           } else {
             setSubmitError(error.message ?? 'Could not create account.');
           }
+          setSubmitting(false);
+          return;
+        }
+        if (signUpData?.requireEmailVerification) {
+          setSubmitError('Account created. Check your email to verify it, then sign in and return to activate your license.');
           setSubmitting(false);
           return;
         }

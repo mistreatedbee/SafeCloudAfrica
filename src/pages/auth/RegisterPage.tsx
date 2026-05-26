@@ -3,26 +3,11 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { formatAuthError } from '../../auth/authMessages';
 import { insforge, insforgeReady } from '../../api/insforge/client';
-
-function safeRedirectPath(value: string | null): string {
-  if (!value) return '/app';
-  try {
-    const url = new URL(value, window.location.origin);
-    if (url.origin !== window.location.origin) return '/app';
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return value.startsWith('/') ? value : '/app';
-  }
-}
-
-function buildVerificationRedirect(path: string): string {
-  const loginPath = `/login?verified=1&redirect=${encodeURIComponent(path)}`;
-  return `${window.location.origin}${loginPath}`;
-}
+import { getVerificationRedirectUrl, safeAuthRedirectPath, savePendingAuthRedirect } from '../../auth/pendingAuthRedirect';
 
 export function RegisterPage() {
   const [searchParams] = useSearchParams();
-  const redirectPath = useMemo(() => safeRedirectPath(searchParams.get('redirect')), [searchParams]);
+  const redirectPath = useMemo(() => safeAuthRedirectPath(searchParams.get('redirect')), [searchParams]);
   const inviteEmail = searchParams.get('email')?.trim().toLowerCase() ?? '';
   const isInviteSignup = !!inviteEmail || redirectPath.startsWith('/invite/');
 
@@ -50,11 +35,12 @@ export function RegisterPage() {
 
     try {
       await insforgeReady;
+      savePendingAuthRedirect(redirectPath);
       const { data, error: signUpError } = await insforge.auth.signUp({
         email: normalizedEmail,
         password,
         name: displayName || undefined,
-        redirectTo: buildVerificationRedirect(redirectPath)
+        redirectTo: getVerificationRedirectUrl()
       });
 
       if (signUpError) throw signUpError;

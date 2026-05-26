@@ -10,6 +10,7 @@ import { ensureInsforgeSession } from '../../api/insforge/ensureSession';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getLoginRedirectPath } from '../../api/services/platformAdminService';
 import { insforge, insforgeReady } from '../../api/insforge/client';
 import type { UUID } from '../../api/models/entities';
+import { consumePendingAuthRedirect } from '../../auth/pendingAuthRedirect';
 
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
 const ACTIVE_COMPANY_KEY = 'sca_active_company_id_v3';
@@ -145,6 +146,12 @@ export function LoginPage() {
         }
       }
 
+      const pendingAuthRedirect = consumePendingAuthRedirect();
+      if (pendingAuthRedirect) {
+        redirectToPath(pendingAuthRedirect);
+        return;
+      }
+
       const storedCompanyId = (() => {
         try {
           return (localStorage.getItem(ACTIVE_COMPANY_KEY) as UUID | null) ?? null;
@@ -187,8 +194,10 @@ export function LoginPage() {
   }, [isLoaded, isSignedIn, redirectAfterLogin, user?.id]);
 
   const activated = searchParams.get('activated') === '1';
-  const verified = searchParams.get('verified') === '1';
+  const insforgeVerified = searchParams.get('insforge_status') === 'success' && searchParams.get('insforge_type') === 'verify_email';
+  const verified = searchParams.get('verified') === '1' || insforgeVerified;
   const registered = searchParams.get('registered') === '1';
+  const isInviteContinuation = searchParams.get('redirect')?.includes('/invite/');
 
   const handleSignInError = (error: unknown) => {
     setRedirecting(false);
@@ -253,7 +262,7 @@ export function LoginPage() {
       )}
       {verified && (
         <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
-          Email verified. Sign in to continue{searchParams.get('redirect')?.includes('/invite/') ? ' and accept your invite.' : '.'}
+          Email verified. Sign in to continue{isInviteContinuation ? ' and accept your invite.' : '.'}
         </div>
       )}
       {registered && !verified && (
