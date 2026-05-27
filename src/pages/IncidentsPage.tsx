@@ -76,7 +76,7 @@ export function IncidentsPage() {
   const [editingIncident, setEditingIncident] = useState<Incident | null>(null);
   const [viewIncident, setViewIncident] = useState<Incident | null>(null);
   const [saveFlashMessage, setSaveFlashMessage] = useState<string | null>(null);
-  const canEditInvestigation = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
+  const canEditInvestigation = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
 
   useEffect(() => {
     setCreateOpen(isNew);

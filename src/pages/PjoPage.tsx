@@ -24,7 +24,7 @@ const itemVariants = {
 export function PjoPage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
-  const canManage = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
+  const canManage = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
   const { fullName, organisationName } = useIdentity();
 
   const [searchQuery, setSearchQuery] = useState('');

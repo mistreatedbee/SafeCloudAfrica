@@ -21,7 +21,8 @@ export function HrRecruitmentPage() {
 
   const [vacancyTitle, setVacancyTitle] = useState('');
   const [jobDescription, setJobDescription] = useState('');
-  const [competencyRequired, setCompetencyRequired] = useState('');
+  const [competenciesRequired, setCompetenciesRequired] = useState<string[]>([]);
+  const [competencyInput, setCompetencyInput] = useState('');
   const [experienceRequired, setExperienceRequired] = useState('');
   const [referenceChecksDone, setReferenceChecksDone] = useState(false);
   const [vacancyIdForApplicant, setVacancyIdForApplicant] = useState('');
@@ -57,7 +58,8 @@ export function HrRecruitmentPage() {
         title: vacancyTitle.trim(),
         status: 'OPEN',
         job_description: jobDescription.trim() || null,
-        competency_required: competencyRequired.trim() || null,
+        competency_required: competenciesRequired[0] ?? null,
+        competencies_required: competenciesRequired,
         experience_required: experienceRequired.trim() || null,
         reference_checks_done: referenceChecksDone,
         department_manager_approved: false,
@@ -65,7 +67,8 @@ export function HrRecruitmentPage() {
       });
       setVacancyTitle('');
       setJobDescription('');
-      setCompetencyRequired('');
+      setCompetenciesRequired([]);
+      setCompetencyInput('');
       setExperienceRequired('');
       setReferenceChecksDone(false);
       await refetchVacancies();
@@ -257,17 +260,39 @@ export function HrRecruitmentPage() {
               <input className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" value={vacancyTitle} onChange={(e) => setVacancyTitle(e.target.value)} placeholder="Open vacancy title" />
               <textarea className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm min-h-[100px]" value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} placeholder="Job description (rich text supported as plain text input)" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <SelectOrType
-                  label="Competency required"
-                  value={competencyRequired}
-                  options={COMPETENCY_OPTIONS}
-                  onChange={(value) => setCompetencyRequired(value)}
-                  companyId={activeCompanyId ?? undefined}
-                  moduleKey="hr"
-                  fieldKey="vacancy_competency_required"
-                  createdByUserId={user?.id as UUID | undefined}
-                  allowCreate={!!activeCompanyId}
-                />
+                <div>
+                  <SelectOrType
+                    label="Competency required"
+                    value={competencyInput}
+                    options={COMPETENCY_OPTIONS}
+                    onChange={(value) => {
+                      if (value && !competenciesRequired.includes(value)) {
+                        setCompetenciesRequired((prev) => [...prev, value]);
+                      }
+                      setCompetencyInput('');
+                    }}
+                    companyId={activeCompanyId ?? undefined}
+                    moduleKey="hr"
+                    fieldKey="vacancy_competency_required"
+                    createdByUserId={user?.id as UUID | undefined}
+                    allowCreate={!!activeCompanyId}
+                  />
+                  {competenciesRequired.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {competenciesRequired.map((c) => (
+                        <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal/10 text-teal text-xs font-medium">
+                          {c}
+                          <button
+                            type="button"
+                            className="hover:text-critical"
+                            onClick={() => setCompetenciesRequired((prev) => prev.filter((x) => x !== c))}
+                            aria-label={`Remove ${c}`}
+                          >×</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <SelectOrType
                   label="Experience required"
                   value={experienceRequired}
@@ -292,7 +317,12 @@ export function HrRecruitmentPage() {
               {(vacancies ?? []).map((row) => (
                 <div key={String(row.id)} className="border border-surface-200 rounded-lg p-3">
                   <p className="font-medium">{String(row.title ?? '')}</p>
-                  <p className="text-charcoal-500">{String(row.competency_required ?? '-')} | {String(row.experience_required ?? '-')}</p>
+                  <p className="text-charcoal-500">
+                    {((row.competencies_required as string[] | undefined)?.length
+                      ? (row.competencies_required as string[]).join(', ')
+                      : String(row.competency_required ?? '-')
+                    )} | {String(row.experience_required ?? '-')}
+                  </p>
                   <p className="text-charcoal-500">Dept approval: {String(Boolean(row.department_manager_approved))} | Ref checks: {String(Boolean(row.reference_checks_done))}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {canDepartmentManagerApprove && !row.department_manager_approved && (

@@ -15,6 +15,7 @@ import {
   recalculateHrMonthlyHours,
   upsertHrTimesheet
 } from '../../api/services/hrService';
+import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { downloadTextFile, toCsv } from '../../utils/csv';
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
@@ -203,13 +204,17 @@ export function HrHoursPage() {
           <h3 className="font-semibold">Timesheet entry</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {!isEmployee && (
-              <label className="text-sm">
-                <span className="block text-xs text-charcoal-500 mb-1">Employee</span>
-                <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
-                  <option value="">Select employee</option>
-                  {(employees ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.first_name} {employee.last_name}</option>)}
-                </select>
-              </label>
+              <div>
+                <HrEmployeeSelect
+                  companyId={activeCompanyId ?? null}
+                  value={employeeId as any}
+                  valueField="id"
+                  includeUnlinked={true}
+                  onChange={(val) => setEmployeeId(val)}
+                  label="Employee"
+                  placeholder="Search employee..."
+                />
+              </div>
             )}
             {isEmployee && (
               <label className="text-sm">

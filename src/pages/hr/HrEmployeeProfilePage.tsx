@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { useParams } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
@@ -11,8 +11,12 @@ import type { CompanyRole } from '../../api/models/core';
 import type { HrEmployee, HrEmployeeDependent, HrEmployeeSensitiveDetails } from '../../api/services/hrService';
 import { HrEmployeeEditModal } from '../../components/hr/HrEmployeeEditModal';
 import { useDraftManager } from '../../session/DraftManagerProvider';
+import { uploadFile, getPublicUrl } from '../../api/services/storageService';
+import { listEvidence, createEvidence } from '../../api/services/evidenceService';
+import type { EvidenceAttachment } from '../../api/models/entities';
 
-const TABS = ['overview', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'tasks', 'audit'] as const;
+const TABS = ['overview', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'tasks', 'documents', 'audit'] as const;
+const DOC_TYPES = ['ID Copy', 'Contract', 'Certificate', 'Medical', 'Other'] as const;
 type Tab = (typeof TABS)[number];
 
 function maskValue(value: string | null | undefined, visible = 4): string {
@@ -31,6 +35,12 @@ export function HrEmployeeProfilePage() {
   const [showEdit, setShowEdit] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [docRefreshKey, setDocRefreshKey] = useState(0);
+  const [docType, setDocType] = useState<string>('ID Copy');
+  const [docTitle, setDocTitle] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allowedRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
   const canEditEmployee = !!(
@@ -48,6 +58,11 @@ export function HrEmployeeProfilePage() {
     if (!activeCompanyId || !id) return null;
     return getEmployeeIntegratedProfile(activeCompanyId, id as UUID);
   }, [activeCompanyId, id, refreshKey]);
+
+  const { data: employeeDocs } = useAsync(async () => {
+    if (!activeCompanyId || !id) return [] as EvidenceAttachment[];
+    return listEvidence(activeCompanyId, { entityType: 'hr_employee', entityId: id as UUID });
+  }, [activeCompanyId, id, docRefreshKey]);
 
   const employee = payload?.employee as HrEmployee | undefined;
   const canSensitive = Boolean(payload?.canSensitive);
@@ -84,6 +99,34 @@ export function HrEmployeeProfilePage() {
   const onRestrictedView = async (field: string) => {
     if (!activeCompanyId || !user?.id || !id) return;
     await logRestrictedFieldAccess({ companyId: activeCompanyId, actorUserId: user.id as UUID, targetEntity: 'hr_employee', targetId: id as UUID, fieldName: field, action: 'view' });
+  };
+
+  const onUploadDocument = async (file: File) => {
+    if (!activeCompanyId || !user?.id || !id) return;
+    setUploadError(null);
+    setUploading(true);
+    try {
+      const key = `hr/employees/${id}/${Date.now()}-${file.name}`;
+      const result = await uploadFile('sca-documents', file, { key });
+      await createEvidence({
+        companyId: activeCompanyId,
+        entityType: 'hr_employee',
+        entityId: id as UUID,
+        storageBucket: 'sca-documents',
+        storageKey: result.key,
+        createdByUserId: user.id as UUID,
+        originalFilename: file.name,
+        displayTitle: docTitle.trim() || docType,
+        fileKind: 'document'
+      });
+      setDocTitle('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setDocRefreshKey((k) => k + 1);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -274,6 +317,95 @@ export function HrEmployeeProfilePage() {
             <SimpleTable rows={(payload?.assignedTasks as Array<Record<string, unknown>> | undefined) ?? []} cols={['title', 'status', 'priority', 'due_at']} />
           </Card>
         )}
+        {tab === 'documents' && (
+          <div className="space-y-4">
+            {canEditEmployee && (
+              <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
+                <h3 className="font-semibold text-sm">Upload Document</h3>
+                {uploadError && <div className="bg-critical/10 border border-critical/30 rounded-lg p-2 text-sm text-critical">{uploadError}</div>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="text-sm">
+                    <span className="block text-xs text-charcoal-500 mb-1">Document type</span>
+                    <select
+                      className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"
+                      value={docType}
+                      onChange={(e) => setDocType(e.target.value)}
+                    >
+                      {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-sm">
+                    <span className="block text-xs text-charcoal-500 mb-1">Display name (optional)</span>
+                    <input
+                      className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"
+                      value={docTitle}
+                      onChange={(e) => setDocTitle(e.target.value)}
+                      placeholder={`e.g. ${docType} – 2024`}
+                    />
+                  </label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void onUploadDocument(file);
+                    }}
+                  />
+                  <button
+                    className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-60"
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploading ? 'Uploading...' : 'Choose file & upload'}
+                  </button>
+                  <span className="text-xs text-charcoal-500">PDF, Word, or image files</span>
+                </div>
+              </div>
+            )}
+            <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+              <div className="px-4 py-3 border-b border-surface-200">
+                <h3 className="font-semibold text-sm">Documents ({(employeeDocs ?? []).length})</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-surface-100">
+                  <tr>
+                    <th className="text-left px-4 py-2">Name</th>
+                    <th className="text-left px-4 py-2">File</th>
+                    <th className="text-left px-4 py-2">Uploaded</th>
+                    <th className="text-left px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(employeeDocs ?? []).length === 0 && (
+                    <tr><td colSpan={4} className="px-4 py-4 text-charcoal-500 text-center">No documents uploaded yet.</td></tr>
+                  )}
+                  {(employeeDocs ?? []).map((doc) => (
+                    <tr key={doc.id} className="border-t border-surface-100">
+                      <td className="px-4 py-2 font-medium">{doc.display_title ?? doc.title ?? '-'}</td>
+                      <td className="px-4 py-2 text-charcoal-500">{doc.original_filename ?? '-'}</td>
+                      <td className="px-4 py-2 text-charcoal-500">{doc.created_at ? new Date(doc.created_at).toLocaleDateString() : '-'}</td>
+                      <td className="px-4 py-2">
+                        <a
+                          href={getPublicUrl('sca-documents', doc.storage_key)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-teal hover:underline text-sm"
+                        >
+                          View
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {tab === 'audit' && (
           <Card title="Audit trail">
             <SimpleTable rows={(payload?.auditTrail as Array<Record<string, unknown>> | undefined) ?? []} cols={['action', 'entity_type', 'created_at']} />

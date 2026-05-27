@@ -70,6 +70,7 @@ export function AuditDetailPage() {
   const { fullName, organisationName } = useIdentity();
 
   const canEdit =
+    activeRole === 'owner' ||
     activeRole === 'admin' ||
     activeRole === 'manager' ||
     activeRole === 'supervisor' ||

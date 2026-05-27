@@ -36,7 +36,7 @@ export function InspectionDetailPage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
 
-  const canEditBase = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
+  const canEditBase = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
   const isAuditee = activeRole === 'employee';
   const isManager = activeRole === 'manager';
   const isAuditor = activeRole === 'auditor';

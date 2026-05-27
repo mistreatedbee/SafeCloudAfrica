@@ -32,7 +32,7 @@ export function HealthModulePage() {
   const { restoreLatestDraftByPrefix } = useDraftManager();
 
   const canUploadForSelf = !!user?.id;
-  const canUploadForOthers = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
+  const canUploadForOthers = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
 
   const { data: targets } = useAsync<ModuleTarget[]>(
     async () => {

@@ -15,6 +15,7 @@ import {
   listHrLeaveRequests,
   listHrRecords
 } from '../../api/services/hrService';
+import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { SelectOrType } from '../../components/ui/SelectOrType';
 import { EvidenceModal } from '../../components/evidence/EvidenceModal';
 import { downloadTextFile, toCsv } from '../../utils/csv';
@@ -362,13 +363,17 @@ export function HrLeavePage() {
           <h3 className="font-semibold">Create leave request</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {!isEmployee && (
-              <label className="text-sm">
-                <span className="block text-xs text-charcoal-500 mb-1">Employee</span>
-                <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
-                  <option value="">Employee</option>
-                  {(employees ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.first_name} {employee.last_name}</option>)}
-                </select>
-              </label>
+              <div>
+                <HrEmployeeSelect
+                  companyId={activeCompanyId ?? null}
+                  value={employeeId as any}
+                  valueField="id"
+                  includeUnlinked={true}
+                  onChange={(val) => setEmployeeId(val)}
+                  label="Employee"
+                  placeholder="Search employee..."
+                />
+              </div>
             )}
             {isEmployee && (
               <label className="text-sm">

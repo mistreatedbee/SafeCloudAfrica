@@ -14,6 +14,7 @@ import {
   updateHrRecord
 } from '../../api/services/hrService';
 import { createNotification } from '../../api/services/notificationsService';
+import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { SelectOrType } from '../../components/ui/SelectOrType';
 import { EvidenceModal } from '../../components/evidence/EvidenceModal';
 import type { UUID } from '../../api/models/core';
@@ -247,15 +248,18 @@ export function HrLabourPage() {
           <h3 className="font-semibold">Employee Offence Log</h3>
           {error && <p className="text-sm text-critical">{error}</p>}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            <label className="text-sm">
-              <span className="block text-xs text-charcoal-500 mb-1">Employee</span>
-              <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} disabled={!canManage}>
-                <option value="">Select employee</option>
-                {(employees ?? []).map((employee) => (
-                  <option key={employee.id} value={employee.id}>{employee.first_name} {employee.last_name} ({employee.employee_no})</option>
-                ))}
-              </select>
-            </label>
+            <div>
+              <HrEmployeeSelect
+                companyId={activeCompanyId ?? null}
+                value={employeeId as any}
+                valueField="id"
+                includeUnlinked={true}
+                onChange={(val) => setEmployeeId(val)}
+                label="Employee"
+                placeholder="Search employee..."
+                disabled={!canManage}
+              />
+            </div>
             <SelectOrType
               label="Offence type"
               value={offenceType}

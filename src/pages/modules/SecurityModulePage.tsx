@@ -18,7 +18,7 @@ const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 
 export function SecurityModulePage() {
   const navigate = useNavigate();
   const { activeCompanyId, activeRole } = useTenant();
-  const canManage = activeRole === 'admin' || activeRole === 'manager';
+  const canManage = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager';
 
   const { data: logs, loading } = useAsync<ActivityLog[]>(
     async () => {

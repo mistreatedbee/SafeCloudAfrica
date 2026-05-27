@@ -19,7 +19,7 @@ export function HCSModulePage() {
   const { activeCompany, activeRole } = useTenant();
   const [searchQuery, setSearchQuery] = useState('');
 
-  const canManage = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
+  const canManage = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
 
   const metadata = (activeCompany?.metadata ?? null) as Record<string, unknown> | null;
   const modulesMeta = (metadata?.modules ?? null) as Record<string, unknown> | null;

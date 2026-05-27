@@ -25,7 +25,7 @@ export function GeneralModulePage() {
   const navigate = useNavigate();
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
-  const canManage = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
+  const canManage = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
 
   const [createKpiOpen, setCreateKpiOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);

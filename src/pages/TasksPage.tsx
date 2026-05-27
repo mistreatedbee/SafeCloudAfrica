@@ -110,7 +110,7 @@ export function TasksPage() {
   const [createOpen, setCreateOpen] = useState(isNew);
   const view = (params.get('view') || 'tasks') as 'tasks' | 'capa';
   const [taskSubView, setTaskSubView] = useState<'list' | 'gantt' | 'resource' | 'time'>('list');
-  const canManageCapa = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant' || activeRole === 'auditor';
+  const canManageCapa = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant' || activeRole === 'auditor';
 
   useEffect(() => {
     setCreateOpen(isNew);

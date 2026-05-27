@@ -6,6 +6,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { createHrRecord, deleteHrRecord, listHrEmployees, listHrRecords, updateHrRecord } from '../../api/services/hrService';
 import { listDepartments } from '../../api/services/departmentsService';
+import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { createTask } from '../../api/services/tasksService';
 import type { UUID } from '../../api/models/core';
 import { useDraftManager } from '../../session/DraftManagerProvider';
@@ -339,13 +340,22 @@ export function HrPerformancePage() {
         <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
           <h3 className="font-semibold">Performance review entry</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="text-sm">
-              <span className="block text-xs text-charcoal-500 mb-1">Employee</span>
-              <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
-                <option value="">Employee</option>
-                {(employees ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.first_name} {employee.last_name}</option>)}
-              </select>
-            </label>
+            <div>
+              <HrEmployeeSelect
+                companyId={activeCompanyId ?? null}
+                value={employeeId as any}
+                valueField="id"
+                includeUnlinked={true}
+                onChange={(val) => setEmployeeId(val)}
+                onEmployeeChange={(emp) => {
+                  if (emp?.department_id) {
+                    // department label lookup already happens via employeeLabel map — no extra state needed
+                  }
+                }}
+                label="Employee"
+                placeholder="Search employee..."
+              />
+            </div>
             <label className="text-sm">
               <span className="block text-xs text-charcoal-500 mb-1">Department</span>
               <input

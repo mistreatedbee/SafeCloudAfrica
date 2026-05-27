@@ -19,6 +19,7 @@ import {
   sendHrDocumentExpiryAlerts
 } from '../../api/services/hrService';
 import { listDepartments } from '../../api/services/departmentsService';
+import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { SelectOrType } from '../../components/ui/SelectOrType';
 import { createEvidence, listEvidence } from '../../api/services/evidenceService';
 import { uploadFile, getPublicUrl, type StorageBucket } from '../../api/services/storageService';
@@ -29,7 +30,7 @@ import { createActivityLog } from '../../api/services/activityLogService';
 type Tab = 'personal' | 'acknowledgement';
 
 function isFullAccess(role: CompanyRole | null): boolean {
-  return role === 'admin' || role === 'manager';
+  return role === 'owner' || role === 'admin' || role === 'manager';
 }
 function isOwnerSummary(role: CompanyRole | null): boolean {
   return role === 'owner';
@@ -68,6 +69,10 @@ export function HrDocumentsPage() {
   const [signatureRequired, setSignatureRequired] = useState(false);
   const [ackFile, setAckFile] = useState<File | null>(null);
   const [deletingAckId, setDeletingAckId] = useState<UUID | null>(null);
+  const [pendingAckDocId, setPendingAckDocId] = useState<UUID | null>(null);
+  const [pendingAckSign, setPendingAckSign] = useState(false);
+  const [ackConfirmed, setAckConfirmed] = useState(false);
+  const [ackSubmitting, setAckSubmitting] = useState(false);
 
   const canEdit = isFullAccess(activeRole ?? null) || Boolean((user as any)?.is_hr_manager);
   const ownerSummaryOnly = isOwnerSummary(activeRole ?? null);
@@ -243,16 +248,29 @@ export function HrDocumentsPage() {
 
   async function onAcknowledge(docId: UUID, sign = false) {
     if (!activeCompanyId || !user?.id) return;
-    const device = `${navigator.platform || 'unknown'} | ${navigator.userAgent || 'unknown'}`.slice(0, 400);
-    await submitHrAcknowledgement({
-      companyId: activeCompanyId,
-      actorUserId: user.id as UUID,
-      ackDocumentId: docId,
-      action: sign ? 'sign' : 'acknowledge',
-      ipAddress: null,
-      deviceInfo: device
-    });
-    await refetchAck();
+    setAckSubmitting(true);
+    try {
+      const device = `${navigator.platform || 'unknown'} | ${navigator.userAgent || 'unknown'}`.slice(0, 400);
+      await submitHrAcknowledgement({
+        companyId: activeCompanyId,
+        actorUserId: user.id as UUID,
+        ackDocumentId: docId,
+        action: sign ? 'sign' : 'acknowledge',
+        ipAddress: null,
+        deviceInfo: device
+      });
+      await refetchAck();
+    } finally {
+      setAckSubmitting(false);
+      setPendingAckDocId(null);
+      setAckConfirmed(false);
+    }
+  }
+
+  function openAckModal(docId: UUID, sign: boolean) {
+    setPendingAckDocId(docId);
+    setPendingAckSign(sign);
+    setAckConfirmed(false);
   }
 
   async function onRenameDoc(docId: UUID, name: string) {
@@ -365,18 +383,23 @@ export function HrDocumentsPage() {
           </div>
         )}
 
-        {tab === 'personal' && !ownerSummaryOnly && (
+        {tab === 'personal' && (
           <>
             <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
               <h3 className="font-semibold">Upload employee personal document</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <label className="text-sm">
-                  <span className="block text-xs text-charcoal-500 mb-1">Employee</span>
-                  <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} disabled={!canEdit && !isSupervisor(activeRole ?? null)}>
-                    <option value="">Select employee</option>
-                    {(employees ?? []).map((e) => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
-                  </select>
-                </label>
+                <div>
+                  <HrEmployeeSelect
+                    companyId={activeCompanyId ?? null}
+                    value={employeeId as any}
+                    valueField="id"
+                    includeUnlinked={true}
+                    onChange={(val) => setEmployeeId(val)}
+                    label="Employee"
+                    placeholder="Search employee..."
+                    disabled={!canEdit && !isSupervisor(activeRole ?? null)}
+                  />
+                </div>
                 <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Document name</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={docName} onChange={(e) => setDocName(e.target.value)} /></label>
                 <SelectOrType label="Document type" value={docType} onChange={(v) => setDocType(v)} options={personalTypeOptions} companyId={activeCompanyId ?? undefined} moduleKey="hr" fieldKey="personal_document_type" createdByUserId={(user?.id as UUID | undefined) ?? undefined} allowCreate={!!activeCompanyId} />
                 <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Issue date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} /></label>
@@ -567,8 +590,8 @@ export function HrDocumentsPage() {
                           }}>Preview</button>
                           {activeRole === 'employee' && (
                             <>
-                              <button className="text-teal underline" onClick={() => void onAcknowledge(row.id as UUID, false)} disabled={myReceipt?.status === 'ACKNOWLEDGED' || myReceipt?.status === 'SIGNED'}>Acknowledge</button>
-                              <button className="text-teal underline" onClick={() => void onAcknowledge(row.id as UUID, true)} disabled={myReceipt?.status === 'SIGNED'}>Sign</button>
+                              <button className="text-teal underline" onClick={() => openAckModal(row.id as UUID, false)} disabled={myReceipt?.status === 'ACKNOWLEDGED' || myReceipt?.status === 'SIGNED'}>Acknowledge</button>
+                              <button className="text-teal underline" onClick={() => openAckModal(row.id as UUID, true)} disabled={myReceipt?.status === 'SIGNED'}>Sign</button>
                             </>
                           )}
                           {(canEdit || isSupervisor(activeRole ?? null)) && (
@@ -607,6 +630,45 @@ export function HrDocumentsPage() {
           </>
         )}
       </div>
+
+      {pendingAckDocId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h3 className="text-base font-semibold text-charcoal">Document Acknowledgement</h3>
+            <p className="text-sm text-charcoal-700 leading-relaxed">
+              I hereby acknowledge that I have received, read, and understood the document provided.
+            </p>
+            <p className="text-sm text-charcoal-500">
+              Please contact HR or your manager for any questions or queries regarding the document.
+            </p>
+            <label className="flex items-center gap-3 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={ackConfirmed}
+                onChange={(e) => setAckConfirmed(e.target.checked)}
+                className="w-4 h-4 accent-teal"
+              />
+              <span>I confirm the above acknowledgement</span>
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                className="px-4 py-2 rounded-lg border border-surface-300 text-sm"
+                onClick={() => { setPendingAckDocId(null); setAckConfirmed(false); }}
+                disabled={ackSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-60"
+                disabled={!ackConfirmed || ackSubmitting}
+                onClick={() => void onAcknowledge(pendingAckDocId, pendingAckSign)}
+              >
+                {ackSubmitting ? 'Submitting...' : pendingAckSign ? 'Confirm & Sign' : 'Confirm & Acknowledge'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

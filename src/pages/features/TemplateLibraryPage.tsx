@@ -23,7 +23,7 @@ export function TemplateLibraryPage() {
   const [q, setQ] = useState('');
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
-  const canManage = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
+  const canManage = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
   const [createOpen, setCreateOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 

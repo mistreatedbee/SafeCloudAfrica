@@ -68,6 +68,7 @@ export function HrEmployeeEditModal(props: Props) {
   const [departmentId, setDepartmentId] = useState<string>(String(employee.department_id ?? ''));
   const [siteId, setSiteId] = useState<string>(String(employee.site_id ?? ''));
   const [supervisorUserId, setSupervisorUserId] = useState<UUID | ''>((employee.supervisor_user_id as UUID) ?? '');
+  const [supervisorEmployeeId, setSupervisorEmployeeId] = useState<UUID | ''>((employee as any).supervisor_employee_id ?? '');
 
   const [idNumber, setIdNumber] = useState(employee.id_number ?? '');
   const [dateOfBirth, setDateOfBirth] = useState(employee.date_of_birth ?? '');
@@ -148,6 +149,7 @@ export function HrEmployeeEditModal(props: Props) {
         departmentId.trim().length > 0 ||
         siteId.trim().length > 0 ||
         supervisorUserId.trim().length > 0 ||
+        supervisorEmployeeId.trim().length > 0 ||
         (props.canAccessSensitiveFields &&
           (dependents.some(
             (d) => d.dependent_name.trim().length > 0 || d.relationship.trim().length > 0 || d.contact_details.trim().length > 0
@@ -183,7 +185,8 @@ export function HrEmployeeEditModal(props: Props) {
       props.open,
       siteId,
       startDate,
-      supervisorUserId
+      supervisorUserId,
+      supervisorEmployeeId
     ]
   );
 
@@ -205,6 +208,7 @@ export function HrEmployeeEditModal(props: Props) {
       departmentId,
       siteId,
       supervisorUserId,
+      supervisorEmployeeId,
       ...(props.canViewRestrictedFields
         ? {
             idNumber,
@@ -254,6 +258,7 @@ export function HrEmployeeEditModal(props: Props) {
       departmentId?: string;
       siteId?: string;
       supervisorUserId?: UUID | '' | null;
+      supervisorEmployeeId?: UUID | '' | null;
       idNumber?: string;
       dateOfBirth?: string;
       address?: string;
@@ -291,6 +296,7 @@ export function HrEmployeeEditModal(props: Props) {
     if (restored.departmentId !== undefined) setDepartmentId(restored.departmentId);
     if (restored.siteId !== undefined) setSiteId(restored.siteId);
     if (restored.supervisorUserId !== undefined) setSupervisorUserId((restored.supervisorUserId as any) ?? '');
+    if (restored.supervisorEmployeeId !== undefined) setSupervisorEmployeeId((restored.supervisorEmployeeId as any) ?? '');
 
     if (props.canViewRestrictedFields) {
       if (restored.idNumber !== undefined) setIdNumber(restored.idNumber);
@@ -354,6 +360,7 @@ export function HrEmployeeEditModal(props: Props) {
         department_id: departmentId ? (departmentId as any) : null,
         site_id: siteId ? (siteId as any) : null,
         supervisor_user_id: supervisorUserId || null,
+        supervisor_employee_id: supervisorEmployeeId || null,
         id_number: props.canViewRestrictedFields ? (idNumber.trim() || null) : employee.id_number,
         date_of_birth: props.canViewRestrictedFields ? (dateOfBirth.trim() || null) : employee.date_of_birth,
         address: props.canViewRestrictedFields ? (address.trim() || null) : employee.address,
@@ -596,10 +603,10 @@ export function HrEmployeeEditModal(props: Props) {
             <div>
               <HrEmployeeSelect
                 companyId={props.companyId}
-                value={supervisorUserId}
-                onChange={(userId) => {
-                  setSupervisorUserId(userId);
-                }}
+                value={supervisorEmployeeId}
+                valueField="id"
+                includeUnlinked={true}
+                onChange={(val) => setSupervisorEmployeeId(val)}
                 label="Manager / Supervisor"
                 placeholder="Select manager or supervisor (optional)"
               />
@@ -657,6 +664,18 @@ export function HrEmployeeEditModal(props: Props) {
               </div>
 
               <SectionTitle title="Legal Info" />
+              {props.canViewRestrictedFields && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">ID number</label>
+                    <input
+                      value={idNumber}
+                      onChange={(e) => setIdNumber(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1.5">Tax Number</label>
@@ -867,14 +886,16 @@ export function HrEmployeeEditModal(props: Props) {
             <div className="border border-surface-200 rounded-xl p-4 space-y-4">
               <p className="text-xs font-semibold text-charcoal-600 uppercase tracking-wide">Restricted (POPIA)</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-charcoal mb-1.5">ID number</label>
-                  <input
-                    value={idNumber}
-                    onChange={(e) => setIdNumber(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                  />
-                </div>
+                {!props.canAccessSensitiveFields && (
+                  <div>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">ID number</label>
+                    <input
+                      value={idNumber}
+                      onChange={(e) => setIdNumber(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1.5">Date of birth</label>
                   <input

@@ -22,6 +22,7 @@ export type HrEmployee = {
   department_id: UUID | null;
   site_id: UUID | null;
   supervisor_user_id: UUID | null;
+  supervisor_employee_id?: UUID | null;
   employment_type: string;
   employment_type_other: string | null;
   employment_status: 'ONBOARDING' | 'ACTIVE' | 'ON_LEAVE' | 'SUSPENDED' | 'TERMINATED' | 'ARCHIVED';

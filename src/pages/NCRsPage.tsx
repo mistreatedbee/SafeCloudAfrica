@@ -43,13 +43,13 @@ export default function NCRsPage() {
   const [error, setError] = useState('');
 
   const canCreateNcr = activeRole !== 'employee';
-  const canCloseNcr = activeRole === 'admin' || activeRole === 'supervisor';
+  const canCloseNcr = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'supervisor';
   const canDeleteNcr =
     activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
 
   const canUploadEvidenceForNcr = (ncr: QualityNcr): boolean => {
     if (!user?.id) return false;
-    if (activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor') return true;
+    if (activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor') return true;
     if (activeRole === 'employee') return false;
     if (activeRole === 'consultant' || activeRole === 'auditor') {
       const isAssigned =

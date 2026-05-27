@@ -63,7 +63,7 @@ export function AuditsPage() {
   const [createOpen, setCreateOpen] = useState(isNew);
   useEffect(() => setCreateOpen(isNew), [isNew]);
 
-  const canSchedule = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
+  const canSchedule = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
 
   // Load audits from new audits module
   const { data: audits, loading: auditsLoading, error: auditsError } = useAsync(

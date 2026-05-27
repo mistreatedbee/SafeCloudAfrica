@@ -90,7 +90,7 @@ export function TaskDetailPage() {
   const location = useLocation();
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
-  const canManageTasks = activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant' || activeRole === 'auditor';
+  const canManageTasks = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant' || activeRole === 'auditor';
   const [refreshKey, setRefreshKey] = useState(0);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
