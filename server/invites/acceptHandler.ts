@@ -33,9 +33,13 @@ type PendingInviteAcceptResult =
   | { ok: false; reason: 'no_pending_invite' | 'backend_unavailable'; error: string };
 
 async function getEffectiveSeatLimit(insforge: any, companyId: string, company: any): Promise<number> {
-  const rpcRes = await insforge.database.rpc('get_company_seat_limit', { p_company_id: companyId });
-  if (!rpcRes.error && rpcRes.data != null) {
-    return Number(rpcRes.data || 0);
+  try {
+    const rpcRes = await insforge.database.rpc('get_company_seat_limit', { p_company_id: companyId });
+    if (!rpcRes.error && rpcRes.data != null) {
+      return Number(rpcRes.data || 0);
+    }
+  } catch {
+    // Fall back to company metadata below.
   }
   return Number(company?.license_user_limit || company?.employee_limit || 0);
 }
@@ -104,10 +108,13 @@ export async function acceptResolvedInvite(input: {
     insforge.database.from('company_memberships').select('*').eq('company_id', companyId).eq('user_id', userId).maybeSingle()
   ]);
 
-  if (companyRes.error || !companyRes.data) {
-    const err = new Error('Organization not found');
-    (err as any).status = 404;
-    throw err;
+  if (companyRes.error) {
+    logStructuredLine({
+      module: MODULE,
+      level: 'warning',
+      message: 'invite_accept_company_lookup_failed_continuing',
+      organization_id: companyId
+    });
   }
 
   const seatLimit = await getEffectiveSeatLimit(insforge, companyId, companyRes.data);

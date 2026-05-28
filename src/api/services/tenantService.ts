@@ -21,7 +21,8 @@ function isRouteMissingError(status: number, data: any): boolean {
 }
 
 function isApiRouteUnavailable(status: number, data: any): boolean {
-  return status === 404 && !String(data?.reason ?? '').trim();
+  const isEmptyObject = data && typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length === 0;
+  return status === 404 && (!data || isEmptyObject || data?.code === 'ROUTE_NOT_FOUND' || data?.error === 'Not found');
 }
 
 function getInviteAcceptanceLinkForCurrentOrigin(token: string): string {

@@ -46,7 +46,7 @@ function createRes(): TestResponse {
   };
 }
 
-function createServiceClient(invites: any[]) {
+function createServiceClient(invites: any[], options: { company?: any } = {}) {
   const db = {
     rpc: vi.fn(async () => ({ data: 0, error: null })),
     from: vi.fn((table: string) => {
@@ -67,7 +67,7 @@ function createServiceClient(invites: any[]) {
           return chain;
         },
         maybeSingle: vi.fn(async () => {
-          if (table === 'companies') return { data: { employee_limit: 10, license_user_limit: 10 }, error: null };
+          if (table === 'companies') return { data: options.company === undefined ? { employee_limit: 10, license_user_limit: 10 } : options.company, error: null };
           if (table === 'company_memberships') return { data: null, error: null };
           return { data: null, error: null };
         }),
@@ -157,5 +157,34 @@ describe('invite accept handlers', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.jsonBody).toEqual({ ok: true, orgId: 'company-2', role: 'employee' });
+  });
+
+  it('accepts a valid invite even when company metadata lookup returns no row', async () => {
+    const { default: acceptInviteHandler } = await import('./acceptHandler.js');
+    resolverMocks.resolveInviteToken.mockResolvedValue({
+      ok: true,
+      invite: {
+        id: 'invite-3',
+        company_id: 'company-3',
+        email: 'user@example.com',
+        role: 'supervisor',
+        status: 'PENDING',
+        expires_at: '2099-01-01T00:00:00.000Z'
+      }
+    });
+    insforgeMocks.getServiceInsforge.mockReturnValue(createServiceClient([{
+      id: 'invite-3',
+      company_id: 'company-3',
+      email: 'user@example.com',
+      role: 'supervisor',
+      status: 'PENDING',
+      expires_at: '2099-01-01T00:00:00.000Z'
+    }], { company: null }));
+    const res = createRes();
+
+    await acceptInviteHandler({ method: 'POST', headers: {}, body: { token: 'valid-token' } }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.jsonBody).toEqual({ ok: true, orgId: 'company-3', role: 'supervisor' });
   });
 });
