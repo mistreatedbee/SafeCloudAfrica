@@ -7,6 +7,7 @@ import { validateLicenseKey, activateLicenseKey, type ValidatedKeyInfo } from '.
 import { getDashboardRoute } from '../../api/services/platformAdminService';
 import { useTenant } from '../../tenant/TenantContext';
 import { insforge } from '../../api/insforge/client';
+import { recoverAuthState } from '../../auth/recoverAuthState';
 import { getVerificationRedirectUrl, savePendingAuthRedirect } from '../../auth/pendingAuthRedirect';
 
 const PLAN_LABELS: Record<string, string> = {
@@ -17,6 +18,15 @@ const PLAN_LABELS: Record<string, string> = {
 };
 
 const DEFAULT_COUNTRY = 'South Africa';
+
+function signupCreatedSession(data: unknown): boolean {
+  const directToken = (data as any)?.accessToken;
+  const sessionToken = (data as any)?.session?.accessToken;
+  return (
+    (typeof directToken === 'string' && directToken.trim().length > 0) ||
+    (typeof sessionToken === 'string' && sessionToken.trim().length > 0)
+  );
+}
 
 export function ActivateLicensePage() {
   const navigate = useNavigate();
@@ -39,6 +49,7 @@ export function ActivateLicensePage() {
   const [submitting, setSubmitting] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null);
 
   const validateKey = useCallback(async () => {
     const k = key?.trim();
@@ -75,6 +86,7 @@ export function ActivateLicensePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
+    setSubmitNotice(null);
     const k = key.trim();
     const email = primaryContactEmail.trim().toLowerCase();
     if (!k || !companyName.trim() || !primaryContactName.trim() || !email) {
@@ -115,12 +127,10 @@ export function ActivateLicensePage() {
           setSubmitting(false);
           return;
         }
-        const { error: signInErr } = await insforge.auth.signInWithPassword({ email, password });
-        if (signInErr) {
-          setSubmitError('Account created but sign-in failed. Please go to Login and sign in with your email and password.');
-          setSubmitting(false);
-          return;
-        }
+        if (signupCreatedSession(signUpData)) await recoverAuthState(signOut);
+        setSubmitNotice('Account created. Please sign in manually with your email and password, then return to activate your license.');
+        setSubmitting(false);
+        return;
       } else if (user.email?.toLowerCase() !== email) {
         setSubmitError('Primary contact email must match your signed-in account. Sign out or use the same email.');
         setSubmitting(false);
@@ -164,7 +174,7 @@ export function ActivateLicensePage() {
   return (
     <AuthShell
       title="Activate License"
-      subtitle="Enter your license key and company details to create your organisation and sign in."
+      subtitle="Enter your license key and company details to create your account or activate your organisation."
       sideTitle="Safe Cloud Africa"
     >
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -302,6 +312,11 @@ export function ActivateLicensePage() {
             {submitError}
           </div>
         )}
+        {submitNotice && (
+          <div className="rounded-lg bg-success-50 border border-success/20 px-3 py-2 text-sm text-success">
+            {submitNotice}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -314,7 +329,7 @@ export function ActivateLicensePage() {
                 <Loader2Icon className="w-4 h-4 animate-spin" /> Activating…
               </>
             ) : (
-              'Activate & Create Organisation'
+              isSignedIn ? 'Activate & Create Organisation' : 'Create Account'
             )}
           </button>
           {isSignedIn && (

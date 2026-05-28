@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useAuth, useUser } from '@insforge/react';
+import { useAuth } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY } from '../../auth/AuthSessionListener';
 import { formatAuthError } from '../../auth/authMessages';
@@ -75,8 +75,7 @@ function isInviteAlreadyAcceptedError(error: unknown): boolean {
 }
 
 export function LoginPage() {
-  const { isLoaded, isSignedIn, signIn, signOut } = useAuth();
-  const { user } = useUser();
+  const { signIn, signOut } = useAuth();
   const { setActiveCompanyId, refreshTenant } = useTenant();
   const [searchParams] = useSearchParams();
   const [redirecting, setRedirecting] = useState(false);
@@ -239,22 +238,6 @@ export function LoginPage() {
       setRedirecting(false);
     }
   }, [searchParams, refreshTenant, setActiveCompanyId, signOut]);
-
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn || !user?.id) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        if (cancelled) return;
-        await redirectAfterLogin(user.id as UUID);
-      } finally {
-        if (!cancelled && !isSignedIn) setRedirecting(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoaded, isSignedIn, redirectAfterLogin, user?.id]);
 
   const activated = searchParams.get('activated') === '1';
   const insforgeVerified = searchParams.get('insforge_status') === 'success' && searchParams.get('insforge_type') === 'verify_email';

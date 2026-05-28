@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { formatAuthError } from '../../auth/authMessages';
+import { recoverAuthState } from '../../auth/recoverAuthState';
 import { insforge, insforgeReady } from '../../api/insforge/client';
 import {
   getVerificationRedirectUrl,
@@ -23,6 +24,15 @@ export function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const signupCreatedSession = (data: unknown): boolean => {
+    const directToken = (data as any)?.accessToken;
+    const sessionToken = (data as any)?.session?.accessToken;
+    return (
+      (typeof directToken === 'string' && directToken.trim().length > 0) ||
+      (typeof sessionToken === 'string' && sessionToken.trim().length > 0)
+    );
+  };
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,16 +71,13 @@ export function RegisterPage() {
       if (data?.requireEmailVerification) {
         setSuccess(
           isInviteSignup
-            ? 'Check your email to verify your account. After verification, sign in and your invitation will continue automatically.'
+            ? 'Check your email to verify your account. After verification, sign in and your invitation will continue.'
             : 'Check your email to verify your account, then sign in to continue.'
         );
         return;
       }
 
-      if (data?.accessToken) {
-        window.location.replace(redirectPath);
-        return;
-      }
+      if (signupCreatedSession(data)) await recoverAuthState();
 
       window.location.replace(`/login?registered=1&redirect=${encodeURIComponent(redirectPath)}`);
     } catch (err) {

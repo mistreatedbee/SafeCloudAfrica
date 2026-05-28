@@ -2,6 +2,7 @@
 import React from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { Simulate } from 'react-dom/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useAuthState = {
@@ -9,10 +10,6 @@ const useAuthState = {
   isSignedIn: true,
   signIn: vi.fn(),
   signOut: vi.fn().mockResolvedValue(undefined)
-};
-
-const useUserState = {
-  user: { id: 'user-1', email: 'user@example.com' }
 };
 
 const tenantState = {
@@ -33,8 +30,7 @@ const routerState = vi.hoisted(() => ({
 }));
 
 vi.mock('@insforge/react', () => ({
-  useAuth: () => useAuthState,
-  useUser: () => useUserState
+  useAuth: () => useAuthState
 }));
 
 vi.mock('react-router-dom', () => ({
@@ -95,6 +91,32 @@ async function flushAsyncWork(): Promise<void> {
   await Promise.resolve();
 }
 
+async function renderLogin(root: Root): Promise<void> {
+  await act(async () => {
+    root.render(<LoginPage />);
+    await flushAsyncWork();
+  });
+}
+
+async function submitLogin(container: HTMLDivElement, email = 'user@example.com', password = 'password-1'): Promise<void> {
+  const emailInput = container.querySelector<HTMLInputElement>('#login-email');
+  const passwordInput = container.querySelector<HTMLInputElement>('#login-password');
+  const form = container.querySelector<HTMLFormElement>('form');
+  if (!emailInput || !passwordInput || !form) throw new Error('Login form did not render.');
+
+  await act(async () => {
+    Simulate.change(emailInput, { target: { value: email } } as any);
+    Simulate.change(passwordInput, { target: { value: password } } as any);
+    await flushAsyncWork();
+  });
+
+  await act(async () => {
+    Simulate.submit(form);
+    await flushAsyncWork();
+    await flushAsyncWork();
+  });
+}
+
 describe('LoginPage', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -108,6 +130,13 @@ describe('LoginPage', () => {
     routerState.searchParams = new URLSearchParams();
     localStorage.clear();
     sessionStorage.clear();
+
+    useAuthState.isLoaded = true;
+    useAuthState.isSignedIn = true;
+    useAuthState.signIn.mockReset();
+    useAuthState.signIn.mockResolvedValue({ accessToken: 'token', user: { id: 'user-1' } });
+    useAuthState.signOut.mockReset();
+    useAuthState.signOut.mockResolvedValue(undefined);
 
     tenantState.setActiveCompanyId.mockReset();
     tenantState.refreshTenant.mockReset();
@@ -162,11 +191,20 @@ describe('LoginPage', () => {
     container.remove();
   });
 
-  it('ensures session auth is rehydrated before protected post-login checks', async () => {
-    await act(async () => {
-      root.render(<LoginPage />);
-      await flushAsyncWork();
-    });
+  it('does not redirect automatically when the login page loads with an existing signed-in session', async () => {
+    await renderLogin(root);
+
+    expect(container.querySelector('form')).not.toBeNull();
+    expect(callOrder).toEqual([]);
+    expect(useAuthState.signIn).not.toHaveBeenCalled();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it('ensures session auth is rehydrated before protected post-login checks after manual sign in', async () => {
+    useAuthState.isSignedIn = false;
+
+    await renderLogin(root);
+    await submitLogin(container);
 
     expect(callOrder).toEqual([
       'ensureSession',
@@ -180,12 +218,11 @@ describe('LoginPage', () => {
   });
 
   it('accepts invite redirects before normal post-login routing', async () => {
+    useAuthState.isSignedIn = false;
     routerState.searchParams = new URLSearchParams(`redirect=${encodeURIComponent('/invite/accept?token=invite-token-1')}`);
 
-    await act(async () => {
-      root.render(<LoginPage />);
-      await flushAsyncWork();
-    });
+    await renderLogin(root);
+    await submitLogin(container);
 
     expect(callOrder).toEqual([
       'ensureSession',
@@ -203,15 +240,14 @@ describe('LoginPage', () => {
   });
 
   it('accepts pending email invites before no-org activation routing', async () => {
+    useAuthState.isSignedIn = false;
     acceptPendingInviteForCurrentUserMock.mockImplementation(async () => {
       callOrder.push('acceptPendingInviteForCurrentUser');
       return { company_id: 'company-pending', role: 'admin' };
     });
 
-    await act(async () => {
-      root.render(<LoginPage />);
-      await flushAsyncWork();
-    });
+    await renderLogin(root);
+    await submitLogin(container);
 
     expect(callOrder).toEqual([
       'ensureSession',
@@ -226,16 +262,15 @@ describe('LoginPage', () => {
   });
 
   it('shows pending invite backend errors without continuing to activation routing', async () => {
+    useAuthState.isSignedIn = false;
     const { PendingInviteAcceptanceError } = await import('../../api/services/tenantService');
     acceptPendingInviteForCurrentUserMock.mockImplementation(async () => {
       callOrder.push('acceptPendingInviteForCurrentUser');
       throw new PendingInviteAcceptanceError('Invite acceptance is not configured. Please contact support.', 'SERVICE_ROLE_MISSING', 500);
     });
 
-    await act(async () => {
-      root.render(<LoginPage />);
-      await flushAsyncWork();
-    });
+    await renderLogin(root);
+    await submitLogin(container);
 
     expect(callOrder).toEqual([
       'ensureSession',
