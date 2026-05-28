@@ -19,13 +19,19 @@ const tenantState = {
 
 const ensureInsforgeSessionMock = vi.fn();
 const acceptPendingInviteAndActivateWorkspaceMock = vi.fn();
+const markSessionExpiredMock = vi.fn();
+const routerState = vi.hoisted(() => ({
+  pathname: '/dashboard/hr/employees/377dcf58-264a-448f-8769-32fd0efc9095',
+  search: '?tab=documents'
+}));
 
 vi.mock('@insforge/react', () => ({
   useAuth: () => authState
 }));
 
 vi.mock('react-router-dom', () => ({
-  Navigate: ({ to }: { to: string }) => React.createElement('div', null, `navigate:${to}`)
+  Navigate: ({ to }: { to: string }) => React.createElement('div', null, `navigate:${to}`),
+  useLocation: () => routerState
 }));
 
 vi.mock('../tenant/TenantContext', () => ({
@@ -33,7 +39,17 @@ vi.mock('../tenant/TenantContext', () => ({
 }));
 
 vi.mock('../api/insforge/ensureSession', () => ({
-  ensureInsforgeSession: (...args: unknown[]) => ensureInsforgeSessionMock(...args)
+  ensureInsforgeSession: (...args: unknown[]) => ensureInsforgeSessionMock(...args),
+  InsforgeAuthBootstrapError: class InsforgeAuthBootstrapError extends Error {
+    constructor(public readonly code: string, message: string) {
+      super(message);
+      this.name = 'InsforgeAuthBootstrapError';
+    }
+  }
+}));
+
+vi.mock('../api/insforge/sessionState', () => ({
+  markSessionExpired: (...args: unknown[]) => markSessionExpiredMock(...args)
 }));
 
 vi.mock('./acceptPendingInviteWorkspace', () => ({
@@ -50,6 +66,7 @@ vi.mock('../api/services/tenantService', () => ({
 }));
 
 import { PendingInviteAcceptanceError } from '../api/services/tenantService';
+import { InsforgeAuthBootstrapError } from '../api/insforge/ensureSession';
 import { RequireWorkspace } from './RequireWorkspace';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -96,6 +113,9 @@ describe('RequireWorkspace', () => {
     tenantState.refreshTenant.mockResolvedValue(undefined);
     ensureInsforgeSessionMock.mockReset();
     acceptPendingInviteAndActivateWorkspaceMock.mockReset();
+    markSessionExpiredMock.mockReset();
+    routerState.pathname = '/dashboard/hr/employees/377dcf58-264a-448f-8769-32fd0efc9095';
+    routerState.search = '?tab=documents';
 
     ensureInsforgeSessionMock.mockResolvedValue({ accessToken: 'token', userId: 'user-1' });
     acceptPendingInviteAndActivateWorkspaceMock.mockResolvedValue({ status: 'none' });
@@ -159,5 +179,25 @@ describe('RequireWorkspace', () => {
 
     expect(container.textContent).toContain('Invite acceptance is not configured. Please contact support.');
     expect(container.textContent).not.toContain('activate');
+  });
+
+  it('redirects auth bootstrap failures to login without showing an invitation error', async () => {
+    ensureInsforgeSessionMock.mockRejectedValue(
+      new InsforgeAuthBootstrapError('AUTH_SESSION_MISSING', 'Your session is not available. Please sign in again.')
+    );
+
+    await act(async () => {
+      renderTree(root);
+      await flushAsyncWork();
+      await flushAsyncWork();
+    });
+
+    const redirect = encodeURIComponent('/dashboard/hr/employees/377dcf58-264a-448f-8769-32fd0efc9095?tab=documents');
+    await waitForContent(container, `navigate:/login?redirect=${redirect}`);
+
+    expect(markSessionExpiredMock).toHaveBeenCalledTimes(1);
+    expect(acceptPendingInviteAndActivateWorkspaceMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain(`navigate:/login?redirect=${redirect}`);
+    expect(container.textContent).not.toContain('We could not accept your invitation');
   });
 });

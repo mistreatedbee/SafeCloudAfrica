@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
-import { ensureInsforgeSession } from '../api/insforge/ensureSession';
+import { ensureInsforgeSession, InsforgeAuthBootstrapError } from '../api/insforge/ensureSession';
+import { markSessionExpired } from '../api/insforge/sessionState';
 import { PendingInviteAcceptanceError } from '../api/services/tenantService';
 import { acceptPendingInviteAndActivateWorkspace } from './acceptPendingInviteWorkspace';
 
@@ -14,6 +15,7 @@ import { acceptPendingInviteAndActivateWorkspace } from './acceptPendingInviteWo
  */
 export function RequireWorkspace({ children }: { children: React.ReactElement }) {
   const { isLoaded, isSignedIn } = useAuth();
+  const location = useLocation();
   const {
     memberships,
     isPlatformAdmin,
@@ -24,6 +26,7 @@ export function RequireWorkspace({ children }: { children: React.ReactElement })
   const [checkingPendingInvite, setCheckingPendingInvite] = useState(false);
   const [pendingInviteError, setPendingInviteError] = useState<string | null>(null);
   const [acceptedInviteRedirectPath, setAcceptedInviteRedirectPath] = useState<string | null>(null);
+  const [authRedirectPath, setAuthRedirectPath] = useState<string | null>(null);
   const pendingInviteAttemptedRef = useRef(false);
   const pendingInviteInFlightRef = useRef(false);
 
@@ -54,6 +57,12 @@ export function RequireWorkspace({ children }: { children: React.ReactElement })
         }
       } catch (error) {
         if (cancelled) return;
+        if (error instanceof InsforgeAuthBootstrapError) {
+          markSessionExpired();
+          const redirect = encodeURIComponent(location.pathname + location.search);
+          setAuthRedirectPath(`/login?redirect=${redirect}`);
+          return;
+        }
         if (error instanceof PendingInviteAcceptanceError) {
           setPendingInviteError(error.message);
           return;
@@ -76,10 +85,13 @@ export function RequireWorkspace({ children }: { children: React.ReactElement })
     isPlatformAdmin,
     isSignedIn,
     isTenantLoaded,
+    location.pathname,
+    location.search,
     refreshTenant,
     setActiveCompanyId
   ]);
 
+  if (authRedirectPath) return <Navigate to={authRedirectPath} replace />;
   if (acceptedInviteRedirectPath) return <Navigate to={acceptedInviteRedirectPath} replace />;
 
   if (!isLoaded) {
