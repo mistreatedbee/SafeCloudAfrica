@@ -6,12 +6,23 @@ import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { archiveHrEmployee, listHrEmployees, upsertHrEmployee } from '../../api/services/hrService';
+import type { HrEmployee } from '../../api/services/hrService';
 import { downloadTextFile, toCsv } from '../../utils/csv';
 import { listDepartments } from '../../api/services/departmentsService';
+import { listCompanyMemberships } from '../../api/services/tenantService';
+import { listUserProfiles } from '../../api/services/profilesService';
+import type { CompanyMembership, UserProfile } from '../../api/models/entities';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 
 const TABS = ['directory', 'add', 'import', 'archived'] as const;
 type Tab = (typeof TABS)[number];
+
+type MergedRow = {
+  source: 'linked' | 'member_only' | 'hr_only';
+  hrEmployee?: HrEmployee;
+  membership?: CompanyMembership;
+  profile?: UserProfile;
+};
 
 export function HrEmployeesPage() {
   const navigate = useNavigate();
@@ -38,24 +49,117 @@ export function HrEmployeesPage() {
     if (!activeCompanyId) return [];
     return listHrEmployees(activeCompanyId);
   }, [activeCompanyId]);
+
   const { data: departments } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listDepartments(activeCompanyId);
   }, [activeCompanyId]);
+
+  const { data: memberships } = useAsync(async () => {
+    if (!activeCompanyId) return [];
+    return listCompanyMemberships(activeCompanyId);
+  }, [activeCompanyId]);
+
+  const { data: profiles } = useAsync(async () => {
+    if (!activeCompanyId) return [];
+    return listUserProfiles(activeCompanyId);
+  }, [activeCompanyId]);
+
   const departmentById = useMemo(() => new Map((departments ?? []).map((d) => [String(d.id), d.name])), [departments]);
 
-  const filtered = useMemo(() => {
-    const rows = employees ?? [];
-    const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (!q) return true;
-      const departmentName = row.department_id ? (departmentById.get(String(row.department_id)) ?? '') : '';
-      return [row.first_name, row.last_name, row.employee_no, row.email, row.job_title ?? '', departmentName].some((value) => value.toLowerCase().includes(q));
-    });
-  }, [departmentById, employees, query]);
+  const mergedRows = useMemo((): MergedRow[] => {
+    const hrList = employees ?? [];
+    const memberList = memberships ?? [];
+    const profileList = profiles ?? [];
 
-  const archived = filtered.filter((row) => row.employment_status === 'ARCHIVED' || row.employment_status === 'TERMINATED');
-  const active = filtered.filter((row) => row.employment_status !== 'ARCHIVED' && row.employment_status !== 'TERMINATED');
+    const profileByUserId = new Map(profileList.map((p) => [p.user_id, p]));
+    const hrByUserId = new Map(hrList.filter((e) => e.user_id).map((e) => [e.user_id!, e]));
+    const hrByEmail = new Map(hrList.map((e) => [e.email.toLowerCase(), e]));
+    const matchedHrIds = new Set<string>();
+
+    const rows: MergedRow[] = [];
+
+    for (const m of memberList) {
+      const profile = profileByUserId.get(m.user_id);
+      let hr = hrByUserId.get(m.user_id);
+      if (!hr && profile?.email) {
+        hr = hrByEmail.get(profile.email.toLowerCase());
+      }
+      if (hr) matchedHrIds.add(hr.id);
+      rows.push({
+        source: hr ? 'linked' : 'member_only',
+        hrEmployee: hr,
+        membership: m,
+        profile,
+      });
+    }
+
+    for (const e of hrList) {
+      if (!matchedHrIds.has(e.id)) {
+        rows.push({ source: 'hr_only', hrEmployee: e });
+      }
+    }
+
+    return rows;
+  }, [employees, memberships, profiles]);
+
+  const filteredRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return mergedRows;
+    return mergedRows.filter(({ hrEmployee: e, profile, membership }) => {
+      const fields = [
+        e?.first_name, e?.last_name, e?.employee_no, e?.email, e?.job_title ?? '',
+        profile?.full_name, profile?.email, profile?.employee_number,
+        membership?.role,
+        e?.department_id ? (departmentById.get(String(e.department_id)) ?? '') : (profile?.department ?? ''),
+      ];
+      return fields.some((v) => v && v.toLowerCase().includes(q));
+    });
+  }, [mergedRows, query, departmentById]);
+
+  const activeRows = filteredRows.filter(({ hrEmployee, source }) =>
+    source === 'member_only' ||
+    (hrEmployee && hrEmployee.employment_status !== 'ARCHIVED' && hrEmployee.employment_status !== 'TERMINATED')
+  );
+
+  const archivedRows = filteredRows.filter(({ hrEmployee }) =>
+    hrEmployee && (hrEmployee.employment_status === 'ARCHIVED' || hrEmployee.employment_status === 'TERMINATED')
+  );
+
+  const getDisplayName = (row: MergedRow) => {
+    if (row.hrEmployee) return `${row.hrEmployee.first_name} ${row.hrEmployee.last_name}`;
+    if (row.profile?.full_name) return row.profile.full_name;
+    return row.profile?.email ?? row.membership?.role ?? '—';
+  };
+
+  const getDisplayEmail = (row: MergedRow) =>
+    row.hrEmployee?.email ?? row.profile?.email ?? '—';
+
+  const getDisplayEmployeeNo = (row: MergedRow) =>
+    row.hrEmployee?.employee_no ?? row.profile?.employee_number ?? '—';
+
+  const getDisplayDepartment = (row: MergedRow) => {
+    if (row.hrEmployee?.department_id) return departmentById.get(String(row.hrEmployee.department_id)) ?? '—';
+    return row.profile?.department ?? '—';
+  };
+
+  const getDisplayStatus = (row: MergedRow) => {
+    if (row.hrEmployee) return row.hrEmployee.employment_status;
+    if (row.membership?.status) return row.membership.status;
+    return '—';
+  };
+
+  const prefillFromMember = (row: MergedRow) => {
+    const nameParts = (row.profile?.full_name ?? '').split(' ');
+    setForm((f) => ({
+      ...f,
+      first_name: nameParts[0] ?? '',
+      last_name: nameParts.slice(1).join(' ') ?? '',
+      email: row.profile?.email ?? '',
+      employee_no: row.profile?.employee_number ?? '',
+    }));
+    setParams({ tab: 'add' });
+  };
 
   const onCreate = async () => {
     setError(null);
@@ -147,26 +251,52 @@ export function HrEmployeesPage() {
             </div>
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <table className="w-full text-sm">
-              <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">No</th><th className="text-left px-3 py-2">Name</th><th className="text-left px-3 py-2">Job Title</th><th className="text-left px-3 py-2">Email</th><th className="text-left px-3 py-2">Department</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
+                <thead className="bg-surface-100">
+                  <tr>
+                    <th className="text-left px-3 py-2">No</th>
+                    <th className="text-left px-3 py-2">Name</th>
+                    <th className="text-left px-3 py-2">Job Title</th>
+                    <th className="text-left px-3 py-2">Email</th>
+                    <th className="text-left px-3 py-2">Department</th>
+                    <th className="text-left px-3 py-2">Role</th>
+                    <th className="text-left px-3 py-2">Status</th>
+                    <th className="text-left px-3 py-2">Actions</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {active.map((row) => (
-                    <tr key={row.id} className="border-t border-surface-100">
-                      <td className="px-3 py-2">{row.employee_no}</td>
-                      <td className="px-3 py-2">{row.first_name} {row.last_name}</td>
-                      <td className="px-3 py-2">{row.job_title ?? '-'}</td>
-                      <td className="px-3 py-2">{row.email}</td>
-                      <td className="px-3 py-2">{row.department_id ? (departmentById.get(String(row.department_id)) ?? String(row.department_id)) : '-'}</td>
-                      <td className="px-3 py-2">{row.employment_status}</td>
+                  {activeRows.map((row, i) => (
+                    <tr key={row.hrEmployee?.id ?? row.membership?.id ?? i} className="border-t border-surface-100">
+                      <td className="px-3 py-2">{getDisplayEmployeeNo(row)}</td>
+                      <td className="px-3 py-2">
+                        <span>{getDisplayName(row)}</span>
+                        {row.source === 'linked' && (
+                          <span className="ml-2 text-xs bg-teal/10 text-teal px-1.5 py-0.5 rounded">linked</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">{row.hrEmployee?.job_title ?? '—'}</td>
+                      <td className="px-3 py-2">{getDisplayEmail(row)}</td>
+                      <td className="px-3 py-2">{getDisplayDepartment(row)}</td>
+                      <td className="px-3 py-2 capitalize">{row.membership?.role ?? '—'}</td>
+                      <td className="px-3 py-2">{getDisplayStatus(row)}</td>
                       <td className="px-3 py-2 space-x-2">
-                        <button className="text-teal" onClick={() => navigate(`/dashboard/hr/employees/${row.id}`)}>Open</button>
-                        <button className="text-critical" onClick={async () => {
-                          if (!activeCompanyId || !user?.id) return;
-                          await archiveHrEmployee(activeCompanyId, row.id, user.id);
-                          await refetch();
-                        }}>Archive</button>
+                        {row.hrEmployee ? (
+                          <>
+                            <button className="text-teal" onClick={() => navigate(`/dashboard/hr/employees/${row.hrEmployee!.id}`)}>Open</button>
+                            <button className="text-critical" onClick={async () => {
+                              if (!activeCompanyId || !user?.id) return;
+                              await archiveHrEmployee(activeCompanyId, row.hrEmployee!.id, user.id);
+                              await refetch();
+                            }}>Archive</button>
+                          </>
+                        ) : (
+                          <button className="text-teal" onClick={() => prefillFromMember(row)}>Create HR Record</button>
+                        )}
                       </td>
                     </tr>
                   ))}
+                  {activeRows.length === 0 && (
+                    <tr><td colSpan={8} className="px-3 py-6 text-center text-charcoal-400 text-sm">No employees found</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -205,12 +335,12 @@ export function HrEmployeesPage() {
             <table className="w-full text-sm">
               <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">No</th><th className="text-left px-3 py-2">Name</th><th className="text-left px-3 py-2">Email</th><th className="text-left px-3 py-2">Status</th></tr></thead>
               <tbody>
-                {archived.map((row) => (
-                  <tr key={row.id} className="border-t border-surface-100">
-                    <td className="px-3 py-2">{row.employee_no}</td>
-                    <td className="px-3 py-2">{row.first_name} {row.last_name}</td>
-                    <td className="px-3 py-2">{row.email}</td>
-                    <td className="px-3 py-2">{row.employment_status}</td>
+                {archivedRows.map((row) => (
+                  <tr key={row.hrEmployee!.id} className="border-t border-surface-100">
+                    <td className="px-3 py-2">{row.hrEmployee!.employee_no}</td>
+                    <td className="px-3 py-2">{row.hrEmployee!.first_name} {row.hrEmployee!.last_name}</td>
+                    <td className="px-3 py-2">{row.hrEmployee!.email}</td>
+                    <td className="px-3 py-2">{row.hrEmployee!.employment_status}</td>
                   </tr>
                 ))}
               </tbody>
@@ -221,4 +351,3 @@ export function HrEmployeesPage() {
     </Layout>
   );
 }
-
