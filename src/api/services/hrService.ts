@@ -225,8 +225,12 @@ export type HrAckReceiptRow = HrSimpleRecord & {
   device_info: string | null;
 };
 
+function withHrSession<T>(reason: string, fn: () => Promise<T>): Promise<T> {
+  return withInsforgeSession(`hr:${reason}`, fn);
+}
+
 async function getCount(table: string, companyId: UUID, eq?: Record<string, string | number | boolean>): Promise<number> {
-  return withInsforgeSession(`hr:count:${table}`, async () => {
+  return withHrSession(`count:${table}`, async () => {
   let q = insforge.database.from(table).select('*', { count: 'planned', head: true }).eq('company_id', companyId);
   if (eq) {
     for (const [key, value] of Object.entries(eq)) q = q.eq(key, value);
@@ -238,7 +242,7 @@ async function getCount(table: string, companyId: UUID, eq?: Record<string, stri
 }
 
 async function listTable<T>(table: string, companyId: UUID, filters?: Record<string, string | number | boolean | null>, order = 'created_at'): Promise<T[]> {
-  return withInsforgeSession(`hr:list:${table}`, async () => {
+  return withHrSession(`list:${table}`, async () => {
   let q = insforge.database.from(table).select('*').eq('company_id', companyId);
   if (filters) {
     for (const [key, value] of Object.entries(filters)) {
@@ -253,17 +257,21 @@ async function listTable<T>(table: string, companyId: UUID, filters?: Record<str
 }
 
 async function insertTable<T>(table: string, payload: Record<string, unknown>): Promise<T> {
+  return withHrSession(`insert:${table}`, async () => {
   const { data, error } = await insforge.database.from(table).insert(payload).select('*').single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error(`Failed to create ${table} row`);
   return data as T;
+  });
 }
 
 async function upsertTable<T>(table: string, payload: Record<string, unknown>, onConflict: string): Promise<T> {
+  return withHrSession(`upsert:${table}`, async () => {
   const { data, error } = await insforge.database.from(table).upsert(payload, { onConflict }).select('*').single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error(`Failed to upsert ${table} row`);
   return data as T;
+  });
 }
 
 export async function listHrEmployees(companyId: UUID): Promise<HrEmployee[]> {
@@ -279,6 +287,7 @@ export async function searchHrEmployees(
     limit?: number;
   }
 ): Promise<HrEmployee[]> {
+  return withHrSession('employees:search', async () => {
   const qText = input?.query?.trim() ?? '';
   let q = insforge.database
     .from('hr_employees')
@@ -301,15 +310,19 @@ export async function searchHrEmployees(
   const { data, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as HrEmployee[];
+  });
 }
 
 export async function getHrEmployeeById(companyId: UUID, id: UUID): Promise<HrEmployee | null> {
+  return withHrSession('employees:get-by-id', async () => {
   const { data, error } = await insforge.database.from('hr_employees').select('*').eq('company_id', companyId).eq('id', id).maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
   return (data as HrEmployee) ?? null;
+  });
 }
 
 export async function getHrEmployeeByUserId(companyId: UUID, userId: UUID): Promise<HrEmployee | null> {
+  return withHrSession('employees:get-by-user-id', async () => {
   const { data, error } = await insforge.database
     .from('hr_employees')
     .select('*')
@@ -321,6 +334,7 @@ export async function getHrEmployeeByUserId(companyId: UUID, userId: UUID): Prom
     .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
   return (data as HrEmployee) ?? null;
+  });
 }
 
 export async function upsertHrEmployee(input: Partial<HrEmployee> & {
@@ -349,12 +363,15 @@ export async function upsertHrEmployee(input: Partial<HrEmployee> & {
 }
 
 export async function canAccessSensitiveEmployeeFields(companyId: UUID): Promise<boolean> {
+  return withHrSession('employees:can-access-sensitive-fields', async () => {
   const { data, error } = await insforge.database.rpc('hr_can_access_sensitive_employee_fields', { p_company_id: companyId });
   if (error) throw new Error(getErrorMessage(error));
   return Boolean(data);
+  });
 }
 
 export async function getHrEmployeeSensitiveDetails(companyId: UUID, employeeId: UUID): Promise<HrEmployeeSensitiveDetails | null> {
+  return withHrSession('employees:get-sensitive-details', async () => {
   const { data, error } = await insforge.database
     .from('hr_employee_sensitive_details')
     .select('*')
@@ -363,6 +380,7 @@ export async function getHrEmployeeSensitiveDetails(companyId: UUID, employeeId:
     .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
   return (data as HrEmployeeSensitiveDetails) ?? null;
+  });
 }
 
 export async function upsertHrEmployeeSensitiveDetails(input: {
@@ -392,6 +410,7 @@ export async function upsertHrEmployeeSensitiveDetails(input: {
 }
 
 export async function listHrEmployeeDependents(companyId: UUID, employeeId: UUID): Promise<HrEmployeeDependent[]> {
+  return withHrSession('employees:list-dependents', async () => {
   const { data, error } = await insforge.database
     .from('hr_employee_dependents')
     .select('*')
@@ -400,6 +419,7 @@ export async function listHrEmployeeDependents(companyId: UUID, employeeId: UUID
     .order('created_at', { ascending: true });
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as HrEmployeeDependent[];
+  });
 }
 
 export async function replaceHrEmployeeDependents(input: {
@@ -408,6 +428,7 @@ export async function replaceHrEmployeeDependents(input: {
   actorUserId: UUID;
   dependents: Array<Pick<HrEmployeeDependent, 'dependent_name' | 'relationship' | 'contact_details'>>;
 }): Promise<number> {
+  return withHrSession('employees:replace-dependents', async () => {
   const payload = input.dependents.map((d) => ({
     dependent_name: d.dependent_name,
     relationship: d.relationship,
@@ -428,9 +449,11 @@ export async function replaceHrEmployeeDependents(input: {
     metadata: { dependents: payload.length }
   }).catch(() => {});
   return Number(data ?? 0);
+  });
 }
 
 export async function archiveHrEmployee(companyId: UUID, employeeId: UUID, actorUserId: UUID): Promise<void> {
+  return withHrSession('employees:archive', async () => {
   const { error } = await insforge.database
     .from('hr_employees')
     .update({ employment_status: 'ARCHIVED', updated_at: new Date().toISOString() })
@@ -438,6 +461,7 @@ export async function archiveHrEmployee(companyId: UUID, employeeId: UUID, actor
     .eq('id', employeeId);
   if (error) throw new Error(getErrorMessage(error));
   await createActivityLog({ companyId, actorUserId, action: 'hr.employee.archive', entityType: 'hr_employee', entityId: employeeId });
+  });
 }
 
 export async function listHrLeaveRequests(companyId: UUID, employeeId?: UUID): Promise<HrLeaveRequest[]> {
@@ -473,6 +497,7 @@ export async function applyHrLeaveApproval(input: {
   declineReason?: string | null;
   employeeUserId?: UUID | null;
 }): Promise<HrLeaveRequest> {
+  return withHrSession('leave:apply-approval', async () => {
   if ((input.decision === 'SUPERVISOR_DECLINE' || input.decision === 'HR_DECLINE') && !input.declineReason?.trim()) {
     throw new Error('Decline reason is required.');
   }
@@ -504,6 +529,7 @@ export async function applyHrLeaveApproval(input: {
     );
   }
   return row;
+  });
 }
 
 export async function listHrTimesheets(companyId: UUID, employeeId?: UUID): Promise<HrTimesheet[]> {
@@ -531,6 +557,7 @@ export async function approveHrTimesheet(input: {
   decision: 'APPROVED' | 'DECLINED';
   declineReason?: string | null;
 }): Promise<HrTimesheet> {
+  return withHrSession('timesheets:approve', async () => {
   const { data, error } = await insforge.database
     .from('hr_timesheets')
     .update({
@@ -558,6 +585,7 @@ export async function approveHrTimesheet(input: {
   }).catch(() => undefined);
   await recalculateHrMonthlyHours(row.company_id, row.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.actorUserId).catch(() => {});
   return row;
+  });
 }
 
 export async function listHrRecords(companyId: UUID, table:
@@ -641,6 +669,7 @@ export async function updateHrRecord(
     patch: Record<string, unknown>;
   }
 ): Promise<HrSimpleRecord> {
+  return withHrSession(`update:${table}`, async () => {
   const { data, error } = await insforge.database
     .from(table)
     .update({ ...input.patch, updated_at: new Date().toISOString() })
@@ -658,6 +687,7 @@ export async function updateHrRecord(
     entityId: input.rowId
   }).catch(() => {});
   return data as HrSimpleRecord;
+  });
 }
 
 export async function deleteHrRecord(
@@ -685,6 +715,7 @@ export async function deleteHrRecord(
     actorUserId: UUID;
   }
 ): Promise<void> {
+  return withHrSession(`delete:${table}`, async () => {
   const { error } = await insforge.database
     .from(table)
     .delete()
@@ -698,6 +729,7 @@ export async function deleteHrRecord(
     entityType: table,
     entityId: input.rowId
   }).catch(() => {});
+  });
 }
 
 export async function listEmployeeWellnessAssessments(input: {
@@ -714,6 +746,7 @@ export async function getEmployeeWellnessAssessment(input: {
   companyId: UUID;
   assessmentId: UUID;
 }): Promise<{ assessment: HrEmployeeWellnessAssessment | null; actions: HrEmployeeWellnessAction[] }> {
+  return withHrSession('wellness:get-assessment', async () => {
   const { data, error } = await insforge.database
     .from('hr_employee_wellness_assessments')
     .select('*')
@@ -725,6 +758,7 @@ export async function getEmployeeWellnessAssessment(input: {
   if (!assessment) return { assessment: null, actions: [] };
   const actions = (await listHrRecords(input.companyId, 'hr_employee_wellness_actions', { assessment_id: input.assessmentId })) as HrEmployeeWellnessAction[];
   return { assessment, actions };
+  });
 }
 
 export async function createEmployeeWellnessAssessment(input: {
@@ -826,6 +860,7 @@ export async function updateEmployeeWellnessAssessment(input: {
   }>;
   actorUserId: UUID;
 }): Promise<{ assessment: HrEmployeeWellnessAssessment; actions: HrEmployeeWellnessAction[] }> {
+  return withHrSession('wellness:update-assessment', async () => {
   const patch = {
     department_id: input.departmentId,
     assessment_date: input.assessmentDate,
@@ -904,6 +939,7 @@ export async function updateEmployeeWellnessAssessment(input: {
   }
 
   return { assessment: updated, actions: nextActions };
+  });
 }
 
 export async function upsertHrSettings(input: {
@@ -918,9 +954,11 @@ export async function upsertHrSettings(input: {
 }
 
 export async function getHrSettings(companyId: UUID): Promise<Record<string, unknown> | null> {
+  return withHrSession('settings:get', async () => {
   const { data, error } = await insforge.database.from('hr_settings').select('*').eq('company_id', companyId).maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
   return (data as Record<string, unknown>) ?? null;
+  });
 }
 
 export async function ensureDefaultHrLeaveTypes(companyId: UUID, createdByUserId: UUID): Promise<void> {
@@ -973,9 +1011,11 @@ export async function getOrCreateHrLeaveTypeByName(companyId: UUID, createdByUse
 }
 
 export async function canViewRestrictedFields(companyId: UUID): Promise<boolean> {
+  return withHrSession('restricted-fields:can-view', async () => {
   const { data, error } = await insforge.database.rpc('hr_can_view_restricted_fields', { p_company_id: companyId });
   if (error) throw new Error(getErrorMessage(error));
   return Boolean(data);
+  });
 }
 
 export async function logRestrictedFieldAccess(input: {
@@ -986,6 +1026,7 @@ export async function logRestrictedFieldAccess(input: {
   fieldName: string;
   action: 'view' | 'export';
 }): Promise<void> {
+  return withHrSession('restricted-fields:log-access', async () => {
   const { error } = await insforge.database.from('hr_restricted_field_access_logs').insert({
     company_id: input.companyId,
     actor_user_id: input.actorUserId,
@@ -995,9 +1036,11 @@ export async function logRestrictedFieldAccess(input: {
     action: input.action
   });
   if (error) throw new Error(getErrorMessage(error));
+  });
 }
 
 export async function getHrDashboardStats(companyId: UUID, selectedFromDate?: string): Promise<HrDashboardStats> {
+  return withHrSession('dashboard:stats', async () => {
   const now = new Date();
   const date30 = new Date(now);
   date30.setDate(date30.getDate() + 30);
@@ -1094,9 +1137,11 @@ export async function getHrDashboardStats(companyId: UUID, selectedFromDate?: st
     hrDocsExpired: hrDocsExpired ?? 0,
     acknowledgementCompletionPercent: ackTotal ? Math.round(((ackDone ?? 0) / ackTotal) * 100) : 0
   };
+  });
 }
 
 export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: UUID): Promise<Record<string, unknown>> {
+  return withHrSession('employees:integrated-profile', async () => {
   const employee = await getHrEmployeeById(companyId, employeeId);
   if (!employee) return { employee: null };
 
@@ -1219,6 +1264,7 @@ export async function getEmployeeIntegratedProfile(companyId: UUID, employeeId: 
     sensitiveDetails,
     dependents
   };
+  });
 }
 
 export async function getHrEmployeeExportRows(companyId: UUID): Promise<Array<Record<string, unknown>>> {
@@ -1311,6 +1357,7 @@ export async function listHrPersonalDocuments(input: {
   actorUserId: UUID;
   employeeId?: UUID;
 }): Promise<HrPersonalDocumentRow[]> {
+  return withHrSession('personal-documents:list', async () => {
   let q = insforge.database
     .from('hr_employee_documents')
     .select('*')
@@ -1344,6 +1391,7 @@ export async function listHrPersonalDocuments(input: {
     doc_name: row.doc_name ?? row.title,
     status: getDocumentExpiryStatus(row) === 'expired' && row.status === 'ACTIVE' ? 'EXPIRED' : row.status
   }));
+  });
 }
 
 export async function createHrPersonalDocument(input: {
@@ -1357,6 +1405,7 @@ export async function createHrPersonalDocument(input: {
   notes?: string | null;
   uploadedByUserId: UUID;
 }): Promise<HrPersonalDocumentRow> {
+  return withHrSession('personal-documents:create', async () => {
   const { data, error } = await insforge.database
     .from('hr_employee_documents')
     .insert({
@@ -1386,6 +1435,7 @@ export async function createHrPersonalDocument(input: {
     entityId: (data as any).id as UUID
   });
   return data as HrPersonalDocumentRow;
+  });
 }
 
 export async function updateHrPersonalDocument(input: {
@@ -1394,6 +1444,7 @@ export async function updateHrPersonalDocument(input: {
   actorUserId: UUID;
   patch: Partial<Pick<HrPersonalDocumentRow, 'doc_name' | 'doc_type' | 'issue_date' | 'expiry_date' | 'notes' | 'status' | 'acknowledged_by_employee' | 'acknowledged_at'>>;
 }): Promise<HrPersonalDocumentRow> {
+  return withHrSession('personal-documents:update', async () => {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (typeof input.patch.doc_name !== 'undefined') {
     patch.doc_name = input.patch.doc_name;
@@ -1425,6 +1476,7 @@ export async function updateHrPersonalDocument(input: {
     entityId: input.documentId
   });
   return data as HrPersonalDocumentRow;
+  });
 }
 
 export async function deleteHrPersonalDocument(input: {
@@ -1432,6 +1484,7 @@ export async function deleteHrPersonalDocument(input: {
   documentId: UUID;
   actorUserId: UUID;
 }): Promise<void> {
+  return withHrSession('personal-documents:delete', async () => {
   const { error } = await insforge.database
     .from('hr_employee_documents')
     .delete()
@@ -1446,6 +1499,7 @@ export async function deleteHrPersonalDocument(input: {
     entityType: 'hr_employee_document',
     entityId: input.documentId
   }).catch(() => {});
+  });
 }
 
 export async function createHrAcknowledgementDocument(input: {
@@ -1463,6 +1517,7 @@ export async function createHrAcknowledgementDocument(input: {
   acknowledgementRequired: boolean;
   signatureRequired: boolean;
 }): Promise<HrAckDocumentRow> {
+  return withHrSession('ack-documents:create', async () => {
   const { data, error } = await insforge.database
     .from('hr_ack_documents')
     .insert({
@@ -1536,6 +1591,7 @@ export async function createHrAcknowledgementDocument(input: {
     entityId: (data as any).id as UUID
   });
   return data as HrAckDocumentRow;
+  });
 }
 
 export async function listHrAcknowledgementDocuments(input: {
@@ -1543,6 +1599,7 @@ export async function listHrAcknowledgementDocuments(input: {
   actorRole: string | null;
   actorUserId: UUID;
 }): Promise<Array<HrAckDocumentRow & { receipts?: HrAckReceiptRow[] }>> {
+  return withHrSession('ack-documents:list', async () => {
   const { data, error } = await insforge.database
     .from('hr_ack_documents')
     .select('*')
@@ -1580,6 +1637,7 @@ export async function listHrAcknowledgementDocuments(input: {
     recByDoc.set(r.ack_document_id, list);
   }
   return docs.map((d) => ({ ...d, receipts: recByDoc.get(d.id) ?? [] }));
+  });
 }
 
 export async function submitHrAcknowledgement(input: {
@@ -1590,6 +1648,7 @@ export async function submitHrAcknowledgement(input: {
   ipAddress?: string | null;
   deviceInfo?: string | null;
 }): Promise<HrAckReceiptRow> {
+  return withHrSession('ack-documents:submit', async () => {
   const me = await getHrEmployeeByUserId(input.companyId, input.actorUserId);
   if (!me) throw new Error('No linked employee profile.');
 
@@ -1626,6 +1685,7 @@ export async function submitHrAcknowledgement(input: {
     entityId: (data as any).id as UUID
   });
   return data as HrAckReceiptRow;
+  });
 }
 
 export async function deleteHrAcknowledgementDocument(input: {
@@ -1633,6 +1693,7 @@ export async function deleteHrAcknowledgementDocument(input: {
   documentId: UUID;
   actorUserId: UUID;
 }): Promise<void> {
+  return withHrSession('ack-documents:delete', async () => {
   const { error: receiptsError } = await insforge.database
     .from('hr_ack_receipts')
     .delete()
@@ -1654,6 +1715,7 @@ export async function deleteHrAcknowledgementDocument(input: {
     entityType: 'hr_ack_document',
     entityId: input.documentId
   }).catch(() => {});
+  });
 }
 
 export async function sendHrDocumentExpiryAlerts(companyId: UUID, actorUserId: UUID): Promise<number> {
@@ -1721,6 +1783,7 @@ export function recommendDisciplinaryAction(input: { repeatCount: number; caseTy
 }
 
 export async function listHrManagersAndAdmins(companyId: UUID): Promise<UUID[]> {
+  return withHrSession('managers-and-admins:list', async () => {
   const { data, error } = await insforge.database
     .from('company_memberships')
     .select('user_id, role')
@@ -1728,6 +1791,7 @@ export async function listHrManagersAndAdmins(companyId: UUID): Promise<UUID[]> 
     .in('role', ['owner', 'admin', 'manager', 'supervisor']);
   if (error) throw new Error(getErrorMessage(error));
   return [...new Set((data ?? []).map((row: any) => row.user_id as UUID))];
+  });
 }
 
 export async function recalculateHrMonthlyHours(
@@ -1737,6 +1801,7 @@ export async function recalculateHrMonthlyHours(
   month: number,
   actorUserId?: UUID | null
 ): Promise<HrMonthlyHours | null> {
+  return withHrSession('monthly-hours:recalculate', async () => {
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const nextMonthStart = new Date(Date.UTC(year, month, 1));
   const monthStartIso = monthStart.toISOString().slice(0, 10);
@@ -1770,4 +1835,5 @@ export async function recalculateHrMonthlyHours(
     .single();
   if (upsertError) throw new Error(getErrorMessage(upsertError));
   return (upserted as HrMonthlyHours) ?? null;
+  });
 }

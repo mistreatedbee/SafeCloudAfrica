@@ -6,14 +6,14 @@ import { createActivityLog } from './activityLogService';
 
 export async function listDepartments(companyId: UUID, limit = 1000): Promise<Department[]> {
   return withInsforgeSession('departments:list', async () => {
-  const { data, error } = await insforge.database
-    .from('departments')
-    .select('*')
-    .eq('company_id', companyId)
-    .order('name', { ascending: true })
-    .limit(limit);
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as Department[];
+    const { data, error } = await insforge.database
+      .from('departments')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('name', { ascending: true })
+      .limit(limit);
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as Department[];
   });
 }
 
@@ -23,6 +23,7 @@ export async function createDepartment(input: {
   siteId?: UUID | null;
   actorUserId: UUID;
 }): Promise<Department> {
+  return withInsforgeSession('departments:create', async () => {
   const { data, error } = await insforge.database
     .from('departments')
     .insert({
@@ -47,6 +48,7 @@ export async function createDepartment(input: {
   });
 
   return data as Department;
+  });
 }
 
 export async function updateDepartment(input: {
@@ -55,6 +57,7 @@ export async function updateDepartment(input: {
   patch: { name?: string; site_id?: UUID | null; is_active?: boolean };
   actorUserId: UUID;
 }): Promise<Department> {
+  return withInsforgeSession('departments:update', async () => {
   const { data, error } = await insforge.database
     .from('departments')
     .update({ ...input.patch, updated_at: new Date().toISOString() })
@@ -75,9 +78,11 @@ export async function updateDepartment(input: {
   });
 
   return data as Department;
+  });
 }
 
 export async function deleteDepartment(input: { companyId: UUID; departmentId: UUID; actorUserId: UUID }): Promise<void> {
+  return withInsforgeSession('departments:delete', async () => {
   const { error } = await insforge.database.from('departments').delete().eq('company_id', input.companyId).eq('id', input.departmentId);
   if (error) throw new Error(getErrorMessage(error));
 
@@ -87,6 +92,7 @@ export async function deleteDepartment(input: { companyId: UUID; departmentId: U
     action: 'departments.delete',
     entityType: 'department',
     entityId: input.departmentId
+  });
   });
 }
 

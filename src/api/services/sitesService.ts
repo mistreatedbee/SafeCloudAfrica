@@ -6,14 +6,14 @@ import { createActivityLog } from './activityLogService';
 
 export async function listSites(companyId: UUID, limit = 500): Promise<Site[]> {
   return withInsforgeSession('sites:list', async () => {
-  const { data, error } = await insforge.database
-    .from('sites')
-    .select('*')
-    .eq('company_id', companyId)
-    .order('name', { ascending: true })
-    .limit(limit);
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as Site[];
+    const { data, error } = await insforge.database
+      .from('sites')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('name', { ascending: true })
+      .limit(limit);
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as Site[];
   });
 }
 
@@ -23,6 +23,7 @@ export async function createSite(input: {
   address?: string | null;
   actorUserId: UUID;
 }): Promise<Site> {
+  return withInsforgeSession('sites:create', async () => {
   const { data, error } = await insforge.database
     .from('sites')
     .insert({
@@ -46,6 +47,7 @@ export async function createSite(input: {
   });
 
   return data as Site;
+  });
 }
 
 export async function updateSite(input: {
@@ -54,6 +56,7 @@ export async function updateSite(input: {
   patch: { name?: string; address?: string | null; is_active?: boolean };
   actorUserId: UUID;
 }): Promise<Site> {
+  return withInsforgeSession('sites:update', async () => {
   const { data, error } = await insforge.database
     .from('sites')
     .update({ ...input.patch, updated_at: new Date().toISOString() })
@@ -74,9 +77,11 @@ export async function updateSite(input: {
   });
 
   return data as Site;
+  });
 }
 
 export async function deleteSite(input: { companyId: UUID; siteId: UUID; actorUserId: UUID }): Promise<void> {
+  return withInsforgeSession('sites:delete', async () => {
   const { error } = await insforge.database.from('sites').delete().eq('company_id', input.companyId).eq('id', input.siteId);
   if (error) throw new Error(getErrorMessage(error));
 
@@ -86,6 +91,7 @@ export async function deleteSite(input: { companyId: UUID; siteId: UUID; actorUs
     action: 'sites.delete',
     entityType: 'site',
     entityId: input.siteId
+  });
   });
 }
 
