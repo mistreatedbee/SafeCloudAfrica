@@ -727,7 +727,7 @@ export async function acceptPendingInviteForCurrentUser(input: { userId: UUID })
   const data = await response.json().catch(() => null as any);
 
   if (isApiRouteUnavailable(response.status, data)) return null;
-  if (response.status === 404 && String(data?.reason ?? '').toLowerCase() === 'no_pending_invite') return null;
+  if (String(data?.reason ?? '').toLowerCase() === 'no_pending_invite') return null;
   if (!response.ok || !data?.ok) {
     const reason = String(data?.reason ?? '').toLowerCase();
     if (reason === 'service_role_missing') {

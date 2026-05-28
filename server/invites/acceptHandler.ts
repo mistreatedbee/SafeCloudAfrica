@@ -6,6 +6,7 @@ import { resolveInviteToken } from './resolver.js';
 
 const MODULE = 'api.invites.accept';
 const PENDING_INVITE_STATUSES = ['PENDING', 'SENT'];
+const EXPECTED_TOKEN_MISS_REASONS = new Set(['not_found', 'malformed']);
 
 function getInviteServiceClient(): any {
   const service = getServiceInsforge();
@@ -22,6 +23,14 @@ function getInviteServiceClient(): any {
 function normalizeRole(role: unknown): string {
   return String(role ?? '').trim().toLowerCase();
 }
+
+function normalizeEmail(email: unknown): string {
+  return String(email || '').trim().toLowerCase();
+}
+
+type PendingInviteAcceptResult =
+  | { ok: true; orgId: string; role: string; inviteId: string }
+  | { ok: false; reason: 'no_pending_invite' | 'backend_unavailable'; error: string };
 
 async function getEffectiveSeatLimit(insforge: any, companyId: string, company: any): Promise<number> {
   const rpcRes = await insforge.database.rpc('get_company_seat_limit', { p_company_id: companyId });
@@ -181,6 +190,61 @@ export async function acceptResolvedInvite(input: {
   };
 }
 
+async function findNewestValidPendingInviteForEmail(insforge: any, userEmail: string): Promise<any | null> {
+  const normalizedEmail = normalizeEmail(userEmail);
+  if (!normalizedEmail) return null;
+
+  const query = insforge.database
+    .from('company_invites')
+    .select('*');
+  const emailQuery = typeof query.ilike === 'function'
+    ? query.ilike('email', normalizedEmail)
+    : query.eq('email', normalizedEmail);
+  const invitesRes = await emailQuery
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (invitesRes.error) {
+    const err = new Error('Could not find pending invites.');
+    (err as any).reason = 'backend_unavailable';
+    throw err;
+  }
+
+  const now = new Date();
+  return (invitesRes.data || []).find((row: any) => {
+    if (normalizeEmail(row.email) !== normalizedEmail) return false;
+    if (!PENDING_INVITE_STATUSES.includes(normalizeInviteStatus(row.status))) return false;
+    const expiresAt = row.expires_at ? new Date(row.expires_at) : null;
+    return !expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt > now;
+  }) ?? null;
+}
+
+async function acceptNewestPendingInviteForEmail(input: {
+  insforge: any;
+  userId: string;
+  userEmail: string;
+}): Promise<PendingInviteAcceptResult> {
+  try {
+    const invite = await findNewestValidPendingInviteForEmail(input.insforge, input.userEmail);
+    if (!invite) {
+      return { ok: false, reason: 'no_pending_invite', error: 'No pending invite found.' };
+    }
+
+    const result = await acceptResolvedInvite({
+      insforge: input.insforge,
+      invite,
+      userId: input.userId,
+      userEmail: input.userEmail
+    });
+    return { ok: true, ...result, inviteId: String(invite.id || '') };
+  } catch (err: any) {
+    if (err?.reason === 'backend_unavailable') {
+      return { ok: false, reason: 'backend_unavailable', error: String(err?.message || 'Could not find pending invites.') };
+    }
+    throw err;
+  }
+}
+
 export async function acceptPendingInviteHandler(req: any, res: any) {
   applyNoStoreHeaders(res);
   if (req.method !== 'POST') {
@@ -202,31 +266,21 @@ export async function acceptPendingInviteHandler(req: any, res: any) {
 
     logUserId = String(userId);
     const insforge = getInviteServiceClient();
-
-    const invitesRes = await insforge.database
-      .from('company_invites')
-      .select('*')
-      .eq('email', userEmail)
-      .in('status', PENDING_INVITE_STATUSES)
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    if (invitesRes.error) {
-      return res.status(500).json({ ok: false, reason: 'backend_unavailable', error: 'Could not find pending invites.' });
+    const result = await acceptNewestPendingInviteForEmail({ insforge, userId, userEmail });
+    if (!result.ok) {
+      logStructuredLine({
+        module: 'api.invites.accept-pending',
+        level: result.reason === 'backend_unavailable' ? 'error' : 'info',
+        message: result.reason === 'no_pending_invite' ? 'no_pending_invite_for_email' : result.error,
+        user_id: logUserId,
+        organization_id: null
+      });
+      const status = result.reason === 'backend_unavailable' ? 500 : 200;
+      return res.status(status).json({ ok: false, reason: result.reason, error: result.error });
     }
 
-    const now = new Date();
-    const invite = (invitesRes.data || []).find((row: any) => {
-      const expiresAt = row.expires_at ? new Date(row.expires_at) : null;
-      return !expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt > now;
-    });
-    if (!invite) {
-      return res.status(404).json({ ok: false, reason: 'no_pending_invite', error: 'No pending invite found.' });
-    }
-
-    logOrgId = String((invite as any).company_id || '') || null;
-    const result = await acceptResolvedInvite({ insforge, invite, userId, userEmail });
-    return res.status(200).json({ ok: true, ...result });
+    logOrgId = result.orgId;
+    return res.status(200).json({ ok: true, orgId: result.orgId, role: result.role });
   } catch (err: any) {
     const msg = String(err?.message || err);
     logStructuredLine({
@@ -279,6 +333,34 @@ export default async function handler(req: any, res: any) {
 
     const inviteResult = await resolveInviteToken(insforge, token);
     if (inviteResult.ok === false) {
+      if (EXPECTED_TOKEN_MISS_REASONS.has(inviteResult.reason)) {
+        const fallback = await acceptNewestPendingInviteForEmail({ insforge, userId, userEmail });
+        if (fallback.ok) {
+          logStructuredLine({
+            module: MODULE,
+            level: 'info',
+            message: 'token_not_found_email_fallback_accepted',
+            user_id: logUserId,
+            organization_id: fallback.orgId
+          });
+          return res.status(200).json({ ok: true, orgId: fallback.orgId, role: fallback.role });
+        }
+
+        logStructuredLine({
+          module: MODULE,
+          level: fallback.reason === 'backend_unavailable' ? 'error' : 'info',
+          message: fallback.reason === 'no_pending_invite' ? 'token_not_found_no_pending_invite_for_email' : fallback.error,
+          user_id: logUserId,
+          organization_id: null
+        });
+        const status = fallback.reason === 'backend_unavailable' ? 500 : 200;
+        return res.status(status).json({
+          ok: false,
+          reason: fallback.reason === 'no_pending_invite' ? inviteResult.reason : fallback.reason,
+          error: fallback.reason === 'no_pending_invite' ? inviteResult.error : fallback.error
+        });
+      }
+
       return res.status(inviteResult.status).json({
         ok: false,
         reason: inviteResult.reason,

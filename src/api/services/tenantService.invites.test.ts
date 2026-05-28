@@ -23,7 +23,7 @@ vi.mock('../insforge/ensureSession', () => ({
   withInsforgeSession: vi.fn()
 }));
 
-import { acceptInviteByToken, validateInvitationToken } from './tenantService';
+import { acceptInviteByToken, acceptPendingInviteForCurrentUser, validateInvitationToken } from './tenantService';
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -58,6 +58,17 @@ describe('tenantService invite API fallback behavior', () => {
     await expect(acceptInviteByToken({ token: 'invite-token-1', userId: 'user-1' }))
       .rejects
       .toThrow('INVITE_BACKEND_UNAVAILABLE');
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('treats structured no-pending-invite responses as an empty invite fallback', async () => {
+    fetchWithInsforgeAuthMock.mockResolvedValue(jsonResponse(200, {
+      ok: false,
+      reason: 'no_pending_invite',
+      error: 'No pending invite found.'
+    }));
+
+    await expect(acceptPendingInviteForCurrentUser({ userId: 'user-1' })).resolves.toBeNull();
     expect(rpcMock).not.toHaveBeenCalled();
   });
 });
