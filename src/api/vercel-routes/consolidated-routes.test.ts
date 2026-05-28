@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const routeMocks = vi.hoisted(() => ({
   acceptInviteHandler: vi.fn((_req: any, res: any) => res.status(200).json({ routed: 'accept' })),
+  acceptPendingInviteHandler: vi.fn((_req: any, res: any) => res.status(200).json({ routed: 'accept-pending' })),
   createInviteHandler: vi.fn((_req: any, res: any) => res.status(200).json({ routed: 'create' })),
   resendInviteHandler: vi.fn((_req: any, res: any) => res.status(200).json({ routed: 'resend' })),
   validateInviteHandler: vi.fn((_req: any, res: any, token?: string) => res.status(200).json({ routed: 'validate', token })),
@@ -12,7 +13,8 @@ const routeMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../server/invites/acceptHandler.js', () => ({
-  default: routeMocks.acceptInviteHandler
+  default: routeMocks.acceptInviteHandler,
+  acceptPendingInviteHandler: routeMocks.acceptPendingInviteHandler
 }));
 
 vi.mock('../../../server/invites/createHandler.js', () => ({
@@ -79,9 +81,26 @@ describe('consolidated Vercel API routes', () => {
   it.each([
     ['create', 'create'],
     ['accept', 'accept'],
+    ['accept-pending', 'accept-pending'],
     ['resend', 'resend']
   ])('routes /api/invites/%s through the invites catch-all', async (action, expected) => {
     const { default: handler } = await import('../../../api/invites/[...action]');
+    const req = { method: 'POST', query: { action }, headers: {}, body: {} };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.jsonBody).toEqual({ routed: expected });
+  });
+
+  it.each([
+    ['create', 'create'],
+    ['accept', 'accept'],
+    ['accept-pending', 'accept-pending'],
+    ['resend', 'resend']
+  ])('routes /api/invites/%s through the production invites router', async (action, expected) => {
+    const { default: handler } = await import('../../../api/invites-router');
     const req = { method: 'POST', query: { action }, headers: {}, body: {} };
     const res = createRes();
 
@@ -100,6 +119,39 @@ describe('consolidated Vercel API routes', () => {
 
     expect(routeMocks.validateInviteHandler).toHaveBeenCalledWith(req, res, 'token-1');
     expect(res.jsonBody).toEqual({ routed: 'validate', token: 'token-1' });
+  });
+
+  it('routes /api/invites/validate?token=... through the production invites router', async () => {
+    const { default: handler } = await import('../../../api/invites-router');
+    const req = { method: 'GET', query: { action: 'validate', token: 'token-query-1' }, headers: {} };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(routeMocks.validateInviteHandler).toHaveBeenCalledWith(req, res, undefined);
+    expect(res.jsonBody).toEqual({ routed: 'validate', token: undefined });
+  });
+
+  it('routes /api/invites/validate/:token through the production invites router', async () => {
+    const { default: handler } = await import('../../../api/invites-router');
+    const req = { method: 'GET', query: { action: 'validate/token-path-1' }, headers: {} };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(routeMocks.validateInviteHandler).toHaveBeenCalledWith(req, res, 'token-path-1');
+    expect(res.jsonBody).toEqual({ routed: 'validate', token: 'token-path-1' });
+  });
+
+  it('returns a structured not-found response for unknown invite actions', async () => {
+    const { default: handler } = await import('../../../api/invites-router');
+    const req = { method: 'POST', query: { action: 'unknown' }, headers: {}, body: {} };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(404);
+    expect(res.jsonBody).toEqual({ ok: false, error: 'Not found', code: 'ROUTE_NOT_FOUND' });
   });
 
   it('routes /api/documents/editor-config-status through the documents catch-all', async () => {

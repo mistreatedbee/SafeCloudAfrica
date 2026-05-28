@@ -160,40 +160,6 @@ async function createInviteFallback(input: {
   };
 }
 
-async function validateInvitationTokenFallback(token: string): Promise<InviteValidationResult> {
-  const resolved = await resolveInviteTokenFallback(token);
-  if (resolved.code === 'OK' && resolved.invite) {
-    return {
-      code: 'OK',
-      invite: {
-        id: resolved.invite.id,
-        company_id: resolved.invite.company_id,
-        organization_name: resolved.invite.company_name ?? null,
-        email: resolved.invite.email,
-        role: resolved.invite.role as CompanyRole,
-        created_by_user_id: '' as UUID,
-        created_at: '',
-        accepted_at: null,
-        accepted_user_id: null,
-        token,
-        expires_at: resolved.invite.expires_at ?? null,
-        status: resolved.invite.status ?? 'PENDING',
-        company_name: resolved.invite.company_name ?? null
-      } as CompanyInvite & { company_name?: string | null }
-    };
-  }
-  return { code: resolved.code, invite: null };
-}
-
-async function getInviteIdByTokenRpc(token: string): Promise<UUID | null> {
-  const resolved = await resolveInviteTokenFallback(token);
-  if (resolved.code === 'OK' && resolved.invite?.id) return resolved.invite.id as UUID;
-  if (resolved.code === 'BACKEND_UNAVAILABLE') {
-    throw new Error('INVITE_BACKEND_UNAVAILABLE: Invite validation is not configured correctly.');
-  }
-  return null;
-}
-
 async function resendInviteFallback(input: { inviteId: UUID; actorUserId: UUID }): Promise<InviteResendResult> {
   const invite = await getInviteById(input.inviteId);
   const company = await getCompanyById(invite.company_id);
@@ -525,31 +491,6 @@ export class PendingInviteAcceptanceError extends Error {
   }
 }
 
-type InviteResolverRow = {
-  invite_id?: UUID | null;
-  company_id?: UUID | null;
-  company_name?: string | null;
-  email?: string | null;
-  role?: string | null;
-  status?: string | null;
-  expires_at?: string | null;
-  resolution_code?: string | null;
-};
-
-type InviteResolverResult = {
-  code: InviteValidationCode;
-  invite: (InviteResolverRow & { id?: UUID | null }) | null;
-};
-
-function mapInviteResolutionCode(code: string | null | undefined): InviteValidationCode {
-  const normalized = String(code ?? '').trim().toLowerCase();
-  if (normalized === 'ok') return 'OK';
-  if (normalized === 'expired') return 'INVITE_EXPIRED';
-  if (normalized === 'accepted') return 'INVITE_ACCEPTED';
-  if (normalized === 'cancelled') return 'INVITE_INVALID';
-  return 'INVITE_INVALID';
-}
-
 function mapInviteValidationFailure(status: number, reason: string | null | undefined): InviteValidationCode {
   const normalizedReason = String(reason ?? '').trim().toLowerCase();
   if (status === 410 || normalizedReason === 'expired') return 'INVITE_EXPIRED';
@@ -559,51 +500,6 @@ function mapInviteValidationFailure(status: number, reason: string | null | unde
   }
   if (status >= 500 || normalizedReason === 'backend_unavailable') return 'BACKEND_UNAVAILABLE';
   return 'INVITE_INVALID';
-}
-
-function normalizeResolvedInvite(row: InviteResolverRow | null | undefined): (InviteResolverRow & { id?: UUID | null }) | null {
-  if (!row) return null;
-  return {
-    ...row,
-    id: row.invite_id ?? null
-  };
-}
-
-async function resolveInviteTokenFallback(token: string): Promise<InviteResolverResult> {
-  const cleanToken = token.trim();
-  if (!cleanToken) return { code: 'INVITE_INVALID', invite: null };
-
-  const resolverRpc = await insforge.database.rpc('resolve_invitation_token', { p_token: cleanToken });
-  if (!resolverRpc.error) {
-    const row = normalizeResolvedInvite(Array.isArray(resolverRpc.data) ? resolverRpc.data[0] : resolverRpc.data);
-    if (!row) return { code: 'INVITE_INVALID', invite: null };
-    return {
-      code: mapInviteResolutionCode(row.resolution_code),
-      invite: row
-    };
-  }
-
-  const validationRpc = await insforge.database.rpc('validate_invitation_token', { p_token: cleanToken });
-  if (!validationRpc.error) {
-    const row = normalizeResolvedInvite(Array.isArray(validationRpc.data) ? validationRpc.data[0] : validationRpc.data);
-    if (!row) return { code: 'INVITE_INVALID', invite: null };
-    return { code: 'OK', invite: row };
-  }
-
-  const legacyIdRpc = await insforge.database.rpc('get_invite_id_by_token', { p_token: cleanToken });
-  if (!legacyIdRpc.error) {
-    const inviteId = (legacyIdRpc.data as UUID | null) ?? null;
-    if (!inviteId) return { code: 'INVITE_INVALID', invite: null };
-    return {
-      code: 'OK',
-      invite: {
-        id: inviteId,
-        invite_id: inviteId
-      }
-    };
-  }
-
-  return { code: 'BACKEND_UNAVAILABLE', invite: null };
 }
 
 export async function createInvite(input: {
@@ -665,9 +561,7 @@ export async function validateInvitationToken(token: string): Promise<InviteVali
       cache: 'no-store'
     });
     const data = await response.json().catch(() => null as any);
-    if (isApiRouteUnavailable(response.status, data)) {
-      return await validateInvitationTokenFallback(cleanToken);
-    }
+    if (isApiRouteUnavailable(response.status, data)) return { code: 'BACKEND_UNAVAILABLE', invite: null };
     if (!response.ok || !data?.valid) {
       return { code: mapInviteValidationFailure(response.status, data?.reason), invite: null };
     }
@@ -799,9 +693,7 @@ export async function acceptInviteByToken(input: { token: string; userId: UUID }
   }, 'invites:accept');
   const data = await response.json().catch(() => null as any);
   if (isApiRouteUnavailable(response.status, data)) {
-    const inviteId = await getInviteIdByTokenRpc(input.token);
-    if (!inviteId) throw new Error('INVITE_INVALID: Invalid invite token.');
-    return await acceptInvite({ inviteId, userId: input.userId });
+    throw new Error('INVITE_BACKEND_UNAVAILABLE: Invite acceptance is not configured correctly.');
   }
   if (!response.ok || !data?.ok) {
     const reason = String(data?.reason ?? '').toLowerCase();
@@ -957,9 +849,7 @@ export function getInviteIdByToken(token: string): Promise<UUID | null> {
   })
     .then(async (response) => {
       const data = await response.json().catch(() => null as any);
-      if (isApiRouteUnavailable(response.status, data)) {
-        return await getInviteIdByTokenRpc(cleanToken);
-      }
+      if (isApiRouteUnavailable(response.status, data)) return null;
       if (!response.ok || !data?.valid || !data?.invite?.id) return null;
       return data.invite.id as UUID;
     });

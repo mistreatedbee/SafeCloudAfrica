@@ -8,7 +8,7 @@ import { recoverAuthState } from '../../auth/recoverAuthState';
 import { useTenant } from '../../tenant/TenantContext';
 import { ensureInsforgeSession } from '../../api/insforge/ensureSession';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getDashboardRoute, getLoginRedirectPath } from '../../api/services/platformAdminService';
-import { acceptInviteByToken, acceptPendingInviteForCurrentUser, PendingInviteAcceptanceError } from '../../api/services/tenantService';
+import { acceptInviteByToken, PendingInviteAcceptanceError } from '../../api/services/tenantService';
 import { insforge, insforgeReady } from '../../api/insforge/client';
 import type { UUID } from '../../api/models/entities';
 import {
@@ -19,6 +19,7 @@ import {
   savePendingInviteContext,
   type PendingInviteContext
 } from '../../auth/pendingAuthRedirect';
+import { acceptPendingInviteAndActivateWorkspace } from '../../auth/acceptPendingInviteWorkspace';
 
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
 const ACTIVE_COMPANY_KEY = 'sca_active_company_id_v3';
@@ -175,9 +176,13 @@ export function LoginPage() {
         }
       }
 
-      let pendingEmailInviteMembership = null;
+      let pendingEmailInviteResult = null;
       try {
-        pendingEmailInviteMembership = await acceptPendingInviteForCurrentUser({ userId: effectiveUserId });
+        pendingEmailInviteResult = await acceptPendingInviteAndActivateWorkspace({
+          userId: effectiveUserId,
+          setActiveCompanyId,
+          refreshTenant
+        });
       } catch (error) {
         if (error instanceof PendingInviteAcceptanceError) {
           setRedirectError(error.message);
@@ -186,13 +191,8 @@ export function LoginPage() {
         }
         throw error;
       }
-      if (pendingEmailInviteMembership) {
-        setActiveCompanyId(pendingEmailInviteMembership.company_id);
-        await Promise.race([
-          refreshTenant(),
-          wait(TENANT_REFRESH_MAX_WAIT_MS)
-        ]);
-        redirectToPath(getDashboardRoute(pendingEmailInviteMembership.role));
+      if (pendingEmailInviteResult?.status === 'accepted') {
+        redirectToPath(pendingEmailInviteResult.redirectPath);
         return;
       }
 
