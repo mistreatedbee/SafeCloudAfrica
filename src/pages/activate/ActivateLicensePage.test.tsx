@@ -22,7 +22,6 @@ const validateLicenseKeyMock = vi.fn();
 const activateLicenseKeyMock = vi.fn();
 const signUpMock = vi.fn();
 const signInWithPasswordMock = vi.fn();
-const recoverAuthStateMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('react-router-dom', () => ({
   Link: ({ children }: { children: React.ReactNode }) => React.createElement('a', null, children),
@@ -45,10 +44,6 @@ vi.mock('../../tenant/TenantContext', () => ({
 vi.mock('../../api/services/activationService', () => ({
   validateLicenseKey: (...args: unknown[]) => validateLicenseKeyMock(...args),
   activateLicenseKey: (...args: unknown[]) => activateLicenseKeyMock(...args)
-}));
-
-vi.mock('../../auth/recoverAuthState', () => ({
-  recoverAuthState: (...args: unknown[]) => recoverAuthStateMock(...args)
 }));
 
 vi.mock('../../api/insforge/client', () => ({
@@ -112,8 +107,6 @@ describe('ActivateLicensePage', () => {
     activateLicenseKeyMock.mockReset();
     signUpMock.mockReset();
     signInWithPasswordMock.mockReset();
-    recoverAuthStateMock.mockReset();
-    recoverAuthStateMock.mockResolvedValue(undefined);
 
     validateLicenseKeyMock.mockResolvedValue({
       plan_name: 'base',
@@ -123,6 +116,7 @@ describe('ActivateLicensePage', () => {
     });
     activateLicenseKeyMock.mockResolvedValue({ organizationId: 'org-1' });
     signUpMock.mockResolvedValue({ data: { accessToken: 'token-1' }, error: null });
+    signInWithPasswordMock.mockResolvedValue({ data: { accessToken: 'token-1' }, error: null });
 
     Object.defineProperty(window, 'location', {
       configurable: true,
@@ -139,7 +133,7 @@ describe('ActivateLicensePage', () => {
     vi.useRealTimers();
   });
 
-  it('creates a signed-out user account without automatically signing in or activating', async () => {
+  it('creates a signed-out user account, signs in automatically, and activates the organisation', async () => {
     await act(async () => {
       root.render(<ActivateLicensePage />);
       await flushAsyncWork();
@@ -165,10 +159,21 @@ describe('ActivateLicensePage', () => {
       name: 'Test Owner',
       redirectTo: 'http://localhost/login'
     });
-    expect(recoverAuthStateMock).toHaveBeenCalledWith(useAuthState.signOut);
-    expect(signInWithPasswordMock).not.toHaveBeenCalled();
-    expect(activateLicenseKeyMock).not.toHaveBeenCalled();
-    expect(navigateMock).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Account created. Please sign in manually');
+    expect(signInWithPasswordMock).toHaveBeenCalledWith({
+      email: 'owner@example.com',
+      password: 'password-1'
+    });
+    expect(activateLicenseKeyMock).toHaveBeenCalledWith({
+      key: 'LICENSE-123',
+      companyName: 'Acme Safety',
+      industry: 'Mining',
+      country: 'South Africa',
+      primaryContactName: 'Test Owner',
+      primaryContactEmail: 'owner@example.com',
+      phone: '+27000000000'
+    });
+    expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('org-1');
+    expect(tenantState.refreshTenant).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith('/org/dashboard', { replace: true });
   });
 });

@@ -6,7 +6,6 @@ import { Simulate } from 'react-dom/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const signUpMock = vi.fn();
-const recoverAuthStateMock = vi.fn().mockResolvedValue(undefined);
 const routerState = vi.hoisted(() => ({
   searchParams: new URLSearchParams()
 }));
@@ -18,10 +17,6 @@ vi.mock('react-router-dom', () => ({
 
 vi.mock('../../components/auth/AuthShell', () => ({
   AuthShell: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children)
-}));
-
-vi.mock('../../auth/recoverAuthState', () => ({
-  recoverAuthState: (...args: unknown[]) => recoverAuthStateMock(...args)
 }));
 
 vi.mock('../../api/insforge/client', () => ({
@@ -73,9 +68,6 @@ describe('RegisterPage', () => {
     sessionStorage.clear();
 
     signUpMock.mockReset();
-    recoverAuthStateMock.mockReset();
-    recoverAuthStateMock.mockResolvedValue(undefined);
-
     replaceMock = vi.fn();
     Object.defineProperty(window, 'location', {
       configurable: true,
@@ -91,7 +83,7 @@ describe('RegisterPage', () => {
     container.remove();
   });
 
-  it('sends users to manual login when signup returns an access token', async () => {
+  it('continues to the safe redirect path when signup returns an access token', async () => {
     signUpMock.mockResolvedValue({ data: { accessToken: 'token-1' }, error: null });
 
     await act(async () => {
@@ -109,7 +101,6 @@ describe('RegisterPage', () => {
       name: 'Test User',
       redirectTo: 'http://localhost/login'
     });
-    expect(recoverAuthStateMock).toHaveBeenCalledTimes(1);
-    expect(replaceMock).toHaveBeenCalledWith('/login?registered=1&redirect=%2Fapp');
+    expect(replaceMock).toHaveBeenCalledWith('/app');
   });
 });

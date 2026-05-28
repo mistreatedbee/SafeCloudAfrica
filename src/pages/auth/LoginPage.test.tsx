@@ -12,6 +12,10 @@ const useAuthState = {
   signOut: vi.fn().mockResolvedValue(undefined)
 };
 
+const useUserState = {
+  user: { id: 'user-1', email: 'user@example.com' }
+};
+
 const tenantState = {
   setActiveCompanyId: vi.fn(),
   refreshTenant: vi.fn().mockResolvedValue(undefined)
@@ -30,7 +34,8 @@ const routerState = vi.hoisted(() => ({
 }));
 
 vi.mock('@insforge/react', () => ({
-  useAuth: () => useAuthState
+  useAuth: () => useAuthState,
+  useUser: () => useUserState
 }));
 
 vi.mock('react-router-dom', () => ({
@@ -191,13 +196,19 @@ describe('LoginPage', () => {
     container.remove();
   });
 
-  it('does not redirect automatically when the login page loads with an existing signed-in session', async () => {
+  it('automatically continues when the login page loads with an existing signed-in session', async () => {
     await renderLogin(root);
 
-    expect(container.querySelector('form')).not.toBeNull();
-    expect(callOrder).toEqual([]);
+    expect(callOrder).toEqual([
+      'ensureSession',
+      'ensureMeAsSuperAdmin',
+      'isPlatformAdmin',
+      'acceptPendingInviteForCurrentUser',
+      'getLoginRedirectPath'
+    ]);
     expect(useAuthState.signIn).not.toHaveBeenCalled();
-    expect(replaceMock).not.toHaveBeenCalled();
+    expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-1');
+    expect(replaceMock).toHaveBeenCalledWith('/org/dashboard');
   });
 
   it('ensures session auth is rehydrated before protected post-login checks after manual sign in', async () => {

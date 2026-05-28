@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { formatAuthError } from '../../auth/authMessages';
-import { recoverAuthState } from '../../auth/recoverAuthState';
 import { insforge, insforgeReady } from '../../api/insforge/client';
 import {
   getVerificationRedirectUrl,
@@ -25,13 +24,13 @@ export function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const signupCreatedSession = (data: unknown): boolean => {
+  const signupRedirectPath = (data: unknown): string | null => {
     const directToken = (data as any)?.accessToken;
     const sessionToken = (data as any)?.session?.accessToken;
-    return (
+    const hasSession =
       (typeof directToken === 'string' && directToken.trim().length > 0) ||
-      (typeof sessionToken === 'string' && sessionToken.trim().length > 0)
-    );
+      (typeof sessionToken === 'string' && sessionToken.trim().length > 0);
+    return hasSession ? redirectPath : null;
   };
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -71,13 +70,17 @@ export function RegisterPage() {
       if (data?.requireEmailVerification) {
         setSuccess(
           isInviteSignup
-            ? 'Check your email to verify your account. After verification, sign in and your invitation will continue.'
+            ? 'Check your email to verify your account. After verification, sign in and your invitation will continue automatically.'
             : 'Check your email to verify your account, then sign in to continue.'
         );
         return;
       }
 
-      if (signupCreatedSession(data)) await recoverAuthState();
+      const signedInRedirectPath = signupRedirectPath(data);
+      if (signedInRedirectPath) {
+        window.location.replace(signedInRedirectPath);
+        return;
+      }
 
       window.location.replace(`/login?registered=1&redirect=${encodeURIComponent(redirectPath)}`);
     } catch (err) {
