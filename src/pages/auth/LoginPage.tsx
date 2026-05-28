@@ -152,6 +152,7 @@ export function LoginPage() {
         savePendingInviteContext(redirectInviteContext);
       }
       const pendingInviteContext: PendingInviteContext | null = redirectInviteContext ?? getPendingInviteContext();
+      let returnToInvitePathAfterEmailFallback: string | null = null;
 
       if (pendingInviteContext) {
         try {
@@ -169,8 +170,7 @@ export function LoginPage() {
           return;
         } catch (error) {
           if (!isInviteAlreadyAcceptedError(error)) {
-            redirectToPath(pendingInviteContext.redirectPath);
-            return;
+            returnToInvitePathAfterEmailFallback = pendingInviteContext.redirectPath;
           }
           clearPendingInviteContext();
         }
@@ -193,6 +193,11 @@ export function LoginPage() {
       }
       if (pendingEmailInviteResult?.status === 'accepted') {
         redirectToPath(pendingEmailInviteResult.redirectPath);
+        return;
+      }
+
+      if (returnToInvitePathAfterEmailFallback) {
+        redirectToPath(returnToInvitePathAfterEmailFallback);
         return;
       }
 

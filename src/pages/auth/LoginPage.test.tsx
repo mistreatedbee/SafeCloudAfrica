@@ -261,6 +261,33 @@ describe('LoginPage', () => {
     expect(replaceMock).toHaveBeenCalledWith('/admin/dashboard');
   });
 
+  it('falls back to pending email invite acceptance when token acceptance returns not found', async () => {
+    useAuthState.isSignedIn = false;
+    routerState.searchParams = new URLSearchParams(`redirect=${encodeURIComponent('/invite/accept?token=stale-token-1')}`);
+    acceptInviteByTokenMock.mockImplementation(async () => {
+      callOrder.push('acceptInviteByToken');
+      throw new Error('INVITE_INVALID: Invalid invite link.');
+    });
+    acceptPendingInviteForCurrentUserMock.mockImplementation(async () => {
+      callOrder.push('acceptPendingInviteForCurrentUser');
+      return { company_id: 'company-pending', role: 'employee' };
+    });
+
+    await renderLogin(root);
+    await submitLogin(container);
+
+    expect(callOrder).toEqual([
+      'ensureSession',
+      'ensureMeAsSuperAdmin',
+      'isPlatformAdmin',
+      'acceptInviteByToken',
+      'acceptPendingInviteForCurrentUser'
+    ]);
+    expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-pending');
+    expect(getLoginRedirectPathMock).not.toHaveBeenCalled();
+    expect(replaceMock).toHaveBeenCalledWith('/employee/dashboard');
+  });
+
   it('shows pending invite backend errors without continuing to activation routing', async () => {
     useAuthState.isSignedIn = false;
     const { PendingInviteAcceptanceError } = await import('../../api/services/tenantService');

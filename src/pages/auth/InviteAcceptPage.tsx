@@ -18,6 +18,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import type { CompanyInvite } from '../../api/models/entities';
 import { getDashboardRoute } from '../../api/services/platformAdminService';
 import { clearPendingInviteContext, savePendingInviteContext } from '../../auth/pendingAuthRedirect';
+import { acceptPendingInviteAndActivateWorkspace } from '../../auth/acceptPendingInviteWorkspace';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -146,6 +147,23 @@ export function InviteAcceptPage() {
           navigate(getDashboardRoute(membership.role), { replace: true });
         }, 900);
       } catch (err: any) {
+        try {
+          const fallback = await acceptPendingInviteAndActivateWorkspace({
+            userId: user.id,
+            setActiveCompanyId,
+            refreshTenant
+          });
+          if (cancelled) return;
+          if (fallback.status === 'accepted') {
+            setSuccess(true);
+            setTimeout(() => {
+              navigate(fallback.redirectPath, { replace: true });
+            }, 900);
+            return;
+          }
+        } catch {
+          // Surface the original token-specific error below.
+        }
         if (!cancelled) setError(toUserInviteMessage(err?.message || 'Failed to accept invite.'));
       } finally {
         if (!cancelled) setAccepting(false);
