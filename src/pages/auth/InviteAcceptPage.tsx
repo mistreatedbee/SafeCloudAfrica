@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Building2Icon, CheckCircleIcon, XCircleIcon } from 'lucide-react';
@@ -25,6 +25,8 @@ const containerVariants = {
   visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
 };
 const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
+const AUTO_ACCEPT_TIMEOUT_MS = 20000;
+const AUTO_ACCEPT_TIMEOUT_MESSAGE = 'We could not finish accepting this invite. Please refresh or contact your organisation admin.';
 
 function inviteErrorForCode(code: InviteValidationResult['code']): string {
   if (code === 'INVITE_EXPIRED') return 'This invite has expired. Please request a new invite.';
@@ -54,6 +56,8 @@ export function InviteAcceptPage() {
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<InviteValidationResult['code'] | null>(null);
   const [success, setSuccess] = useState(false);
+  const autoAcceptInFlightRef = useRef<string | null>(null);
+  const autoAcceptAttemptedRef = useRef<string | null>(null);
 
   const redirectToLogin = useMemo(() => `/login?redirect=${encodeURIComponent(`/invite/accept?token=${token}`)}`, [token]);
   const redirectToRegister = useMemo(() => `/register?redirect=${encodeURIComponent(`/invite/accept?token=${token}`)}&inviteToken=${encodeURIComponent(token)}&email=${encodeURIComponent(invite?.email ?? '')}`, [token, invite?.email]);
@@ -123,24 +127,36 @@ export function InviteAcceptPage() {
   }, [inviteId, token]);
 
   useEffect(() => {
-    if (!isLoaded || !user?.id || !invite || accepting || success) return;
+    if (!isLoaded || !user?.id || !invite || success) return;
 
     const userEmail = String(user.email ?? '').toLowerCase();
     const inviteEmail = String(invite.email ?? '').toLowerCase();
     if (!userEmail || !inviteEmail || userEmail !== inviteEmail) return;
+    const attemptKey = `${user.id}:${invite.id}:${token || 'invite-id'}`;
+    if (autoAcceptInFlightRef.current === attemptKey || autoAcceptAttemptedRef.current === attemptKey) return;
 
     let cancelled = false;
+    let timeoutId: number | null = null;
+    autoAcceptInFlightRef.current = attemptKey;
+    autoAcceptAttemptedRef.current = attemptKey;
 
     async function autoAccept() {
       try {
         setAccepting(true);
         setError(null);
+        timeoutId = window.setTimeout(() => {
+          if (cancelled || autoAcceptInFlightRef.current !== attemptKey) return;
+          setAccepting(false);
+          setError(AUTO_ACCEPT_TIMEOUT_MESSAGE);
+          autoAcceptInFlightRef.current = null;
+        }, AUTO_ACCEPT_TIMEOUT_MS);
         const membership = token
           ? await acceptInviteByToken({ token, userId: user.id })
           : await acceptInvite({ inviteId: invite.id, userId: user.id });
-        if (cancelled) return;
+        if (cancelled || autoAcceptInFlightRef.current !== attemptKey) return;
         setActiveCompanyId(membership.company_id);
         await refreshTenant();
+        if (cancelled || autoAcceptInFlightRef.current !== attemptKey) return;
         clearPendingInviteContext();
         setSuccess(true);
         setTimeout(() => {
@@ -153,7 +169,7 @@ export function InviteAcceptPage() {
             setActiveCompanyId,
             refreshTenant
           });
-          if (cancelled) return;
+          if (cancelled || autoAcceptInFlightRef.current !== attemptKey) return;
           if (fallback.status === 'accepted') {
             setSuccess(true);
             setTimeout(() => {
@@ -166,6 +182,8 @@ export function InviteAcceptPage() {
         }
         if (!cancelled) setError(toUserInviteMessage(err?.message || 'Failed to accept invite.'));
       } finally {
+        if (timeoutId != null) window.clearTimeout(timeoutId);
+        if (autoAcceptInFlightRef.current === attemptKey) autoAcceptInFlightRef.current = null;
         if (!cancelled) setAccepting(false);
       }
     }
@@ -174,8 +192,10 @@ export function InviteAcceptPage() {
 
     return () => {
       cancelled = true;
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+      if (autoAcceptInFlightRef.current === attemptKey) autoAcceptInFlightRef.current = null;
     };
-  }, [isLoaded, user?.id, user?.email, invite, token, accepting, success, refreshTenant, setActiveCompanyId, navigate]);
+  }, [isLoaded, user?.id, user?.email, invite, token, success, refreshTenant, setActiveCompanyId, navigate]);
 
   if (loading) {
     return (
