@@ -45,10 +45,12 @@ export async function fetchWithInsforgeAuth(
     if (response.status !== 401 && response.status !== 403) return response;
   }
 
-  httpClient.setAuthToken(null);
-  clearAuthStorage();
-  markSessionExpired();
-  emitAuthFailure(refreshed.ok ? response.statusText : refreshed.error ?? response.statusText);
+  if (!refreshed.ok && refreshed.reason === 'invalid_session') {
+    httpClient.setAuthToken(null);
+    clearAuthStorage();
+    markSessionExpired();
+    emitAuthFailure(refreshed.error ?? response.statusText);
+  }
   return response;
 }
 

@@ -667,7 +667,7 @@ export function HrEmployeeEditModal(props: Props) {
               {props.canViewRestrictedFields && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">ID number</label>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">ID Number / Passport Number</label>
                     <input
                       value={idNumber}
                       onChange={(e) => setIdNumber(e.target.value)}
@@ -888,7 +888,7 @@ export function HrEmployeeEditModal(props: Props) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {!props.canAccessSensitiveFields && (
                   <div>
-                    <label className="block text-sm font-medium text-charcoal mb-1.5">ID number</label>
+                    <label className="block text-sm font-medium text-charcoal mb-1.5">ID Number / Passport Number</label>
                     <input
                       value={idNumber}
                       onChange={(e) => setIdNumber(e.target.value)}

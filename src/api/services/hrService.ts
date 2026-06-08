@@ -1442,7 +1442,7 @@ export async function updateHrPersonalDocument(input: {
   companyId: UUID;
   documentId: UUID;
   actorUserId: UUID;
-  patch: Partial<Pick<HrPersonalDocumentRow, 'doc_name' | 'doc_type' | 'issue_date' | 'expiry_date' | 'notes' | 'status' | 'acknowledged_by_employee' | 'acknowledged_at'>>;
+  patch: Partial<Pick<HrPersonalDocumentRow, 'doc_name' | 'doc_type' | 'issue_date' | 'expiry_date' | 'notes' | 'status' | 'acknowledged_by_employee' | 'acknowledged_at' | 'file_ids'>>;
 }): Promise<HrPersonalDocumentRow> {
   return withHrSession('personal-documents:update', async () => {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -1457,6 +1457,7 @@ export async function updateHrPersonalDocument(input: {
   if (typeof input.patch.status !== 'undefined') patch.status = input.patch.status;
   if (typeof input.patch.acknowledged_by_employee !== 'undefined') patch.acknowledged_by_employee = input.patch.acknowledged_by_employee;
   if (typeof input.patch.acknowledged_at !== 'undefined') patch.acknowledged_at = input.patch.acknowledged_at;
+  if (typeof input.patch.file_ids !== 'undefined') patch.file_ids = input.patch.file_ids;
 
   const { data, error } = await insforge.database
     .from('hr_employee_documents')

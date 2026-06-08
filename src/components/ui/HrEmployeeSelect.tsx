@@ -100,6 +100,7 @@ export function HrEmployeeSelect({
             placeholder="Type to search employees..."
             className="w-full pl-8 pr-3 py-2 border border-surface-300 rounded-lg text-sm"
             disabled={disabled || !companyId}
+            autoComplete="off"
           />
         </div>
       </div>

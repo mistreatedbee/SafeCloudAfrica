@@ -44,6 +44,7 @@ export function HrDocumentsPage() {
   const { user } = useUser();
   const [tab, setTab] = useState<Tab>('personal');
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const [employeeId, setEmployeeId] = useState('');
   const [docName, setDocName] = useState('');
@@ -185,16 +186,8 @@ export function HrDocumentsPage() {
           companyId: activeCompanyId,
           documentId: created.id as UUID,
           actorUserId: user.id as UUID,
-          patch: {}
+          patch: { file_ids: [evidenceId] }
         });
-        await (async () => {
-          const { error: upErr } = await (await import('../../api/insforge/client')).insforge.database
-            .from('hr_employee_documents')
-            .update({ file_ids: [evidenceId], updated_at: new Date().toISOString() })
-            .eq('company_id', activeCompanyId)
-            .eq('id', created.id);
-          if (upErr) throw upErr;
-        })();
       }
       setDocName('');
       setDocType('');
@@ -361,8 +354,14 @@ export function HrDocumentsPage() {
 
   async function onSendExpiryAlerts() {
     if (!activeCompanyId || !user?.id) return;
-    const count = await sendHrDocumentExpiryAlerts(activeCompanyId, user.id as UUID);
-    alert(`Sent ${count} expiry notifications.`);
+    setError(null);
+    setSuccess(null);
+    try {
+      const count = await sendHrDocumentExpiryAlerts(activeCompanyId, user.id as UUID);
+      setSuccess(`Sent ${count} expiry notification${count === 1 ? '' : 's'}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send expiry notifications.');
+    }
   }
 
   return (
@@ -370,6 +369,7 @@ export function HrDocumentsPage() {
       <div className="space-y-4">
         <HrSectionNav />
         {error && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
+        {success && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700">{success}</div>}
 
         <div className="bg-white border border-surface-300 rounded-xl p-3 flex gap-2">
           <button className={`px-3 py-1.5 rounded-lg text-sm ${tab === 'personal' ? 'bg-teal text-white' : 'hover:bg-surface-100'}`} onClick={() => setTab('personal')}>Employee Personal Documents</button>

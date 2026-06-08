@@ -39,7 +39,8 @@ export function HrEmployeesPage() {
     employment_type: 'Permanent',
     start_date: new Date().toISOString().slice(0, 10),
     job_title: '',
-    department_id: ''
+    department_id: '',
+    id_number: ''
   });
   const [csvInput, setCsvInput] = useState('employee_no,first_name,last_name,email,employment_type,start_date\n');
   const [error, setError] = useState<string | null>(null);
@@ -177,6 +178,7 @@ export function HrEmployeesPage() {
         start_date: form.start_date,
         job_title: form.job_title,
         department_id: form.department_id || null,
+        id_number: form.id_number.trim() || null,
         employment_status: 'ONBOARDING'
       });
       await refetch();
@@ -317,6 +319,7 @@ export function HrEmployeesPage() {
                 {(departments ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
               <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={form.start_date} onChange={(e) => setForm((x) => ({ ...x, start_date: e.target.value }))} />
+              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="ID Number / Passport Number (optional)" value={form.id_number} onChange={(e) => setForm((x) => ({ ...x, id_number: e.target.value }))} />
             </div>
             <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={onCreate}>Save employee</button>
           </div>
