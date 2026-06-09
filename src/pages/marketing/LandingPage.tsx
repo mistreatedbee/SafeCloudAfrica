@@ -149,7 +149,7 @@ export function LandingPage() {
               </motion.p>
 
               <motion.h1 variants={item} className="mt-5 text-4xl sm:text-5xl font-bold text-navy leading-tight">
-                One system. <span className="text-teal">Total safety control.</span>
+                1 system. <span className="text-teal">Total safety control.</span>
               </motion.h1>
 
               <motion.p variants={item} className="mt-4 text-base text-charcoal-500 max-w-xl">
