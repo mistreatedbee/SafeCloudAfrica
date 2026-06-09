@@ -343,6 +343,193 @@ export type EnvironmentalKpiResult = {
   multiplier: number;
 };
 
+/**
+ * A single month's bar counts + rolling-12-month rate snapshot used for trend charts.
+ *
+ * Bar fields (events IN this month): ltiCount, allInjuryCount, recordableCount,
+ * nearMissCount, accidentCount, severityDays.
+ *
+ * Line fields (rolling 12-month rate AS OF this month end): ltifr, aifr, trir,
+ * ltisr, nearMissFrequencyRate, accidentFrequencyRate.
+ *
+ * NOTE: allInjuryCount is defined as recordableCount because the incident schema
+ * has no first-aid / medical-treatment flag.  If such a flag is added, update
+ * only the single line that sets allInjuryCount below.
+ */
+export type MonthPoint = {
+  monthKey: string;
+  ltiCount: number;
+  allInjuryCount: number;
+  recordableCount: number;
+  nearMissCount: number;
+  accidentCount: number;
+  severityDays: number;
+  ltifr: number;
+  aifr: number;
+  trir: number;
+  ltisr: number;
+  nearMissFrequencyRate: number;
+  accidentFrequencyRate: number;
+  freeManHours: number;
+};
+
+/**
+ * Returns a 12-month time series of safety KPI bar counts and rolling rates,
+ * plus an accumulative free-man-hours curve.
+ *
+ * Two bulk queries are issued (incidents + work hours); no per-month DB round-trips.
+ */
+export async function getSafetyKpiMonthlySeries(
+  companyId: UUID,
+  options?: { siteId?: UUID | null; departmentId?: UUID | null }
+): Promise<MonthPoint[]> {
+  const settings = await getOrCreateKPISettings(companyId);
+  const multiplier = getMultiplier(settings);
+  const triggers = new Set(settings.lti_reset_triggers.map((t) => t.toUpperCase()));
+
+  const now = new Date();
+
+  // Build 24 month keys (oldest first). The last 12 are the display months; the
+  // first 12 extend the rolling window back for the oldest display month.
+  const allMonthKeys: string[] = [];
+  for (let i = 23; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    allMonthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  const displayMonthKeys = allMonthKeys.slice(12);
+
+  // Window for the incident bulk fetch: first day of allMonthKeys[0] to end of current month.
+  const winStart = new Date(now.getFullYear(), now.getMonth() - 23, 1).toISOString();
+  const winEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString();
+
+  type IncRow = {
+    occurred_at: string;
+    lost_days: number | null;
+    is_recordable_injury: boolean | null;
+    is_lost_time_injury: boolean | null;
+    is_fatality: boolean | null;
+    is_near_miss: boolean | null;
+    is_accident: boolean | null;
+  };
+
+  let incQ = insforge.database
+    .from('incidents')
+    .select('occurred_at, lost_days, is_recordable_injury, is_lost_time_injury, is_fatality, is_near_miss, is_accident')
+    .eq('company_id', companyId)
+    .gte('occurred_at', winStart)
+    .lte('occurred_at', winEnd);
+  if (options?.siteId != null) incQ = incQ.eq('site_id', options.siteId);
+  if (options?.departmentId != null) incQ = incQ.eq('department_id', options.departmentId);
+
+  // All-time LTI/fatality incidents for free-man-hours reset detection.
+  let ltiQ = insforge.database
+    .from('incidents')
+    .select('occurred_at, is_lost_time_injury, is_fatality')
+    .eq('company_id', companyId)
+    .or('is_lost_time_injury.eq.true,is_fatality.eq.true')
+    .order('occurred_at', { ascending: false })
+    .limit(50);
+  if (options?.siteId != null) ltiQ = ltiQ.eq('site_id', options.siteId);
+  if (options?.departmentId != null) ltiQ = ltiQ.eq('department_id', options.departmentId);
+
+  const [incResult, ltiResult, hoursRows] = await Promise.all([
+    incQ,
+    ltiQ,
+    listWorkHoursMonthly({
+      companyId,
+      siteId: options?.siteId ?? null,
+      departmentId: options?.departmentId ?? null,
+      limit: 120
+    })
+  ]);
+
+  const toMk = (d: string) => d.slice(0, 7);
+
+  // Group incidents by month key.
+  const incByMonth = new Map<string, IncRow[]>();
+  for (const inc of (incResult.data ?? []) as IncRow[]) {
+    const mk = toMk(inc.occurred_at);
+    let arr = incByMonth.get(mk);
+    if (!arr) { arr = []; incByMonth.set(mk, arr); }
+    arr.push(inc);
+  }
+
+  // Group hours by month key (sum site/dept rows if multiple).
+  const hoursByMonth = new Map<string, number>();
+  const sortedHours = [...hoursRows].sort((a, b) =>
+    a.year !== b.year ? a.year - b.year : a.month - b.month
+  );
+  for (const row of sortedHours) {
+    const mk = `${row.year}-${String(row.month).padStart(2, '0')}`;
+    hoursByMonth.set(mk, (hoursByMonth.get(mk) ?? 0) + row.total_hours_worked_final);
+  }
+
+  // Build set of months that trigger a free-man-hours reset.
+  const resetMonths = new Set<string>();
+  for (const inc of (ltiResult.data ?? []) as Array<{ occurred_at: string; is_lost_time_injury: boolean | null; is_fatality: boolean | null }>) {
+    const reason =
+      (inc.is_fatality && triggers.has('FATALITY')) ? 'FATALITY'
+      : (inc.is_lost_time_injury && triggers.has('LTI')) ? 'LTI'
+      : null;
+    if (reason) resetMonths.add(toMk(inc.occurred_at));
+  }
+
+  // Forward sweep over all work-hours rows to build per-month freeManHours.
+  // Reset month shows that month's hours only (accFreeHours resets to 0 then adds the month).
+  const freeByMonth = new Map<string, number>();
+  let accFree = 0;
+  for (const row of sortedHours) {
+    const mk = `${row.year}-${String(row.month).padStart(2, '0')}`;
+    if (resetMonths.has(mk)) accFree = 0;
+    accFree += row.total_hours_worked_final;
+    freeByMonth.set(mk, accFree);
+  }
+
+  const safeRate = (n: number, hours: number) => hours > 0 ? (n * multiplier) / hours : 0;
+
+  return displayMonthKeys.map((dm, i) => {
+    // Bar counts — events IN this month only.
+    const monthIncs = incByMonth.get(dm) ?? [];
+    const ltiCount = monthIncs.filter((x) => x.is_lost_time_injury).length;
+    const recordableCount = monthIncs.filter((x) => x.is_recordable_injury).length;
+    const nearMissCount = monthIncs.filter((x) => x.is_near_miss).length;
+    const accidentCount = monthIncs.filter((x) => x.is_accident).length;
+    const severityDays = monthIncs.reduce((s, x) => s + (x.lost_days ?? 0), 0);
+    // allInjuryCount = recordableCount (no first-aid flag in schema; update here if flag is added)
+    const allInjuryCount = recordableCount;
+
+    // Rolling 12-month window for rate lines: allMonthKeys[i .. i+11].
+    const windowKeys = allMonthKeys.slice(i, i + 12);
+    let wLti = 0, wRec = 0, wNear = 0, wAcc = 0, wSev = 0, wHours = 0;
+    for (const wk of windowKeys) {
+      const wIncs = incByMonth.get(wk) ?? [];
+      wLti += wIncs.filter((x) => x.is_lost_time_injury).length;
+      wRec += wIncs.filter((x) => x.is_recordable_injury).length;
+      wNear += wIncs.filter((x) => x.is_near_miss).length;
+      wAcc += wIncs.filter((x) => x.is_accident).length;
+      wSev += wIncs.reduce((s, x) => s + (x.lost_days ?? 0), 0);
+      wHours += hoursByMonth.get(wk) ?? 0;
+    }
+
+    return {
+      monthKey: dm,
+      ltiCount,
+      allInjuryCount,
+      recordableCount,
+      nearMissCount,
+      accidentCount,
+      severityDays,
+      ltifr: safeRate(wLti, wHours),
+      aifr: safeRate(wRec, wHours),   // allInjury = recordable per definition above
+      trir: safeRate(wRec, wHours),
+      ltisr: safeRate(wSev, wHours),
+      nearMissFrequencyRate: safeRate(wNear, wHours),
+      accidentFrequencyRate: safeRate(wAcc, wHours),
+      freeManHours: freeByMonth.get(dm) ?? 0
+    };
+  });
+}
+
 export async function getEnvironmentalKpis(
   companyId: UUID,
   options?: { period?: KpiPeriod }

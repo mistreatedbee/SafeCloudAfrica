@@ -9,7 +9,7 @@ import type {
   UUID
 } from '../models/entities';
 import { createActivityLog } from './activityLogService';
-import { getRolling12Period } from './kpiFormulasService';
+import { getRolling12Period, getCustomPeriod } from './kpiFormulasService';
 import { getISOClauses, type ISOStandard } from './isoMappingService';
 
 export const COMPLIANCE_DOMAIN_WEIGHTS: Record<ComplianceDomainKey, number> = {
@@ -851,9 +851,30 @@ export async function generateMonthlyComplianceReport(input: {
   recipientEmails: string[];
   createdByUserId?: UUID | null;
 }): Promise<MonthlyComplianceReport> {
-  const dashboard = await getComplianceDashboardData(input.companyId);
-  const existingRun = (await listRecentComplianceScoreRuns(input.companyId, 1))[0] ?? null;
   const reportMonth = input.reportMonth ?? toMonthDate();
+
+  // Build a KpiPeriod for just the report month (YYYY-MM-01 to last day of month).
+  const rmDate = new Date(reportMonth);
+  const rmYear = rmDate.getUTCFullYear();
+  const rmMonthNum = rmDate.getUTCMonth() + 1;
+  const lastDay = new Date(Date.UTC(rmYear, rmMonthNum, 0)).toISOString().slice(0, 10);
+  const monthPeriod = getCustomPeriod(
+    `${String(rmYear)}-${String(rmMonthNum).padStart(2, '0')}-01`,
+    lastDay
+  );
+
+  const kpi = await import('./kpiFormulasService');
+  const [dashboard, existingRun, safetyKpis, complianceKpis, qualityKpis, environmentalKpis, ltiFreeHours, safetyRolling12] =
+    await Promise.all([
+      getComplianceDashboardData(input.companyId),
+      listRecentComplianceScoreRuns(input.companyId, 1).then((rows) => rows[0] ?? null),
+      kpi.getSafetyKpis(input.companyId, { period: monthPeriod }),
+      kpi.getComplianceKpis(input.companyId, { period: monthPeriod }),
+      kpi.getQualityKpis(input.companyId, { period: monthPeriod }),
+      kpi.getEnvironmentalKpis(input.companyId, { period: monthPeriod }),
+      kpi.getLtiFreeHours(input.companyId),
+      kpi.getSafetyKpis(input.companyId, { period: getRolling12Period() })
+    ]);
 
   const { data, error } = await insforge.database
     .from('monthly_compliance_reports')
@@ -868,7 +889,13 @@ export async function generateMonthlyComplianceReport(input: {
           overall: dashboard.overall,
           topRisks: dashboard.topRisks,
           overdueActions: dashboard.overdueActions,
-          topGaps: dashboard.aiInsight.topGaps
+          topGaps: dashboard.aiInsight.topGaps,
+          safety: safetyKpis,
+          safetyRolling12,
+          compliance: complianceKpis,
+          quality: qualityKpis,
+          environmental: environmentalKpis,
+          ltiFreeHours
         },
         created_by_user_id: input.createdByUserId ?? null,
         updated_at: new Date().toISOString()

@@ -4,14 +4,25 @@ These scripts are stubs for SafeCloud Africa serverless functions. Deploy them v
 
 ## Functions
 
-| File | Purpose |
-|------|--------|
-| `auditProposalsSend.js` | Send 3 audit date proposals to auditees |
-| `auditProposalRespond.js` | Auditee selects/declines date; update audit status |
-| `cronDailyComplianceReminders.js` | Daily: document review, expiring training/medical, upcoming audits |
-| `cronOverdueEscalations.js` | Overdue CAPA, NCR, missing pre-audit docs |
-| `cronReviewMeetingReminders.js` | Management review meeting reminders + action item escalations |
-| `cronPpeReorderChecks.js` | Low stock / near-expiry PPE; create reorder requests |
+| File | Purpose | Schedule |
+|------|---------|----------|
+| `auditProposalsSend.js` | Send 3 audit date proposals to auditees | on-demand |
+| `auditProposalRespond.js` | Auditee selects/declines date; update audit status | on-demand |
+| `cronDailyComplianceReminders.js` | Daily: document review, expiring training/medical, upcoming audits | daily |
+| `cronOverdueEscalations.js` | Overdue CAPA, NCR, missing pre-audit docs | daily |
+| `cronReviewMeetingReminders.js` | Management review meeting reminders + action item escalations | daily |
+| `cronPpeReorderChecks.js` | Low stock / near-expiry PPE; create reorder requests | daily |
+| `cronGenerateMonthlyReports.js` | 1st of month: queue a `monthly_compliance_reports` row (with full KPI summary) for every company | `0 6 1 * *` |
+| `cronMonthlyComplianceReports.js` | 1st of month: send queued monthly reports via email | `0 7 1 * *` |
+
+## Monthly Report Crons
+
+Two crons work together on the 1st of each month:
+
+1. **`cronGenerateMonthlyReports`** (`0 6 1 * *`) — loops all companies, resolves management emails, and calls `POST /api/cron/generate-monthly-report` to queue a `monthly_compliance_reports` row. The summary includes safety frequency rates (TRIR, LTIFR, Severity Rate, etc.), compliance KPIs (PPE %, training %, etc.), quality, and environmental KPIs.
+2. **`cronMonthlyComplianceReports`** (`0 7 1 * *`) — picks up queued rows and dispatches emails with a full KPI frequency-rate table.
+
+Required env vars for both: `INSFORGE_INTERNAL_URL`, `SERVICE_ROLE_KEY`, `EMAIL_API_URL`, `APP_BASE_URL`, `CRON_SECRET`.
 
 ## Deployment
 
