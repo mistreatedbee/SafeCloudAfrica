@@ -183,6 +183,17 @@ export function HrEmployeesPage() {
       });
       await refetch();
       setSuccess('Employee saved successfully');
+      setForm({
+        employee_no: '',
+        first_name: '',
+        last_name: '',
+        email: '',
+        employment_type: 'Permanent',
+        start_date: new Date().toISOString().slice(0, 10),
+        job_title: '',
+        department_id: '',
+        id_number: ''
+      });
       setParams({ tab: 'directory' });
     } catch (err: any) {
       setError(toUserFacingError(err, 'Unable to save employee right now. Please try again.'));
@@ -308,18 +319,18 @@ export function HrEmployeesPage() {
         {tab === 'add' && (
           <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Employee No" value={form.employee_no} onChange={(e) => setForm((x) => ({ ...x, employee_no: e.target.value }))} />
-              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="First Name" value={form.first_name} onChange={(e) => setForm((x) => ({ ...x, first_name: e.target.value }))} />
-              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Last Name" value={form.last_name} onChange={(e) => setForm((x) => ({ ...x, last_name: e.target.value }))} />
-              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Email" value={form.email} onChange={(e) => setForm((x) => ({ ...x, email: e.target.value }))} />
-              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Job Title" value={form.job_title} onChange={(e) => setForm((x) => ({ ...x, job_title: e.target.value }))} />
-              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Employment Type" value={form.employment_type} onChange={(e) => setForm((x) => ({ ...x, employment_type: e.target.value }))} />
+              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" placeholder="Employee No" value={form.employee_no} onChange={(e) => setForm((x) => ({ ...x, employee_no: e.target.value }))} />
+              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" placeholder="First Name" value={form.first_name} onChange={(e) => setForm((x) => ({ ...x, first_name: e.target.value }))} />
+              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" placeholder="Last Name" value={form.last_name} onChange={(e) => setForm((x) => ({ ...x, last_name: e.target.value }))} />
+              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" placeholder="Email" value={form.email} onChange={(e) => setForm((x) => ({ ...x, email: e.target.value }))} />
+              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" placeholder="Job Title" value={form.job_title} onChange={(e) => setForm((x) => ({ ...x, job_title: e.target.value }))} />
+              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" placeholder="Employment Type" value={form.employment_type} onChange={(e) => setForm((x) => ({ ...x, employment_type: e.target.value }))} />
               <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={form.department_id} onChange={(e) => setForm((x) => ({ ...x, department_id: e.target.value }))}>
                 <option value="">Select department (optional)</option>
                 {(departments ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
               <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={form.start_date} onChange={(e) => setForm((x) => ({ ...x, start_date: e.target.value }))} />
-              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="ID Number / Passport Number (optional)" value={form.id_number} onChange={(e) => setForm((x) => ({ ...x, id_number: e.target.value }))} />
+              <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" placeholder="ID Number / Passport Number (optional)" value={form.id_number} onChange={(e) => setForm((x) => ({ ...x, id_number: e.target.value }))} />
             </div>
             <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={onCreate}>Save employee</button>
           </div>

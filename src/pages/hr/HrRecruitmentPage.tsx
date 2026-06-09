@@ -257,7 +257,7 @@ export function HrRecruitmentPage() {
           <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
             <h3 className="font-semibold">Vacancy Management</h3>
             <div className="space-y-3">
-              <input className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" value={vacancyTitle} onChange={(e) => setVacancyTitle(e.target.value)} placeholder="Open vacancy title" />
+              <input className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" value={vacancyTitle} onChange={(e) => setVacancyTitle(e.target.value)} placeholder="Open vacancy title" />
               <textarea className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm min-h-[100px]" value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} placeholder="Job description (rich text supported as plain text input)" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
@@ -349,8 +349,8 @@ export function HrRecruitmentPage() {
                 <option value="">Select vacancy (optional)</option>
                 {(vacancies ?? []).map((row) => <option key={String(row.id)} value={String(row.id)}>{String(row.title ?? '')}</option>)}
               </select>
-              <input className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" value={applicantName} onChange={(e) => setApplicantName(e.target.value)} placeholder="Applicant name" />
-              <input className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" value={applicantEmail} onChange={(e) => setApplicantEmail(e.target.value)} placeholder="Applicant email" />
+              <input className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" value={applicantName} onChange={(e) => setApplicantName(e.target.value)} placeholder="Applicant name" />
+              <input className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" value={applicantEmail} onChange={(e) => setApplicantEmail(e.target.value)} placeholder="Applicant email" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <label className="text-sm">Interviewed & met requirements?
                   <select className="w-full mt-1 border border-surface-300 rounded-lg px-3 py-2" value={interviewedMetRequirements === null ? '' : interviewedMetRequirements ? 'yes' : 'no'} onChange={(e) => setInterviewedMetRequirements(e.target.value === '' ? null : e.target.value === 'yes')}>
@@ -367,7 +367,7 @@ export function HrRecruitmentPage() {
                   </select>
                 </label>
               </div>
-              <input className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" value={leavingReason} onChange={(e) => setLeavingReason(e.target.value)} placeholder="Reason for leaving previous employer" />
+              <input className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" value={leavingReason} onChange={(e) => setLeavingReason(e.target.value)} placeholder="Reason for leaving previous employer" />
               <label className="text-sm">Criminal record?
                 <select className="w-full mt-1 border border-surface-300 rounded-lg px-3 py-2" value={criminalRecord === null ? '' : criminalRecord ? 'yes' : 'no'} onChange={(e) => setCriminalRecord(e.target.value === '' ? null : e.target.value === 'yes')}>
                   <option value="">Select</option>

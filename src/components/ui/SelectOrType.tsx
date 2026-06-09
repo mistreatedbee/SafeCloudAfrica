@@ -150,6 +150,7 @@ export function SelectOrType({
             placeholder={`Type your own (min ${minLength} characters)`}
             disabled={disabled}
             required={required}
+            autoComplete="off"
             className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent disabled:opacity-60"
           />
         )}

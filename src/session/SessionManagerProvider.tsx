@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { useAuth } from '@insforge/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { insforge } from '../api/insforge/client';
-import { refreshSessionThroughProxy } from '../api/insforge/sessionState';
+import { refreshSessionThroughProxy, saveStoredSession } from '../api/insforge/sessionState';
 import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY, USER_SIGNED_OUT_KEY } from '../auth/AuthSessionListener';
 import { useDraftManager } from './DraftManagerProvider';
 
@@ -340,6 +340,16 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       if (fallbackToken) {
         insforge.getHttpClient().setAuthToken(fallbackToken);
       }
+      // SDK fallback: uses the persisted refresh token via a different endpoint
+      // than the cookie-based /api/auth/refresh that returns 404 for this tenant.
+      const sdkResult1 = await insforge.auth.refreshSession().catch(() => ({ data: null, error: null }));
+      if (sdkResult1.data?.accessToken) {
+        insforge.getHttpClient().setAuthToken(sdkResult1.data.accessToken);
+        saveStoredSession(sdkResult1.data.accessToken, sdkResult1.data.user);
+        refreshRetryCountRef.current = 0;
+        console.info('[session] refresh via SDK fallback succeeded');
+        return refreshSucceeded();
+      }
       refreshRetryCountRef.current += 1;
       console.warn('[session] refresh failed', refreshed);
       return transientRefreshFailure();
@@ -359,6 +369,15 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       }
       if (existingClientToken) {
         insforge.getHttpClient().setAuthToken(existingClientToken);
+      }
+      // SDK fallback: same as proxy-failure branch above.
+      const sdkResult2 = await insforge.auth.refreshSession().catch(() => ({ data: null, error: null }));
+      if (sdkResult2.data?.accessToken) {
+        insforge.getHttpClient().setAuthToken(sdkResult2.data.accessToken);
+        saveStoredSession(sdkResult2.data.accessToken, sdkResult2.data.user);
+        refreshRetryCountRef.current = 0;
+        console.info('[session] refresh via SDK fallback succeeded');
+        return refreshSucceeded();
       }
       refreshRetryCountRef.current += 1;
       console.warn('[session] refresh failed', error);
