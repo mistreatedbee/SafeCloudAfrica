@@ -278,7 +278,7 @@ export function SessionManagerProvider({
     let lastKnownToken: string | null = null;
     let lastKnownExpiresAtMs: number | null = null;
     try {
-      const current = await insforge.auth.getCurrentSession();
+      const current = await insforge.auth.refreshSession();
       const existingTokenStillValid =
         !!existingClientToken &&
         !!existingClientTokenExpiresAtMs &&
@@ -397,6 +397,7 @@ export function SessionManagerProvider({
       if (fallbackToken) {
         insforge.getHttpClient().setAuthToken(fallbackToken);
       }
+<<<<<<< HEAD
 
       // SDK fallback: uses the persisted refresh token via a different endpoint
       const sdkResult1 = await insforge.auth
@@ -405,9 +406,28 @@ export function SessionManagerProvider({
       if (sdkResult1.data?.accessToken) {
         insforge.getHttpClient().setAuthToken(sdkResult1.data.accessToken);
         saveStoredSession(sdkResult1.data.accessToken, sdkResult1.data.user);
+=======
+      // refresh_unavailable means the endpoint does not exist for this tenant —
+      // a permanent infrastructure fact, not a session error. Try SDK-level refresh
+      // as a fallback (may succeed via cookies). Never count it as a retry failure
+      // or drive a logout; reset the counter so it cannot accumulate towards MAX_REFRESH_RETRIES.
+      if (!refreshed.ok && refreshed.reason === 'refresh_unavailable') {
+>>>>>>> b78150e (Fix session expiry, add SHEQ features, and improve HR UX)
         refreshRetryCountRef.current = 0;
-        console.info('[session] refresh via SDK fallback succeeded');
-        return refreshSucceeded();
+        try {
+          const sdkRefreshed = await insforge.auth.refreshSession();
+          const { accessToken: sdkToken, userId: sdkUserId } = readAuthSession(sdkRefreshed);
+          if (sdkToken && sdkUserId) {
+            insforge.getHttpClient().setAuthToken(sdkToken);
+            refreshRetryCountRef.current = 0;
+            console.info('[session] refresh_unavailable; SDK refresh fallback succeeded');
+            return refreshSucceeded();
+          }
+        } catch {
+          // SDK refresh also unavailable; fall through
+        }
+        console.info('[session] refresh endpoint not available for this tenant; keeping existing token');
+        return transientRefreshFailure();
       }
 
       refreshRetryCountRef.current += 1;
@@ -448,6 +468,7 @@ export function SessionManagerProvider({
       if (existingClientToken) {
         insforge.getHttpClient().setAuthToken(existingClientToken);
       }
+<<<<<<< HEAD
 
       // SDK fallback: same as proxy-failure branch above.
       const sdkResult2 = await insforge.auth
@@ -461,6 +482,8 @@ export function SessionManagerProvider({
         return refreshSucceeded();
       }
 
+=======
+>>>>>>> b78150e (Fix session expiry, add SHEQ features, and improve HR UX)
       refreshRetryCountRef.current += 1;
       console.warn('[session] refresh failed', error);
       return transientRefreshFailure();

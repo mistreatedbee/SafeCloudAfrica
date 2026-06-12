@@ -182,7 +182,19 @@ export function HrEmployeeProfilePage() {
                   {canRestricted ? (
                     <button className="text-teal" onClick={() => void onRestrictedView(item.key)}>{String(item.value ?? '-')}</button>
                   ) : (
-                    <span className="text-charcoal-300">Restricted</span>
+                    <span className="flex items-center gap-2">
+                      <span
+                        title="This field is protected under POPIA. Only the workspace owner can enable access in HR Settings."
+                        className="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 cursor-help"
+                      >
+                        🔒 POPIA Restricted
+                      </span>
+                      {activeRole === 'owner' && (
+                        <a href="/dashboard/hr/settings" className="text-xs text-teal underline">
+                          Enable in HR Settings
+                        </a>
+                      )}
+                    </span>
                   )}
                 </div>
               ))}

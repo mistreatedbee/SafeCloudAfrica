@@ -75,6 +75,9 @@ import { HrLeavePage } from './pages/hr/HrLeavePage';
 import { HrSettingsPage } from './pages/hr/HrSettingsPage';
 import { HrDepartmentsPage } from './pages/hr/HrDepartmentsPage';
 import { HrSitesPage } from './pages/hr/HrSitesPage';
+import { ToolboxTalksPage } from './pages/sheq/ToolboxTalksPage';
+import { PermitToWorkPage } from './pages/sheq/PermitToWorkPage';
+import { LotoPage } from './pages/sheq/LotoPage';
 import { KPIModuleLayout } from './pages/kpi/KPIModuleLayout';
 import { KPIDashboardPage } from './pages/kpi/KPIDashboardPage';
 import { KPIAssessmentsListPage } from './pages/kpi/KPIAssessmentsListPage';
@@ -972,6 +975,36 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <CalibrationPage title="Safety Calibration Register" defaultModuleTag="Safety" forceReadOnly />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/safety/toolbox-talks"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <ToolboxTalksPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/safety/permit-to-work"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <PermitToWorkPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/safety/loto"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <LotoPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

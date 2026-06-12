@@ -96,6 +96,10 @@
       "destination": "/api/cron/heartbeat"
     },
     {
+      "source": "/api/cron/send-monthly-safety-report",
+      "destination": "/api/cron/send-monthly-safety-report"
+    },
+    {
       "source": "/api/health/insforge-db",
       "destination": "/api/health/insforge-db"
     },
@@ -133,6 +137,10 @@
     {
       "path": "/api/cron/heartbeat",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/send-monthly-safety-report",
+      "schedule": "0 7 1 * *"
     }
   ]
 }

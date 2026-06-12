@@ -508,7 +508,10 @@ export async function applyHrLeaveApproval(input: {
     p_actor_user_id: input.actorUserId,
     p_decline_reason: input.declineReason ?? null
   });
-  if (error) throw new Error(getErrorMessage(error));
+  if (error) {
+    console.error('[hr.leave.approval] RPC error', JSON.stringify(error));
+    throw new Error(getErrorMessage(error));
+  }
   const row = data as HrLeaveRequest;
   await createActivityLog({
     companyId: input.companyId,

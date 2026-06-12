@@ -178,14 +178,19 @@ export function createFreshFetch(baseFetch: typeof fetch, auth?: AuthenticatedFe
           : await baseFetch(input, retryInit);
       }
 
-      if (!refresh.ok || shouldAttemptRefresh(response)) {
-        if ((!refresh.ok && refresh.reason === 'invalid_session') || shouldAttemptRefresh(response)) {
-          auth.setAccessToken(null);
-          clearAuthStorage();
-          markSessionExpired();
-          emitAuthFailure((!refresh.ok ? refresh.error : null) ?? response.statusText);
-        }
+      if (!refresh.ok && refresh.reason === 'invalid_session') {
+        auth.setAccessToken(null);
+        clearAuthStorage();
+        markSessionExpired();
+        emitAuthFailure(refresh.error ?? response.statusText);
+      } else if (refresh.ok && shouldAttemptRefresh(response)) {
+        // Refresh succeeded but server still rejected the retry → genuine bad token
+        auth.setAccessToken(null);
+        clearAuthStorage();
+        markSessionExpired();
+        emitAuthFailure(response.statusText);
       }
+      // refresh_unavailable / transient_failure → do NOT clear; session may still be valid
     }
 
     if (response.status === 502 || response.status === 503 || response.status === 504) {

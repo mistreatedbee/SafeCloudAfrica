@@ -47,7 +47,8 @@ vi.mock('react-router-dom', () => ({
 vi.mock('../api/insforge/client', () => ({
   insforge: {
     auth: {
-      getCurrentSession: (...args: unknown[]) => getCurrentSessionMock(...args)
+      getCurrentSession: (...args: unknown[]) => getCurrentSessionMock(...args),
+      refreshSession: (...args: unknown[]) => getCurrentSessionMock(...args)
     },
     getHttpClient: () => httpClient
   }

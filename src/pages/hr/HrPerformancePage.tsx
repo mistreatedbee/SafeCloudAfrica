@@ -164,7 +164,12 @@ export function HrPerformancePage() {
 
   const { data: reviews, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
-    return listHrRecords(activeCompanyId, 'hr_performance_reviews');
+    try {
+      return await listHrRecords(activeCompanyId, 'hr_performance_reviews');
+    } catch (err) {
+      console.error('[hr.performance] list error', err);
+      return [];
+    }
   }, [activeCompanyId]);
 
   const employeeLabel = useMemo(

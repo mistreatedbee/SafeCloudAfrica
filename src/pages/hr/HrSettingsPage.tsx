@@ -80,10 +80,15 @@ export function HrSettingsPage() {
           {error && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
           {success && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700">{success}</div>}
 
-          <label className="flex items-center justify-between text-sm">
-            <span>Allow owner to view restricted personal data</span>
-            <input type="checkbox" checked={ownerCanViewRestricted} onChange={(e) => setOwnerCanViewRestricted(e.target.checked)} disabled={!canEdit} />
-          </label>
+          <div className="space-y-1">
+            <label className="flex items-center justify-between text-sm">
+              <span>Allow owner to view restricted personal data</span>
+              <input type="checkbox" checked={ownerCanViewRestricted} onChange={(e) => setOwnerCanViewRestricted(e.target.checked)} disabled={!canEdit} />
+            </label>
+            <p className="text-xs text-charcoal-500">
+              When enabled, the workspace owner can view employees' South African ID numbers, passport numbers, and other POPIA-sensitive fields. All access is audit-logged. Only the workspace owner can change this setting.
+            </p>
+          </div>
 
           <label className="flex items-center justify-between text-sm">
             <span>Leave requires HR final approval</span>

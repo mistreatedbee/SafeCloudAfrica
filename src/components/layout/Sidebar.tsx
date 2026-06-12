@@ -147,6 +147,9 @@ const managementGroups: NavGroup[] = [
     roles: managementRoles,
     items: [
       { name: 'Safety Dashboard', path: '/modules/safety', icon: ShieldIcon },
+      { name: 'Toolbox Talks', path: '/dashboard/safety/toolbox-talks', icon: ClipboardCheckIcon },
+      { name: 'Permit to Work', path: '/dashboard/safety/permit-to-work', icon: FileTextIcon },
+      { name: 'LOTO (Lockout / Tagout)', path: '/dashboard/safety/loto', icon: LockIcon },
       { name: 'Policies / Plans / Procedures / Manuals', path: '/documents?module=safety', icon: FileTextIcon },
       { name: 'Meetings & Minutes', path: '/dashboard/management/document-reviews', icon: CalendarIcon },
       { name: 'Suppliers / Contractor Safety', path: SELLABLE_FEATURE_ROUTE_PATHS.contractorsVisitors, icon: UsersIcon, sellableFeatureKey: 'contractorsVisitors' }
