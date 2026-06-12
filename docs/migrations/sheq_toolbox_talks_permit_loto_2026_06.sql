@@ -21,9 +21,11 @@ ALTER TABLE toolbox_talks ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "toolbox_talks_company_member" ON toolbox_talks
   FOR ALL USING (
-    company_id IN (
-      SELECT company_id FROM memberships
-      WHERE user_id = auth.uid() AND status = 'ACTIVE'
+    EXISTS (
+      SELECT 1 FROM public.company_memberships cm
+      WHERE cm.company_id = toolbox_talks.company_id
+        AND cm.user_id = auth.uid()
+        AND cm.status = 'ACTIVE'
     )
   );
 
@@ -51,9 +53,11 @@ ALTER TABLE permits_to_work ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "permits_to_work_company_member" ON permits_to_work
   FOR ALL USING (
-    company_id IN (
-      SELECT company_id FROM memberships
-      WHERE user_id = auth.uid() AND status = 'ACTIVE'
+    EXISTS (
+      SELECT 1 FROM public.company_memberships cm
+      WHERE cm.company_id = permits_to_work.company_id
+        AND cm.user_id = auth.uid()
+        AND cm.status = 'ACTIVE'
     )
   );
 
@@ -79,8 +83,10 @@ ALTER TABLE loto_records ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "loto_records_company_member" ON loto_records
   FOR ALL USING (
-    company_id IN (
-      SELECT company_id FROM memberships
-      WHERE user_id = auth.uid() AND status = 'ACTIVE'
+    EXISTS (
+      SELECT 1 FROM public.company_memberships cm
+      WHERE cm.company_id = loto_records.company_id
+        AND cm.user_id = auth.uid()
+        AND cm.status = 'ACTIVE'
     )
   );
