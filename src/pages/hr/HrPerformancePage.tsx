@@ -53,6 +53,7 @@ export function HrPerformancePage() {
   const [strengths, setStrengths] = useState('');
   const [assistanceRequired, setAssistanceRequired] = useState('');
   const [weaknesses, setWeaknesses] = useState('');
+  const [managerRating, setManagerRating] = useState('');
   const [managerRemarks, setManagerRemarks] = useState('');
   const [correctiveActionsRequired, setCorrectiveActionsRequired] = useState('');
   const [responsibleUserId, setResponsibleUserId] = useState('');
@@ -68,6 +69,7 @@ export function HrPerformancePage() {
     strengths: string;
     assistanceRequired: string;
     weaknesses: string;
+    managerRating: string;
     managerRemarks: string;
     correctiveActionsRequired: string;
     responsibleUserId: string;
@@ -85,6 +87,7 @@ export function HrPerformancePage() {
       strengths,
       assistanceRequired,
       weaknesses,
+      managerRating,
       managerRemarks,
       correctiveActionsRequired,
       responsibleUserId,
@@ -97,6 +100,7 @@ export function HrPerformancePage() {
       strengths,
       assistanceRequired,
       weaknesses,
+      managerRating,
       managerRemarks,
       correctiveActionsRequired,
       responsibleUserId,
@@ -134,6 +138,7 @@ export function HrPerformancePage() {
     setStrengths(restored.strengths ?? '');
     setAssistanceRequired(restored.assistanceRequired ?? '');
     setWeaknesses(restored.weaknesses ?? '');
+    setManagerRating(restored.managerRating ?? '');
     setManagerRemarks(restored.managerRemarks ?? '');
     setCorrectiveActionsRequired(restored.correctiveActionsRequired ?? '');
     setResponsibleUserId(restored.responsibleUserId ?? '');
@@ -180,6 +185,7 @@ export function HrPerformancePage() {
     setStrengths('');
     setAssistanceRequired('');
     setWeaknesses('');
+    setManagerRating('');
     setManagerRemarks('');
     setCorrectiveActionsRequired('');
     setResponsibleUserId('');
@@ -194,6 +200,7 @@ export function HrPerformancePage() {
     setStrengths(String(row.strengths ?? ''));
     setAssistanceRequired(String(row.assistance_required ?? ''));
     setWeaknesses(String(row.weaknesses ?? ''));
+    setManagerRating(String(row.manager_rating ?? ''));
     setManagerRemarks(String(row.manager_remarks ?? ''));
     setCorrectiveActionsRequired(String(row.corrective_actions_required ?? ''));
     setResponsibleUserId(String(row.corrective_responsible_user_id ?? ''));
@@ -238,11 +245,15 @@ export function HrPerformancePage() {
             employee_id: employeeId,
             cycle,
             overall_rating: null,
-            kpa_rows: kpaRows,
+            kpa_rows: kpaRows.map((r) => ({
+              ...r,
+              employeeRating: r.employeeRating !== '' ? Math.max(1, Math.min(5, Number(r.employeeRating))) : null,
+              managerRating: r.managerRating !== '' ? Math.max(1, Math.min(5, Number(r.managerRating))) : null
+            })),
             strengths,
             assistance_required: assistanceRequired || null,
             weaknesses: weaknesses || null,
-            manager_rating: null,
+            manager_rating: managerRating ? Math.max(1, Math.min(5, Number(managerRating))) : null,
             manager_remarks: managerRemarks || null,
             corrective_actions_required: correctiveActionsRequired || null,
             corrective_responsible_user_id: responsibleUserId || null,
@@ -258,11 +269,15 @@ export function HrPerformancePage() {
           review_date: new Date().toISOString().slice(0, 10),
           reviewer_user_id: user.id,
           overall_rating: null,
-          kpa_rows: kpaRows,
+          kpa_rows: kpaRows.map((r) => ({
+            ...r,
+            employeeRating: r.employeeRating !== '' ? Math.max(1, Math.min(5, Number(r.employeeRating))) : null,
+            managerRating: r.managerRating !== '' ? Math.max(1, Math.min(5, Number(r.managerRating))) : null
+          })),
           strengths,
           assistance_required: assistanceRequired || null,
           weaknesses: weaknesses || null,
-          manager_rating: Math.max(1, Math.min(5, Number(managerRating || 3))),
+          manager_rating: managerRating ? Math.max(1, Math.min(5, Number(managerRating))) : null,
           manager_remarks: managerRemarks || null,
           corrective_actions_required: correctiveActionsRequired || null,
           corrective_responsible_user_id: responsibleUserId || null,
@@ -288,6 +303,7 @@ export function HrPerformancePage() {
           strengths: '',
           assistanceRequired: '',
           weaknesses: '',
+          managerRating: '',
           managerRemarks: '',
           correctiveActionsRequired: '',
           responsibleUserId: '',
@@ -403,7 +419,11 @@ export function HrPerformancePage() {
                 </tbody>
               </table>
             </div>
-            <label className="text-sm md:col-span-3"><span className="block text-xs text-charcoal-500 mb-1">Strengths</span><textarea rows={2} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={strengths} onChange={(e) => setStrengths(e.target.value)} /></label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Overall manager rating (1–5)</span>
+              <input type="number" min={1} max={5} className="w-32 border border-surface-300 rounded-lg px-3 py-2" value={managerRating} onChange={(e) => setManagerRating(e.target.value)} placeholder="1–5" />
+            </label>
+            <label className="text-sm md:col-span-2"><span className="block text-xs text-charcoal-500 mb-1">Strengths</span><textarea rows={2} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={strengths} onChange={(e) => setStrengths(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Assistance required</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" autoComplete="off" value={assistanceRequired} onChange={(e) => setAssistanceRequired(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Weaknesses</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" autoComplete="off" value={weaknesses} onChange={(e) => setWeaknesses(e.target.value)} /></label>
             <label className="text-sm md:col-span-3"><span className="block text-xs text-charcoal-500 mb-1">Manager remarks</span><textarea rows={2} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={managerRemarks} onChange={(e) => setManagerRemarks(e.target.value)} /></label>

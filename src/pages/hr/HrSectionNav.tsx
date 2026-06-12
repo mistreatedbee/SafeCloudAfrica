@@ -10,6 +10,7 @@ const HR_LINKS = [
   { to: '/dashboard/hr/performance', label: 'Performance' },
   { to: '/dashboard/hr/hours', label: 'Hours Worked' },
   { to: '/dashboard/hr/leave', label: 'Leave' },
+  { to: '/dashboard/hr/departments', label: 'Departments' },
   { to: '/dashboard/hr/sites', label: 'Sites' },
   { to: '/dashboard/hr/settings', label: 'Settings' }
 ] as const;

@@ -73,6 +73,7 @@ import { HrPerformancePage } from './pages/hr/HrPerformancePage';
 import { HrHoursPage } from './pages/hr/HrHoursPage';
 import { HrLeavePage } from './pages/hr/HrLeavePage';
 import { HrSettingsPage } from './pages/hr/HrSettingsPage';
+import { HrDepartmentsPage } from './pages/hr/HrDepartmentsPage';
 import { HrSitesPage } from './pages/hr/HrSitesPage';
 import { KPIModuleLayout } from './pages/kpi/KPIModuleLayout';
 import { KPIDashboardPage } from './pages/kpi/KPIDashboardPage';
@@ -734,6 +735,18 @@ export function App() {
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
                     <HrSitesPage />
+                  </RequireModuleEnabled>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr/departments"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireModuleEnabled module="hr">
+                    <HrDepartmentsPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>

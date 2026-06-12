@@ -566,50 +566,98 @@ export function HrDocumentsPage() {
               </div>
             )}
 
-            <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Title</th><th className="text-left px-3 py-2">Category</th><th className="text-left px-3 py-2">Version</th><th className="text-left px-3 py-2">Dates</th><th className="text-left px-3 py-2">Completion</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
-                <tbody>
-                  {(ackDocs ?? []).map((row) => {
-                    const receipts = row.receipts ?? [];
-                    const completed = receipts.filter((r) => r.status === 'ACKNOWLEDGED' || r.status === 'SIGNED').length;
-                    const completion = receipts.length ? Math.round((completed / receipts.length) * 100) : 0;
-                    const myReceipt = receipts[0];
+            {activeRole === 'employee' ? (
+              <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
+                {(ackDocs ?? []).length === 0 ? (
+                  <div className="text-center py-8 text-charcoal-500 text-sm">No documents require your acknowledgement.</div>
+                ) : (
+                  (ackDocs ?? []).map((row) => {
+                    const myReceipt = (row.receipts ?? [])[0];
+                    const status = myReceipt?.status ?? 'PENDING';
                     return (
-                      <tr key={row.id} className="border-t border-surface-100">
-                        <td className="px-3 py-2">{row.title}</td>
-                        <td className="px-3 py-2">{row.category}</td>
-                        <td className="px-3 py-2">{row.version ?? '-'}</td>
-                        <td className="px-3 py-2">{row.effective_date ?? '-'} / {row.review_date ?? '-'}</td>
-                        <td className="px-3 py-2">{completion}% ({completed}/{receipts.length})</td>
-                        <td className="px-3 py-2 space-x-2">
-                          <button className="text-teal underline" onClick={async () => {
+                      <div key={row.id} className="border border-surface-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="space-y-1 min-w-0">
+                          <p className="font-medium text-sm text-charcoal truncate">{row.title}</p>
+                          <p className="text-xs text-charcoal-500">{row.category}{row.version ? ` · v${row.version}` : ''}</p>
+                          <p className="text-xs text-charcoal-500">
+                            Assigned: {row.created_at ? new Date(row.created_at).toLocaleDateString() : '-'}
+                            {row.review_date ? ` · Required by: ${row.review_date}` : ''}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {status === 'SIGNED' && (
+                            <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">Signed</span>
+                          )}
+                          {status === 'ACKNOWLEDGED' && (
+                            <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">Acknowledged</span>
+                          )}
+                          {status === 'PENDING' && (
+                            <span className="px-2 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">Pending</span>
+                          )}
+                          <button className="text-teal underline text-sm" onClick={async () => {
                             const url = await firstEvidenceUrl('hr_ack_document', row.id as UUID);
                             if (url) window.open(url, '_blank', 'noopener,noreferrer');
                             else alert('No file uploaded.');
                           }}>Preview</button>
-                          {activeRole === 'employee' && (
-                            <>
-                              <button className="text-teal underline" onClick={() => openAckModal(row.id as UUID, false)} disabled={myReceipt?.status === 'ACKNOWLEDGED' || myReceipt?.status === 'SIGNED'}>Acknowledge</button>
-                              <button className="text-teal underline" onClick={() => openAckModal(row.id as UUID, true)} disabled={myReceipt?.status === 'SIGNED'}>Sign</button>
-                            </>
-                          )}
-                          {(canEdit || isSupervisor(activeRole ?? null)) && (
+                          {status !== 'ACKNOWLEDGED' && status !== 'SIGNED' && (
                             <button
-                              className="text-critical underline disabled:opacity-50"
-                              onClick={() => void onDeleteAckDoc(row.id as UUID)}
-                              disabled={deletingAckId === (row.id as UUID)}
-                            >
-                              {deletingAckId === (row.id as UUID) ? 'Deleting...' : 'Delete'}
-                            </button>
+                              className="px-3 py-1.5 rounded-lg bg-teal text-white text-xs disabled:opacity-60"
+                              onClick={() => openAckModal(row.id as UUID, false)}
+                              disabled={ackSubmitting}
+                            >Acknowledge</button>
                           )}
-                        </td>
-                      </tr>
+                          {row.signature_required && status !== 'SIGNED' && (
+                            <button
+                              className="px-3 py-1.5 rounded-lg border border-teal text-teal text-xs disabled:opacity-60"
+                              onClick={() => openAckModal(row.id as UUID, true)}
+                              disabled={ackSubmitting}
+                            >Sign</button>
+                          )}
+                        </div>
+                      </div>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                  })
+                )}
+              </div>
+            ) : (
+              <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Title</th><th className="text-left px-3 py-2">Category</th><th className="text-left px-3 py-2">Version</th><th className="text-left px-3 py-2">Dates</th><th className="text-left px-3 py-2">Completion</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
+                  <tbody>
+                    {(ackDocs ?? []).map((row) => {
+                      const receipts = row.receipts ?? [];
+                      const completed = receipts.filter((r) => r.status === 'ACKNOWLEDGED' || r.status === 'SIGNED').length;
+                      const completion = receipts.length ? Math.round((completed / receipts.length) * 100) : 0;
+                      return (
+                        <tr key={row.id} className="border-t border-surface-100">
+                          <td className="px-3 py-2">{row.title}</td>
+                          <td className="px-3 py-2">{row.category}</td>
+                          <td className="px-3 py-2">{row.version ?? '-'}</td>
+                          <td className="px-3 py-2">{row.effective_date ?? '-'} / {row.review_date ?? '-'}</td>
+                          <td className="px-3 py-2">{completion}% ({completed}/{receipts.length})</td>
+                          <td className="px-3 py-2 space-x-2">
+                            <button className="text-teal underline" onClick={async () => {
+                              const url = await firstEvidenceUrl('hr_ack_document', row.id as UUID);
+                              if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                              else alert('No file uploaded.');
+                            }}>Preview</button>
+                            {(canEdit || isSupervisor(activeRole ?? null)) && (
+                              <button
+                                className="text-critical underline disabled:opacity-50"
+                                onClick={() => void onDeleteAckDoc(row.id as UUID)}
+                                disabled={deletingAckId === (row.id as UUID)}
+                              >
+                                {deletingAckId === (row.id as UUID) ? 'Deleting...' : 'Delete'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {(canEdit || isSupervisor(activeRole ?? null)) && (
               <div className="bg-white border border-surface-300 rounded-xl p-4">
