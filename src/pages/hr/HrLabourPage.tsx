@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
+import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import {
@@ -92,7 +93,7 @@ export function HrLabourPage() {
     return listHrEmployees(activeCompanyId);
   }, [activeCompanyId]);
 
-  const { data: cases, refetch } = useAsync(async () => {
+  const { data: cases, loading: casesLoading, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listHrRecords(activeCompanyId, 'hr_disciplinary_cases');
   }, [activeCompanyId]);
@@ -311,6 +312,11 @@ export function HrLabourPage() {
         </div>
 
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+          {casesLoading ? (
+            <div className="flex justify-center py-10"><LoadingSpinner /></div>
+          ) : (cases ?? []).length === 0 ? (
+            <div className="text-center py-10 text-sm text-charcoal-500">No labour cases yet.</div>
+          ) : (
           <table className="w-full text-sm">
             <thead className="bg-surface-100">
               <tr>
@@ -348,6 +354,7 @@ export function HrLabourPage() {
               ))}
             </tbody>
           </table>
+          )}
         </div>
 
         {selectedCase && (

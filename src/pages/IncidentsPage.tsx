@@ -13,9 +13,10 @@ import { Layout } from '../components/layout/Layout';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { listIncidents } from '../api/services/incidentsService';
+import { listIncidents, deleteIncident } from '../api/services/incidentsService';
 import type { Incident } from '../api/models/entities';
 import { useUser } from '@insforge/react';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 const IncidentCreateModal = lazy(() => import('../components/incidents/IncidentCreateModal').then(m => ({ default: m.IncidentCreateModal })));
 const IncidentDetailModal = lazy(() => import('../components/incidents/IncidentDetailModal').then(m => ({ default: m.IncidentDetailModal })));
@@ -76,7 +77,19 @@ export function IncidentsPage() {
   const [editingIncident, setEditingIncident] = useState<Incident | null>(null);
   const [viewIncident, setViewIncident] = useState<Incident | null>(null);
   const [saveFlashMessage, setSaveFlashMessage] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const canEditInvestigation = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
+
+  async function handleDeleteIncident(incident: Incident) {
+    if (!window.confirm('Delete this incident? This cannot be undone.')) return;
+    if (!activeCompanyId || !user?.id) return;
+    try {
+      await deleteIncident({ companyId: activeCompanyId, incidentId: incident.id, actorUserId: user.id });
+      void retry();
+    } catch (err) {
+      setDeleteError(toUserFacingError(err, 'An error occurred. Please try again.'));
+    }
+  }
 
   useEffect(() => {
     setCreateOpen(isNew);
@@ -290,14 +303,22 @@ export function IncidentsPage() {
         {/* Incidents List */}
         <motion.div variants={itemVariants} className="space-y-3">
           {loading && (
-            <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+            <div className="bg-white rounded-xl border border-surface-300 p-8 shadow-card flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-2 border-teal border-t-transparent rounded-full animate-spin" />
               <p className="text-sm text-charcoal-500">Loading incidents…</p>
             </div>
           )}
 
+          {deleteError && (
+            <div className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">
+              <p className="text-sm text-critical">{deleteError}</p>
+            </div>
+          )}
+
           {!loading && list.length === 0 && activeCompanyId && (
-            <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-              <p className="text-sm text-charcoal-500">No incidents found.</p>
+            <div className="bg-white rounded-xl border border-surface-300 p-8 shadow-card flex flex-col items-center gap-2 text-center">
+              <AlertTriangleIcon className="w-10 h-10 text-charcoal-300" />
+              <p className="text-sm font-medium text-charcoal-600">No incidents recorded yet. Report your first incident.</p>
             </div>
           )}
 
@@ -344,7 +365,14 @@ export function IncidentsPage() {
                       >
                         Edit
                       </button>
-                      <button className="text-critical hover:text-critical-600 text-sm">Delete</button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleDeleteIncident(incident);
+                        }}
+                        className="text-critical hover:text-critical-600 text-sm"
+                      >Delete</button>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-charcoal-500">

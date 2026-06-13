@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { XIcon, FileIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { UUID } from '../../api/models/core';
 import type { IncidentCorrectiveAction } from '../../api/models/entities';
 import {
@@ -368,7 +369,7 @@ export function IncidentCorrectiveActionModal({
       clearDraft(draftKey);
       onClose();
     } catch (err: any) {
-      setError(formatAuthError(err));
+      setError(toUserFacingError(err, formatAuthError(err)));
     } finally {
       setLoading(false);
     }
@@ -387,16 +388,22 @@ export function IncidentCorrectiveActionModal({
       onDeleted?.();
       onClose();
     } catch (err: any) {
-      setError(formatAuthError(err));
+      setError(toUserFacingError(err, formatAuthError(err)));
     } finally {
       setLoading(false);
     }
   }
 
+  const handleEscapeKey = useCallback((e: KeyboardEvent) => { if (e.key === 'Escape') onClose?.(); }, [onClose]);
+  useEffect(() => {
+    window.addEventListener('keydown', handleEscapeKey);
+    return () => window.removeEventListener('keydown', handleEscapeKey);
+  }, [handleEscapeKey]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div
         className="absolute inset-0 bg-black/40"
         onClick={() => {
@@ -570,7 +577,7 @@ export function IncidentCorrectiveActionModal({
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60"
             >
               {loading && <LoadingSpinner size={16} />}
-              {actionId ? 'Update Action' : 'Create Action'}
+              {loading ? 'Saving...' : (actionId ? 'Update Action' : 'Create Action')}
             </button>
           </div>
         </form>

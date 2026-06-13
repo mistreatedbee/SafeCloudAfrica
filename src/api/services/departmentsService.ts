@@ -29,7 +29,7 @@ export async function createDepartment(input: {
     .insert({
       company_id: input.companyId,
       site_id: input.siteId ?? null,
-      name: input.name,
+      name: input.name.trim(),
       is_active: true,
       created_by_user_id: input.actorUserId
     })
@@ -43,7 +43,7 @@ export async function createDepartment(input: {
     actorUserId: input.actorUserId,
     action: 'departments.create',
     entityType: 'department',
-    entityId: (data as any).id as UUID,
+    entityId: (data as Department).id as UUID,
     metadata: { siteId: input.siteId ?? null }
   });
 
@@ -60,7 +60,7 @@ export async function updateDepartment(input: {
   return withInsforgeSession('departments:update', async () => {
   const { data, error } = await insforge.database
     .from('departments')
-    .update({ ...input.patch, updated_at: new Date().toISOString() })
+    .update({ ...input.patch, ...(input.patch.name !== undefined ? { name: input.patch.name.trim() } : {}), updated_at: new Date().toISOString() })
     .eq('company_id', input.companyId)
     .eq('id', input.departmentId)
     .select('*')
@@ -74,7 +74,7 @@ export async function updateDepartment(input: {
     action: 'departments.update',
     entityType: 'department',
     entityId: input.departmentId,
-    metadata: input.patch as any
+    metadata: { name: input.patch.name, site_id: input.patch.site_id ?? null, is_active: input.patch.is_active }
   });
 
   return data as Department;

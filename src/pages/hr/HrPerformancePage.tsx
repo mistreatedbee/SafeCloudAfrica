@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
+import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { createHrRecord, deleteHrRecord, listHrEmployees, listHrRecords, updateHrRecord } from '../../api/services/hrService';
@@ -162,7 +163,7 @@ export function HrPerformancePage() {
     [departments]
   );
 
-  const { data: reviews, refetch } = useAsync(async () => {
+  const { data: reviews, loading: reviewsLoading, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     try {
       return await listHrRecords(activeCompanyId, 'hr_performance_reviews');
@@ -197,19 +198,25 @@ export function HrPerformancePage() {
     setDueDate(new Date().toISOString().slice(0, 10));
   }
 
-  function beginEdit(row: any) {
+  function beginEdit(row: Record<string, unknown>) {
+    const isDirty =
+      employeeId !== '' ||
+      kpaRows.some((r) => r.keyPerformanceArea || r.employeeRating || r.managerRating) ||
+      strengths !== '' ||
+      managerRating !== '';
+    if (isDirty && !window.confirm('Load this review? Unsaved edits will be lost.')) return;
     setEditingReviewId(row.id as UUID);
-    setEmployeeId(String(row.employee_id ?? ''));
-    setCycle(String(row.cycle ?? 'Annual'));
-    setKpaRows(normalizeKpaRows(row.kpa_rows));
-    setStrengths(String(row.strengths ?? ''));
-    setAssistanceRequired(String(row.assistance_required ?? ''));
-    setWeaknesses(String(row.weaknesses ?? ''));
-    setManagerRating(String(row.manager_rating ?? ''));
-    setManagerRemarks(String(row.manager_remarks ?? ''));
-    setCorrectiveActionsRequired(String(row.corrective_actions_required ?? ''));
-    setResponsibleUserId(String(row.corrective_responsible_user_id ?? ''));
-    setDueDate(String(row.corrective_due_date ?? new Date().toISOString().slice(0, 10)));
+    setEmployeeId(String(row['employee_id'] ?? ''));
+    setCycle(String(row['cycle'] ?? 'Annual'));
+    setKpaRows(normalizeKpaRows(row['kpa_rows']));
+    setStrengths(String(row['strengths'] ?? ''));
+    setAssistanceRequired(String(row['assistance_required'] ?? ''));
+    setWeaknesses(String(row['weaknesses'] ?? ''));
+    setManagerRating(String(row['manager_rating'] ?? ''));
+    setManagerRemarks(String(row['manager_remarks'] ?? ''));
+    setCorrectiveActionsRequired(String(row['corrective_actions_required'] ?? ''));
+    setResponsibleUserId(String(row['corrective_responsible_user_id'] ?? ''));
+    setDueDate(String(row['corrective_due_date'] ?? new Date().toISOString().slice(0, 10)));
     setError(null);
     setSuccess(null);
   }
@@ -220,9 +227,9 @@ export function HrPerformancePage() {
     setSuccess(null);
     try {
       let linkedTaskId: UUID | null = null;
-      const currentReview = (reviews ?? []).find((row) => String(row.id) === String(editingReviewId));
+      const currentReview = (reviews ?? []).find((row) => String((row as Record<string, unknown>)['id']) === String(editingReviewId)) as Record<string, unknown> | undefined;
       if (editingReviewId) {
-        linkedTaskId = (currentReview?.linked_task_id as UUID | null) ?? null;
+        linkedTaskId = (currentReview?.['linked_task_id'] as UUID | null) ?? null;
       }
       if (!linkedTaskId && correctiveActionsRequired.trim()) {
         const task = await createTask({
@@ -241,6 +248,14 @@ export function HrPerformancePage() {
         linkedTaskId = task.id;
       }
 
+      const kpaRowsToSave = kpaRows
+        .filter((r) => r.keyPerformanceArea.trim() !== '' || r.employeeRating !== '' || r.managerRating !== '')
+        .map((r) => ({
+          ...r,
+          employeeRating: r.employeeRating !== '' ? Math.max(1, Math.min(5, Number(r.employeeRating))) : null,
+          managerRating: r.managerRating !== '' ? Math.max(1, Math.min(5, Number(r.managerRating))) : null
+        }));
+
       if (editingReviewId) {
         await updateHrRecord('hr_performance_reviews', {
           companyId: activeCompanyId,
@@ -250,11 +265,7 @@ export function HrPerformancePage() {
             employee_id: employeeId,
             cycle,
             overall_rating: null,
-            kpa_rows: kpaRows.map((r) => ({
-              ...r,
-              employeeRating: r.employeeRating !== '' ? Math.max(1, Math.min(5, Number(r.employeeRating))) : null,
-              managerRating: r.managerRating !== '' ? Math.max(1, Math.min(5, Number(r.managerRating))) : null
-            })),
+            kpa_rows: kpaRowsToSave,
             strengths,
             assistance_required: assistanceRequired || null,
             weaknesses: weaknesses || null,
@@ -274,11 +285,7 @@ export function HrPerformancePage() {
           review_date: new Date().toISOString().slice(0, 10),
           reviewer_user_id: user.id,
           overall_rating: null,
-          kpa_rows: kpaRows.map((r) => ({
-            ...r,
-            employeeRating: r.employeeRating !== '' ? Math.max(1, Math.min(5, Number(r.employeeRating))) : null,
-            managerRating: r.managerRating !== '' ? Math.max(1, Math.min(5, Number(r.managerRating))) : null
-          })),
+          kpa_rows: kpaRowsToSave,
           strengths,
           assistance_required: assistanceRequired || null,
           weaknesses: weaknesses || null,
@@ -458,33 +465,42 @@ export function HrPerformancePage() {
         </div>
 
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+          {reviewsLoading ? (
+            <div className="flex justify-center py-10"><LoadingSpinner /></div>
+          ) : (reviews ?? []).length === 0 ? (
+            <div className="text-center py-10 text-sm text-charcoal-500">No performance reviews yet.</div>
+          ) : (
           <table className="w-full text-sm">
             <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Cycle</th><th className="text-left px-3 py-2">Ratings</th><th className="text-left px-3 py-2">Corrective action</th><th className="text-left px-3 py-2">Task</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
             <tbody>
-              {(reviews ?? []).map((row) => (
-                <tr key={row.id} className="border-t border-surface-100">
-                  <td className="px-3 py-2">{employeeLabel.get(row.employee_id as UUID) ?? String(row.employee_id ?? '')}</td>
-                  <td className="px-3 py-2">{String(row.cycle ?? '')}</td>
-                  <td className="px-3 py-2">{String(row.overall_rating ?? '')} / {String(row.manager_rating ?? '')}</td>
-                  <td className="px-3 py-2">{String(row.corrective_actions_required ?? '-')}<br /><span className="text-xs text-charcoal-500">Due: {String(row.corrective_due_date ?? '-')}</span></td>
-                  <td className="px-3 py-2">{row.linked_task_id ? <a className="text-teal underline" href={`/dashboard/management/tasks/${row.linked_task_id}`}>Open task</a> : '-'}</td>
-                  <td className="px-3 py-2">{String(row.status ?? '')}</td>
+              {(reviews ?? []).map((row) => {
+                const r = row as Record<string, unknown>;
+                return (
+                <tr key={String(r['id'])} className="border-t border-surface-100">
+                  <td className="px-3 py-2">{employeeLabel.get(r['employee_id'] as UUID) ?? String(r['employee_id'] ?? '')}</td>
+                  <td className="px-3 py-2">{String(r['cycle'] ?? '')}</td>
+                  <td className="px-3 py-2">{String(r['overall_rating'] ?? '')} / {String(r['manager_rating'] ?? '')}</td>
+                  <td className="px-3 py-2">{String(r['corrective_actions_required'] ?? '-')}<br /><span className="text-xs text-charcoal-500">Due: {String(r['corrective_due_date'] ?? '-')}</span></td>
+                  <td className="px-3 py-2">{r['linked_task_id'] ? <a className="text-teal underline" href={`/dashboard/management/tasks/${String(r['linked_task_id'])}`}>Open task</a> : '-'}</td>
+                  <td className="px-3 py-2">{String(r['status'] ?? '')}</td>
                   <td className="px-3 py-2">
                     {canManage && (
                       <div className="flex gap-2">
-                        <button type="button" className="text-charcoal-700 hover:underline" onClick={() => beginEdit(row)}>
+                        <button type="button" className="text-charcoal-700 hover:underline" onClick={() => beginEdit(r)}>
                           Edit
                         </button>
-                        <button type="button" className="text-critical hover:underline" onClick={() => void onDelete(row.id as UUID)}>
+                        <button type="button" className="text-critical hover:underline" onClick={() => void onDelete(r['id'] as UUID)}>
                           Delete
                         </button>
                       </div>
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
+          )}
         </div>
       </div>
     </Layout>

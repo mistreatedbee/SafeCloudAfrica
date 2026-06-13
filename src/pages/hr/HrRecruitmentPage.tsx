@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
+import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { createHrRecord, deleteHrRecord, listHrRecords, updateHrRecord, upsertHrEmployee } from '../../api/services/hrService';
@@ -36,12 +37,12 @@ export function HrRecruitmentPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const { data: vacancies, refetch: refetchVacancies } = useAsync(async () => {
+  const { data: vacancies, loading: vacanciesLoading, refetch: refetchVacancies } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listHrRecords(activeCompanyId, 'hr_vacancies');
   }, [activeCompanyId]);
 
-  const { data: applicants, refetch: refetchApplicants } = useAsync(async () => {
+  const { data: applicants, loading: applicantsLoading, refetch: refetchApplicants } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listHrRecords(activeCompanyId, 'hr_applicants');
   }, [activeCompanyId]);
@@ -314,7 +315,11 @@ export function HrRecruitmentPage() {
               </button>
             </div>
             <div className="space-y-2 text-sm">
-              {(vacancies ?? []).map((row) => (
+              {vacanciesLoading ? (
+                <div className="flex justify-center py-6"><LoadingSpinner /></div>
+              ) : (vacancies ?? []).length === 0 ? (
+                <p className="text-sm text-charcoal-500 py-4 text-center">No vacancies yet.</p>
+              ) : (vacancies ?? []).map((row) => (
                 <div key={String(row.id)} className="border border-surface-200 rounded-lg p-3">
                   <p className="font-medium">{String(row.title ?? '')}</p>
                   <p className="text-charcoal-500">
@@ -381,7 +386,11 @@ export function HrRecruitmentPage() {
             </div>
 
             <div className="space-y-2 text-sm">
-              {(applicants ?? []).map((row) => (
+              {applicantsLoading ? (
+                <div className="flex justify-center py-6"><LoadingSpinner /></div>
+              ) : (applicants ?? []).length === 0 ? (
+                <p className="text-sm text-charcoal-500 py-4 text-center">No applicants yet.</p>
+              ) : (applicants ?? []).map((row) => (
                 <div key={String(row.id)} className="border border-surface-200 rounded-lg p-3">
                   <p className="font-medium">{String(row.full_name ?? '')}</p>
                   <p className="text-charcoal-500">Vacancy: {row.vacancy_id ? String(vacancyMap.get(row.vacancy_id as UUID) ?? row.vacancy_id) : '-'}</p>
@@ -404,6 +413,7 @@ export function HrRecruitmentPage() {
                 </div>
               ))}
             </div>
+
           </div>
         </div>
       </div>

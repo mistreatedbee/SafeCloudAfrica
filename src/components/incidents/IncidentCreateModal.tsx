@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { XIcon, FileTextIcon, ImageIcon, Trash2Icon, ExternalLinkIcon, DownloadIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { UUID } from '../../api/models/core';
 import type { IncidentCategory, ModuleKey, Severity } from '../../api/models/core';
 import {
@@ -1521,7 +1522,7 @@ export function IncidentCreateModal(props: {
       }
       finishSuccessfulSave();
     } catch (err: any) {
-      setError(formatAuthError(err));
+      setError(toUserFacingError(err, formatAuthError(err)));
     } finally {
       setLoading(false);
     }
@@ -1720,9 +1721,16 @@ export function IncidentCreateModal(props: {
     );
   }
 
+  const onClose = props.onClose;
+  const handleEscapeKey = useCallback((e: KeyboardEvent) => { if (e.key === 'Escape') onClose?.(); }, [onClose]);
+  useEffect(() => {
+    window.addEventListener('keydown', handleEscapeKey);
+    return () => window.removeEventListener('keydown', handleEscapeKey);
+  }, [handleEscapeKey]);
+
   if (!props.open) return null;
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-3 pt-16 sm:p-6 sm:pt-20">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-3 pt-16 sm:p-6 sm:pt-20">
       <div className="absolute inset-0 bg-black/45" onClick={handleRequestClose} />
       <div className="relative w-full max-w-6xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-surface-200 px-4 py-4 sm:px-6 flex items-center justify-between z-10">
@@ -2561,7 +2569,7 @@ export function IncidentCreateModal(props: {
               className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg bg-critical text-white text-sm font-semibold hover:bg-critical-600 disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto"
             >
               {loading && <LoadingSpinner size={16} />}
-              {isEditing ? 'Save changes' : 'Save incident'}
+              {loading ? 'Saving...' : (isEditing ? 'Save changes' : 'Save incident')}
             </button>
           </div>
         </form>

@@ -81,6 +81,16 @@ export async function updateLotoRecord(input: {
   actorUserId: UUID;
 }): Promise<LotoRecord> {
   return withInsforgeSession('loto_records:update', async () => {
+    // Validate that release fields are present when transitioning to RELEASED
+    if (input.patch.status === 'RELEASED') {
+      if (!input.patch.lock_removed_by_user_id) {
+        throw new Error('lock_removed_by_user_id is required when releasing a LOTO lock.');
+      }
+      if (!input.patch.lock_removed_at) {
+        throw new Error('lock_removed_at is required when releasing a LOTO lock.');
+      }
+    }
+
     const { data, error } = await insforge.database
       .from('loto_records')
       .update({ ...input.patch, updated_at: new Date().toISOString() })

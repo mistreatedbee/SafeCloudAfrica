@@ -33,6 +33,13 @@ export async function upsertIncidentAffectedPersons(
     machineryEquipmentTools?: string | null;
   }>
 ): Promise<IncidentAffectedPerson[]> {
+  // Validate before any DB operation
+  for (const p of persons) {
+    if ((p.userId === null || p.userId === undefined) && !p.displayName?.trim()) {
+      throw new Error('Affected person must have a name when not linked to a user account.');
+    }
+  }
+
   const { error: deleteError } = await insforge.database
     .from('incident_affected_persons')
     .delete()
@@ -52,11 +59,16 @@ export async function upsertIncidentAffectedPersons(
     sort_order: i
   }));
 
-  const { data: inserted, error: insertError } = await insforge.database
-    .from('incident_affected_persons')
-    .insert(rows)
-    .select('*');
+  try {
+    const { data: inserted, error: insertError } = await insforge.database
+      .from('incident_affected_persons')
+      .insert(rows)
+      .select('*');
 
-  if (insertError) throw new Error(getErrorMessage(insertError));
-  return (inserted ?? []) as IncidentAffectedPerson[];
+    if (insertError) throw new Error(getErrorMessage(insertError));
+    return (inserted ?? []) as IncidentAffectedPerson[];
+  } catch (err) {
+    console.error('[incidents.affected] insert failed after delete — data may be incomplete', err);
+    throw new Error('Failed to update affected persons. Please retry.');
+  }
 }

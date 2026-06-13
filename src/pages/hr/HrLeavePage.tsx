@@ -37,6 +37,7 @@ export function HrLeavePage() {
   const [proofEvidenceRequestId, setProofEvidenceRequestId] = useState<UUID | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [dateError, setDateError] = useState<string | null>(null);
 
   const { restoreDraft, clearDraft } = useDraftManager();
 
@@ -132,6 +133,12 @@ export function HrLeavePage() {
     setDeclineReasonByRow(next);
     setDeclineBaseline(next);
   }, [activeCompanyId, canApprove, draftKeyDecline, restoreDraft, user?.id]);
+
+  useEffect(() => {
+    if (!success) return;
+    const t = setTimeout(() => setSuccess(null), 4000);
+    return () => clearTimeout(t);
+  }, [success]);
 
   const { data: selfEmployee } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return null;
@@ -255,6 +262,11 @@ export function HrLeavePage() {
     if (!activeCompanyId || !user?.id || !activeEmployeeId || !leaveTypeValue.trim()) return;
     setError(null);
     setSuccess(null);
+    setDateError(null);
+    if (startDate && endDate && startDate > endDate) {
+      setDateError('End date must be on or after the start date.');
+      return;
+    }
     try {
       const leaveTypeId = await getOrCreateHrLeaveTypeByName(activeCompanyId, user.id as UUID, leaveTypeValue.trim());
       await refetchLeaveTypes();
@@ -420,8 +432,15 @@ export function HrLeavePage() {
                 </div>
               )}
             </div>
-            <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Start date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
-            <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">End date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Start date</span>
+              <input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={startDate} onChange={(e) => { setStartDate(e.target.value); setDateError(null); }} />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">End date</span>
+              <input type="date" className={`w-full border rounded-lg px-3 py-2 ${dateError ? 'border-critical' : 'border-surface-300'}`} value={endDate} onChange={(e) => { setEndDate(e.target.value); setDateError(null); }} />
+              {dateError && <p className="text-xs text-critical mt-1">{dateError}</p>}
+            </label>
             <label className="text-sm md:col-span-3">
               <span className="block text-xs text-charcoal-500 mb-1">Reason</span>
               <input className="w-full border border-surface-300 rounded-lg px-3 py-2" placeholder="Reason for leave" value={reason} onChange={(e) => setReason(e.target.value)} />
@@ -471,6 +490,9 @@ export function HrLeavePage() {
         </div>
 
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+          {(requests ?? []).length === 0 ? (
+            <div className="text-center py-10 text-sm text-charcoal-500">No leave requests yet.</div>
+          ) : (
           <table className="w-full text-sm">
             <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Leave type</th><th className="text-left px-3 py-2">Dates</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Workflow</th><th className="text-left px-3 py-2">Decline reason</th><th className="text-left px-3 py-2">Action</th></tr></thead>
             <tbody>
@@ -498,6 +520,7 @@ export function HrLeavePage() {
               ))}
             </tbody>
           </table>
+          )}
         </div>
         {activeCompanyId && user?.id && proofEvidenceRequestId && (
           <EvidenceModal

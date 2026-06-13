@@ -95,7 +95,7 @@ export function SafetyPage() {
   const [createObjectiveOpen, setCreateObjectiveOpen] = useState(false);
   const showSafetyFirstWin = activeRole != null && activeRole !== 'employee';
 
-  const { data: summary } = useAsync(
+  const { data: summary, loading: summaryLoading } = useAsync(
     async () => {
       if (!activeCompanyId) return null;
       const [openIncidents, pendingActions, activeHazards, ppeCompliance] = await Promise.all([
@@ -113,18 +113,18 @@ export function SafetyPage() {
     [activeCompanyId]
   );
 
-  const { data: objectives } = useAsync(async () => {
+  const { data: objectives, loading: objectivesLoading } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listModuleTargets({ companyId: activeCompanyId, module: 'safety', limit: 10 });
   }, [activeCompanyId, refreshKey]);
 
-  const { data: activity } = useAsync(async () => {
+  const { data: activity, loading: activityLoading } = useAsync(async () => {
     if (!activeCompanyId) return [];
     const logs = await listActivityLogs({ companyId: activeCompanyId, limit: 25 });
     return logs.filter((l) => String(l.action).startsWith('incidents.') || String(l.action).startsWith('risks.') || String(l.action).startsWith('inspections.') || String(l.action).startsWith('ppe_'));
   }, [activeCompanyId]);
 
-  const { data: trends } = useAsync(async () => {
+  const { data: trends, loading: trendsLoading } = useAsync(async () => {
     if (!activeCompanyId) return [];
     const incidents = await listIncidents({ companyId: activeCompanyId, limit: 500 });
     const safety = incidents.filter((i) => i.module === 'safety');
@@ -146,6 +146,14 @@ export function SafetyPage() {
   }, [activeCompanyId]);
 
   const safetyStats = summary ?? { compliance: 0, openIncidents: 0, pendingActions: 0, activeHazards: 0, ppeCompliance: 0 };
+
+  function LoadingPlaceholder({ label }: { label: string }) {
+    return (
+      <div className="bg-white rounded-xl border border-surface-300 p-6 text-center text-sm text-charcoal-400 animate-pulse">
+        {label}
+      </div>
+    );
+  }
 
   return (
     <Layout title="Safety Management">
@@ -200,32 +208,43 @@ export function SafetyPage() {
           variants={itemVariants}
           className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
-          <StatCard
-            title="Open Incidents"
-            value={safetyStats.openIncidents}
-            icon="AlertTriangle"
-            iconColor="#E74C3C"
-            variant="critical" />
+          {summaryLoading ? (
+            <>
+              <LoadingPlaceholder label="Loading stats…" />
+              <LoadingPlaceholder label="Loading stats…" />
+              <LoadingPlaceholder label="Loading stats…" />
+              <LoadingPlaceholder label="Loading stats…" />
+            </>
+          ) : (
+            <>
+              <StatCard
+                title="Open Incidents"
+                value={safetyStats.openIncidents}
+                icon="AlertTriangle"
+                iconColor="#E74C3C"
+                variant="critical" />
 
-          <StatCard
-            title="Pending Actions"
-            value={safetyStats.pendingActions}
-            icon="ClipboardCheck"
-            iconColor="#F5A623"
-            variant="warning" />
+              <StatCard
+                title="Pending Actions"
+                value={safetyStats.pendingActions}
+                icon="ClipboardCheck"
+                iconColor="#F5A623"
+                variant="warning" />
 
-          <StatCard
-            title="Active Hazards"
-            value={safetyStats.activeHazards}
-            icon="AlertTriangle"
-            iconColor="#F5A623" />
+              <StatCard
+                title="Active Hazards"
+                value={safetyStats.activeHazards}
+                icon="AlertTriangle"
+                iconColor="#F5A623" />
 
-          <StatCard
-            title="PPE Compliance"
-            value={`${safetyStats.ppeCompliance}%`}
-            icon="Shield"
-            iconColor="#2ECC71"
-            variant="success" />
+              <StatCard
+                title="PPE Compliance"
+                value={`${safetyStats.ppeCompliance}%`}
+                icon="Shield"
+                iconColor="#2ECC71"
+                variant="success" />
+            </>
+          )}
 
         </motion.div>
 
@@ -241,7 +260,10 @@ export function SafetyPage() {
               Safety Objectives
             </h3>
             <div className="space-y-4">
-              {(objectives ?? []).length === 0 && (
+              {objectivesLoading && (
+                <p className="text-sm text-charcoal-400 animate-pulse text-center py-4">Loading objectives…</p>
+              )}
+              {!objectivesLoading && (objectives ?? []).length === 0 && (
                 <ListEmptyState
                   embedded
                   icon={TargetIcon}
@@ -255,7 +277,7 @@ export function SafetyPage() {
                   }}
                 />
               )}
-              {(objectives ?? []).length > 0 && (
+              {!objectivesLoading && (objectives ?? []).length > 0 && (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface-100">
@@ -302,7 +324,11 @@ export function SafetyPage() {
           </div>
 
           {/* Incident Trends */}
-          <TrendChart title="Safety Incident Trends" type="bar" height={220} data={trends ?? []} />
+          {trendsLoading ? (
+            <LoadingPlaceholder label="Loading incident trends…" />
+          ) : (
+            <TrendChart title="Safety Incident Trends" type="bar" height={220} data={trends ?? []} />
+          )}
         </motion.div>
 
         {/* Quick Access Cards */}
@@ -381,7 +407,10 @@ export function SafetyPage() {
               </button>
             </div>
             <div className="divide-y divide-surface-100">
-              {(activity ?? []).length === 0 && (
+              {activityLoading && (
+                <p className="px-5 py-6 text-sm text-charcoal-400 animate-pulse text-center">Loading recent activity…</p>
+              )}
+              {!activityLoading && (activity ?? []).length === 0 && (
                 <div className="px-5 py-2">
                   <ListEmptyState
                     embedded
@@ -393,7 +422,7 @@ export function SafetyPage() {
                   />
                 </div>
               )}
-              {(activity ?? []).map((a) => (
+              {!activityLoading && (activity ?? []).map((a) => (
                 <div key={a.id} className="px-5 py-4 hover:bg-surface-50 transition-colors">
                   <div className="flex items-start justify-between gap-4">
                     <div>

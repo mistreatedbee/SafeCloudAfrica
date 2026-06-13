@@ -306,7 +306,21 @@ async function getIncidentNotificationEmails(companyId: UUID, userIds: Array<UUI
   return Array.from(emails);
 }
 
+function validateRiskField(value: number | null | undefined, fieldName: string): void {
+  if (value == null) return;
+  if (!Number.isInteger(value) || value < 1 || value > 5) {
+    throw new Error(`${fieldName} must be an integer between 1 and 5.`);
+  }
+}
+
 export async function createIncident(input: CreateIncidentInput): Promise<Incident> {
+  validateRiskField(input.riskSeverity1To5, 'riskSeverity1To5');
+  validateRiskField(input.riskLikelihood1To5, 'riskLikelihood1To5');
+
+  if (input.riskSeverity1To5 != null && input.riskLikelihood1To5 != null) {
+    input = { ...input, riskRatingProduct: input.riskSeverity1To5 * input.riskLikelihood1To5 };
+  }
+
   const losses = input.losses ?? {};
   const insertPayload: Record<string, unknown> = {
     company_id: input.companyId,
@@ -417,8 +431,8 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
         }
       });
     }
-  } catch {
-    // Email notifications should not block incident creation.
+  } catch (err) {
+    console.warn('[incidents] notification failed', (data as any).id, err);
   }
 
   return data as Incident;
@@ -471,6 +485,13 @@ export type UpdateIncidentPatch = Partial<{
 }>;
 
 export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatch): Promise<Incident> {
+  validateRiskField(patch.riskSeverity1To5, 'riskSeverity1To5');
+  validateRiskField(patch.riskLikelihood1To5, 'riskLikelihood1To5');
+
+  if (patch.riskSeverity1To5 != null && patch.riskLikelihood1To5 != null) {
+    patch = { ...patch, riskRatingProduct: patch.riskSeverity1To5 * patch.riskLikelihood1To5 };
+  }
+
   const { data: current, error: currentError } = await insforge.database
     .from('incidents')
     .select('id,company_id')

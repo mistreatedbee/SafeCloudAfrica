@@ -13,6 +13,7 @@ import {
 import { listSites } from '../../api/services/sitesService';
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
+import { MANAGEMENT_ROLES } from '../../constants/roles';
 
 function StatusBadge({ status }: { status: string }) {
   return status === 'LOCKED' ? (
@@ -25,7 +26,7 @@ function StatusBadge({ status }: { status: string }) {
 export function LotoPage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
-  const canManage = ['owner', 'admin', 'manager', 'supervisor'].includes(activeRole ?? '');
+  const canManage = MANAGEMENT_ROLES.includes(activeRole as typeof MANAGEMENT_ROLES[number]);
 
   const [equipmentName, setEquipmentName] = useState('');
   const [location, setLocation] = useState('');
@@ -36,7 +37,7 @@ export function LotoPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const { data: records, refetch } = useAsync(async () => {
+  const { data: records, loading: recordsLoading, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listLotoRecords(activeCompanyId);
   }, [activeCompanyId]);
@@ -63,10 +64,26 @@ export function LotoPage() {
       setError('Equipment name is required.');
       return;
     }
+
+    // Task 3: isolation points required
+    const isolationPoints = isolationPointsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    if (isolationPoints.length === 0) {
+      setError('At least one isolation point is required.');
+      return;
+    }
+
+    // Task 2: concurrent lock check (CRITICAL)
+    const existing = (records ?? []).find(
+      r => r.status === 'LOCKED' && r.equipment_name.toLowerCase() === equipmentName.trim().toLowerCase()
+    );
+    if (existing) {
+      setError('This equipment already has an active lock. Release the existing lock first.');
+      return;
+    }
+
     setSaving(true);
     setError(null);
     setSuccess(null);
-    const isolationPoints = isolationPointsRaw.split(',').map((s) => s.trim()).filter(Boolean);
     try {
       await createLotoRecord({
         companyId: activeCompanyId,
@@ -113,7 +130,8 @@ export function LotoPage() {
 
   async function onDelete(r: LotoRecord) {
     if (!activeCompanyId || !user?.id) return;
-    if (!window.confirm(`Delete LOTO record for "${r.equipment_name}"? This cannot be undone.`)) return;
+    // Task 4: released locks delete confirmation
+    if (!window.confirm('Delete this LOTO record? This cannot be undone.')) return;
     setError(null);
     setSuccess(null);
     try {
@@ -158,7 +176,7 @@ export function LotoPage() {
                 <input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Scheduled maintenance, fault repair" />
               </label>
               <label className="text-sm md:col-span-2">
-                <span className="block text-xs text-charcoal-500 mb-1">Isolation points (comma-separated)</span>
+                <span className="block text-xs text-charcoal-500 mb-1">Isolation points (comma-separated) *</span>
                 <input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={isolationPointsRaw} onChange={(e) => setIsolationPointsRaw(e.target.value)} placeholder="Main isolator, Air supply valve, Hydraulic release, ..." />
               </label>
             </div>
@@ -168,82 +186,94 @@ export function LotoPage() {
           </div>
         )}
 
-        <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
-          <div className="px-4 py-3 border-b border-surface-200">
-            <h3 className="font-semibold">Active locks ({locked.length})</h3>
+        {/* Task 5: loading indicator while records fetch */}
+        {recordsLoading && (
+          <div className="bg-white border border-surface-300 rounded-xl p-6 text-center text-sm text-charcoal-500">
+            Loading LOTO records…
           </div>
-          <table className="w-full text-sm">
-            <thead className="bg-surface-100">
-              <tr>
-                <th className="text-left px-4 py-2">Equipment</th>
-                <th className="text-left px-4 py-2">Location</th>
-                <th className="text-left px-4 py-2">Site</th>
-                <th className="text-left px-4 py-2">Reason</th>
-                <th className="text-left px-4 py-2">Applied at</th>
-                <th className="text-left px-4 py-2">Status</th>
-                {canManage && <th className="text-left px-4 py-2">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {locked.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-4 text-charcoal-500 text-center">No active locks.</td></tr>
-              )}
-              {locked.map((r) => (
-                <tr key={r.id} className="border-t border-surface-100">
-                  <td className="px-4 py-2 font-medium">{r.equipment_name}</td>
-                  <td className="px-4 py-2 text-charcoal-500">{r.location ?? '-'}</td>
-                  <td className="px-4 py-2 text-charcoal-500">{r.site_id ? (siteLabel.get(String(r.site_id)) ?? '-') : '-'}</td>
-                  <td className="px-4 py-2 text-charcoal-500">{r.reason ?? '-'}</td>
-                  <td className="px-4 py-2 text-charcoal-500">{r.lock_applied_at ? new Date(r.lock_applied_at).toLocaleString() : '-'}</td>
-                  <td className="px-4 py-2"><StatusBadge status={r.status} /></td>
-                  {canManage && (
-                    <td className="px-4 py-2">
-                      <div className="flex gap-3">
-                        <button className="text-emerald-600 hover:underline" onClick={() => void onRelease(r)}>Release</button>
-                        <button className="text-critical hover:underline" onClick={() => void onDelete(r)}>Delete</button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        )}
 
-        {released.length > 0 && (
-          <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
-            <div className="px-4 py-3 border-b border-surface-200">
-              <h3 className="font-semibold text-charcoal-500">Released locks ({released.length})</h3>
-            </div>
-            <table className="w-full text-sm">
-              <thead className="bg-surface-100">
-                <tr>
-                  <th className="text-left px-4 py-2">Equipment</th>
-                  <th className="text-left px-4 py-2">Location</th>
-                  <th className="text-left px-4 py-2">Applied at</th>
-                  <th className="text-left px-4 py-2">Released at</th>
-                  <th className="text-left px-4 py-2">Status</th>
-                  {canManage && <th className="text-left px-4 py-2">Actions</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {released.map((r) => (
-                  <tr key={r.id} className="border-t border-surface-100 opacity-70">
-                    <td className="px-4 py-2 font-medium">{r.equipment_name}</td>
-                    <td className="px-4 py-2 text-charcoal-500">{r.location ?? '-'}</td>
-                    <td className="px-4 py-2 text-charcoal-500">{r.lock_applied_at ? new Date(r.lock_applied_at).toLocaleString() : '-'}</td>
-                    <td className="px-4 py-2 text-charcoal-500">{r.lock_removed_at ? new Date(r.lock_removed_at).toLocaleString() : '-'}</td>
-                    <td className="px-4 py-2"><StatusBadge status={r.status} /></td>
-                    {canManage && (
-                      <td className="px-4 py-2">
-                        <button className="text-critical hover:underline" onClick={() => void onDelete(r)}>Delete</button>
-                      </td>
-                    )}
+        {!recordsLoading && (
+          <>
+            <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+              <div className="px-4 py-3 border-b border-surface-200">
+                <h3 className="font-semibold">Active locks ({locked.length})</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-surface-100">
+                  <tr>
+                    <th className="text-left px-4 py-2">Equipment</th>
+                    <th className="text-left px-4 py-2">Location</th>
+                    <th className="text-left px-4 py-2">Site</th>
+                    <th className="text-left px-4 py-2">Reason</th>
+                    <th className="text-left px-4 py-2">Applied at</th>
+                    <th className="text-left px-4 py-2">Status</th>
+                    {canManage && <th className="text-left px-4 py-2">Actions</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {/* Task 5: empty state — "No active locks. The area is clear." */}
+                  {locked.length === 0 && (
+                    <tr><td colSpan={7} className="px-4 py-6 text-charcoal-500 text-center">No active locks. The area is clear.</td></tr>
+                  )}
+                  {locked.map((r) => (
+                    <tr key={r.id} className="border-t border-surface-100">
+                      <td className="px-4 py-2 font-medium">{r.equipment_name}</td>
+                      <td className="px-4 py-2 text-charcoal-500">{r.location ?? '-'}</td>
+                      <td className="px-4 py-2 text-charcoal-500">{r.site_id ? (siteLabel.get(String(r.site_id)) ?? '-') : '-'}</td>
+                      <td className="px-4 py-2 text-charcoal-500">{r.reason ?? '-'}</td>
+                      <td className="px-4 py-2 text-charcoal-500">{r.lock_applied_at ? new Date(r.lock_applied_at).toLocaleString() : '-'}</td>
+                      <td className="px-4 py-2"><StatusBadge status={r.status} /></td>
+                      {canManage && (
+                        <td className="px-4 py-2">
+                          <div className="flex gap-3">
+                            <button className="text-emerald-600 hover:underline" onClick={() => void onRelease(r)}>Release</button>
+                            <button className="text-critical hover:underline" onClick={() => void onDelete(r)}>Delete</button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {released.length > 0 && (
+              <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+                <div className="px-4 py-3 border-b border-surface-200">
+                  <h3 className="font-semibold text-charcoal-500">Released locks ({released.length})</h3>
+                </div>
+                <table className="w-full text-sm">
+                  <thead className="bg-surface-100">
+                    <tr>
+                      <th className="text-left px-4 py-2">Equipment</th>
+                      <th className="text-left px-4 py-2">Location</th>
+                      <th className="text-left px-4 py-2">Applied at</th>
+                      <th className="text-left px-4 py-2">Released at</th>
+                      <th className="text-left px-4 py-2">Status</th>
+                      {canManage && <th className="text-left px-4 py-2">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {released.map((r) => (
+                      <tr key={r.id} className="border-t border-surface-100 opacity-70">
+                        <td className="px-4 py-2 font-medium">{r.equipment_name}</td>
+                        <td className="px-4 py-2 text-charcoal-500">{r.location ?? '-'}</td>
+                        <td className="px-4 py-2 text-charcoal-500">{r.lock_applied_at ? new Date(r.lock_applied_at).toLocaleString() : '-'}</td>
+                        <td className="px-4 py-2 text-charcoal-500">{r.lock_removed_at ? new Date(r.lock_removed_at).toLocaleString() : '-'}</td>
+                        <td className="px-4 py-2"><StatusBadge status={r.status} /></td>
+                        {canManage && (
+                          <td className="px-4 py-2">
+                            <button className="text-critical hover:underline" onClick={() => void onDelete(r)}>Delete</button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </div>
     </Layout>

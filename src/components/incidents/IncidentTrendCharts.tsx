@@ -51,64 +51,76 @@ export function IncidentTrendCharts({ incidents, period }: IncidentTrendChartsPr
       .sort((a, b) => a.month.localeCompare(b.month));
   }, [incidents]);
 
+  const emptyState = (
+    <div className="h-60 flex items-center justify-center text-charcoal-400 text-sm bg-surface-50 rounded-lg border border-surface-200">No data for this period</div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Count by Category */}
         <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
           <h3 className="text-sm font-semibold text-charcoal mb-4">Incidents by Category</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={categoryData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="category" angle={-45} textAnchor="end" height={100} />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="count" fill="#14b8a6" />
-            </BarChart>
-          </ResponsiveContainer>
+          {categoryData.length === 0 ? emptyState : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={categoryData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="category" angle={-45} textAnchor="end" height={100} />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="#14b8a6" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Count by Type */}
         <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
           <h3 className="text-sm font-semibold text-charcoal mb-4">Incidents by Type</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={typeData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="type" angle={-45} textAnchor="end" height={100} />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="count" fill="#0ea5e9" />
-            </BarChart>
-          </ResponsiveContainer>
+          {typeData.length === 0 ? emptyState : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={typeData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="type" angle={-45} textAnchor="end" height={100} />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="#0ea5e9" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Count by Risk */}
         <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
           <h3 className="text-sm font-semibold text-charcoal mb-4">Incidents by Risk Category</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={riskData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="risk" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="count" fill="#f59e0b" />
-            </BarChart>
-          </ResponsiveContainer>
+          {riskData.length === 0 ? emptyState : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={riskData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="risk" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="#f59e0b" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Monthly Trend */}
         <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
           <h3 className="text-sm font-semibold text-charcoal mb-4">Monthly Trend</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={monthlyTrend}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="count" stroke="#14b8a6" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
+          {monthlyTrend.length === 0 ? emptyState : (
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={monthlyTrend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="count" stroke="#14b8a6" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
     </div>

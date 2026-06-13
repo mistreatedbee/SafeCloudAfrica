@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { XIcon, SaveIcon, ExternalLinkIcon, FileTextIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import type { EvidenceAttachment, Incident, IncidentCorrectiveAction, IncidentInvestigation, UUID } from '../../api/models/entities';
 import { listEvidence, updateEvidence } from '../../api/services/evidenceService';
 import { getPublicUrl } from '../../api/services/storageService';
 import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { getIncidentInvestigation, upsertIncidentInvestigation } from '../../api/services/incidentInvestigationsService';
 import { exportIncidentPDF, downloadFile } from '../../api/services/exportService';
@@ -280,7 +281,7 @@ export function IncidentDetailModal(props: {
           }
         }
       } catch (e: any) {
-        setError(formatAuthError(e));
+        setError(toUserFacingError(e, formatAuthError(e)));
       } finally {
         setLoading(false);
       }
@@ -403,7 +404,7 @@ export function IncidentDetailModal(props: {
       clearDraft(draftKey);
       setSaveSuccess('Investigation saved successfully.');
     } catch (e: any) {
-      setError(formatAuthError(e));
+      setError(toUserFacingError(e, formatAuthError(e)));
     } finally {
       setLoading(false);
     }
@@ -458,10 +459,17 @@ export function IncidentDetailModal(props: {
     );
   }
 
+  const onClose = props.onClose;
+  const handleEscapeKey = useCallback((e: KeyboardEvent) => { if (e.key === 'Escape') onClose?.(); }, [onClose]);
+  useEffect(() => {
+    window.addEventListener('keydown', handleEscapeKey);
+    return () => window.removeEventListener('keydown', handleEscapeKey);
+  }, [handleEscapeKey]);
+
   if (!props.open || !incident) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto p-3 sm:p-6">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto p-3 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
       <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-6 border-b border-surface-200">
@@ -755,7 +763,7 @@ export function IncidentDetailModal(props: {
                       className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 w-full sm:w-auto shrink-0"
                     >
                       {loading ? <LoadingSpinner size={16} /> : <SaveIcon className="w-4 h-4" />}
-                      Save
+                      {loading ? 'Saving...' : 'Save'}
                     </button>
                   )}
                 </div>

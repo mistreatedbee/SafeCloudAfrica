@@ -43,13 +43,15 @@ export async function createToolboxTalk(input: {
   actorUserId: UUID;
 }): Promise<ToolboxTalk> {
   return withInsforgeSession('toolbox_talks:create', async () => {
+    // Default conductedByUserId to actorUserId when not explicitly provided
+    const conductedByUserId = input.conductedByUserId ?? input.actorUserId;
     const { data, error } = await insforge.database
       .from('toolbox_talks')
       .insert({
         company_id: input.companyId,
         title: input.title,
         topic: input.topic ?? null,
-        conducted_by_user_id: input.conductedByUserId ?? null,
+        conducted_by_user_id: conductedByUserId,
         conducted_at: input.conductedAt,
         site_id: input.siteId ?? null,
         attendees: input.attendees ?? [],

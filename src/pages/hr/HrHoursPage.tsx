@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
+import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listDepartments } from '../../api/services/departmentsService';
@@ -57,7 +58,7 @@ export function HrHoursPage() {
     return listDepartments(activeCompanyId);
   }, [activeCompanyId]);
 
-  const { data: rows, refetch } = useAsync(async () => {
+  const { data: rows, loading: rowsLoading, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listHrTimesheets(activeCompanyId, isEmployee ? (selfEmployee?.id as UUID | undefined) : undefined);
   }, [activeCompanyId, isEmployee, selfEmployee?.id]);
@@ -291,6 +292,11 @@ export function HrHoursPage() {
         </div>
 
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+          {rowsLoading ? (
+            <div className="flex justify-center py-10"><LoadingSpinner /></div>
+          ) : (rows ?? []).length === 0 ? (
+            <div className="text-center py-10 text-sm text-charcoal-500">No timesheet entries yet.</div>
+          ) : (
           <table className="w-full text-sm">
             <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Date</th><th className="text-left px-3 py-2">Hours worked</th><th className="text-left px-3 py-2">Overtime</th><th className="text-left px-3 py-2">Daily total</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Decline reason</th><th className="text-left px-3 py-2">Action</th></tr></thead>
             <tbody>
@@ -332,6 +338,7 @@ export function HrHoursPage() {
               ))}
             </tbody>
           </table>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

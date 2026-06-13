@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
+import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import {
@@ -93,7 +94,7 @@ export function HrDocumentsPage() {
     return listDepartments(activeCompanyId);
   }, [activeCompanyId]);
 
-  const { data: personalDocs, refetch: refetchPersonal } = useAsync(async () => {
+  const { data: personalDocs, loading: personalLoading, refetch: refetchPersonal } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return [];
     return listHrPersonalDocuments({
       companyId: activeCompanyId,
@@ -102,7 +103,7 @@ export function HrDocumentsPage() {
     });
   }, [activeCompanyId, activeRole, user?.id]);
 
-  const { data: ackDocs, refetch: refetchAck } = useAsync(async () => {
+  const { data: ackDocs, loading: ackLoading, refetch: refetchAck } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return [];
     return listHrAcknowledgementDocuments({
       companyId: activeCompanyId,
@@ -167,6 +168,10 @@ export function HrDocumentsPage() {
 
   async function onCreatePersonal() {
     if (!activeCompanyId || !user?.id || !employeeId || !docName.trim() || !docType.trim()) return;
+    if (file && file.size > 10 * 1024 * 1024) {
+      setError('File size must be 10 MB or less.');
+      return;
+    }
     setError(null);
     try {
       const created = await createHrPersonalDocument({
@@ -203,6 +208,10 @@ export function HrDocumentsPage() {
 
   async function onCreateAckDoc() {
     if (!activeCompanyId || !user?.id || !ackTitle.trim()) return;
+    if (ackFile && ackFile.size > 10 * 1024 * 1024) {
+      setError('File size must be 10 MB or less.');
+      return;
+    }
     setError(null);
     try {
       const created = await createHrAcknowledgementDocument({
@@ -265,6 +274,18 @@ export function HrDocumentsPage() {
     setPendingAckSign(sign);
     setAckConfirmed(false);
   }
+
+  useEffect(() => {
+    if (!pendingAckDocId) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !ackSubmitting) {
+        setPendingAckDocId(null);
+        setAckConfirmed(false);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [pendingAckDocId, ackSubmitting]);
 
   async function onRenameDoc(docId: UUID, name: string) {
     if (!activeCompanyId || !user?.id || !name.trim()) return;
@@ -449,6 +470,11 @@ export function HrDocumentsPage() {
             </div>
 
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+              {personalLoading ? (
+                <div className="flex justify-center py-10"><LoadingSpinner /></div>
+              ) : filteredPersonalDocs.length === 0 ? (
+                <div className="text-center py-10 text-sm text-charcoal-500">No documents yet.</div>
+              ) : (
               <table className="w-full text-sm">
                 <thead className="bg-surface-100">
                   <tr>
@@ -541,6 +567,7 @@ export function HrDocumentsPage() {
                   })}
                 </tbody>
               </table>
+              )}
             </div>
           </>
         )}
@@ -621,6 +648,11 @@ export function HrDocumentsPage() {
               </div>
             ) : (
               <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+                {ackLoading ? (
+                  <div className="flex justify-center py-10"><LoadingSpinner /></div>
+                ) : (ackDocs ?? []).length === 0 ? (
+                  <div className="text-center py-10 text-sm text-charcoal-500">No documents yet.</div>
+                ) : (
                 <table className="w-full text-sm">
                   <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Title</th><th className="text-left px-3 py-2">Category</th><th className="text-left px-3 py-2">Version</th><th className="text-left px-3 py-2">Dates</th><th className="text-left px-3 py-2">Completion</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
                   <tbody>
@@ -656,6 +688,7 @@ export function HrDocumentsPage() {
                     })}
                   </tbody>
                 </table>
+                )}
               </div>
             )}
 

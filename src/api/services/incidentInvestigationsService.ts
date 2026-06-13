@@ -20,6 +20,9 @@ export async function upsertIncidentInvestigation(input: {
   actorUserId: UUID;
   patch: Partial<Omit<IncidentInvestigation, 'id' | 'company_id' | 'incident_id' | 'created_by_user_id' | 'created_at' | 'updated_at'>>;
 }): Promise<IncidentInvestigation> {
+  if (!input.incidentId) throw new Error('incidentId is required to upsert an investigation.');
+  if (!input.actorUserId) throw new Error('actorUserId is required to upsert an investigation.');
+
   const { data, error } = await insforge.database
     .from('incident_investigations')
     .upsert(
@@ -53,7 +56,10 @@ export async function listIncidentInvestigationsForIncidents(
   companyId: UUID,
   incidentIds: UUID[]
 ): Promise<IncidentInvestigation[]> {
-  if (incidentIds.length === 0) return [];
+  if (incidentIds.length === 0) {
+    console.warn('[incidents.investigations] listIncidentInvestigationsForIncidents called with empty incidents array');
+    return [];
+  }
   const { data, error } = await insforge.database
     .from('incident_investigations')
     .select('*')

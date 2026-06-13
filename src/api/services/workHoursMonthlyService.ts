@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type { WorkHoursMonthly, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 
@@ -12,28 +13,32 @@ export type ListWorkHoursMonthlyInput = {
 };
 
 export async function listWorkHoursMonthly(input: ListWorkHoursMonthlyInput): Promise<WorkHoursMonthly[]> {
-  let q = insforge.database
-    .from('work_hours_monthly')
-    .select('*')
-    .eq('company_id', input.companyId);
-  if (input.siteId != null) q = q.eq('site_id', input.siteId);
-  if (input.departmentId != null) q = q.eq('department_id', input.departmentId);
-  if (input.projectId != null) q = q.eq('project_id', input.projectId);
-  if (input.year != null) q = q.eq('year', input.year);
-  const { data, error } = await q.order('year', { ascending: false }).order('month', { ascending: false }).limit(input.limit ?? 120);
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as WorkHoursMonthly[];
+  return withInsforgeSession('work-hours:list', async () => {
+    let q = insforge.database
+      .from('work_hours_monthly')
+      .select('*')
+      .eq('company_id', input.companyId);
+    if (input.siteId != null) q = q.eq('site_id', input.siteId);
+    if (input.departmentId != null) q = q.eq('department_id', input.departmentId);
+    if (input.projectId != null) q = q.eq('project_id', input.projectId);
+    if (input.year != null) q = q.eq('year', input.year);
+    const { data, error } = await q.order('year', { ascending: false }).order('month', { ascending: false }).limit(input.limit ?? 120);
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as WorkHoursMonthly[];
+  });
 }
 
 export async function getWorkHoursMonthlyById(companyId: UUID, id: UUID): Promise<WorkHoursMonthly | null> {
-  const { data, error } = await insforge.database
-    .from('work_hours_monthly')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('id', id)
-    .maybeSingle();
-  if (error) throw new Error(getErrorMessage(error));
-  return data as WorkHoursMonthly | null;
+  return withInsforgeSession('work-hours:get-by-id', async () => {
+    const { data, error } = await insforge.database
+      .from('work_hours_monthly')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw new Error(getErrorMessage(error));
+    return data as WorkHoursMonthly | null;
+  });
 }
 
 export async function getWorkHoursMonthlyForMonth(input: {
@@ -44,21 +49,23 @@ export async function getWorkHoursMonthlyForMonth(input: {
   departmentId?: UUID | null;
   projectId?: UUID | null;
 }): Promise<WorkHoursMonthly | null> {
-  let q = insforge.database
-    .from('work_hours_monthly')
-    .select('*')
-    .eq('company_id', input.companyId)
-    .eq('year', input.year)
-    .eq('month', input.month);
-  if (input.siteId != null) q = q.eq('site_id', input.siteId);
-  else q = q.is('site_id', null);
-  if (input.departmentId != null) q = q.eq('department_id', input.departmentId);
-  else q = q.is('department_id', null);
-  if (input.projectId != null) q = q.eq('project_id', input.projectId);
-  else q = q.is('project_id', null);
-  const { data, error } = await q.maybeSingle();
-  if (error) throw new Error(getErrorMessage(error));
-  return data as WorkHoursMonthly | null;
+  return withInsforgeSession('work-hours:get-for-month', async () => {
+    let q = insforge.database
+      .from('work_hours_monthly')
+      .select('*')
+      .eq('company_id', input.companyId)
+      .eq('year', input.year)
+      .eq('month', input.month);
+    if (input.siteId != null) q = q.eq('site_id', input.siteId);
+    else q = q.is('site_id', null);
+    if (input.departmentId != null) q = q.eq('department_id', input.departmentId);
+    else q = q.is('department_id', null);
+    if (input.projectId != null) q = q.eq('project_id', input.projectId);
+    else q = q.is('project_id', null);
+    const { data, error } = await q.maybeSingle();
+    if (error) throw new Error(getErrorMessage(error));
+    return data as WorkHoursMonthly | null;
+  });
 }
 
 export type UpsertWorkHoursMonthlyInput = {
@@ -116,6 +123,7 @@ function computeHours(input: UpsertWorkHoursMonthlyInput): {
 }
 
 export async function upsertWorkHoursMonthly(input: UpsertWorkHoursMonthlyInput): Promise<WorkHoursMonthly> {
+  return withInsforgeSession('work-hours:upsert', async () => {
   const computed = computeHours(input);
   const std = input.standardHoursPerDay ?? 8;
   const days = input.daysWorked ?? 21;
@@ -180,15 +188,18 @@ export async function upsertWorkHoursMonthly(input: UpsertWorkHoursMonthlyInput)
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create work hours monthly');
   return data as WorkHoursMonthly;
+  });
 }
 
 export async function deleteWorkHoursMonthly(companyId: UUID, id: UUID): Promise<void> {
-  const { error } = await insforge.database
-    .from('work_hours_monthly')
-    .delete()
-    .eq('company_id', companyId)
-    .eq('id', id);
-  if (error) throw new Error(getErrorMessage(error));
+  return withInsforgeSession('work-hours:delete', async () => {
+    const { error } = await insforge.database
+      .from('work_hours_monthly')
+      .delete()
+      .eq('company_id', companyId)
+      .eq('id', id);
+    if (error) throw new Error(getErrorMessage(error));
+  });
 }
 
 export function sumTotalHoursForPeriod(rows: WorkHoursMonthly[], periodStart: { year: number; month: number }, periodEnd: { year: number; month: number }): number {

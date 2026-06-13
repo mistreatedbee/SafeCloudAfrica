@@ -13,6 +13,7 @@ import {
 import { listSites } from '../../api/services/sitesService';
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
+import { MANAGEMENT_ROLES } from '../../constants/roles';
 
 const STATUS_BADGE: Record<PermitToWork['status'], { label: string; className: string }> = {
   PENDING: { label: 'Pending', className: 'bg-amber-100 text-amber-700' },
@@ -30,7 +31,7 @@ function StatusBadge({ status }: { status: PermitToWork['status'] }) {
 export function PermitToWorkPage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
-  const canManage = ['owner', 'admin', 'manager', 'supervisor'].includes(activeRole ?? '');
+  const canManage = MANAGEMENT_ROLES.includes(activeRole as typeof MANAGEMENT_ROLES[number]);
 
   const [permitNumber, setPermitNumber] = useState('');
   const [workDescription, setWorkDescription] = useState('');
@@ -45,7 +46,7 @@ export function PermitToWorkPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const { data: permits, refetch } = useAsync(async () => {
+  const { data: permits, loading: permitsLoading, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listPermitsToWork(activeCompanyId);
   }, [activeCompanyId]);
@@ -57,6 +58,10 @@ export function PermitToWorkPage() {
 
   const activeSites = (sites ?? []).filter((s) => s.is_active);
   const siteLabel = new Map((sites ?? []).map((s) => [String(s.id), s.name]));
+
+  function generatePermitNumber(): string {
+    return `PTW-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+  }
 
   function beginEdit(p: PermitToWork) {
     setEditingId(p.id as UUID);
@@ -90,18 +95,27 @@ export function PermitToWorkPage() {
       setError('Work description is required.');
       return;
     }
+
+    // Date validation: validFrom must be <= validTo when both are set
+    if (validFrom && validTo && validFrom > validTo) {
+      setError('"Valid from" date must not be after "Valid to" date.');
+      return;
+    }
+
     setSaving(true);
     setError(null);
     setSuccess(null);
     const hazards = hazardsRaw.split(',').map((s) => s.trim()).filter(Boolean);
     const precautions = precautionsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    // Auto-generate permit number if blank
+    const resolvedPermitNumber = permitNumber.trim() || generatePermitNumber();
     try {
       if (editingId) {
         await updatePermitToWork({
           companyId: activeCompanyId,
           permitId: editingId,
           patch: {
-            permit_number: permitNumber.trim() || null,
+            permit_number: resolvedPermitNumber,
             work_description: workDescription.trim(),
             location: location.trim() || null,
             site_id: (siteId || null) as UUID | null,
@@ -116,7 +130,7 @@ export function PermitToWorkPage() {
       } else {
         await createPermitToWork({
           companyId: activeCompanyId,
-          permitNumber: permitNumber.trim() || null,
+          permitNumber: resolvedPermitNumber,
           workDescription: workDescription.trim(),
           location: location.trim() || null,
           siteId: (siteId || null) as UUID | null,
@@ -140,6 +154,11 @@ export function PermitToWorkPage() {
 
   async function onApprove(p: PermitToWork) {
     if (!activeCompanyId || !user?.id) return;
+    // State machine guard: must be PENDING to approve
+    if (p.status !== 'PENDING') {
+      setError(`Cannot approve a permit with status "${p.status}". Only PENDING permits can be approved.`);
+      return;
+    }
     setError(null);
     setSuccess(null);
     try {
@@ -158,6 +177,11 @@ export function PermitToWorkPage() {
 
   async function onClose(p: PermitToWork) {
     if (!activeCompanyId || !user?.id) return;
+    // State machine guard: must be APPROVED or ACTIVE to close
+    if (p.status !== 'APPROVED' && p.status !== 'ACTIVE') {
+      setError(`Cannot close a permit with status "${p.status}". Only APPROVED or ACTIVE permits can be closed.`);
+      return;
+    }
     setError(null);
     setSuccess(null);
     try {
@@ -171,6 +195,25 @@ export function PermitToWorkPage() {
       await refetch();
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to close permit.'));
+    }
+  }
+
+  async function onCancel(p: PermitToWork) {
+    if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm(`Cancel permit "${p.permit_number ?? p.work_description}"? This cannot be undone.`)) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      await updatePermitToWork({
+        companyId: activeCompanyId,
+        permitId: p.id as UUID,
+        patch: { status: 'CANCELLED' },
+        actorUserId: user.id as UUID
+      });
+      setSuccess('Permit cancelled.');
+      await refetch();
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to cancel permit.'));
     }
   }
 
@@ -189,6 +232,8 @@ export function PermitToWorkPage() {
     }
   }
 
+  const TERMINAL_STATUSES: Array<PermitToWork['status']> = ['CLOSED', 'CANCELLED'];
+
   return (
     <Layout title="Permit to Work">
       <div className="space-y-4">
@@ -200,8 +245,8 @@ export function PermitToWorkPage() {
             <h3 className="font-semibold">{editingId ? 'Edit permit' : 'New permit to work'}</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <label className="text-sm">
-                <span className="block text-xs text-charcoal-500 mb-1">Permit number</span>
-                <input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={permitNumber} onChange={(e) => setPermitNumber(e.target.value)} placeholder="e.g. PTW-2026-001" />
+                <span className="block text-xs text-charcoal-500 mb-1">Permit number (auto-generated if blank)</span>
+                <input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={permitNumber} onChange={(e) => setPermitNumber(e.target.value)} placeholder="e.g. PTW-20260614-1234" />
               </label>
               <label className="text-sm">
                 <span className="block text-xs text-charcoal-500 mb-1">Site (optional)</span>
@@ -246,53 +291,67 @@ export function PermitToWorkPage() {
           </div>
         )}
 
-        <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
-          <div className="px-4 py-3 border-b border-surface-200">
-            <h3 className="font-semibold">Permits to work ({(permits ?? []).length})</h3>
+        {/* Loading indicator while permits fetch */}
+        {permitsLoading && (
+          <div className="bg-white border border-surface-300 rounded-xl p-6 text-center text-sm text-charcoal-500">
+            Loading permits…
           </div>
-          <table className="w-full text-sm">
-            <thead className="bg-surface-100">
-              <tr>
-                <th className="text-left px-4 py-2">Permit #</th>
-                <th className="text-left px-4 py-2">Work description</th>
-                <th className="text-left px-4 py-2">Location</th>
-                <th className="text-left px-4 py-2">Valid from</th>
-                <th className="text-left px-4 py-2">Valid to</th>
-                <th className="text-left px-4 py-2">Status</th>
-                {canManage && <th className="text-left px-4 py-2">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {(permits ?? []).length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-4 text-charcoal-500 text-center">No permits to work recorded yet.</td></tr>
-              )}
-              {(permits ?? []).map((p) => (
-                <tr key={p.id} className="border-t border-surface-100">
-                  <td className="px-4 py-2 text-charcoal-500">{p.permit_number ?? '-'}</td>
-                  <td className="px-4 py-2 font-medium max-w-xs truncate">{p.work_description}</td>
-                  <td className="px-4 py-2 text-charcoal-500">{p.location ?? (p.site_id ? (siteLabel.get(String(p.site_id)) ?? '-') : '-')}</td>
-                  <td className="px-4 py-2 text-charcoal-500">{p.valid_from ? p.valid_from.slice(0, 10) : '-'}</td>
-                  <td className="px-4 py-2 text-charcoal-500">{p.valid_to ? p.valid_to.slice(0, 10) : '-'}</td>
-                  <td className="px-4 py-2"><StatusBadge status={p.status} /></td>
-                  {canManage && (
-                    <td className="px-4 py-2">
-                      <div className="flex gap-3 flex-wrap">
-                        <button className="text-teal hover:underline" onClick={() => beginEdit(p)}>Edit</button>
-                        {p.status === 'PENDING' && (
-                          <button className="text-blue-600 hover:underline" onClick={() => void onApprove(p)}>Approve</button>
-                        )}
-                        {(p.status === 'APPROVED' || p.status === 'ACTIVE') && (
-                          <button className="text-charcoal-600 hover:underline" onClick={() => void onClose(p)}>Close</button>
-                        )}
-                        <button className="text-critical hover:underline" onClick={() => void onDelete(p)}>Delete</button>
-                      </div>
-                    </td>
-                  )}
+        )}
+
+        {!permitsLoading && (
+          <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+            <div className="px-4 py-3 border-b border-surface-200">
+              <h3 className="font-semibold">Permits to work ({(permits ?? []).length})</h3>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-surface-100">
+                <tr>
+                  <th className="text-left px-4 py-2">Permit #</th>
+                  <th className="text-left px-4 py-2">Work description</th>
+                  <th className="text-left px-4 py-2">Location</th>
+                  <th className="text-left px-4 py-2">Valid from</th>
+                  <th className="text-left px-4 py-2">Valid to</th>
+                  <th className="text-left px-4 py-2">Status</th>
+                  {canManage && <th className="text-left px-4 py-2">Actions</th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {(permits ?? []).length === 0 && (
+                  <tr><td colSpan={7} className="px-4 py-6 text-charcoal-500 text-center">No permits to work. Create your first permit.</td></tr>
+                )}
+                {(permits ?? []).map((p) => (
+                  <tr key={p.id} className="border-t border-surface-100">
+                    <td className="px-4 py-2 text-charcoal-500">{p.permit_number ?? '-'}</td>
+                    <td className="px-4 py-2 font-medium max-w-xs truncate">{p.work_description}</td>
+                    <td className="px-4 py-2 text-charcoal-500">{p.location ?? (p.site_id ? (siteLabel.get(String(p.site_id)) ?? '-') : '-')}</td>
+                    <td className="px-4 py-2 text-charcoal-500">{p.valid_from ? p.valid_from.slice(0, 10) : '-'}</td>
+                    <td className="px-4 py-2 text-charcoal-500">{p.valid_to ? p.valid_to.slice(0, 10) : '-'}</td>
+                    <td className="px-4 py-2"><StatusBadge status={p.status} /></td>
+                    {canManage && (
+                      <td className="px-4 py-2">
+                        <div className="flex gap-3 flex-wrap">
+                          {!TERMINAL_STATUSES.includes(p.status) && (
+                            <button className="text-teal hover:underline" onClick={() => beginEdit(p)}>Edit</button>
+                          )}
+                          {p.status === 'PENDING' && (
+                            <button className="text-blue-600 hover:underline" onClick={() => void onApprove(p)}>Approve</button>
+                          )}
+                          {(p.status === 'APPROVED' || p.status === 'ACTIVE') && (
+                            <button className="text-charcoal-600 hover:underline" onClick={() => void onClose(p)}>Close</button>
+                          )}
+                          {!TERMINAL_STATUSES.includes(p.status) && (
+                            <button className="text-amber-600 hover:underline" onClick={() => void onCancel(p)}>Cancel</button>
+                          )}
+                          <button className="text-critical hover:underline" onClick={() => void onDelete(p)}>Delete</button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </Layout>
   );

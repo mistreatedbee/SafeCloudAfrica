@@ -288,7 +288,7 @@ export async function searchHrEmployees(
   }
 ): Promise<HrEmployee[]> {
   return withHrSession('employees:search', async () => {
-  const qText = input?.query?.trim() ?? '';
+  const qText = (input?.query ?? '').trim().slice(0, 200);
   let q = insforge.database
     .from('hr_employees')
     .select('*')
@@ -437,7 +437,7 @@ export async function replaceHrEmployeeDependents(input: {
   const { data, error } = await insforge.database.rpc('hr_replace_employee_dependents', {
     p_company_id: input.companyId,
     p_employee_id: input.employeeId,
-    p_dependents: payload as any
+    p_dependents: payload as unknown
   });
   if (error) throw new Error(getErrorMessage(error));
   await createActivityLog({
@@ -1380,12 +1380,11 @@ export async function listHrPersonalDocuments(input: {
       .eq('company_id', input.companyId)
       .eq('supervisor_user_id', input.actorUserId);
     if (teamError) throw new Error(getErrorMessage(teamError));
-    const teamIds = (team ?? []).map((x: any) => x.id as UUID);
+    const teamIds = (team ?? []).map((x: { id: string }) => x.id as UUID);
     if (teamIds.length === 0) return [];
     q = q.in('employee_id', teamIds);
-  } else if (role === 'owner') {
-    return [];
   }
+  // owner/admin/manager: full access — fall through without additional filter
 
   const { data, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
@@ -1435,7 +1434,7 @@ export async function createHrPersonalDocument(input: {
     actorUserId: input.uploadedByUserId,
     action: 'hr.personal_document.create',
     entityType: 'hr_employee_document',
-    entityId: (data as any).id as UUID
+    entityId: (data as { id: string }).id as UUID
   });
   return data as HrPersonalDocumentRow;
   });
@@ -1554,7 +1553,8 @@ export async function createHrAcknowledgementDocument(input: {
   const assignedRoleSet = new Set((input.assignedRoles ?? []).map((r) => r.toLowerCase()));
   const assignedDeptSet = new Set((input.assignedDepartmentIds ?? []).map((x) => String(x)));
 
-  let eligible = (employees ?? []) as any[];
+  type EligibleEmployee = { id: string; user_id: string | null; department_id: string | null };
+  let eligible = (employees ?? []) as EligibleEmployee[];
   if (!input.assignedAll && (assignedDeptSet.size > 0 || assignedRoleSet.size > 0)) {
     let membershipMap = new Map<string, string>();
     if (assignedRoleSet.size > 0) {
@@ -1565,7 +1565,7 @@ export async function createHrAcknowledgementDocument(input: {
           .select('user_id, role')
           .eq('company_id', input.companyId)
           .in('user_id', userIds);
-        for (const m of memberships ?? []) membershipMap.set(String((m as any).user_id), String((m as any).role).toLowerCase());
+        for (const m of (memberships ?? []) as Array<{ user_id: string; role: string }>) membershipMap.set(String(m.user_id), String(m.role).toLowerCase());
       }
     }
     eligible = eligible.filter((e) => {
@@ -1578,7 +1578,7 @@ export async function createHrAcknowledgementDocument(input: {
 
   const rows = eligible.map((e) => ({
     company_id: input.companyId,
-    ack_document_id: (data as any).id as UUID,
+    ack_document_id: (data as { id: string }).id as UUID,
     employee_id: e.id as UUID,
     employee_user_id: (e.user_id as UUID | null) ?? null,
     status: 'PENDING'
@@ -1592,7 +1592,7 @@ export async function createHrAcknowledgementDocument(input: {
     actorUserId: input.actorUserId,
     action: 'hr.ack_document.create',
     entityType: 'hr_ack_document',
-    entityId: (data as any).id as UUID
+    entityId: (data as { id: string }).id as UUID
   });
   return data as HrAckDocumentRow;
   });
@@ -1686,7 +1686,7 @@ export async function submitHrAcknowledgement(input: {
     actorUserId: input.actorUserId,
     action: input.action === 'sign' ? 'hr.ack_document.sign' : 'hr.ack_document.acknowledge',
     entityType: 'hr_ack_receipt',
-    entityId: (data as any).id as UUID
+    entityId: (data as { id: string }).id as UUID
   });
   return data as HrAckReceiptRow;
   });

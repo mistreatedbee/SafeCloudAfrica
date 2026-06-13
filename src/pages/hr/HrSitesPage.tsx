@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
+import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listSites, createSite, updateSite, deleteSite } from '../../api/services/sitesService';
@@ -21,7 +22,7 @@ export function HrSitesPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const { data: sites, refetch } = useAsync(async () => {
+  const { data: sites, loading: sitesLoading, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listSites(activeCompanyId);
   }, [activeCompanyId]);
@@ -134,6 +135,9 @@ export function HrSitesPage() {
           <div className="px-4 py-3 border-b border-surface-200">
             <h3 className="font-semibold">Active sites ({active.length})</h3>
           </div>
+          {sitesLoading ? (
+            <div className="flex justify-center py-10"><LoadingSpinner /></div>
+          ) : (
           <table className="w-full text-sm">
             <thead className="bg-surface-100">
               <tr>
@@ -163,6 +167,7 @@ export function HrSitesPage() {
               ))}
             </tbody>
           </table>
+          )}
         </div>
 
         {archived.length > 0 && (

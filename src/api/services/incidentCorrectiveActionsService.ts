@@ -31,9 +31,23 @@ export type UpdateIncidentCorrectiveActionInput = {
   ncrId?: UUID | null;
 };
 
+const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
+  Open: ['InProgress', 'Cancelled'],
+  InProgress: ['UnderReview', 'Cancelled'],
+  UnderReview: ['Closed', 'InProgress']
+};
+
 export async function createIncidentCorrectiveAction(
   input: CreateIncidentCorrectiveActionInput
 ): Promise<IncidentCorrectiveAction> {
+  if (input.dueDate) {
+    const due = new Date(input.dueDate);
+    due.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (due < today) throw new Error('Due date must be today or in the future.');
+  }
+
   const { data, error } = await insforge.database
     .from('incident_corrective_actions')
     .insert({
@@ -69,7 +83,7 @@ export async function createIncidentCorrectiveAction(
 
   const { syncIncidentClosureFromLinks } = await import('./incidentsService');
   await syncIncidentClosureFromLinks((data as any).incident_id as UUID).catch((syncError) => {
-    void syncError;
+    console.warn('[incidents.correctiveAction] sync error', syncError);
   });
 
   return data as IncidentCorrectiveAction;
@@ -80,6 +94,25 @@ export async function updateIncidentCorrectiveAction(
   actionId: UUID,
   patch: UpdateIncidentCorrectiveActionInput
 ): Promise<IncidentCorrectiveAction> {
+  if (patch.dueDate) {
+    const due = new Date(patch.dueDate);
+    due.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (due < today) throw new Error('Due date must be today or in the future.');
+  }
+
+  if (patch.status !== undefined) {
+    const current = await getIncidentCorrectiveAction(companyId, actionId);
+    if (current) {
+      const currentStatus = (current as any).status as string;
+      const allowed = VALID_STATUS_TRANSITIONS[currentStatus] ?? [];
+      if (!allowed.includes(patch.status)) {
+        throw new Error(`Invalid status transition from '${currentStatus}' to '${patch.status}'.`);
+      }
+    }
+  }
+
   const updateData: any = {};
 
   if (patch.actionTitle !== undefined) updateData.action_title = patch.actionTitle;
@@ -124,7 +157,7 @@ export async function updateIncidentCorrectiveAction(
 
   const { syncIncidentClosureFromLinks } = await import('./incidentsService');
   await syncIncidentClosureFromLinks((data as any).incident_id as UUID).catch((syncError) => {
-    void syncError;
+    console.warn('[incidents.correctiveAction] sync error', syncError);
   });
 
   return data as IncidentCorrectiveAction;
@@ -167,7 +200,7 @@ export async function deleteIncidentCorrectiveAction(companyId: UUID, actionId: 
   if (existing?.incident_id) {
     const { syncIncidentClosureFromLinks } = await import('./incidentsService');
     await syncIncidentClosureFromLinks(existing.incident_id).catch((syncError) => {
-      void syncError;
+      console.warn('[incidents.correctiveAction] sync error', syncError);
     });
   }
 }

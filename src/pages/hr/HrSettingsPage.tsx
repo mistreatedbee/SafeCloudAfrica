@@ -27,6 +27,7 @@ export function HrSettingsPage() {
   const [workingDays, setWorkingDays] = useState<string[]>(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const { data, refetch } = useAsync(async () => {
     if (!activeCompanyId) return null;
@@ -48,9 +49,10 @@ export function HrSettingsPage() {
     setError(null);
     setSuccess(null);
     if (workingDays.length === 0) {
-      setError('Select at least one working day.');
+      setError('Select at least one working day before saving.');
       return;
     }
+    setSaving(true);
     try {
       await upsertHrSettings({
         company_id: activeCompanyId,
@@ -64,6 +66,8 @@ export function HrSettingsPage() {
       setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to save HR settings right now. Please try again.'));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -118,7 +122,16 @@ export function HrSettingsPage() {
             </div>
           </div>
 
-          <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-50" disabled={!canEdit} onClick={onSave}>Save settings</button>
+          <button
+            className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-50"
+            disabled={!canEdit || saving || workingDays.length === 0}
+            onClick={onSave}
+          >
+            {saving ? 'Saving...' : 'Save settings'}
+          </button>
+          {workingDays.length === 0 && (
+            <p className="text-xs text-critical mt-1">At least one working day must be selected.</p>
+          )}
         </div>
       </div>
     </Layout>

@@ -233,6 +233,14 @@ export function IncidentAnalyticsPage() {
             <p className="text-sm mt-1">{loadError.message}</p>
           </div>
         )}
+
+        {loading && (
+          <div className="bg-white rounded-xl border border-surface-300 p-8 shadow-card flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-teal border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-charcoal-500">Loading analytics data…</p>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
           <div>
@@ -353,6 +361,9 @@ export function IncidentAnalyticsPage() {
         {/* Monthly Trend Chart */}
         <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
           <h3 className="font-semibold text-charcoal mb-4">Monthly Trend (Detailed)</h3>
+          {monthlyTrends.length === 0 ? (
+            <div className="h-60 flex items-center justify-center text-charcoal-400 text-sm bg-surface-50 rounded-lg border border-surface-200">No data for this period</div>
+          ) : (
           <div className="space-y-2">
             {monthlyTrends.map(trend => {
               const maxCount = Math.max(...monthlyTrends.map(t => t.count), 1);
@@ -380,6 +391,7 @@ export function IncidentAnalyticsPage() {
               );
             })}
           </div>
+          )}
         </div>
 
         {/* Breakdowns */}
@@ -387,6 +399,9 @@ export function IncidentAnalyticsPage() {
           {/* Category Breakdown */}
           <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
             <h3 className="font-semibold text-charcoal mb-4">By Category</h3>
+            {categoryBreakdown.length === 0 ? (
+              <div className="h-60 flex items-center justify-center text-charcoal-400 text-sm bg-surface-50 rounded-lg border border-surface-200">No data for this period</div>
+            ) : (
             <div className="space-y-2">
               {categoryBreakdown.map(([category, count]) => {
                 const percentage = (count / filteredIncidents.length) * 100;
@@ -406,15 +421,19 @@ export function IncidentAnalyticsPage() {
                 );
               })}
             </div>
+            )}
           </div>
 
           {/* Risk Level Breakdown */}
           <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
             <h3 className="font-semibold text-charcoal mb-4">By Risk Level</h3>
+            {riskLevelBreakdown.length === 0 ? (
+              <div className="h-60 flex items-center justify-center text-charcoal-400 text-sm bg-surface-50 rounded-lg border border-surface-200">No data for this period</div>
+            ) : (
             <div className="space-y-3">
               {riskLevelBreakdown.map(([level, count]) => {
                 const percentage = (count / filteredIncidents.length) * 100;
-                const color = 
+                const color =
                   level === 'critical' ? 'bg-critical' :
                   level === 'high' ? 'bg-warning' :
                   level === 'medium' ? 'bg-teal' :
@@ -436,11 +455,15 @@ export function IncidentAnalyticsPage() {
                 );
               })}
             </div>
+            )}
           </div>
 
           {/* Department/Site Breakdown */}
           <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
             <h3 className="font-semibold text-charcoal mb-4">By Department/Site</h3>
+            {departmentBreakdown.length === 0 ? (
+              <div className="h-60 flex items-center justify-center text-charcoal-400 text-sm bg-surface-50 rounded-lg border border-surface-200">No data for this period</div>
+            ) : (
             <div className="space-y-2">
               {departmentBreakdown.map(([dept, count]) => {
                 const percentage = (count / filteredIncidents.length) * 100;
@@ -460,6 +483,7 @@ export function IncidentAnalyticsPage() {
                 );
               })}
             </div>
+            )}
           </div>
         </div>
       </motion.div>

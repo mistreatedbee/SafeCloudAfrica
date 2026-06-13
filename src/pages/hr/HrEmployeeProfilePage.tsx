@@ -35,6 +35,7 @@ export function HrEmployeeProfilePage() {
   const [showEdit, setShowEdit] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [docRefreshKey, setDocRefreshKey] = useState(0);
   const [docType, setDocType] = useState<string>('ID Copy');
   const [docTitle, setDocTitle] = useState('');
@@ -56,7 +57,13 @@ export function HrEmployeeProfilePage() {
 
   const { data: payload } = useAsync(async () => {
     if (!activeCompanyId || !id) return null;
-    return getEmployeeIntegratedProfile(activeCompanyId, id as UUID);
+    try {
+      setProfileError(null);
+      return await getEmployeeIntegratedProfile(activeCompanyId, id as UUID);
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : 'Failed to load employee profile. Please try again.');
+      return null;
+    }
   }, [activeCompanyId, id, refreshKey]);
 
   const { data: employeeDocs } = useAsync(async () => {
@@ -104,6 +111,15 @@ export function HrEmployeeProfilePage() {
   const onUploadDocument = async (file: File) => {
     if (!activeCompanyId || !user?.id || !id) return;
     setUploadError(null);
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type) && !file.name.match(/\.(pdf|jpg|jpeg|png|webp|gif)$/i)) {
+      setUploadError('Only PDF or image files (JPG, PNG) are allowed.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('File size must be 5 MB or less.');
+      return;
+    }
     setUploading(true);
     try {
       const key = `hr/employees/${id}/${Date.now()}-${file.name}`;
@@ -136,6 +152,11 @@ export function HrEmployeeProfilePage() {
         {successMessage && (
           <div className="bg-teal-50 border border-teal-200 text-sm text-teal-900 rounded-xl px-3 py-2">
             {successMessage}
+          </div>
+        )}
+        {profileError && (
+          <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">
+            {profileError}
           </div>
         )}
         <div className="bg-white border border-surface-300 rounded-xl p-4">

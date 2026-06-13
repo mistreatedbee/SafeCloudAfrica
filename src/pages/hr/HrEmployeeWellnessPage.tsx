@@ -3,6 +3,8 @@ import { useUser } from '@insforge/react';
 import { Link, useLocation } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
+import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
@@ -141,7 +143,7 @@ export function HrEmployeeWellnessPage() {
     [employees, selectedEmployeeUserId, selectedEmployeeId]
   );
 
-  const { data: assessments, refetch: refetchAssessments } = useAsync<HrEmployeeWellnessAssessment[]>(
+  const { data: assessments, loading: assessmentsLoading, refetch: refetchAssessments } = useAsync<HrEmployeeWellnessAssessment[]>(
     async () => {
       if (!activeCompanyId) return [];
       return listEmployeeWellnessAssessments({ companyId: activeCompanyId, employeeId: selectedEmployee?.id as UUID | undefined });
@@ -437,7 +439,7 @@ export function HrEmployeeWellnessPage() {
         }))
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load wellness assessment.');
+      setError(toUserFacingError(err, 'Failed to load wellness assessment.'));
     }
   };
 
@@ -524,7 +526,7 @@ export function HrEmployeeWellnessPage() {
       }
       setWellnessDraftBaseline(draftPayload);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save wellness assessment.');
+      setError(toUserFacingError(err, 'Failed to save wellness assessment.'));
     } finally {
       setSaving(false);
     }
@@ -544,7 +546,7 @@ export function HrEmployeeWellnessPage() {
       if (selectedAssessmentId === assessmentId) resetForm();
       await refetchAssessments();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete wellness assessment.');
+      setError(toUserFacingError(err, 'Failed to delete wellness assessment.'));
     } finally {
       setDeletingAssessmentId(null);
     }
@@ -1057,6 +1059,9 @@ export function HrEmployeeWellnessPage() {
         <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
           <h3 className="font-semibold text-charcoal">Previous wellness assessments</h3>
           <div className="overflow-auto">
+            {assessmentsLoading ? (
+              <div className="flex justify-center py-10"><LoadingSpinner /></div>
+            ) : (
             <table className="w-full text-sm">
               <thead className="bg-surface-100">
                 <tr>
@@ -1113,6 +1118,7 @@ export function HrEmployeeWellnessPage() {
                 )}
               </tbody>
             </table>
+            )}
           </div>
         </div>
       </div>

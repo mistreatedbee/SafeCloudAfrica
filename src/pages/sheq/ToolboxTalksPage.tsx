@@ -13,6 +13,7 @@ import {
 import { listSites } from '../../api/services/sitesService';
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
+import { MANAGEMENT_ROLES } from '../../constants/roles';
 
 function StatusBadge({ status }: { status: string }) {
   return status === 'COMPLETE' ? (
@@ -25,7 +26,7 @@ function StatusBadge({ status }: { status: string }) {
 export function ToolboxTalksPage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
-  const canManage = ['owner', 'admin', 'manager', 'supervisor'].includes(activeRole ?? '');
+  const canManage = MANAGEMENT_ROLES.includes(activeRole as typeof MANAGEMENT_ROLES[number]);
 
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState('');
@@ -38,7 +39,7 @@ export function ToolboxTalksPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const { data: talks, refetch } = useAsync(async () => {
+  const { data: talks, loading: talksLoading, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listToolboxTalks(activeCompanyId);
   }, [activeCompanyId]);
@@ -99,6 +100,7 @@ export function ToolboxTalksPage() {
         });
         setSuccess('Toolbox talk updated.');
       } else {
+        // On create: conductedByUserId defaults to user.id in service layer
         await createToolboxTalk({
           companyId: activeCompanyId,
           title: title.trim(),
@@ -122,6 +124,11 @@ export function ToolboxTalksPage() {
 
   async function onMarkComplete(t: ToolboxTalk) {
     if (!activeCompanyId || !user?.id) return;
+    // Validate at least 1 attendee before marking complete
+    if (!Array.isArray(t.attendees) || t.attendees.length === 0) {
+      setError('At least one attendee must be recorded before marking complete.');
+      return;
+    }
     setError(null);
     setSuccess(null);
     try {
@@ -202,50 +209,59 @@ export function ToolboxTalksPage() {
           </div>
         )}
 
-        <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
-          <div className="px-4 py-3 border-b border-surface-200">
-            <h3 className="font-semibold">Toolbox talks ({(talks ?? []).length})</h3>
+        {/* Loading indicator while talks fetch */}
+        {talksLoading && (
+          <div className="bg-white border border-surface-300 rounded-xl p-6 text-center text-sm text-charcoal-500">
+            Loading toolbox talks…
           </div>
-          <table className="w-full text-sm">
-            <thead className="bg-surface-100">
-              <tr>
-                <th className="text-left px-4 py-2">Title</th>
-                <th className="text-left px-4 py-2">Topic</th>
-                <th className="text-left px-4 py-2">Site</th>
-                <th className="text-left px-4 py-2">Date</th>
-                <th className="text-left px-4 py-2">Attendees</th>
-                <th className="text-left px-4 py-2">Status</th>
-                {canManage && <th className="text-left px-4 py-2">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {(talks ?? []).length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-4 text-charcoal-500 text-center">No toolbox talks recorded yet.</td></tr>
-              )}
-              {(talks ?? []).map((t) => (
-                <tr key={t.id} className="border-t border-surface-100">
-                  <td className="px-4 py-2 font-medium">{t.title}</td>
-                  <td className="px-4 py-2 text-charcoal-500">{t.topic ?? '-'}</td>
-                  <td className="px-4 py-2 text-charcoal-500">{t.site_id ? (siteLabel.get(String(t.site_id)) ?? '-') : '-'}</td>
-                  <td className="px-4 py-2 text-charcoal-500">{t.conducted_at.slice(0, 10)}</td>
-                  <td className="px-4 py-2 text-charcoal-500">{Array.isArray(t.attendees) ? t.attendees.length : 0}</td>
-                  <td className="px-4 py-2"><StatusBadge status={t.status} /></td>
-                  {canManage && (
-                    <td className="px-4 py-2">
-                      <div className="flex gap-3">
-                        <button className="text-teal hover:underline" onClick={() => beginEdit(t)}>Edit</button>
-                        {t.status === 'DRAFT' && (
-                          <button className="text-emerald-600 hover:underline" onClick={() => void onMarkComplete(t)}>Complete</button>
-                        )}
-                        <button className="text-critical hover:underline" onClick={() => void onDelete(t)}>Delete</button>
-                      </div>
-                    </td>
-                  )}
+        )}
+
+        {!talksLoading && (
+          <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+            <div className="px-4 py-3 border-b border-surface-200">
+              <h3 className="font-semibold">Toolbox talks ({(talks ?? []).length})</h3>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-surface-100">
+                <tr>
+                  <th className="text-left px-4 py-2">Title</th>
+                  <th className="text-left px-4 py-2">Topic</th>
+                  <th className="text-left px-4 py-2">Site</th>
+                  <th className="text-left px-4 py-2">Date</th>
+                  <th className="text-left px-4 py-2">Attendees</th>
+                  <th className="text-left px-4 py-2">Status</th>
+                  {canManage && <th className="text-left px-4 py-2">Actions</th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {(talks ?? []).length === 0 && (
+                  <tr><td colSpan={7} className="px-4 py-6 text-charcoal-500 text-center">No toolbox talks yet. Schedule your first talk.</td></tr>
+                )}
+                {(talks ?? []).map((t) => (
+                  <tr key={t.id} className="border-t border-surface-100">
+                    <td className="px-4 py-2 font-medium">{t.title}</td>
+                    <td className="px-4 py-2 text-charcoal-500">{t.topic ?? '-'}</td>
+                    <td className="px-4 py-2 text-charcoal-500">{t.site_id ? (siteLabel.get(String(t.site_id)) ?? '-') : '-'}</td>
+                    <td className="px-4 py-2 text-charcoal-500">{t.conducted_at.slice(0, 10)}</td>
+                    <td className="px-4 py-2 text-charcoal-500">{Array.isArray(t.attendees) ? t.attendees.length : 0}</td>
+                    <td className="px-4 py-2"><StatusBadge status={t.status} /></td>
+                    {canManage && (
+                      <td className="px-4 py-2">
+                        <div className="flex gap-3">
+                          <button className="text-teal hover:underline" onClick={() => beginEdit(t)}>Edit</button>
+                          {t.status === 'DRAFT' && (
+                            <button className="text-emerald-600 hover:underline" onClick={() => void onMarkComplete(t)}>Complete</button>
+                          )}
+                          <button className="text-critical hover:underline" onClick={() => void onDelete(t)}>Delete</button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </Layout>
   );

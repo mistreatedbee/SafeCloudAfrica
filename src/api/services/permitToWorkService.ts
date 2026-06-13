@@ -80,6 +80,11 @@ export async function createPermitToWork(input: {
   });
 }
 
+// Valid permit status transitions:
+//   PENDING   → APPROVED  (manager/admin approves)
+//   APPROVED  → ACTIVE    (work commences)
+//   ACTIVE    → CLOSED    (work completed)
+//   any       → CANCELLED (permit cancelled before completion)
 export async function updatePermitToWork(input: {
   companyId: UUID;
   permitId: UUID;

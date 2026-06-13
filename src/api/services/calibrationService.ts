@@ -653,7 +653,7 @@ export async function runCalibrationReminderSweep(companyId: UUID): Promise<{
     const dueInDays = daysUntil(row.next_calibration_date);
     const dueRecipientIds = [...adminIds, ...(row.responsible_user_id ? [row.responsible_user_id] : [])];
 
-    if ([30, 7, 0].includes(dueInDays)) {
+    if ((OVERDUE_REMINDER_DAYS as readonly number[]).includes(dueInDays)) {
       const reminderKey = `DUE_${dueInDays}_${row.next_calibration_date}`;
       const shouldSend = await markReminderAsSent({
         companyId,
@@ -730,7 +730,15 @@ export async function runCalibrationReminderSweep(companyId: UUID): Promise<{
   };
 }
 
-const CALIBRATION_EVIDENCE_BUCKET = 'sca-evidence';
+const EVIDENCE_BUCKET: string =
+  typeof import.meta !== 'undefined' && (import.meta as Record<string, unknown>).env
+    ? ((import.meta as { env: Record<string, string> }).env.VITE_EVIDENCE_BUCKET ?? 'sca-evidence')
+    : 'sca-evidence';
+
+/** @deprecated use EVIDENCE_BUCKET */
+const CALIBRATION_EVIDENCE_BUCKET = EVIDENCE_BUCKET;
+
+const OVERDUE_REMINDER_DAYS = [30, 7, 0] as const;
 
 export async function uploadCalibrationAttachments(input: {
   companyId: UUID;

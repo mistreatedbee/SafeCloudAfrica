@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
+import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listDepartments, createDepartment, updateDepartment, deleteDepartment } from '../../api/services/departmentsService';
@@ -23,7 +24,7 @@ export function HrDepartmentsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const { data: departments, refetch } = useAsync(async () => {
+  const { data: departments, loading: departmentsLoading, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return listDepartments(activeCompanyId);
   }, [activeCompanyId]);
@@ -81,8 +82,8 @@ export function HrDepartmentsPage() {
         });
         setSuccess('Department created.');
       }
-      resetForm();
       await refetch();
+      resetForm();
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to save department right now. Please try again.'));
     } finally {
@@ -176,6 +177,9 @@ export function HrDepartmentsPage() {
           <div className="px-4 py-3 border-b border-surface-200">
             <h3 className="font-semibold">Active departments ({active.length})</h3>
           </div>
+          {departmentsLoading ? (
+            <div className="flex justify-center py-10"><LoadingSpinner /></div>
+          ) : (
           <table className="w-full text-sm">
             <thead className="bg-surface-100">
               <tr>
@@ -186,7 +190,7 @@ export function HrDepartmentsPage() {
             </thead>
             <tbody>
               {active.length === 0 && (
-                <tr><td colSpan={3} className="px-4 py-4 text-charcoal-500 text-center">No active departments. Add one above.</td></tr>
+                <tr><td colSpan={3} className="px-4 py-4 text-charcoal-500 text-center">No departments yet. Create your first department.</td></tr>
               )}
               {active.map((dept) => (
                 <tr key={dept.id} className="border-t border-surface-100">
@@ -205,6 +209,7 @@ export function HrDepartmentsPage() {
               ))}
             </tbody>
           </table>
+          )}
         </div>
 
         {archived.length > 0 && (

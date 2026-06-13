@@ -45,6 +45,7 @@ export function HrEmployeesPage() {
   const [csvInput, setCsvInput] = useState('employee_no,first_name,last_name,email,employment_type,start_date\n');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const { data: employees, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
@@ -195,7 +196,7 @@ export function HrEmployeesPage() {
         id_number: ''
       });
       setParams({ tab: 'directory' });
-    } catch (err: any) {
+    } catch (err) {
       setError(toUserFacingError(err, 'Unable to save employee right now. Please try again.'));
     }
   };
@@ -204,30 +205,55 @@ export function HrEmployeesPage() {
     if (!activeCompanyId || !user?.id) return;
     setError(null);
     setSuccess(null);
+    setImporting(true);
+    const rowErrors: string[] = [];
+    const existingEmployeeNos = new Set((employees ?? []).map((e) => e.employee_no.trim().toLowerCase()));
     try {
       const lines = csvInput.trim().split(/\r?\n/);
-      if (lines.length <= 1) return;
+      if (lines.length <= 1) { setImporting(false); return; }
       const header = lines[0].split(',').map((x) => x.trim());
       const idx = (name: string) => header.findIndex((h) => h === name);
-      for (const line of lines.slice(1)) {
+      let imported = 0;
+      for (let i = 0; i < lines.slice(1).length; i++) {
+        const line = lines.slice(1)[i];
         const parts = line.split(',').map((x) => x.trim());
-        if (!parts[idx('employee_no')] || !parts[idx('email')]) continue;
-        await upsertHrEmployee({
-          company_id: activeCompanyId,
-          created_by_user_id: user.id,
-          employee_no: parts[idx('employee_no')],
-          first_name: parts[idx('first_name')] || 'Unknown',
-          last_name: parts[idx('last_name')] || 'Unknown',
-          email: parts[idx('email')],
-          employment_type: parts[idx('employment_type')] || 'Permanent',
-          start_date: parts[idx('start_date')] || new Date().toISOString().slice(0, 10)
-        });
+        const empNo = parts[idx('employee_no')];
+        const email = parts[idx('email')];
+        if (!empNo || !email) {
+          rowErrors.push(`Row ${i + 2}: missing employee_no or email — skipped.`);
+          continue;
+        }
+        if (existingEmployeeNos.has(empNo.toLowerCase())) {
+          rowErrors.push(`Row ${i + 2}: employee_no "${empNo}" already exists — skipped.`);
+          continue;
+        }
+        try {
+          await upsertHrEmployee({
+            company_id: activeCompanyId,
+            created_by_user_id: user.id,
+            employee_no: empNo,
+            first_name: parts[idx('first_name')] || 'Unknown',
+            last_name: parts[idx('last_name')] || 'Unknown',
+            email,
+            employment_type: parts[idx('employment_type')] || 'Permanent',
+            start_date: parts[idx('start_date')] || new Date().toISOString().slice(0, 10)
+          });
+          existingEmployeeNos.add(empNo.toLowerCase());
+          imported++;
+        } catch (rowErr) {
+          rowErrors.push(`Row ${i + 2}: ${toUserFacingError(rowErr, 'import failed')}`);
+        }
       }
       await refetch();
-      setSuccess('Saved successfully');
-      setParams({ tab: 'directory' });
+      const summary = rowErrors.length > 0
+        ? `Imported ${imported} row(s). ${rowErrors.length} row(s) skipped:\n${rowErrors.join('\n')}`
+        : `Imported ${imported} row(s) successfully.`;
+      setSuccess(summary);
+      if (rowErrors.length === 0) setParams({ tab: 'directory' });
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to import employees right now. Please try again.'));
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -329,7 +355,7 @@ export function HrEmployeesPage() {
                 <option value="">Select department (optional)</option>
                 {(departments ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
-              <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={form.start_date} onChange={(e) => setForm((x) => ({ ...x, start_date: e.target.value }))} />
+              <input type="date" autoComplete="off" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={form.start_date} onChange={(e) => setForm((x) => ({ ...x, start_date: e.target.value }))} />
               <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" autoComplete="off" placeholder="ID Number / Passport Number (optional)" value={form.id_number} onChange={(e) => setForm((x) => ({ ...x, id_number: e.target.value }))} />
             </div>
             <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={onCreate}>Save employee</button>
@@ -340,7 +366,9 @@ export function HrEmployeesPage() {
           <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
             <p className="text-xs text-charcoal-500">CSV header: employee_no,first_name,last_name,email,employment_type,start_date</p>
             <textarea className="w-full min-h-[220px] border border-surface-300 rounded-lg px-3 py-2 text-sm" value={csvInput} onChange={(e) => setCsvInput(e.target.value)} />
-            <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={onImportCsv}>Import CSV</button>
+            <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-60" onClick={onImportCsv} disabled={importing}>
+              {importing ? 'Importing...' : 'Import CSV'}
+            </button>
           </div>
         )}
 
