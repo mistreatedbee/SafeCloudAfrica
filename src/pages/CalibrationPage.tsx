@@ -32,6 +32,7 @@ import { ListEmptyState } from '../components/ui/ListEmptyState';
 import { ScaleIcon } from 'lucide-react';
 import { downloadDocumentFile, downloadBlob } from '../api/services/documentsStorageService';
 import { toCsv, downloadTextFile } from '../utils/csv';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 const MODULE_TAGS: CalibrationModuleTag[] = ['Quality', 'Health', 'Safety', 'Environment', 'General'];
 const CRITICALITY_OPTIONS: CalibrationCriticality[] = ['HIGH', 'MEDIUM', 'LOW'];
@@ -267,22 +268,29 @@ export function CalibrationPage(props: { title?: string; defaultModuleTag?: Cali
       setModalOpen(false);
       await refresh();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to save calibration record.');
+      setFormError(toUserFacingError(err, 'Failed to save calibration record. Please try again.'));
     } finally {
       setSaving(false);
     }
   }
 
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   async function remove(row: CalibrationRecord) {
     if (!activeCompanyId || !user?.id) return;
-    if (!confirm(`Delete SR #${row.sr_no}?`)) return;
-    await deleteCalibrationRecord({
-      companyId: activeCompanyId,
-      recordId: row.id,
-      actorUserId: user.id as UUID,
-      actorRole: activeRole ?? null
-    });
-    await refresh();
+    if (!window.confirm(`Delete calibration record SR #${row.sr_no} — "${row.equipment_name}"? This cannot be undone.`)) return;
+    setDeleteError(null);
+    try {
+      await deleteCalibrationRecord({
+        companyId: activeCompanyId,
+        recordId: row.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole ?? null
+      });
+      await refresh();
+    } catch (err) {
+      setDeleteError(toUserFacingError(err, 'Failed to delete calibration record. Please try again.'));
+    }
   }
 
   async function downloadCertificates(row: CalibrationRecord) {
@@ -352,6 +360,7 @@ export function CalibrationPage(props: { title?: string; defaultModuleTag?: Cali
 
         <div className="bg-white rounded-xl border border-surface-300 overflow-auto">
           {error && <p className="p-4 text-sm text-critical">{error.message}</p>}
+          {deleteError && <p className="p-4 text-sm text-critical">{deleteError}</p>}
           {loading && <p className="p-4 text-sm text-charcoal-500">Loading calibration records...</p>}
           {!loading && !error && (
             <table className="w-full min-w-[2200px] text-sm">

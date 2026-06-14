@@ -14,6 +14,7 @@ import { EvidenceModal } from '../../components/evidence/EvidenceModal';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 const currentYear = new Date().getFullYear();
 
@@ -40,6 +41,7 @@ export function EnvironmentWaterPage() {
   const [editing, setEditing] = useState<any | null>(null);
   const [showEvidenceForId, setShowEvidenceForId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [saveError, setSaveError] = useState('');
   const [form, setForm] = useState<any>({
     referenceNumber: '',
     siteFacilityName: '',
@@ -190,28 +192,33 @@ export function EnvironmentWaterPage() {
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
+    setSaveError('');
     const keyToClear = draftKey;
-    const saved = await upsertEnvWaterMonitoring({
-      companyId: activeCompanyId,
-      actorUserId: user.id,
-      actorRole: activeRole,
-      id: editing?.id,
-      ...form,
-      legalRequirementId: form.legalRequirementId || null,
-      reviewedByEmployeeId: form.reviewedByEmployeeId || null,
-      reviewedByUserId: form.reviewedByUserId || null,
-      reviewedByNameSnapshot: form.reviewedByNameSnapshot || null,
-      approvedByEmployeeId: form.approvedByEmployeeId || null,
-      approvedByUserId: form.approvedByUserId || null,
-      approvedByNameSnapshot: form.approvedByNameSnapshot || null,
-      approvedAt: form.approvedAt || null
-    });
-    setMessage(editing ? `Water monitoring ${saved.reference_number} updated.` : `Water monitoring ${saved.reference_number} created.`);
-    resetForm();
-    clearDraft(keyToClear);
-    setJustSaved(true);
-    setRefreshKey((k) => k + 1);
-    await refetch();
+    try {
+      const saved = await upsertEnvWaterMonitoring({
+        companyId: activeCompanyId,
+        actorUserId: user.id,
+        actorRole: activeRole,
+        id: editing?.id,
+        ...form,
+        legalRequirementId: form.legalRequirementId || null,
+        reviewedByEmployeeId: form.reviewedByEmployeeId || null,
+        reviewedByUserId: form.reviewedByUserId || null,
+        reviewedByNameSnapshot: form.reviewedByNameSnapshot || null,
+        approvedByEmployeeId: form.approvedByEmployeeId || null,
+        approvedByUserId: form.approvedByUserId || null,
+        approvedByNameSnapshot: form.approvedByNameSnapshot || null,
+        approvedAt: form.approvedAt || null
+      });
+      setMessage(editing ? `Water monitoring ${saved.reference_number} updated.` : `Water monitoring ${saved.reference_number} created.`);
+      resetForm();
+      clearDraft(keyToClear);
+      setJustSaved(true);
+      setRefreshKey((k) => k + 1);
+      await refetch();
+    } catch (err) {
+      setSaveError(toUserFacingError(err, 'Unable to save water monitoring record. Please try again.'));
+    }
   }
 
   function startEdit(row: any) {
@@ -276,6 +283,7 @@ export function EnvironmentWaterPage() {
     <Layout title="Water Monitoring">
       <div className="space-y-4">
         {message && <div className="rounded-xl border border-success/30 bg-success/5 p-3 text-sm text-success">{message}</div>}
+        {saveError && <div className="rounded-xl border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{saveError}</div>}
         <div className="bg-white border rounded-xl p-4 grid grid-cols-1 md:grid-cols-7 gap-2">
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" className="px-3 py-2 border rounded-lg text-sm" />
           <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value || currentYear))} className="px-3 py-2 border rounded-lg text-sm" />
@@ -405,11 +413,16 @@ export function EnvironmentWaterPage() {
 
         <div className="bg-white border rounded-xl p-4">
           <h3 className="font-semibold mb-3">Result Trends</h3>
-          <ResponsiveContainer width="100%" height={240}><LineChart data={trendData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip /><Line type="monotone" dataKey="value" stroke="#3498DB" dot={{ r: 2 }} /></LineChart></ResponsiveContainer>
+          {trendData.length === 0 ? (
+            <p className="text-center py-8 text-sm text-charcoal-500">No data for this period. Add water monitoring records with numeric results to populate the trend.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}><LineChart data={trendData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip /><Line type="monotone" dataKey="value" stroke="#3498DB" dot={{ r: 2 }} /></LineChart></ResponsiveContainer>
+          )}
         </div>
 
-        {error && <div className="text-sm text-critical">{String(error.message)}</div>}
-        {loading ? <p className="text-sm text-charcoal-500">Loading...</p> : (
+        {error && <div className="rounded-xl border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{toUserFacingError(error, 'Unable to load water monitoring records.')}</div>}
+        {loading && <div className="text-center py-8 text-sm text-charcoal-500">Loading water monitoring records…</div>}
+        {!loading && (
           <div className="bg-white border rounded-xl overflow-auto">
             <table className="w-full min-w-[1250px] text-sm">
               <thead className="bg-surface-50">
@@ -452,15 +465,20 @@ export function EnvironmentWaterPage() {
                           onClick={async () => {
                             if (!activeCompanyId || !user?.id) return;
                             if (!window.confirm('Delete this water monitoring record?')) return;
-                            await deleteEnvWaterMonitoring({
-                              companyId: activeCompanyId,
-                              recordId: r.id,
-                              actorUserId: user.id,
-                              actorRole: activeRole
-                            });
-                            if (String(editing?.id ?? '') === String(r.id)) resetForm();
-                            setRefreshKey((k) => k + 1);
-                            await refetch();
+                            setSaveError('');
+                            try {
+                              await deleteEnvWaterMonitoring({
+                                companyId: activeCompanyId,
+                                recordId: r.id,
+                                actorUserId: user.id,
+                                actorRole: activeRole
+                              });
+                              if (String(editing?.id ?? '') === String(r.id)) resetForm();
+                              setRefreshKey((k) => k + 1);
+                              await refetch();
+                            } catch (err) {
+                              setSaveError(toUserFacingError(err, 'Unable to delete water monitoring record.'));
+                            }
                           }}
                           className="px-2 py-1 border border-critical/30 text-critical rounded text-xs"
                         >

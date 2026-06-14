@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { listQualityNcrs, createQualityNcr, closeQualityNcr, deleteQualityNcr } from '../api/services/qualityNcrsService';
+import { toUserFacingError } from '../utils/userFacingMessage';
 import type { QualityNcr, UUID } from '../api/models/entities';
 import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
 import NCRDetailModal from '../components/ncrs/NCRDetailModal';
@@ -85,7 +86,7 @@ export default function NCRsPage() {
       });
       setNcrs(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load NCRs');
+      setError(toUserFacingError(err, 'Failed to load NCRs. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -100,19 +101,22 @@ export default function NCRsPage() {
         setSelectedNCR(updated);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to close NCR');
+      setError(toUserFacingError(err, 'Failed to close NCR. Please try again.'));
     }
   }
 
   async function handleDeleteNCR(ncrId: UUID) {
     if (!user?.id || !canDeleteNcr) return;
+    const target = ncrs.find((n) => n.id === ncrId);
+    const label = target?.nc_number ?? `NCR ${ncrId.slice(0, 8)}`;
+    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
     try {
       await deleteQualityNcr(ncrId, activeCompanyId, user.id);
       setNcrs((current) => current.filter((ncr) => ncr.id !== ncrId));
       setSelectedNCR(null);
       setIsDetailModalOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete NCR');
+      setError(toUserFacingError(err, 'Failed to delete NCR. Please try again.'));
     }
   }
 

@@ -5,6 +5,7 @@ import { StatCard } from '../../components/ui/StatCard';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { getHealthDashboardStats, runHealthReminderSweep } from '../../api/services/healthService';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 const quickLinks = [
   { to: '/dashboard/health/medical', label: 'Medical Surveillance' },
@@ -31,8 +32,11 @@ export function HealthDashboardPage() {
           ))}
         </div>
 
-        {error && <div className="rounded-lg border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{String(error.message)}</div>}
+        {error && <div className="rounded-lg border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{toUserFacingError(error, 'Unable to load health dashboard.')}</div>}
         {loading && <p className="text-sm text-charcoal-500">Loading health dashboard...</p>}
+        {!loading && !error && !data && (
+          <div className="text-center py-12 text-charcoal-400">No health dashboard data available.</div>
+        )}
 
         {data && (
           <>

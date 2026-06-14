@@ -10,6 +10,7 @@ import { createActivityLog } from '../../api/services/activityLogService';
 import { deleteEnvRiskOpportunity, listEnvImpactAssessments, listEnvRiskOpportunity, listLegalRequirementOptions, listRiskAssessmentOptions, upsertEnvRiskOpportunity } from '../../api/services/environmentService';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 const currentYear = new Date().getFullYear();
 
@@ -48,9 +49,10 @@ export function EnvironmentRiskOpportunityPage() {
   const [responsibleEmployeeFilter, setResponsibleEmployeeFilter] = useState('');
   const [search, setSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
-  const [editing, setEditing] = useState<any | null>(null);
+  const [editing, setEditing] = useState<ReturnType<typeof emptyForm> & { id?: string } | null>(null);
   const [message, setMessage] = useState('');
-  const [form, setForm] = useState<any>(emptyForm());
+  const [saveError, setSaveError] = useState('');
+  const [form, setForm] = useState<ReturnType<typeof emptyForm>>(emptyForm());
 
   const { data: employees } = useAsync(async () => (activeCompanyId ? await listHrEmployees(activeCompanyId) : []), [activeCompanyId]);
   const { data: legalOptions } = useAsync(async () => (activeCompanyId ? await listLegalRequirementOptions(activeCompanyId) : []), [activeCompanyId]);
@@ -93,25 +95,30 @@ export function EnvironmentRiskOpportunityPage() {
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
-    const saved = await upsertEnvRiskOpportunity({
-      companyId: activeCompanyId,
-      actorUserId: user.id,
-      actorRole: activeRole,
-      id: editing?.id,
-      ...form,
-      responsibleEmployeeId: form.responsibleEmployeeId || null,
-      responsibleUserId: form.responsibleUserId || null,
-      responsibleNameSnapshot: form.responsibleNameSnapshot || form.responsibleExternalName || null,
-      responsibleExternalName:
-        form.responsibleEmployeeId || form.responsibleUserId ? null : form.responsibleExternalName || null,
-      linkedLegalRequirementId: form.linkedLegalRequirementId || null,
-      linkedEiaId: form.linkedEiaId || null,
-      linkedRiskAssessmentIds: form.linkedRiskAssessmentIds
-    });
-    setMessage(editing ? `${saved.reference_number} updated.` : `${saved.reference_number} created.`);
-    resetForm();
-    setRefreshKey((key) => key + 1);
-    await refetch();
+    setSaveError('');
+    try {
+      const saved = await upsertEnvRiskOpportunity({
+        companyId: activeCompanyId,
+        actorUserId: user.id,
+        actorRole: activeRole,
+        id: editing?.id,
+        ...form,
+        responsibleEmployeeId: form.responsibleEmployeeId || null,
+        responsibleUserId: form.responsibleUserId || null,
+        responsibleNameSnapshot: form.responsibleNameSnapshot || form.responsibleExternalName || null,
+        responsibleExternalName:
+          form.responsibleEmployeeId || form.responsibleUserId ? null : form.responsibleExternalName || null,
+        linkedLegalRequirementId: form.linkedLegalRequirementId || null,
+        linkedEiaId: form.linkedEiaId || null,
+        linkedRiskAssessmentIds: form.linkedRiskAssessmentIds
+      });
+      setMessage(editing ? `${saved.reference_number} updated.` : `${saved.reference_number} created.`);
+      resetForm();
+      setRefreshKey((key) => key + 1);
+      await refetch();
+    } catch (err) {
+      setSaveError(toUserFacingError(err, 'Unable to save risk/opportunity record. Please try again.'));
+    }
   }
 
   function startEdit(row: any) {
@@ -142,19 +149,24 @@ export function EnvironmentRiskOpportunityPage() {
     document.getElementById('env-risk-opportunity-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  async function handleDelete(row: any) {
+  async function handleDelete(row: { id: string; reference_number: string }) {
     if (!activeCompanyId || !user?.id) return;
     if (!window.confirm(`Delete risk/opportunity ${row.reference_number}?`)) return;
-    await deleteEnvRiskOpportunity({
-      companyId: activeCompanyId,
-      recordId: row.id,
-      actorUserId: user.id,
-      actorRole: activeRole
-    });
-    if (editing?.id === row.id) resetForm();
-    setMessage(`${row.reference_number} deleted.`);
-    setRefreshKey((key) => key + 1);
-    await refetch();
+    setSaveError('');
+    try {
+      await deleteEnvRiskOpportunity({
+        companyId: activeCompanyId,
+        recordId: row.id,
+        actorUserId: user.id,
+        actorRole: activeRole
+      });
+      if (editing?.id === row.id) resetForm();
+      setMessage(`${row.reference_number} deleted.`);
+      setRefreshKey((key) => key + 1);
+      await refetch();
+    } catch (err) {
+      setSaveError(toUserFacingError(err, 'Unable to delete record. Please try again.'));
+    }
   }
 
   async function exportRegister(mode: 'csv' | 'pdf') {
@@ -181,6 +193,7 @@ export function EnvironmentRiskOpportunityPage() {
     <Layout title="Environmental Risk & Opportunity Register">
       <div className="space-y-4">
         {message && <div className="rounded-xl border border-success/30 bg-success/5 p-3 text-sm text-success">{message}</div>}
+        {saveError && <div className="rounded-xl border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{saveError}</div>}
 
         <div className="bg-white border rounded-xl p-4 grid grid-cols-1 md:grid-cols-7 gap-2">
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" className="px-3 py-2 border rounded-lg text-sm" />
@@ -292,8 +305,9 @@ export function EnvironmentRiskOpportunityPage() {
           </div>
         </form>
 
-        {error && <div className="text-sm text-critical">{String(error.message)}</div>}
-        {loading ? <p className="text-sm text-charcoal-500">Loading...</p> : (
+        {error && <div className="rounded-xl border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{toUserFacingError(error, 'Unable to load records.')}</div>}
+        {loading && <div className="text-center py-8 text-sm text-charcoal-500">Loading records…</div>}
+        {!loading && (
           <div className="bg-white border rounded-xl overflow-auto">
             <table className="w-full min-w-[980px] text-sm">
               <thead className="bg-surface-50">

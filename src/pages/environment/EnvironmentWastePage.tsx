@@ -12,6 +12,7 @@ import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 const currentYear = new Date().getFullYear();
 const OTHER_WASTE_TYPE_VALUE = '__OTHER__';
@@ -72,6 +73,7 @@ export function EnvironmentWastePage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [editing, setEditing] = useState<any | null>(null);
   const [message, setMessage] = useState('');
+  const [saveError, setSaveError] = useState('');
   const [contractorLicenceFiles, setContractorLicenceFiles] = useState<File[]>([]);
   const [facilityPermitFiles, setFacilityPermitFiles] = useState<File[]>([]);
   const [form, setForm] = useState<any>(emptyForm());
@@ -198,6 +200,7 @@ export function EnvironmentWastePage() {
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
+    setSaveError('');
 
     let wasteTypeName = form.wasteTypeName;
     let customWasteType = form.customWasteType;
@@ -209,63 +212,72 @@ export function EnvironmentWastePage() {
       customWasteType = '';
     }
 
-    const saved = await upsertEnvWasteDisposal({
-      companyId: activeCompanyId,
-      actorUserId: user.id,
-      actorRole: activeRole,
-      id: editing?.id,
-      ...form,
-      wasteTypeName,
-      customWasteType,
-      quantityValue: Number(form.quantityValue || 0),
-      responsibleEmployeeId: form.responsibleEmployeeId || null,
-      responsibleUserId: form.responsibleUserId || null,
-      responsibleNameSnapshot: form.responsibleNameSnapshot || form.responsibleExternalName || null,
-      responsibleExternalName:
-        form.responsibleEmployeeId || form.responsibleUserId ? null : form.responsibleExternalName || null,
-      reviewedByEmployeeId: form.reviewedByEmployeeId || null,
-      reviewedByUserId: form.reviewedByUserId || null,
-      reviewedByNameSnapshot: form.reviewedByNameSnapshot || null,
-      approvedByEmployeeId: form.approvedByEmployeeId || null,
-      approvedByUserId: form.approvedByUserId || null,
-      approvedByNameSnapshot: form.approvedByNameSnapshot || null,
-      approvedAt: form.approvedAt || null
-    });
-
-    if (contractorLicenceFiles.length > 0 || facilityPermitFiles.length > 0) {
-      await uploadEnvironmentAttachmentFiles({
+    try {
+      const saved = await upsertEnvWasteDisposal({
         companyId: activeCompanyId,
-        table: 'env_waste_disposal',
-        entityType: 'env_waste_disposal',
-        recordId: saved.id,
         actorUserId: user.id,
-        groups: [
-          { field: 'contractor_licence_file_ids', files: contractorLicenceFiles, fileKind: 'contractor_licence', titlePrefix: 'Contractor licence' },
-          { field: 'facility_permit_file_ids', files: facilityPermitFiles, fileKind: 'facility_permit', titlePrefix: 'Facility permit' }
-        ]
+        actorRole: activeRole,
+        id: editing?.id,
+        ...form,
+        wasteTypeName,
+        customWasteType,
+        quantityValue: Number(form.quantityValue || 0),
+        responsibleEmployeeId: form.responsibleEmployeeId || null,
+        responsibleUserId: form.responsibleUserId || null,
+        responsibleNameSnapshot: form.responsibleNameSnapshot || form.responsibleExternalName || null,
+        responsibleExternalName:
+          form.responsibleEmployeeId || form.responsibleUserId ? null : form.responsibleExternalName || null,
+        reviewedByEmployeeId: form.reviewedByEmployeeId || null,
+        reviewedByUserId: form.reviewedByUserId || null,
+        reviewedByNameSnapshot: form.reviewedByNameSnapshot || null,
+        approvedByEmployeeId: form.approvedByEmployeeId || null,
+        approvedByUserId: form.approvedByUserId || null,
+        approvedByNameSnapshot: form.approvedByNameSnapshot || null,
+        approvedAt: form.approvedAt || null
       });
-    }
 
-    clearDraft(draftKey);
-    setMessage(editing ? `Waste record ${saved.ref_no} updated.` : `Waste record ${saved.ref_no} created.`);
-    resetForm();
-    setRefreshKey((key) => key + 1);
-    await refetch();
+      if (contractorLicenceFiles.length > 0 || facilityPermitFiles.length > 0) {
+        await uploadEnvironmentAttachmentFiles({
+          companyId: activeCompanyId,
+          table: 'env_waste_disposal',
+          entityType: 'env_waste_disposal',
+          recordId: saved.id,
+          actorUserId: user.id,
+          groups: [
+            { field: 'contractor_licence_file_ids', files: contractorLicenceFiles, fileKind: 'contractor_licence', titlePrefix: 'Contractor licence' },
+            { field: 'facility_permit_file_ids', files: facilityPermitFiles, fileKind: 'facility_permit', titlePrefix: 'Facility permit' }
+          ]
+        });
+      }
+
+      clearDraft(draftKey);
+      setMessage(editing ? `Waste record ${saved.ref_no} updated.` : `Waste record ${saved.ref_no} created.`);
+      resetForm();
+      setRefreshKey((key) => key + 1);
+      await refetch();
+    } catch (err) {
+      setSaveError(toUserFacingError(err, 'Unable to save waste disposal record. Please try again.'));
+    }
   }
 
-  async function handleDelete(row: any) {
+  async function handleDelete(row: { id: string; ref_no: string }) {
     if (!activeCompanyId || !user?.id) return;
     if (!window.confirm('Delete this waste disposal record?')) return;
-    await deleteEnvWasteDisposal({
-      companyId: activeCompanyId,
-      recordId: row.id,
-      actorUserId: user.id,
-      actorRole: activeRole
-    });
-    if (String(editing?.id ?? '') === String(row.id)) resetForm();
-    setMessage(`Waste record ${row.ref_no} deleted.`);
-    setRefreshKey((key) => key + 1);
-    await refetch();
+    setSaveError('');
+    try {
+      await deleteEnvWasteDisposal({
+        companyId: activeCompanyId,
+        recordId: row.id,
+        actorUserId: user.id,
+        actorRole: activeRole
+      });
+      if (String(editing?.id ?? '') === String(row.id)) resetForm();
+      setMessage(`Waste record ${row.ref_no} deleted.`);
+      setRefreshKey((key) => key + 1);
+      await refetch();
+    } catch (err) {
+      setSaveError(toUserFacingError(err, 'Unable to delete waste disposal record. Please try again.'));
+    }
   }
 
   async function exportRegister(mode: 'csv' | 'pdf') {
@@ -292,6 +304,7 @@ export function EnvironmentWastePage() {
     <Layout title="Waste Disposal Register">
       <div className="space-y-4">
         {message && <div className="rounded-xl border border-success/30 bg-success/5 p-3 text-sm text-success">{message}</div>}
+        {saveError && <div className="rounded-xl border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{saveError}</div>}
 
         <div className="bg-white border rounded-xl p-4 grid grid-cols-1 md:grid-cols-8 gap-2">
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" className="px-3 py-2 border rounded-lg text-sm" />
@@ -404,10 +417,9 @@ export function EnvironmentWastePage() {
           </div>
         </form>
 
-        {error && <div className="text-sm text-critical">{String(error.message)}</div>}
-        {loading ? (
-          <p className="text-sm text-charcoal-500">Loading...</p>
-        ) : (
+        {error && <div className="rounded-xl border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{toUserFacingError(error, 'Unable to load waste disposal records.')}</div>}
+        {loading && <div className="text-center py-8 text-sm text-charcoal-500">Loading waste disposal records…</div>}
+        {!loading && (
           <div className="bg-white border rounded-xl overflow-auto">
             <table className="w-full min-w-[1150px] text-sm">
               <thead className="bg-surface-50">

@@ -331,14 +331,14 @@ async function collectDomainMetrics(companyId: UUID): Promise<Record<ComplianceD
     if (result.error) throw new Error(getErrorMessage(result.error));
   }
 
-  const documents = sanitizeArray(documentsResult.data as Array<any>);
-  const trainingRecords = sanitizeArray(trainingResult.data as Array<any>);
-  const risks = sanitizeArray(risksResult.data as Array<any>);
-  const incidents = sanitizeArray(incidentsResult.data as Array<any>);
-  const correctiveActions = sanitizeArray(correctiveActionsResult.data as Array<any>);
-  const audits = sanitizeArray(auditsResult.data as Array<any>);
-  const auditQuestions = sanitizeArray(auditQuestionsResult.data as Array<any>);
-  const auditResponses = sanitizeArray(auditResponsesResult.data as Array<any>);
+  const documents = sanitizeArray(documentsResult.data as Array<Record<string, unknown>>);
+  const trainingRecords = sanitizeArray(trainingResult.data as Array<Record<string, unknown>>);
+  const risks = sanitizeArray(risksResult.data as Array<Record<string, unknown>>);
+  const incidents = sanitizeArray(incidentsResult.data as Array<Record<string, unknown>>);
+  const correctiveActions = sanitizeArray(correctiveActionsResult.data as Array<Record<string, unknown>>);
+  const audits = sanitizeArray(auditsResult.data as Array<Record<string, unknown>>);
+  const auditQuestions = sanitizeArray(auditQuestionsResult.data as Array<Record<string, unknown>>);
+  const auditResponses = sanitizeArray(auditResponsesResult.data as Array<Record<string, unknown>>);
 
   const metricAccumulators: Record<ComplianceDomainKey, DomainMetricAccumulator> = {
     documents: { totalCount: 0, compliantCount: 0, overdueCount: 0, attentionCount: 0, drilldownRecords: [] },
@@ -397,7 +397,7 @@ async function collectDomainMetrics(companyId: UUID): Promise<Record<ComplianceD
     });
   }
 
-  const incidentActionsBySource = new Map<string, Array<any>>();
+  const incidentActionsBySource = new Map<string, Array<Record<string, unknown>>>();
   for (const action of correctiveActions) {
     const key = `${action.source_type}:${action.source_id}`;
     const list = incidentActionsBySource.get(key) ?? [];
@@ -428,14 +428,14 @@ async function collectDomainMetrics(companyId: UUID): Promise<Record<ComplianceD
     });
   }
 
-  const questionsByAuditId = new Map<UUID, Array<any>>();
+  const questionsByAuditId = new Map<UUID, Array<Record<string, unknown>>>();
   for (const question of auditQuestions) {
     const list = questionsByAuditId.get(question.audit_id) ?? [];
     list.push(question);
     questionsByAuditId.set(question.audit_id, list);
   }
 
-  const responseByQuestionId = new Map<UUID, any>();
+  const responseByQuestionId = new Map<UUID, Record<string, unknown>>();
   for (const response of auditResponses) {
     if (!responseByQuestionId.has(response.audit_question_id)) {
       responseByQuestionId.set(response.audit_question_id, response);
@@ -605,11 +605,12 @@ export async function calculateComplianceScore(
   const selected = domains.find((domain) => domain.domainKey === module);
   if (!selected) throw new Error(`Unsupported compliance domain: ${module}`);
 
-  const legacyRow = await upsertLegacyComplianceRow(companyId, module, selected.scorePercentage, {
-    totalCount: selected.totalCount,
-    compliantCount: selected.compliantCount,
-    overdueCount: selected.overdueCount,
-    attentionCount: selected.attentionCount
+  const safeScore = Number.isFinite(selected.scorePercentage) ? selected.scorePercentage : 0;
+  const legacyRow = await upsertLegacyComplianceRow(companyId, module, safeScore, {
+    totalCount: selected.totalCount ?? 0,
+    compliantCount: selected.compliantCount ?? 0,
+    overdueCount: selected.overdueCount ?? 0,
+    attentionCount: selected.attentionCount ?? 0
   });
 
   await createActivityLog({
@@ -631,11 +632,10 @@ export async function calculateComplianceScore(
 export async function calculateOverallScore(companyId: UUID, updatedByUserId: UUID): Promise<ComplianceScore> {
   const rawDomains = await collectDomainMetrics(companyId);
   const domains = finalizeDomains(rawDomains);
-  const weightedScore = Number(
-    domains
-      .reduce((sum, domain) => sum + domain.scorePercentage * (domain.weight / 100), 0)
-      .toFixed(2)
-  );
+  const rawWeightedScore = domains.length === 0
+    ? 0
+    : domains.reduce((sum, domain) => sum + (Number.isFinite(domain.scorePercentage) ? domain.scorePercentage : 0) * (domain.weight / 100), 0);
+  const weightedScore = Number(rawWeightedScore.toFixed(2));
   const ragStatus = calculateComplianceRagStatus(weightedScore);
   const aiInsight = buildAiInsight(domains);
   const effectiveMonth = toMonthDate();

@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type { NcrEvidenceReference, QualityNcr, UUID } from '../models/entities';
 import type { CompanyRole } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
@@ -31,6 +32,7 @@ export async function listQualityNcrs(input: {
   actorUserId?: UUID;
   actorRole?: CompanyRole | null;
 }): Promise<QualityNcr[]> {
+  return withInsforgeSession('quality-ncrs:list', async () => {
   let query = insforge.database
     .from('quality_ncrs')
     .select('*')
@@ -71,12 +73,14 @@ export async function listQualityNcrs(input: {
   if (error) throw new Error(getErrorMessage(error));
   let rows = (data ?? []) as QualityNcr[];
   if (input.riskRating) {
-    rows = rows.filter((row: any) => {
-      const rating = String(row.risk_rating ?? row.risk_classification ?? '').toLowerCase();
+    rows = rows.filter((row) => {
+      const r = row as QualityNcr & { risk_classification?: string };
+      const rating = String(r.risk_rating ?? r.risk_classification ?? '').toLowerCase();
       return rating === input.riskRating;
     });
   }
   return await applyNcrRoleFilter(rows, input.companyId, input.actorUserId, input.actorRole);
+  }); // end withInsforgeSession
 }
 
 export async function countOpenQualityNcrs(companyId: UUID): Promise<number> {
@@ -136,6 +140,7 @@ export async function createQualityNcr(input: {
   source_entity_type?: string;
   source_entity_id?: UUID;
 }): Promise<QualityNcr> {
+  return withInsforgeSession('quality-ncrs:create', async () => {
   const nc_number = generateNCRNumber();
   const sourceType = normalizeNcrSourceType(input.source_entity_type);
   const nowIso = new Date().toISOString();
@@ -178,10 +183,9 @@ export async function createQualityNcr(input: {
     metadata: input.metadata ?? null
   };
 
-  let data: any = null;
-  let error: any = null;
-  ({ data, error } = await insforge.database.from('quality_ncrs').insert(insertPayload).select('*').single());
-  if (error && String(error.message ?? '').toLowerCase().includes('column')) {
+  type InsertResult = { data: unknown; error: { message?: string; code?: string } | null };
+  let result: InsertResult = await insforge.database.from('quality_ncrs').insert(insertPayload).select('*').single() as InsertResult;
+  if (result.error && String(result.error.message ?? '').toLowerCase().includes('column')) {
     const fallback = { ...insertPayload };
     delete fallback.source_type;
     delete fallback.source_reference_id;
@@ -192,12 +196,12 @@ export async function createQualityNcr(input: {
     delete fallback.requirement_reference_text;
     delete fallback.root_cause_categories;
     delete fallback.risk_rating;
-    ({ data, error } = await insforge.database.from('quality_ncrs').insert(fallback).select('*').single());
+    result = await insforge.database.from('quality_ncrs').insert(fallback).select('*').single() as InsertResult;
   }
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to create NCR.');
+  if (result.error) throw new Error(getErrorMessage(result.error));
+  if (!result.data) throw new Error('Failed to create NCR.');
 
-  const ncr = data as QualityNcr;
+  const ncr = result.data as QualityNcr;
 
   await createActivityLog({
     companyId: input.companyId,
@@ -230,6 +234,7 @@ export async function createQualityNcr(input: {
   }
 
   return ncr;
+  }); // end withInsforgeSession
 }
 
 export async function updateQualityNcr(
@@ -238,6 +243,7 @@ export async function updateQualityNcr(
   updates: Partial<QualityNcr>,
   actorUserId: UUID
 ): Promise<QualityNcr | null> {
+  return withInsforgeSession('quality-ncrs:update', async () => {
   const { data, error } = await insforge.database
     .from('quality_ncrs')
     .update({
@@ -264,6 +270,7 @@ export async function updateQualityNcr(
   });
 
   return ncr;
+  }); // end withInsforgeSession
 }
 
 export async function deleteQualityNcr(
@@ -271,6 +278,7 @@ export async function deleteQualityNcr(
   companyId: UUID,
   actorUserId: UUID
 ): Promise<void> {
+  return withInsforgeSession('quality-ncrs:delete', async () => {
   const existing = await getQualityNcr(ncrId, companyId);
   if (!existing) throw new Error('NCR not found.');
 
@@ -295,6 +303,7 @@ export async function deleteQualityNcr(
       sourceEntityId: existing.source_entity_id ?? null
     }
   });
+  }); // end withInsforgeSession
 }
 
 export async function closeQualityNcr(
@@ -346,19 +355,31 @@ export async function closeQualityNcr(
   return updated;
 }
 
-function mapEvidenceRef(row: any): NcrEvidenceReference {
+type EvidenceRow = {
+  id: UUID;
+  storage_bucket: string;
+  storage_key: string;
+  display_title?: string | null;
+  title?: string | null;
+  original_filename?: string | null;
+  created_at: string;
+  created_by_user_id: UUID;
+  file_kind?: string | null;
+};
+
+function mapEvidenceRef(row: EvidenceRow): NcrEvidenceReference {
   return {
-    fileId: row.id as UUID,
-    url: getPublicUrl(row.storage_bucket as any, row.storage_key),
+    fileId: row.id,
+    url: getPublicUrl(row.storage_bucket as Parameters<typeof getPublicUrl>[0], row.storage_key),
     name: String(row.display_title ?? row.title ?? row.original_filename ?? row.storage_key.split('/').pop() ?? 'file'),
-    uploadedAt: row.created_at as string,
-    uploadedBy: row.created_by_user_id as UUID,
-    storageBucket: row.storage_bucket as string,
-    storageKey: row.storage_key as string
+    uploadedAt: row.created_at,
+    uploadedBy: row.created_by_user_id,
+    storageBucket: row.storage_bucket,
+    storageKey: row.storage_key
   };
 }
 
-function isFileKind(row: any, kind: 'BEFORE' | 'AFTER'): boolean {
+function isFileKind(row: EvidenceRow, kind: 'BEFORE' | 'AFTER'): boolean {
   return String(row.file_kind ?? '').toUpperCase() === kind;
 }
 
@@ -367,8 +388,9 @@ export async function listNcrEvidence(companyId: UUID, ncrId: UUID): Promise<{
   evidenceAfter: NcrEvidenceReference[];
 }> {
   const evidence = await listEvidence(companyId, { entityType: 'ncr', entityId: ncrId, limit: 500 });
-  const evidenceBefore = evidence.filter((row) => isFileKind(row, 'BEFORE')).map(mapEvidenceRef);
-  const evidenceAfter = evidence.filter((row) => isFileKind(row, 'AFTER')).map(mapEvidenceRef);
+  const evidenceRows = evidence as unknown as EvidenceRow[];
+  const evidenceBefore = evidenceRows.filter((row) => isFileKind(row, 'BEFORE')).map(mapEvidenceRef);
+  const evidenceAfter = evidenceRows.filter((row) => isFileKind(row, 'AFTER')).map(mapEvidenceRef);
   return { evidenceBefore, evidenceAfter };
 }
 
@@ -435,8 +457,8 @@ export async function managerSignOffQualityNcr(input: {
     );
     if (!updated) throw new Error('Failed to sign off NCR.');
     return updated;
-  } catch (error: any) {
-    if (!String(error?.message ?? '').toLowerCase().includes('status')) throw error;
+  } catch (signError: unknown) {
+    if (!String((signError instanceof Error ? signError.message : '') ?? '').toLowerCase().includes('status')) throw signError;
     const fallback = await updateQualityNcr(
       input.ncrId,
       input.companyId,
@@ -478,8 +500,8 @@ export async function auditorVerifyQualityNcr(input: {
     );
     if (!updated) throw new Error('Failed to verify NCR.');
     return updated;
-  } catch (error: any) {
-    if (!String(error?.message ?? '').toLowerCase().includes('status')) throw error;
+  } catch (verifyError: unknown) {
+    if (!String((verifyError instanceof Error ? verifyError.message : '') ?? '').toLowerCase().includes('status')) throw verifyError;
     const fallback = await updateQualityNcr(
       input.ncrId,
       input.companyId,
@@ -528,10 +550,11 @@ async function getMembershipScope(companyId: UUID, userId?: UUID | null): Promis
     .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) return { role: null, site_id: null, department_id: null };
+  const row = data as Record<string, unknown>;
   return {
-    role: (data as any).role as CompanyRole,
-    site_id: ((data as any).site_id as UUID | null) ?? null,
-    department_id: ((data as any).department_id as UUID | null) ?? null
+    role: (row.role as CompanyRole) ?? null,
+    site_id: (row.site_id as UUID | null) ?? null,
+    department_id: (row.department_id as UUID | null) ?? null
   };
 }
 
@@ -546,8 +569,9 @@ async function applyNcrRoleFilter(
 
   const membership = await getMembershipScope(companyId, actorUserId);
   const inScope = (ncr: QualityNcr): boolean => {
-    const siteMatches = Boolean(membership.site_id) && membership.site_id === ((ncr as any).site_id ?? null);
-    const deptMatches = Boolean(membership.department_id) && membership.department_id === ncr.department_id;
+    const ncrRow = ncr as QualityNcr & { site_id?: UUID | null };
+    const siteMatches = Boolean(membership.site_id) && !!ncrRow.site_id && membership.site_id === ncrRow.site_id;
+    const deptMatches = Boolean(membership.department_id) && !!ncr.department_id && membership.department_id === ncr.department_id;
     return siteMatches || deptMatches;
   };
   const assigned = (ncr: QualityNcr): boolean =>

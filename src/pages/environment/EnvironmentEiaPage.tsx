@@ -8,6 +8,7 @@ import { createActivityLog } from '../../api/services/activityLogService';
 import { deleteEnvImpactAssessment, listEnvImpactAssessments, listLegalRequirementOptions, listRiskAssessmentOptions, upsertEnvImpactAssessment } from '../../api/services/environmentService';
 import { buildEnvironmentReportCsv, downloadEnvironmentReportCsv, printEnvironmentReportPdf, renderEnvironmentReportHtml } from '../../api/services/environmentReportsService';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 const currentYear = new Date().getFullYear();
 
@@ -41,10 +42,11 @@ export function EnvironmentEiaPage() {
   const [responsibleEmployeeFilter, setResponsibleEmployeeFilter] = useState('');
   const [search, setSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
-  const [editing, setEditing] = useState<any | null>(null);
+  const [editing, setEditing] = useState<ReturnType<typeof emptyForm> & { id?: string } | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [message, setMessage] = useState('');
-  const [form, setForm] = useState<any>(emptyForm());
+  const [saveError, setSaveError] = useState('');
+  const [form, setForm] = useState<ReturnType<typeof emptyForm>>(emptyForm());
 
   const { data: employees } = useAsync(async () => (activeCompanyId ? await listHrEmployees(activeCompanyId) : []), [activeCompanyId]);
   const { data: legalOptions } = useAsync(async () => (activeCompanyId ? await listLegalRequirementOptions(activeCompanyId) : []), [activeCompanyId]);
@@ -91,26 +93,30 @@ export function EnvironmentEiaPage() {
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
-    const saved = await upsertEnvImpactAssessment({
-      companyId: activeCompanyId,
-      actorUserId: user.id,
-      actorRole: activeRole,
-      id: editing?.id,
-      ...form,
-      legalRequirementId: form.legalRequirementId || null,
-      responsibleEmployeeId: form.responsibleEmployeeId || null,
-      responsibleUserId: form.responsibleUserId || null,
-      responsibleNameSnapshot: form.responsibleNameSnapshot || form.responsibleExternalName || null,
-      responsibleExternalName:
-        form.responsibleEmployeeId || form.responsibleUserId ? null : form.responsibleExternalName || null,
-      linkedRiskAssessmentIds: form.linkedRiskAssessmentIds
-    });
-
-    setMessage(editing ? `EIA record ${saved.ref_number} updated.` : `EIA record ${saved.ref_number} created.`);
-    resetForm();
-    setSelectedRowIds([]);
-    setRefreshKey((key) => key + 1);
-    await refresh();
+    setSaveError('');
+    try {
+      const saved = await upsertEnvImpactAssessment({
+        companyId: activeCompanyId,
+        actorUserId: user.id,
+        actorRole: activeRole,
+        id: editing?.id,
+        ...form,
+        legalRequirementId: form.legalRequirementId || null,
+        responsibleEmployeeId: form.responsibleEmployeeId || null,
+        responsibleUserId: form.responsibleUserId || null,
+        responsibleNameSnapshot: form.responsibleNameSnapshot || form.responsibleExternalName || null,
+        responsibleExternalName:
+          form.responsibleEmployeeId || form.responsibleUserId ? null : form.responsibleExternalName || null,
+        linkedRiskAssessmentIds: form.linkedRiskAssessmentIds
+      });
+      setMessage(editing ? `EIA record ${saved.ref_number} updated.` : `EIA record ${saved.ref_number} created.`);
+      resetForm();
+      setSelectedRowIds([]);
+      setRefreshKey((key) => key + 1);
+      await refresh();
+    } catch (err) {
+      setSaveError(toUserFacingError(err, 'Unable to save EIA record. Please try again.'));
+    }
   }
 
   function startEdit(row: any) {
@@ -137,20 +143,25 @@ export function EnvironmentEiaPage() {
     document.getElementById('env-eia-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  async function handleDelete(row: any) {
+  async function handleDelete(row: { id: string; ref_number: string }) {
     if (!activeCompanyId || !user?.id) return;
     if (!window.confirm(`Delete EIA record ${row.ref_number}?`)) return;
-    await deleteEnvImpactAssessment({
-      companyId: activeCompanyId,
-      recordId: row.id,
-      actorUserId: user.id,
-      actorRole: activeRole
-    });
-    if (editing?.id === row.id) resetForm();
-    setMessage(`EIA record ${row.ref_number} deleted.`);
-    setSelectedRowIds((current) => current.filter((id) => id !== String(row.id)));
-    setRefreshKey((key) => key + 1);
-    await refresh();
+    setSaveError('');
+    try {
+      await deleteEnvImpactAssessment({
+        companyId: activeCompanyId,
+        recordId: row.id,
+        actorUserId: user.id,
+        actorRole: activeRole
+      });
+      if (editing?.id === row.id) resetForm();
+      setMessage(`EIA record ${row.ref_number} deleted.`);
+      setSelectedRowIds((current) => current.filter((id) => id !== String(row.id)));
+      setRefreshKey((key) => key + 1);
+      await refresh();
+    } catch (err) {
+      setSaveError(toUserFacingError(err, 'Unable to delete EIA record. Please try again.'));
+    }
   }
 
   async function exportRows(mode: 'csv' | 'pdf') {
@@ -175,6 +186,7 @@ export function EnvironmentEiaPage() {
     <Layout title="Environmental Impact Assessment (EIA)">
       <div className="space-y-4">
         {message && <div className="rounded-xl border border-success/30 bg-success/5 p-3 text-sm text-success">{message}</div>}
+        {saveError && <div className="rounded-xl border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{saveError}</div>}
 
         <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-6 gap-2">
@@ -303,10 +315,9 @@ export function EnvironmentEiaPage() {
           </div>
         </form>
 
-        {error && <div className="text-sm text-critical">{String(error.message)}</div>}
-        {loading ? (
-          <p className="text-sm text-charcoal-500">Loading...</p>
-        ) : (
+        {error && <div className="rounded-xl border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{toUserFacingError(error, 'Unable to load EIA records.')}</div>}
+        {loading && <div className="text-center py-8 text-sm text-charcoal-500">Loading EIA records…</div>}
+        {!loading && (
           <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
             <table className="w-full text-sm min-w-[980px]">
               <thead className="bg-surface-50">

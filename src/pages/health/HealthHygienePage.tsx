@@ -10,6 +10,7 @@ import { createHealthHygieneRecord, deleteHealthHygieneRecord, listHealthHygiene
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 import { useTenant } from '../../tenant/TenantContext';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 type HygieneComplianceChoice = 'YES' | 'NO';
 
@@ -223,7 +224,7 @@ export function HealthHygienePage() {
     setEditBaseline({ form: editForm, compliance: editCompliance });
   }, [activeCompanyId, draftKeyEdit, editCompliance, editForm, editingId, restoreDraft, user?.id]);
 
-  const { data: records } = useAsync<HealthHygieneRecord[]>(async () => {
+  const { data: records, loading: recordsLoading } = useAsync<HealthHygieneRecord[]>(async () => {
     if (!activeCompanyId) return [];
     return await listHealthHygieneRecords({ companyId: activeCompanyId, limit: 300 });
   }, [activeCompanyId, refreshKey]);
@@ -294,7 +295,7 @@ export function HealthHygienePage() {
       clearDraft(draftKeyCreate);
       setSaveSuccess('Saved successfully.');
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Unable to save this hygiene record.');
+      setSaveError(error instanceof Error ? toUserFacingError(error, 'Unable to save this hygiene record.') : 'Unable to save this hygiene record.');
     } finally {
       setSavingCreate(false);
     }
@@ -355,7 +356,7 @@ export function HealthHygienePage() {
       setEditErrors(emptyErrors());
       setEditBaseline(null);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Unable to update this hygiene record.');
+      setSaveError(error instanceof Error ? toUserFacingError(error, 'Unable to update this hygiene record.') : 'Unable to update this hygiene record.');
     } finally {
       setSavingEditId(null);
     }
@@ -364,10 +365,14 @@ export function HealthHygienePage() {
   async function removeRecord(recordId: UUID) {
     if (!activeCompanyId || !user?.id) return;
     if (!window.confirm('Are you sure you want to delete this record?')) return;
-    await deleteHealthHygieneRecord(activeCompanyId, recordId, user.id);
-    if (editingId === recordId) cancelEdit();
-    if (evidenceForId === recordId) setEvidenceForId(null);
-    setRefreshKey((value) => value + 1);
+    try {
+      await deleteHealthHygieneRecord(activeCompanyId, recordId, user.id);
+      if (editingId === recordId) cancelEdit();
+      if (evidenceForId === recordId) setEvidenceForId(null);
+      setRefreshKey((value) => value + 1);
+    } catch (error) {
+      setSaveError(toUserFacingError(error, 'Unable to delete this hygiene record.'));
+    }
   }
 
   return (
@@ -550,6 +555,11 @@ export function HealthHygienePage() {
           ))}
         </div>
 
+        {recordsLoading && <div className="text-center py-8 text-sm text-charcoal-500">Loading hygiene monitoring records…</div>}
+        {!recordsLoading && (records ?? []).length === 0 && (
+          <div className="text-center py-8 text-sm text-charcoal-500">No hygiene monitoring records yet. Add the first record using the form above.</div>
+        )}
+        {!recordsLoading && (records ?? []).length > 0 && (
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
           <table className="w-full text-sm table-fixed min-w-[1600px]">
             <thead className="bg-surface-50">

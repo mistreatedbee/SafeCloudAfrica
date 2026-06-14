@@ -169,7 +169,7 @@ export async function listLegalRequirementsForLinkedRecord(input: {
     .eq('linked_record_id', input.recordId);
   if (linksError) throw new Error(getErrorMessage(linksError));
 
-  const ids = [...new Set((linkRows ?? []).map((row: any) => row.legal_requirement_id as UUID))];
+  const ids = [...new Set((linkRows ?? []).map((row) => (row as { legal_requirement_id: UUID }).legal_requirement_id))];
   if (ids.length === 0) return [];
 
   const { data: requirements, error: reqError } = await insforge.database
@@ -304,8 +304,9 @@ export async function createLegalRequirement(input: {
       .maybeSingle();
     if (error) throw new Error(getErrorMessage(error));
     if (data) {
-      responsibleEmployeeId = (data as any).id as UUID;
-      responsibleUserId = ((data as any).user_id ?? null) as UUID | null;
+      const row = data as { id: UUID; user_id: UUID | null };
+      responsibleEmployeeId = row.id;
+      responsibleUserId = row.user_id ?? null;
     }
   } else if (!responsibleEmployeeId && responsibleUserId) {
     const { data, error } = await insforge.database
@@ -318,8 +319,9 @@ export async function createLegalRequirement(input: {
       .maybeSingle();
     if (error) throw new Error(getErrorMessage(error));
     if (data) {
-      responsibleEmployeeId = (data as any).id as UUID;
-      responsibleUserId = ((data as any).user_id ?? null) as UUID | null;
+      const row = data as { id: UUID; user_id: UUID | null };
+      responsibleEmployeeId = row.id;
+      responsibleUserId = row.user_id ?? null;
     }
   }
 
@@ -356,7 +358,7 @@ export async function createLegalRequirement(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create legal requirement.');
 
-  const requirementId = (data as any).id as UUID;
+  const requirementId = (data as LegalRequirement).id;
 
   if (input.links && input.links.length > 0) {
     await upsertLegalRequirementLinks({
@@ -474,8 +476,9 @@ export async function updateLegalRequirement(input: {
           .maybeSingle();
         if (error) throw new Error(getErrorMessage(error));
         if (data) {
-          responsibleEmployeeId = (data as any).id as UUID;
-          responsibleUserId = ((data as any).user_id ?? null) as UUID | null;
+          const row = data as { id: UUID; user_id: UUID | null };
+          responsibleEmployeeId = row.id;
+          responsibleUserId = row.user_id ?? null;
         }
       } else if (!responsibleEmployeeId && responsibleUserId) {
         const { data, error } = await insforge.database
@@ -488,8 +491,9 @@ export async function updateLegalRequirement(input: {
           .maybeSingle();
         if (error) throw new Error(getErrorMessage(error));
         if (data) {
-          responsibleEmployeeId = (data as any).id as UUID;
-          responsibleUserId = ((data as any).user_id ?? null) as UUID | null;
+          const row = data as { id: UUID; user_id: UUID | null };
+          responsibleEmployeeId = row.id;
+          responsibleUserId = row.user_id ?? null;
         }
       }
 
@@ -596,7 +600,7 @@ async function notifyAssignedUser(input: {
     .eq('company_id', input.companyId)
     .eq('user_id', input.userId)
     .maybeSingle();
-  const email = (profile as any)?.email as string | undefined;
+  const email = (profile as { email?: string } | null)?.email;
   if (email) {
     await sendTemplatedEmail(email, 'approval_request', {
       itemType: input.emailSubject,
@@ -656,7 +660,7 @@ export async function createLegalUpdate(input: {
     actorUserId: input.actorUserId,
     action: 'legal_updates.create',
     entityType: 'legal_update',
-    entityId: (data as any).id as UUID,
+    entityId: (data as LegalUpdate).id,
     metadata: { legalRequirementId: input.legalRequirementId }
   });
 
@@ -706,7 +710,7 @@ export async function listLegalUpdates(filters: LegalUpdateFilters): Promise<Leg
       .ilike('requirement_standard', `%${term}%`)
       .limit(200);
     if (reqErr) throw new Error(getErrorMessage(reqErr));
-    const ids = (reqMatches ?? []).map((row: any) => row.id as UUID);
+    const ids = (reqMatches ?? []).map((row) => (row as { id: UUID }).id);
     if (ids.length === 0) return { rows: [], total: 0, page, pageSize };
     query = query.in('legal_requirement_id', ids);
   }
@@ -726,7 +730,8 @@ export async function listLegalUpdates(filters: LegalUpdateFilters): Promise<Leg
       .in('id', requirementIds);
     if (reqError) throw new Error(getErrorMessage(reqError));
     for (const row of requirements ?? []) {
-      requirementLabelMap.set((row as any).id as string, String((row as any).requirement_standard ?? ''));
+      const r = row as { id: string; requirement_standard: string | null };
+      requirementLabelMap.set(r.id, String(r.requirement_standard ?? ''));
     }
   }
 
@@ -894,10 +899,11 @@ async function listEscalationRecipients(companyId: UUID, responsibleUserId: UUID
     .in('role', ['supervisor', 'manager', 'admin', 'owner']);
   if (error) throw new Error(getErrorMessage(error));
 
-  const list = memberships ?? [];
-  const supervisors = list.filter((m: any) => m.role === 'supervisor').map((m: any) => m.user_id as UUID);
-  const admins = list.filter((m: any) => m.role === 'admin' || m.role === 'manager').map((m: any) => m.user_id as UUID);
-  const owners = list.filter((m: any) => m.role === 'owner').map((m: any) => m.user_id as UUID);
+  type MemberRow = { user_id: UUID; role: string };
+  const list = (memberships ?? []) as MemberRow[];
+  const supervisors = list.filter((m) => m.role === 'supervisor').map((m) => m.user_id);
+  const admins = list.filter((m) => m.role === 'admin' || m.role === 'manager').map((m) => m.user_id);
+  const owners = list.filter((m) => m.role === 'owner').map((m) => m.user_id);
 
   const result = new Set<UUID>();
   if (responsibleUserId) result.add(responsibleUserId);
@@ -978,7 +984,7 @@ export function toLegalRequirementsCsv(rows: LegalRequirement[], profiles: UserP
   });
   const lines = [headers.join(',')];
   for (const row of csvRows) {
-    lines.push(headers.map((h) => `"${String((row as any)[h] ?? '').replace(/"/g, '""')}"`).join(','));
+    lines.push(headers.map((h) => `"${String((row as Record<string, unknown>)[h] ?? '').replace(/"/g, '""')}"`).join(','));
   }
   return lines.join('\n');
 }
@@ -1016,7 +1022,7 @@ export function toLegalUpdatesCsv(
   });
   const lines = [headers.join(',')];
   for (const row of csvRows) {
-    lines.push(headers.map((h) => `"${String((row as any)[h] ?? '').replace(/"/g, '""')}"`).join(','));
+    lines.push(headers.map((h) => `"${String((row as Record<string, unknown>)[h] ?? '').replace(/"/g, '""')}"`).join(','));
   }
   return lines.join('\n');
 }

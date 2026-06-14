@@ -29,6 +29,7 @@ import { SelectOrType } from '../components/ui/SelectOrType';
 import { downloadTextFile, toCsv } from '../utils/csv';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
 import { ListTodoIcon } from 'lucide-react';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 type FormMode = 'create' | 'edit' | 'view';
 type RegisterForm = {
@@ -286,7 +287,7 @@ export default function QualityInternalExternalIssuesPage() {
       }
       await refreshAll();
     } catch (err) {
-      setRegisterError(err instanceof Error ? err.message : 'Failed to save register.');
+      setRegisterError(toUserFacingError(err, 'Failed to save register. Please try again.'));
     } finally {
       setRegisterSaving(false);
     }
@@ -304,7 +305,7 @@ export default function QualityInternalExternalIssuesPage() {
       });
       await refreshAll();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to approve register.');
+      alert(toUserFacingError(err, 'Failed to approve register. Please try again.'));
     }
   }
 
@@ -323,7 +324,7 @@ export default function QualityInternalExternalIssuesPage() {
       setSelectedRegisterId('');
       await refreshAll();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete register.');
+      alert(toUserFacingError(err, 'Failed to delete register. Please try again.'));
     } finally {
       setRegisterDeleting(false);
     }
@@ -407,7 +408,7 @@ export default function QualityInternalExternalIssuesPage() {
       setModalOpen(false);
       await refreshAll();
     } catch (err) {
-      setIssueError(err instanceof Error ? err.message : 'Failed to save issue row.');
+      setIssueError(toUserFacingError(err, 'Failed to save issue row. Please try again.'));
     } finally {
       setIssueSaving(false);
     }
@@ -426,7 +427,7 @@ export default function QualityInternalExternalIssuesPage() {
       });
       await refreshAll();
     } catch (err) {
-      setIssueError(err instanceof Error ? err.message : 'Failed to delete issue.');
+      setIssueError(toUserFacingError(err, 'Failed to delete issue. Please try again.'));
     }
   }
 

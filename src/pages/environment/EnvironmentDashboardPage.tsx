@@ -11,6 +11,7 @@ import { StatCard } from '../../components/ui/StatCard';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import { Trash2Icon } from 'lucide-react';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 const quickLinks = [
   { to: '/dashboard/environment/eia', label: 'Environmental Impact Assessment (EIA)' },
@@ -69,8 +70,11 @@ export function EnvironmentDashboardPage() {
           ))}
         </div>
 
-        {error && <div className="rounded-lg border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{String(error.message)}</div>}
+        {error && <div className="rounded-lg border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{toUserFacingError(error, 'Unable to load environment dashboard.')}</div>}
         {loading && <p className="text-sm text-charcoal-500">Loading environment dashboard...</p>}
+        {!loading && !error && !data && (
+          <div className="text-center py-12 text-charcoal-400">No environment dashboard data available.</div>
+        )}
 
         {data && (
           <>
@@ -103,30 +107,38 @@ export function EnvironmentDashboardPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="bg-white rounded-xl border border-surface-300 p-4">
                 <h3 className="font-semibold text-charcoal mb-3">Water Compliance (12 months)</h3>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={data.waterComplianceTrend}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="pass" fill="#2ECC71" name="Pass" />
-                    <Bar dataKey="fail" fill="#E74C3C" name="Fail" />
-                  </BarChart>
-                </ResponsiveContainer>
+                {data.waterComplianceTrend.every((m) => m.pass === 0 && m.fail === 0) ? (
+                  <p className="text-center py-8 text-sm text-charcoal-500">No water monitoring data for this period.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={data.waterComplianceTrend}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="pass" fill="#2ECC71" name="Pass" />
+                      <Bar dataKey="fail" fill="#E74C3C" name="Fail" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
 
               <div className="bg-white rounded-xl border border-surface-300 p-4">
                 <h3 className="font-semibold text-charcoal mb-3">Air Exceedances (12 months)</h3>
-                <ResponsiveContainer width="100%" height={240}>
-                  <LineChart data={data.airExceedanceTrend}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="exceedances" stroke="#E67E22" strokeWidth={2} dot={{ r: 3 }} />
-                  </LineChart>
-                </ResponsiveContainer>
+                {data.airExceedanceTrend.every((m) => m.exceedances === 0) ? (
+                  <p className="text-center py-8 text-sm text-charcoal-500">No air quality exceedances recorded for this period.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <LineChart data={data.airExceedanceTrend}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="exceedances" stroke="#E67E22" strokeWidth={2} dot={{ r: 3 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
 

@@ -13,6 +13,7 @@ import { WindIcon } from 'lucide-react';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 const currentYear = new Date().getFullYear();
 
@@ -36,6 +37,7 @@ export function EnvironmentAirPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [editing, setEditing] = useState<any | null>(null);
   const [message, setMessage] = useState('');
+  const [saveError, setSaveError] = useState('');
   const [form, setForm] = useState<any>({
     referenceNumber: '',
     emissionSourceCategories: ['Dust'],
@@ -157,7 +159,9 @@ export function EnvironmentAirPage() {
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
+    setSaveError('');
     const keyToClear = draftKey;
+    try {
     const saved = await upsertEnvAirQuality({
       companyId: activeCompanyId,
       actorUserId: user.id,
@@ -179,12 +183,15 @@ export function EnvironmentAirPage() {
       approvedByNameSnapshot: form.approvedByNameSnapshot || null,
       approvedAt: form.approvedAt || null
     });
-    setMessage(editing ? `Air quality monitoring ${saved.reference_number} updated.` : `Air quality monitoring ${saved.reference_number} created.`);
-    resetForm();
-    clearDraft(keyToClear);
-    setJustSaved(true);
-    setRefreshKey((k) => k + 1);
-    await refetch();
+      setMessage(editing ? `Air quality monitoring ${saved.reference_number} updated.` : `Air quality monitoring ${saved.reference_number} created.`);
+      resetForm();
+      clearDraft(keyToClear);
+      setJustSaved(true);
+      setRefreshKey((k) => k + 1);
+      await refetch();
+    } catch (err) {
+      setSaveError(toUserFacingError(err, 'Unable to save air quality record. Please try again.'));
+    }
   }
 
   function startEdit(row: any) {
@@ -239,6 +246,7 @@ export function EnvironmentAirPage() {
     <Layout title="Air Quality Monitoring">
       <div className="space-y-4">
         {message && <div className="rounded-xl border border-success/30 bg-success/5 p-3 text-sm text-success">{message}</div>}
+        {saveError && <div className="rounded-xl border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{saveError}</div>}
         <div className="bg-white border rounded-xl p-4 grid grid-cols-1 md:grid-cols-7 gap-2">
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" className="px-3 py-2 border rounded-lg text-sm" />
           <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value || currentYear))} className="px-3 py-2 border rounded-lg text-sm" />
@@ -414,11 +422,69 @@ export function EnvironmentAirPage() {
           <div className="flex gap-2"><button type="submit" className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold">{editing ? 'Update' : 'Create'}</button>{editing && <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 rounded-lg border text-sm">Cancel</button>}</div>
         </form>
 
-        <div className="bg-white border rounded-xl p-4"><h3 className="font-semibold mb-3">Trend Graph</h3><ResponsiveContainer width="100%" height={240}><LineChart data={trendData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip /><Line type="monotone" dataKey="value" stroke="#9B59B6" dot={{ r: 2 }} /></LineChart></ResponsiveContainer></div>
+        <div className="bg-white border rounded-xl p-4">
+          <h3 className="font-semibold mb-3">Trend Graph</h3>
+          {trendData.length === 0 ? (
+            <p className="text-center py-8 text-sm text-charcoal-500">No data for this period. Add air quality monitoring records with numeric results to populate the trend.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}><LineChart data={trendData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip /><Line type="monotone" dataKey="value" stroke="#9B59B6" dot={{ r: 2 }} /></LineChart></ResponsiveContainer>
+          )}
+        </div>
 
-        {error && <div className="text-sm text-critical">{String(error.message)}</div>}
-        {loading ? <p className="text-sm text-charcoal-500">Loading...</p> : (
-          <div className="bg-white border rounded-xl overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Reference</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Location</th><th className="px-3 py-2 text-left">Method</th><th className="px-3 py-2 text-left">Overall</th><th className="px-3 py-2 text-left">Reviewer</th><th className="px-3 py-2 text-left">NCR</th><th className="px-3 py-2 text-left">Actions</th></tr></thead><tbody className="divide-y divide-surface-100">{(rows ?? []).map((r: any) => <tr key={r.id}><td className="px-3 py-2">{r.reference_number}</td><td className="px-3 py-2">{r.monitoring_date}</td><td className="px-3 py-2">{r.monitoring_location}</td><td className="px-3 py-2">{r.method_used}</td><td className="px-3 py-2">{r.overall_status}</td><td className="px-3 py-2">{r.reviewed_by_name_snapshot || employeeNameById.get(r.reviewed_by_employee_id) || r.reviewed_by_user_id || '-'}</td><td className="px-3 py-2">{r.system_generated_capa_id ? <Link to="/dashboard/management/ncrs" className="text-teal hover:underline">View NCR</Link> : '-'}</td><td className="px-3 py-2"><div className="flex gap-2"><button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this air quality monitoring record?')) return; await deleteEnvAirQuality({ companyId: activeCompanyId, recordId: r.id, actorUserId: user.id, actorRole: activeRole }); if (String(editing?.id ?? '') === String(r.id)) resetForm(); setRefreshKey((k) => k + 1); await refetch(); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}{(rows ?? []).length === 0 && (
+        {error && <div className="rounded-xl border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{toUserFacingError(error, 'Unable to load air quality records.')}</div>}
+        {loading && <div className="text-center py-8 text-sm text-charcoal-500">Loading air quality records…</div>}
+        {!loading && (
+          <div className="bg-white border rounded-xl overflow-auto">
+            <table className="w-full min-w-[1120px] text-sm">
+              <thead className="bg-surface-50">
+                <tr>
+                  <th className="px-3 py-2 text-left">Reference</th>
+                  <th className="px-3 py-2 text-left">Date</th>
+                  <th className="px-3 py-2 text-left">Location</th>
+                  <th className="px-3 py-2 text-left">Method</th>
+                  <th className="px-3 py-2 text-left">Overall</th>
+                  <th className="px-3 py-2 text-left">Reviewer</th>
+                  <th className="px-3 py-2 text-left">NCR</th>
+                  <th className="px-3 py-2 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-100">
+                {(rows ?? []).map((r: any) => (
+                  <tr key={r.id}>
+                    <td className="px-3 py-2">{r.reference_number}</td>
+                    <td className="px-3 py-2">{r.monitoring_date}</td>
+                    <td className="px-3 py-2">{r.monitoring_location}</td>
+                    <td className="px-3 py-2">{r.method_used}</td>
+                    <td className="px-3 py-2">{r.overall_status}</td>
+                    <td className="px-3 py-2">{r.reviewed_by_name_snapshot || employeeNameById.get(r.reviewed_by_employee_id) || r.reviewed_by_user_id || '-'}</td>
+                    <td className="px-3 py-2">{r.system_generated_capa_id ? <Link to="/dashboard/management/ncrs" className="text-teal hover:underline">View NCR</Link> : '-'}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => startEdit(r)} className="px-2 py-1 border rounded text-xs">View/Edit</button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!activeCompanyId || !user?.id) return;
+                            if (!window.confirm('Delete this air quality monitoring record?')) return;
+                            setSaveError('');
+                            try {
+                              await deleteEnvAirQuality({ companyId: activeCompanyId, recordId: r.id, actorUserId: user.id, actorRole: activeRole });
+                              if (String(editing?.id ?? '') === String(r.id)) resetForm();
+                              setRefreshKey((k) => k + 1);
+                              await refetch();
+                            } catch (err) {
+                              setSaveError(toUserFacingError(err, 'Unable to delete air quality record.'));
+                            }
+                          }}
+                          className="px-2 py-1 border border-critical/30 text-critical rounded text-xs"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {(rows ?? []).length === 0 && (
                     <ListEmptyState
                       tableColSpan={8}
                       icon={WindIcon}
@@ -430,7 +496,10 @@ export function EnvironmentAirPage() {
                         onClick: () => document.getElementById('env-air-quality-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                       }}
                     />
-                  )}</tbody></table></div>
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </Layout>

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { toUserFacingError } from '../utils/userFacingMessage';
 import { motion } from 'framer-motion';
 import {
   GraduationCapIcon,
@@ -510,8 +511,7 @@ export function TrainingPage() {
                               });
                               openBlobInNewTab(blob);
                             } catch (err) {
-                              // eslint-disable-next-line no-alert
-                              alert('Could not open certificate. Please try again or contact support.');
+                              setActionError(toUserFacingError(err, 'Could not open certificate. Please try again or contact support.'));
                             }
                           }}
                           className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
@@ -528,8 +528,7 @@ export function TrainingPage() {
                               });
                               downloadBlob(blob, r.certificate_key!.split('/').pop() ?? 'certificate');
                             } catch (err) {
-                              // eslint-disable-next-line no-alert
-                              alert('Could not download certificate. Please try again or contact support.');
+                              setActionError(toUserFacingError(err, 'Could not download certificate. Please try again or contact support.'));
                             }
                           }}
                           className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
@@ -556,7 +555,7 @@ export function TrainingPage() {
                             setRecordsRefresh((prev) => prev + 1);
                             setActionSuccess('Saved successfully.');
                           } catch (err) {
-                            setActionError('Could not cancel training record. Please try again or contact support.');
+                            setActionError(toUserFacingError(err, 'Could not cancel training record. Please try again or contact support.'));
                           } finally {
                             setActionLoadingRecordId(null);
                           }
@@ -587,7 +586,7 @@ export function TrainingPage() {
                             setRecordsRefresh((prev) => prev + 1);
                             setActionSuccess('Saved successfully.');
                           } catch (err) {
-                            setActionError('Could not delete training record. Please try again or contact support.');
+                            setActionError(toUserFacingError(err, 'Could not delete training record. Please try again or contact support.'));
                           } finally {
                             setActionLoadingRecordId(null);
                           }
@@ -645,8 +644,12 @@ export function TrainingPage() {
                         <button
                           type="button"
                           onClick={async () => {
-                            const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
-                            openBlobInNewTab(blob);
+                            try {
+                              const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
+                              openBlobInNewTab(blob);
+                            } catch (err) {
+                              alert(toUserFacingError(err, 'Could not open certificate. Please try again.'));
+                            }
                           }}
                           className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
                         >
@@ -655,8 +658,12 @@ export function TrainingPage() {
                         <button
                           type="button"
                           onClick={async () => {
-                            const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
-                            downloadBlob(blob, r.certificate_key!.split('/').pop() ?? 'certificate');
+                            try {
+                              const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
+                              downloadBlob(blob, r.certificate_key!.split('/').pop() ?? 'certificate');
+                            } catch (err) {
+                              alert(toUserFacingError(err, 'Could not download certificate. Please try again.'));
+                            }
                           }}
                           className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
                         >

@@ -32,22 +32,38 @@ export function QualityAnalyticsPage() {
           </div>
         )}
 
-        {loading ? (
-          <p className="text-charcoal-500">Loading…</p>
-        ) : quality ? (
+        {loading && (
+          <div className="text-center py-8 text-sm text-charcoal-500">Loading quality KPIs…</div>
+        )}
+        {!loading && !error && !quality && (
+          <div className="text-center py-8 text-sm text-charcoal-500">No data available. Select a company to view quality KPIs.</div>
+        )}
+        {!loading && quality && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-white rounded-xl border border-surface-200 p-4 shadow-card">
               <p className="text-xs font-medium text-charcoal-500 uppercase tracking-wide">Customer Complaint Rate %</p>
-              <p className="text-2xl font-bold text-charcoal mt-1">{fmt(quality.customerComplaintRate)}</p>
-              <p className="text-xs text-charcoal-500 mt-1">Complaints / Total deliveries: {quality.complaints} / {quality.totalDeliveries || '—'}</p>
+              {quality.complaints === 0 && !quality.totalDeliveries ? (
+                <p className="text-sm text-charcoal-400 mt-2">No data for this period</p>
+              ) : (
+                <>
+                  <p className="text-2xl font-bold text-charcoal mt-1">{fmt(quality.customerComplaintRate)}</p>
+                  <p className="text-xs text-charcoal-500 mt-1">Complaints / Total deliveries: {quality.complaints} / {quality.totalDeliveries || '—'}</p>
+                </>
+              )}
             </div>
             <div className="bg-white rounded-xl border border-surface-200 p-4 shadow-card">
               <p className="text-xs font-medium text-charcoal-500 uppercase tracking-wide">Non-Conformance Rate %</p>
-              <p className="text-2xl font-bold text-charcoal mt-1">{fmt(quality.nonConformanceRate)}</p>
-              <p className="text-xs text-charcoal-500 mt-1">Non-conforming / Items inspected: {quality.nonConformingItems} / {quality.totalItemsInspected || '—'}</p>
+              {quality.nonConformingItems === 0 && !quality.totalItemsInspected ? (
+                <p className="text-sm text-charcoal-400 mt-2">No data for this period</p>
+              ) : (
+                <>
+                  <p className="text-2xl font-bold text-charcoal mt-1">{fmt(quality.nonConformanceRate)}</p>
+                  <p className="text-xs text-charcoal-500 mt-1">Non-conforming / Items inspected: {quality.nonConformingItems} / {quality.totalItemsInspected || '—'}</p>
+                </>
+              )}
             </div>
           </div>
-        ) : null}
+        )}
       </motion.div>
     </Layout>
   );

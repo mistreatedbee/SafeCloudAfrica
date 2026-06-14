@@ -52,7 +52,7 @@ export function QualityPage() {
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
 
-  const { data: summary } = useAsync(async () => {
+  const { data: summary, loading: summaryLoading } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return null;
     const [openNcrs, pendingCapas, openQualityIncidents, totalTasks, completedTasks, allNcrs, complaintSummary] = await Promise.all([
       countOpenQualityNcrs(activeCompanyId),
@@ -145,6 +145,9 @@ export function QualityPage() {
 
   return (
     <Layout title="Quality Management">
+      {summaryLoading && (
+        <div className="text-center py-4 text-sm text-charcoal-500">Loading quality data...</div>
+      )}
       <motion.div
         variants={containerVariants}
         initial="hidden"

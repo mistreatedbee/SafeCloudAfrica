@@ -104,6 +104,15 @@ export function DocumentUploadModal(props: {
 
   useEffect(() => {
     if (!props.open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') props.onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [props.open, props.onClose]);
+
+  useEffect(() => {
+    if (!props.open) return;
     if (!restrictionTouched) {
       setIsRestricted(Boolean(selectedFolder?.isRestricted));
     }
@@ -225,7 +234,7 @@ export function DocumentUploadModal(props: {
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
       <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
@@ -415,7 +424,23 @@ export function DocumentUploadModal(props: {
                     accept=".pdf,.doc,.docx,.xls,.xlsx"
                     onChange={(event) => {
                       const nextFile = event.target.files?.[0] ?? null;
+                      if (nextFile) {
+                        const allowedExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx'];
+                        const ext = nextFile.name.split('.').pop()?.toLowerCase() ?? '';
+                        if (!allowedExtensions.includes(ext)) {
+                          setError('Only PDF and Office files (.pdf, .doc, .docx, .xls, .xlsx) are allowed.');
+                          event.target.value = '';
+                          return;
+                        }
+                        const maxBytes = 25 * 1024 * 1024; // 25 MB
+                        if (nextFile.size > maxBytes) {
+                          setError('File size must not exceed 25 MB.');
+                          event.target.value = '';
+                          return;
+                        }
+                      }
                       setFile(nextFile);
+                      setError(null);
                       setSuccessMessage(null);
                       setUploadedFileName(null);
                       if (nextFile && !title.trim()) {
@@ -424,7 +449,7 @@ export function DocumentUploadModal(props: {
                     }}
                     className="w-full text-sm"
                   />
-                  {file && <p className="text-xs text-charcoal-500 mt-1">Selected: {file.name}</p>}
+                  {file && <p className="text-xs text-charcoal-500 mt-1">Selected: {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)</p>}
                 </div>
 
                 <div>

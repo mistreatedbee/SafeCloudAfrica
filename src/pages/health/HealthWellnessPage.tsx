@@ -26,6 +26,7 @@ import type { OptionItem } from '../../api/services/dynamicOptionsService';
 import type { HealthWellnessCampaignType } from '../../api/models/entities';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 const tabs = ['Programmes/Campaigns', 'Substance Abuse Tracking', 'Vaccination Records'] as const;
 type TabKey = (typeof tabs)[number];
@@ -42,6 +43,7 @@ export function HealthWellnessPage() {
   const [vaccinationEvidenceId, setVaccinationEvidenceId] = useState<string | null>(null);
   const [vaccineOptions, setVaccineOptions] = useState<OptionItem[]>([]);
   const [substanceOptions, setSubstanceOptions] = useState<OptionItem[]>([]);
+  const [wellnessError, setWellnessError] = useState<string | null>(null);
   const [vaccineName, setVaccineName] = useState('');
   const [substanceManual, setSubstanceManual] = useState('');
   const [campaignForm, setCampaignForm] = useState({
@@ -180,12 +182,12 @@ export function HealthWellnessPage() {
     void loadOptions();
   }, [activeCompanyId]);
 
-  const { data: campaigns } = useAsync(async () => {
+  const { data: campaigns, loading: campaignsLoading } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listHealthWellnessCampaigns(activeCompanyId);
   }, [activeCompanyId, refreshKey]);
 
-  const { data: substanceCases } = useAsync(async () => {
+  const { data: substanceCases, loading: substanceLoading } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listHealthSubstanceCases({
       companyId: activeCompanyId,
@@ -194,7 +196,7 @@ export function HealthWellnessPage() {
     });
   }, [activeCompanyId, activeRole, activeMembership?.is_hr_manager, refreshKey]);
 
-  const { data: vaccinations } = useAsync(async () => {
+  const { data: vaccinations, loading: vaccinationsLoading } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listHealthVaccinations({ companyId: activeCompanyId, dueInDays: 365 });
   }, [activeCompanyId, refreshKey]);
@@ -202,7 +204,9 @@ export function HealthWellnessPage() {
   async function submitSubstance(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
+    setWellnessError(null);
     const allSubstances = [...substanceForm.substanceSuspected, ...(substanceManual ? [substanceManual] : [])];
+    try {
     if (editingSubstanceId) {
       await updateHealthSubstanceCase(
         activeCompanyId,
@@ -263,11 +267,16 @@ export function HealthWellnessPage() {
       substanceManual: ''
     });
     clearDraft(draftKeySubstance);
+    } catch (err) {
+      setWellnessError(toUserFacingError(err, 'Unable to save substance case. Please try again.'));
+    }
   }
 
   async function submitCampaign(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
+    setWellnessError(null);
+    try {
     if (editingCampaignId) {
       await updateHealthWellnessCampaign(activeCompanyId, editingCampaignId, {
         title: campaignForm.title,
@@ -296,11 +305,16 @@ export function HealthWellnessPage() {
       description: ''
     });
     setRefreshKey((k) => k + 1);
+    } catch (err) {
+      setWellnessError(toUserFacingError(err, 'Unable to save wellness campaign. Please try again.'));
+    }
   }
 
   async function submitVaccination(e: React.FormEvent) {
     e.preventDefault();
     if (!activeCompanyId || !user?.id) return;
+    setWellnessError(null);
+    try {
     if (editingVaccinationId) {
       await updateHealthVaccination(
         activeCompanyId,
@@ -349,11 +363,15 @@ export function HealthWellnessPage() {
       vaccinationForm: clearedVaccinationForm
     });
     clearDraft(draftKeyVaccination);
+    } catch (err) {
+      setWellnessError(toUserFacingError(err, 'Unable to save vaccination record. Please try again.'));
+    }
   }
 
   return (
     <Layout title="Wellness Programme">
       <div className="space-y-5">
+        {wellnessError && <div className="rounded-lg border border-critical/30 bg-critical/5 p-3 text-sm text-critical">{wellnessError}</div>}
         <div className="bg-white border border-surface-300 rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
             <p className="font-semibold text-charcoal">Employee Wellness Programme</p>
@@ -408,6 +426,10 @@ export function HealthWellnessPage() {
             </form>
             <div className="bg-white border border-surface-300 rounded-xl p-4">
               <p className="text-sm text-charcoal-500 mb-3">Mental health, EAP, stress management and awareness campaigns.</p>
+              {campaignsLoading && <div className="text-center py-8 text-sm text-charcoal-500">Loading campaigns…</div>}
+              {!campaignsLoading && (campaigns ?? []).length === 0 && (
+                <div className="text-center py-8 text-sm text-charcoal-500">No wellness campaigns yet. Use the form above to create the first campaign.</div>
+              )}
               <div className="space-y-2">
                 {(campaigns ?? []).map((c) => (
                   <div key={c.id} className="border border-surface-200 rounded-lg p-3 text-sm">
@@ -419,7 +441,7 @@ export function HealthWellnessPage() {
                       </div>
                       <div className="flex gap-2 shrink-0">
                         <button type="button" onClick={() => { setEditingCampaignId(c.id); setCampaignForm({ title: c.title ?? '', campaignType: c.campaign_type ?? 'Mental health', dateFrom: c.date_from ?? '', dateTo: c.date_to ?? '', description: c.description ?? '' }); }} className="px-2 py-1 border rounded text-xs">Edit</button>
-                        <button type="button" onClick={async () => { if (!activeCompanyId) return; if (!window.confirm('Delete this wellness campaign?')) return; await deleteHealthWellnessCampaign(activeCompanyId, c.id); if (editingCampaignId === c.id) { setEditingCampaignId(null); setCampaignForm({ title: '', campaignType: 'Mental health', dateFrom: '', dateTo: '', description: '' }); } setRefreshKey((k) => k + 1); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button>
+                        <button type="button" onClick={async () => { if (!activeCompanyId) return; if (!window.confirm('Delete this wellness campaign?')) return; try { await deleteHealthWellnessCampaign(activeCompanyId, c.id); if (editingCampaignId === c.id) { setEditingCampaignId(null); setCampaignForm({ title: '', campaignType: 'Mental health', dateFrom: '', dateTo: '', description: '' }); } setRefreshKey((k) => k + 1); } catch (err) { setWellnessError(toUserFacingError(err, 'Unable to delete wellness campaign.')); } }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button>
                       </div>
                     </div>
                   </div>
@@ -478,12 +500,18 @@ export function HealthWellnessPage() {
                 )}
               </div>
             </form>
+            {substanceLoading && <div className="text-center py-8 text-sm text-charcoal-500">Loading substance cases…</div>}
+            {!substanceLoading && (substanceCases ?? []).length === 0 && (
+              <div className="text-center py-8 text-sm text-charcoal-500">No substance abuse cases recorded yet.</div>
+            )}
+            {!substanceLoading && (substanceCases ?? []).length > 0 && (
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Employee</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Case type</th><th className="px-3 py-2 text-left">Result</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
-                <tbody className="divide-y divide-surface-100">{(substanceCases ?? []).map((s) => <tr key={s.id}><td className="px-3 py-2">{s.employee_name ?? '-'}</td><td className="px-3 py-2">{s.date_of_report}</td><td className="px-3 py-2">{s.type_of_case}</td><td className="px-3 py-2">{s.test_result}</td><td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setEditingSubstanceId(s.id); setSubstanceForm({ employeeName: s.employee_name ?? '', dateOfReport: s.date_of_report ?? '', testConductedBy: s.test_conducted_by ?? '', typeOfCase: s.type_of_case ?? 'Reasonable Suspicion', substanceSuspected: s.substance_suspected ?? [], observedBehaviourSymptoms: s.observed_behaviour_symptoms ?? '', witnessNames: (s.witness_names ?? []).join(', '), typeOfTest: s.type_of_test ?? 'Breathalyser', testResult: s.test_result ?? 'Negative', immediateActionTaken: s.immediate_action_taken ?? '', outcome: s.outcome ?? 'Verbal Warning' }); setSubstanceManual(s.substance_suspected_other ?? ''); }} className="px-2 py-1 border rounded text-xs">Edit</button><button type="button" onClick={() => setSubstanceEvidenceId(s.id)} className="px-2 py-1 border rounded text-xs">Evidence</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this substance case?')) return; await deleteHealthSubstanceCase(activeCompanyId, s.id, user.id); if (editingSubstanceId === s.id) setEditingSubstanceId(null); setRefreshKey((k) => k + 1); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}</tbody>
+                <tbody className="divide-y divide-surface-100">{(substanceCases ?? []).map((s) => <tr key={s.id}><td className="px-3 py-2">{s.employee_name ?? '-'}</td><td className="px-3 py-2">{s.date_of_report}</td><td className="px-3 py-2">{s.type_of_case}</td><td className="px-3 py-2">{s.test_result}</td><td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setEditingSubstanceId(s.id); setSubstanceForm({ employeeName: s.employee_name ?? '', dateOfReport: s.date_of_report ?? '', testConductedBy: s.test_conducted_by ?? '', typeOfCase: s.type_of_case ?? 'Reasonable Suspicion', substanceSuspected: s.substance_suspected ?? [], observedBehaviourSymptoms: s.observed_behaviour_symptoms ?? '', witnessNames: (s.witness_names ?? []).join(', '), typeOfTest: s.type_of_test ?? 'Breathalyser', testResult: s.test_result ?? 'Negative', immediateActionTaken: s.immediate_action_taken ?? '', outcome: s.outcome ?? 'Verbal Warning' }); setSubstanceManual(s.substance_suspected_other ?? ''); }} className="px-2 py-1 border rounded text-xs">Edit</button><button type="button" onClick={() => setSubstanceEvidenceId(s.id)} className="px-2 py-1 border rounded text-xs">Evidence</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this substance case?')) return; try { await deleteHealthSubstanceCase(activeCompanyId, s.id, user.id); if (editingSubstanceId === s.id) setEditingSubstanceId(null); setRefreshKey((k) => k + 1); } catch (err) { setWellnessError(toUserFacingError(err, 'Unable to delete substance case.')); } }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}</tbody>
               </table>
             </div>
+            )}
           </div>
         )}
 
@@ -523,12 +551,18 @@ export function HealthWellnessPage() {
                 )}
               </div>
             </form>
+            {vaccinationsLoading && <div className="text-center py-8 text-sm text-charcoal-500">Loading vaccination records…</div>}
+            {!vaccinationsLoading && (vaccinations ?? []).length === 0 && (
+              <div className="text-center py-8 text-sm text-charcoal-500">No vaccination records yet. Use the form above to add the first record.</div>
+            )}
+            {!vaccinationsLoading && (vaccinations ?? []).length > 0 && (
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-surface-50"><tr><th className="px-3 py-2 text-left">Employee</th><th className="px-3 py-2 text-left">Vaccine</th><th className="px-3 py-2 text-left">Dose</th><th className="px-3 py-2 text-left">Administered</th><th className="px-3 py-2 text-left">Next due</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
-                <tbody className="divide-y divide-surface-100">{(vaccinations ?? []).map((v) => <tr key={v.id} className={String((v as any).status ?? 'active') === 'archived' ? 'bg-surface-50 text-charcoal-500' : ''}><td className="px-3 py-2">{v.employee_name ?? '-'}</td><td className="px-3 py-2">{v.vaccine_name}</td><td className="px-3 py-2">{v.dose_no ?? '-'}</td><td className="px-3 py-2">{v.date_administered ?? '-'}</td><td className="px-3 py-2">{v.next_due_date ?? '-'}</td><td className="px-3 py-2">{String((v as any).status ?? 'active')}</td><td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setEditingVaccinationId(v.id); setVaccineName(v.vaccine_name ?? ''); setVaccinationForm({ employeeName: v.employee_name ?? '', doseNo: v.dose_no != null ? String(v.dose_no) : '', dateAdministered: v.date_administered ?? '', batchNo: v.batch_no ?? '', administeredBy: v.administered_by ?? '', nextDueDate: v.next_due_date ?? '', validity: v.validity ?? '' }); }} className="px-2 py-1 border rounded text-xs">Edit</button><button type="button" onClick={() => setVaccinationEvidenceId(v.id)} className="px-2 py-1 border rounded text-xs">Documents</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this vaccination record?')) return; await deleteHealthVaccination(activeCompanyId, v.id, user.id); if (editingVaccinationId === v.id) setEditingVaccinationId(null); setRefreshKey((k) => k + 1); }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}</tbody>
+                <tbody className="divide-y divide-surface-100">{(vaccinations ?? []).map((v) => <tr key={v.id} className={String((v as any).status ?? 'active') === 'archived' ? 'bg-surface-50 text-charcoal-500' : ''}><td className="px-3 py-2">{v.employee_name ?? '-'}</td><td className="px-3 py-2">{v.vaccine_name}</td><td className="px-3 py-2">{v.dose_no ?? '-'}</td><td className="px-3 py-2">{v.date_administered ?? '-'}</td><td className="px-3 py-2">{v.next_due_date ?? '-'}</td><td className="px-3 py-2">{String((v as any).status ?? 'active')}</td><td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setEditingVaccinationId(v.id); setVaccineName(v.vaccine_name ?? ''); setVaccinationForm({ employeeName: v.employee_name ?? '', doseNo: v.dose_no != null ? String(v.dose_no) : '', dateAdministered: v.date_administered ?? '', batchNo: v.batch_no ?? '', administeredBy: v.administered_by ?? '', nextDueDate: v.next_due_date ?? '', validity: v.validity ?? '' }); }} className="px-2 py-1 border rounded text-xs">Edit</button><button type="button" onClick={() => setVaccinationEvidenceId(v.id)} className="px-2 py-1 border rounded text-xs">Documents</button><button type="button" onClick={async () => { if (!activeCompanyId || !user?.id) return; if (!window.confirm('Delete this vaccination record?')) return; try { await deleteHealthVaccination(activeCompanyId, v.id, user.id); if (editingVaccinationId === v.id) setEditingVaccinationId(null); setRefreshKey((k) => k + 1); } catch (err) { setWellnessError(toUserFacingError(err, 'Unable to delete vaccination record.')); } }} className="px-2 py-1 border border-critical/30 text-critical rounded text-xs">Delete</button></div></td></tr>)}</tbody>
               </table>
             </div>
+            )}
           </div>
         )}
       </div>

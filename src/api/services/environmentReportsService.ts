@@ -160,7 +160,7 @@ export function renderEnvironmentReportHtml(type: EnvironmentReportType, data: E
   const rows = buildRows(type, data);
   const headers = Object.keys(rows[0] ?? { metric: '', value: '' });
   const tableRows = rows
-    .map((row) => `<tr>${headers.map((header) => `<td>${escapeHtml((row as any)[header])}</td>`).join('')}</tr>`)
+    .map((row) => `<tr>${headers.map((header) => `<td>${escapeHtml((row as Record<string, unknown>)[header])}</td>`).join('')}</tr>`)
     .join('');
 
   return `<!DOCTYPE html>

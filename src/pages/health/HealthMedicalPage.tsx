@@ -10,6 +10,7 @@ import type { CompanyRole } from '../../api/models/core';
 import type { HealthMedical, HealthRestrictedDuty } from '../../api/models/entities';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 const tabs = ['Medical Records', 'Restricted Tracker'] as const;
 type TabKey = (typeof tabs)[number];
@@ -73,7 +74,7 @@ export function HealthMedicalPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCompanyId, draftKeyMedicalCreate, restoreDraft, user?.id]);
 
-  const { data: medicals } = useAsync<HealthMedical[]>(async () => {
+  const { data: medicals, loading: medicalsLoading } = useAsync<HealthMedical[]>(async () => {
     if (!activeCompanyId) return [];
     return await listHealthMedicals({
       companyId: activeCompanyId,
@@ -84,7 +85,7 @@ export function HealthMedicalPage() {
     });
   }, [activeCompanyId, user?.id, activeRole, activeMembership?.is_hr_manager, refreshKey]);
 
-  const { data: restrictedDuty } = useAsync(async () => {
+  const { data: restrictedDuty, loading: restrictedLoading } = useAsync(async () => {
     if (!activeCompanyId) return [];
     return await listHealthRestrictedDuty({ companyId: activeCompanyId, limit: 300 });
   }, [activeCompanyId, refreshKey]);
@@ -167,7 +168,7 @@ export function HealthMedicalPage() {
       clearDraft(draftKeyMedicalCreate);
       setMedicalSuccess('Saved successfully.');
     } catch (error) {
-      setMedicalError(error instanceof Error ? error.message : 'Unable to save this medical record.');
+      setMedicalError(toUserFacingError(error, 'Unable to save this medical record.'));
     } finally {
       setSavingMedical(false);
     }
@@ -314,7 +315,12 @@ export function HealthMedicalPage() {
                 {expiringSoon.length === 0 && <p className="text-sm text-charcoal-500">No expiring certificates.</p>}
               </div>
             </div>
-            <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+            {medicalsLoading && <div className="text-center py-8 text-sm text-charcoal-500">Loading medical records…</div>}
+          {!medicalsLoading && (medicals ?? []).length === 0 && (
+            <div className="text-center py-8 text-sm text-charcoal-500">No medical surveillance records yet. Add the first record using the form above.</div>
+          )}
+          {!medicalsLoading && (medicals ?? []).length > 0 && (
+          <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-surface-50">
                   <tr>
@@ -388,9 +394,13 @@ export function HealthMedicalPage() {
                                 onClick={async () => {
                                   if (!activeCompanyId || !user?.id) return;
                                   if (!window.confirm('Delete this medical record?')) return;
-                                  await deleteHealthMedical(activeCompanyId, m.id, user.id);
-                                  if (editingMedicalId === m.id) cancelMedicalEdit();
-                                  setRefreshKey((k) => k + 1);
+                                  try {
+                                    await deleteHealthMedical(activeCompanyId, m.id, user.id);
+                                    if (editingMedicalId === m.id) cancelMedicalEdit();
+                                    setRefreshKey((k) => k + 1);
+                                  } catch (err) {
+                                    setMedicalError(toUserFacingError(err, 'Unable to delete medical record.'));
+                                  }
                                 }}
                                 className="px-2 py-1 rounded border border-critical/30 text-xs text-critical hover:bg-critical/5"
                               >
@@ -405,6 +415,7 @@ export function HealthMedicalPage() {
                 </tbody>
               </table>
             </div>
+          )}
           </div>
         )}
 
@@ -423,6 +434,11 @@ export function HealthMedicalPage() {
                 <option value="closed">Closed</option>
               </select>
             </div>
+            {restrictedLoading && <div className="text-center py-8 text-sm text-charcoal-500">Loading restricted duty records…</div>}
+            {!restrictedLoading && (restrictedDuty ?? []).length === 0 && (
+              <div className="text-center py-8 text-sm text-charcoal-500">No restricted duty records. Records are created automatically when a medical record requires restricted duty.</div>
+            )}
+            {!restrictedLoading && (restrictedDuty ?? []).length > 0 && (
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-surface-50">
@@ -459,6 +475,7 @@ export function HealthMedicalPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         )}
       </div>

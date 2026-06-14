@@ -34,7 +34,7 @@ async function getDocumentOwnerEmail(companyId: UUID, ownerUserId?: UUID | null)
     .eq('company_id', companyId)
     .eq('user_id', ownerUserId)
     .maybeSingle();
-  const email = String((data as any)?.email ?? '').trim();
+  const email = String((data as Record<string, unknown> | null)?.['email'] ?? '').trim();
   return email || null;
 }
 
@@ -239,7 +239,7 @@ export async function updateDocument(input: {
   ] as const;
 
   for (const key of allowedKeys) {
-    if (key in input.patch) patch[key] = (input.patch as any)[key] ?? null;
+    if (key in input.patch) patch[key] = (input.patch as Record<string, unknown>)[key] ?? null;
   }
 
   const { data, error } = await insforge.database

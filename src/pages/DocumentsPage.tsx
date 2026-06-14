@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDownIcon, ChevronRightIcon, FileTextIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, LockIcon, PencilIcon, PlusIcon, SearchIcon, ShieldAlertIcon, UploadIcon } from 'lucide-react';
+import { toUserFacingError } from '../utils/userFacingMessage';
 import { useUser } from '@insforge/react';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
@@ -169,10 +170,17 @@ function FolderCreateModal(props: {
       }));
   }, [module, props.folders]);
 
+  React.useEffect(() => {
+    if (!props.open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') props.onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [props.open, props.onClose]);
+
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
       <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-xl border border-surface-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
@@ -205,8 +213,8 @@ function FolderCreateModal(props: {
               setIsRestricted(false);
               setSuccessMessage('Folder created successfully');
               setTimeout(() => props.onClose(), 600);
-            } catch (err: any) {
-              setError(String(err?.message || err));
+            } catch (err: unknown) {
+              setError(toUserFacingError(err, 'Could not create folder. Please try again.'));
             } finally {
               setLoading(false);
             }
@@ -286,10 +294,17 @@ function ApprovalRequestModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (!props.open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') props.onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [props.open, props.onClose]);
+
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
       <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
@@ -321,8 +336,8 @@ function ApprovalRequestModal(props: {
               });
               props.onSubmitted();
               props.onClose();
-            } catch (err: any) {
-              setError(String(err?.message || err));
+            } catch (err: unknown) {
+              setError(toUserFacingError(err, 'Could not submit approval request. Please try again.'));
             } finally {
               setLoading(false);
             }
@@ -364,9 +379,16 @@ function ApprovalRequestModal(props: {
 }
 
 function ApprovedEditChoiceModal(props: { open: boolean; onClose: () => void; onDraft: () => void; onUnpublish: () => void }) {
+  React.useEffect(() => {
+    if (!props.open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') props.onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [props.open, props.onClose]);
+
   if (!props.open) return null;
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
       <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl border border-surface-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-surface-200">

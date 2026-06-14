@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { CalendarIcon, EyeIcon, FileTextIcon, MailIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { toUserFacingError } from '../utils/userFacingMessage';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
@@ -51,6 +52,7 @@ export function DocumentReviewsPage() {
   const [progressStatus, setProgressStatus] = useState<ReviewMeetingItemStatus | 'ALL'>('ALL');
   const [refreshKey, setRefreshKey] = useState(0);
   const [actionBusyMeetingId, setActionBusyMeetingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const viewer = useMemo(() => {
     if (!user?.id || !activeRole || !activeCompanyId) return undefined;
@@ -102,14 +104,20 @@ export function DocumentReviewsPage() {
 
   async function handleDelete(meetingId: string): Promise<void> {
     if (!activeCompanyId || !user?.id) return;
-    if (!confirm('Delete this review meeting and all items?')) return;
-    await deleteReviewMeeting({ companyId: activeCompanyId, meetingId, actorUserId: user.id as string });
-    setRefreshKey((k) => k + 1);
+    if (!window.confirm('Delete this review meeting and all items?')) return;
+    try {
+      setActionError(null);
+      await deleteReviewMeeting({ companyId: activeCompanyId, meetingId, actorUserId: user.id as string });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Could not delete review meeting. Please try again.'));
+    }
   }
 
   async function handleGenerate(meetingId: string): Promise<void> {
     if (!activeCompanyId || !user?.id) return;
     setActionBusyMeetingId(meetingId);
+    setActionError(null);
     try {
       const loaded = await getReviewMeeting(activeCompanyId, meetingId);
       if (!loaded) return;
@@ -122,6 +130,8 @@ export function DocumentReviewsPage() {
       const htmlBlob = new Blob([report.html], { type: 'text/html' });
       openBlobInNewTab(htmlBlob);
       downloadBlob(report.csv, `review-meeting-${meetingId.slice(0, 8)}.csv`);
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Could not generate report. Please try again.'));
     } finally {
       setActionBusyMeetingId(null);
     }
@@ -130,6 +140,7 @@ export function DocumentReviewsPage() {
   async function handleEmail(meetingId: string): Promise<void> {
     if (!activeCompanyId || !user?.id) return;
     setActionBusyMeetingId(meetingId);
+    setActionError(null);
     try {
       const loaded = await getReviewMeeting(activeCompanyId, meetingId);
       if (!loaded) return;
@@ -141,6 +152,8 @@ export function DocumentReviewsPage() {
         reason: 'manual'
       });
       alert('Report email queued.');
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Could not send report email. Please try again.'));
     } finally {
       setActionBusyMeetingId(null);
     }
@@ -248,6 +261,13 @@ export function DocumentReviewsPage() {
             </select>
           </label>
         </div>
+
+        {actionError && (
+          <div className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">
+            <p className="text-sm font-semibold text-critical">Action failed</p>
+            <p className="text-sm text-charcoal-500 mt-1">{actionError}</p>
+          </div>
+        )}
 
         <div className="bg-white rounded-xl border border-surface-300 shadow-card overflow-x-auto">
           <table className="w-full min-w-[1420px]">

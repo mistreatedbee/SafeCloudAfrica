@@ -33,9 +33,13 @@ export function EnvironmentalAnalyticsPage() {
           </div>
         )}
 
-        {loading ? (
-          <p className="text-charcoal-500">Loading…</p>
-        ) : env ? (
+        {loading && (
+          <div className="text-center py-8 text-sm text-charcoal-500">Loading environmental KPIs…</div>
+        )}
+        {!loading && !error && !env && (
+          <div className="text-center py-12 text-charcoal-400">No data for this period. Add waste, water, and air quality records to populate environmental KPIs.</div>
+        )}
+        {!loading && env && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="bg-white rounded-xl border border-surface-200 p-4 shadow-card">
               <p className="text-xs font-medium text-charcoal-500 uppercase tracking-wide">Waste Recycling Rate %</p>
@@ -58,7 +62,7 @@ export function EnvironmentalAnalyticsPage() {
               <p className="text-xs text-charcoal-500 mt-1">Energy / Production: {env.totalEnergyUsed} / {env.productionOutput || '—'}</p>
             </div>
           </div>
-        ) : null}
+        )}
       </motion.div>
     </Layout>
   );

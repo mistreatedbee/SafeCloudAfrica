@@ -1,5 +1,5 @@
 import { insforge } from '../insforge/client';
-import type { CompanyRole } from '../models/core';
+import type { CompanyRole, Severity } from '../models/core';
 import type { UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
@@ -60,6 +60,16 @@ const score = (v: number, n: string) => {
   if (!Number.isFinite(x) || x < 1 || x > 5) throw new Error(`${n} must be between 1 and 5.`);
   return Math.round(x);
 };
+function validateDateRange(fromDate: string | undefined | null, toDate: string | undefined | null): void {
+  if (fromDate && toDate && fromDate > toDate) {
+    throw new Error('From date must not be after the to date.');
+  }
+}
+function validateNonNegative(value: number, fieldName: string): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${fieldName} must be zero or a positive number.`);
+  }
+}
 
 function monthKey(value: string): string {
   const d = new Date(value);
@@ -85,7 +95,7 @@ const ENV_OPTIONAL_EMPLOYEE_FIELDS = [
 const ENV_ATTACHMENTS_BUCKET = 'sca-evidence' as const;
 
 function isMissingColumnError(error: unknown, optionalFields: string[] = ENV_OPTIONAL_EMPLOYEE_FIELDS): boolean {
-  const message = String((error as any)?.message ?? '').toLowerCase();
+  const message = String((error instanceof Error ? error.message : (error as Record<string, unknown>)?.message) ?? '').toLowerCase();
   return message.includes('column') && optionalFields.some((field) => message.includes(field));
 }
 
@@ -238,6 +248,7 @@ export async function listRiskAssessmentOptions(companyId: UUID): Promise<Array<
 }
 
 export async function listEnvImpactAssessments(companyId: UUID, filters?: any): Promise<any[]> {
+  validateDateRange(filters?.fromDate, filters?.toDate);
   let q = insforge.database.from('env_impact_assessments').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(2000);
   if (filters?.fromDate) q = q.gte('created_at', filters.fromDate);
   if (filters?.toDate) q = q.lte('created_at', filters.toDate);
@@ -301,6 +312,7 @@ export async function deleteEnvImpactAssessment(input: {
 }
 
 export async function listEnvRiskOpportunity(companyId: UUID, filters?: any): Promise<any[]> {
+  validateDateRange(filters?.fromDate, filters?.toDate);
   let q = insforge.database.from('env_risk_opportunity').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(2000);
   if (filters?.status && filters.status !== 'all') q = q.eq('status', filters.status);
   if (filters?.fromDate) q = q.gte('created_at', filters.fromDate);
@@ -352,6 +364,7 @@ export async function deleteEnvRiskOpportunity(input: {
 }
 
 export async function listEnvWasteDisposal(companyId: UUID, filters?: any): Promise<any[]> {
+  validateDateRange(filters?.fromDate, filters?.toDate);
   let q = insforge.database.from('env_waste_disposal').select('*').eq('company_id', companyId).order('date', { ascending: false }).limit(2000);
   if (filters?.status && filters.status !== 'all') q = q.eq('status', filters.status);
   if (filters?.disposalStatus && filters.disposalStatus !== 'all') q = q.eq('disposal_status', filters.disposalStatus);
@@ -367,6 +380,7 @@ export async function listEnvWasteDisposal(companyId: UUID, filters?: any): Prom
 export async function upsertEnvWasteDisposal(input: any): Promise<any> {
   if (!yes(input.actorRole ?? null, WRITE_ROLES)) throw new Error('You do not have permission to save waste disposal records.');
   if (input.status === 'Approved' && !yes(input.actorRole ?? null, APPROVE_ROLES)) throw new Error('Only owner/admin can approve waste disposal records.');
+  validateNonNegative(Number(input.quantityValue ?? 0), 'Quantity');
 
   if (input.id) {
     const { data: existing, error: existingError } = await insforge.database
@@ -475,12 +489,12 @@ export async function deleteEnvWasteDisposal(input: {
 
 async function createNcrFromEnv(input: { companyId: UUID; actorUserId: UUID; source: 'env_water_monitoring' | 'env_air_quality'; referenceId: UUID; summary: string; riskLevel?: string | null; legalReference?: string | null; }): Promise<UUID> {
   const level = String(input.riskLevel ?? '').toLowerCase();
-  const severity = level.includes('critical') ? 'critical' : level.includes('high') ? 'high' : level.includes('low') ? 'low' : 'medium';
+  const severity: Severity = level.includes('critical') ? 'critical' : level.includes('high') ? 'high' : level.includes('low') ? 'low' : 'medium';
   const ncr = await createQualityNcr({
     companyId: input.companyId,
     title: input.summary.slice(0, 180),
     description: `${input.summary}${input.legalReference ? `\nLegal reference: ${input.legalReference}` : ''}`,
-    severity: severity as any,
+    severity,
     createdByUserId: input.actorUserId,
     source_entity_type: input.source,
     source_entity_id: input.referenceId
@@ -543,6 +557,7 @@ export async function createNcrFromEnvironmentalNonCompliance(input: { companyId
 }
 
 export async function listEnvWaterMonitoring(companyId: UUID, filters?: any): Promise<any[]> {
+  validateDateRange(filters?.fromDate, filters?.toDate);
   let q = insforge.database.from('env_water_monitoring').select('*').eq('company_id', companyId).order('sampling_date', { ascending: false }).limit(2000);
   if (filters?.status && filters.status !== 'all') q = q.eq('overall_compliance_status', filters.status);
   if (filters?.fromDate) q = q.gte('sampling_date', filters.fromDate);
@@ -642,6 +657,7 @@ export async function deleteEnvWaterMonitoring(input: {
 }
 
 export async function listEnvAirQuality(companyId: UUID, filters?: any): Promise<any[]> {
+  validateDateRange(filters?.fromDate, filters?.toDate);
   let q = insforge.database.from('env_air_quality').select('*').eq('company_id', companyId).order('monitoring_date', { ascending: false }).limit(2000);
   if (filters?.status && filters.status !== 'all') q = q.eq('overall_status', filters.status);
   if (filters?.fromDate) q = q.gte('monitoring_date', filters.fromDate);
@@ -750,7 +766,8 @@ export async function getEnvironmentDashboardStats(companyId: UUID): Promise<Env
     insforge.database.from('env_air_quality').select('monitoring_date, overall_status').eq('company_id', companyId).gte('monitoring_date', trendFrom).limit(5000),
     insforge.database.from('env_waste_disposal').select('date, waste_category, quantity_value').eq('company_id', companyId).gte('date', trendFrom).limit(5000)
   ]);
-  if (ncr.error || overdue.error || waterLatest.error || airLatest.error || wasteMonth.error || waterTrend.error || airTrend.error || wasteTrend.error) throw new Error(getErrorMessage(ncr.error || overdue.error || waterLatest.error || airLatest.error || wasteMonth.error || waterTrend.error || airTrend.error || wasteTrend.error as any));
+  const firstError = ncr.error ?? overdue.error ?? waterLatest.error ?? airLatest.error ?? wasteMonth.error ?? waterTrend.error ?? airTrend.error ?? wasteTrend.error;
+  if (firstError) throw new Error(getErrorMessage(firstError));
   const months = rolling12Months();
   const wm = new Map<string, { pass: number; fail: number }>(months.map((m) => [m, { pass: 0, fail: 0 }]));
   ((waterTrend.data ?? []) as any[]).forEach((r) => { const m = monthKey(r.sampling_date); const b = wm.get(m); if (!b) return; if (String(r.overall_compliance_status) === 'Fail') b.fail += 1; else b.pass += 1; });

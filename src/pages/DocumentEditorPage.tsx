@@ -4,12 +4,15 @@ import { DownloadIcon, EyeIcon, FileWarningIcon } from 'lucide-react';
 import { fetchWithInsforgeAuth } from '../api/insforge/authenticatedFetch';
 import { Layout } from '../components/layout/Layout';
 import { readEditorConfigResponse, toFriendlyEditorMessage } from './documentEditorResponse';
+import { toUserFacingError } from '../utils/userFacingMessage';
+
+type WindowWithDocsAPI = Window & typeof globalThis & { DocsAPI?: { DocEditor: new (containerId: string, config: Record<string, unknown>) => { destroyEditor?: () => void } } };
 
 function loadOnlyofficeApi(docServerOrigin: string): Promise<void> {
   const src = `${docServerOrigin.replace(/\/+$/, '')}/web-apps/apps/api/documents/api.js`;
 
   if (typeof window === 'undefined') return Promise.resolve();
-  const w = window as any;
+  const w = window as WindowWithDocsAPI;
   if (w.DocsAPI && w.DocsAPI.DocEditor) return Promise.resolve();
 
   const existing = document.querySelector(`script[data-onlyoffice-api="1"][src="${src}"]`);
@@ -44,6 +47,25 @@ export function DocumentEditorPage() {
 
   const containerId = React.useMemo(() => `onlyoffice-doceditor-${versionId || 'unknown'}`, [versionId]);
   const editorRef = React.useRef<any>(null);
+  const isDirty = React.useRef(false);
+
+  // Warn user before navigating away if in edit mode (ONLYOFFICE handles unsaved changes internally,
+  // but we guard for page-level navigation in case the editor has pending saves).
+  React.useEffect(() => {
+    if (mode !== 'edit') return;
+    isDirty.current = true;
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty.current) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => {
+      window.removeEventListener('beforeunload', handler);
+      isDirty.current = false;
+    };
+  }, [mode]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -84,7 +106,7 @@ export function DocumentEditorPage() {
         await loadOnlyofficeApi(payload.docServerOrigin);
         if (cancelled) return;
 
-        const w = window as any;
+        const w = window as WindowWithDocsAPI;
         if (!w.DocsAPI || !w.DocsAPI.DocEditor) throw new Error('ONLYOFFICE DocEditor API not available.');
 
         // Dispose previous editor instance if the user navigates between versions.

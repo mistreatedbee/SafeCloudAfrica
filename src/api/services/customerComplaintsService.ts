@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { CompanyRole, UUID } from '../models/core';
 import type { CustomerComplaintStatus, QualityCustomerComplaint } from '../models/entities';
@@ -8,6 +9,7 @@ import { createTask } from './tasksService';
 import { getMyProfile } from './profilesService';
 import { sendTemplatedNotificationEmail } from './emailService';
 import { resolveComplaintClosureFields } from './customerComplaintsService.helpers';
+import { MANAGEMENT_ROLES } from '../../constants/roles';
 
 export const CUSTOMER_COMPLAINT_STATUS_LABELS: Record<CustomerComplaintStatus, string> = {
   CLOSED: 'Closed',
@@ -16,7 +18,6 @@ export const CUSTOMER_COMPLAINT_STATUS_LABELS: Record<CustomerComplaintStatus, s
 };
 
 const ACTIVE_STATUSES: CustomerComplaintStatus[] = ['MONITORING_REQUIRED', 'ESCALATED_TO_MANAGEMENT'];
-const MANAGEMENT_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
 const WRITE_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
 const ESCALATE_CLOSE_ROLES: CompanyRole[] = ['owner', 'admin', 'manager'];
 
@@ -89,7 +90,7 @@ async function getOrCreateNextComplaintRef(companyId: UUID): Promise<string> {
       .eq('year', year)
       .single();
     if (readError) throw new Error(getErrorMessage(readError));
-    const last = Number((counter as any)?.last_number ?? 0);
+    const last = Number((counter as Record<string, unknown>)?.last_number ?? 0);
     const next = last + 1;
 
     const { data: updated, error: updateError } = await insforge.database
@@ -116,7 +117,7 @@ async function getEscalationRecipients(companyId: UUID): Promise<Array<{ userId:
     .in('role', ['owner', 'admin']);
   if (membersError) throw new Error(getErrorMessage(membersError));
 
-  const userIds = [...new Set((memberships ?? []).map((x: any) => x.user_id as UUID))];
+  const userIds = [...new Set((memberships ?? []).map((x: Record<string, unknown>) => x.user_id as UUID))];
   if (userIds.length === 0) return [];
 
   const { data: profiles } = await insforge.database
@@ -124,7 +125,8 @@ async function getEscalationRecipients(companyId: UUID): Promise<Array<{ userId:
     .select('user_id, email')
     .eq('company_id', companyId)
     .in('user_id', userIds);
-  const emailMap = new Map<string, string | null>((profiles ?? []).map((p: any) => [p.user_id, p.email ?? null]));
+  type ProfileRow = { user_id: string; email: string | null };
+  const emailMap = new Map<string, string | null>((profiles ?? []).map((p: ProfileRow) => [p.user_id, p.email ?? null]));
 
   return userIds.map((userId) => ({ userId, email: emailMap.get(userId) ?? null }));
 }
@@ -191,6 +193,7 @@ export type ListCustomerComplaintsInput = {
 };
 
 export async function listCustomerComplaints(input: ListCustomerComplaintsInput): Promise<QualityCustomerComplaint[]> {
+  return withInsforgeSession('customer-complaints:list', async () => {
   let q = insforge.database
     .from('quality_customer_complaints')
     .select('*')
@@ -215,6 +218,7 @@ export async function listCustomerComplaints(input: ListCustomerComplaintsInput)
     return rows.filter((row) => row.created_by_user_id === input.actorUserId);
   }
   return rows;
+  }); // end withInsforgeSession
 }
 
 export async function getCustomerComplaint(companyId: UUID, complaintId: UUID): Promise<QualityCustomerComplaint | null> {
@@ -238,6 +242,7 @@ export async function createCustomerComplaint(input: {
     throw new Error('You do not have permission to create complaints.');
   }
   validateComplaintInput(input, input.actorRole);
+  return withInsforgeSession('customer-complaints:create', async () => {
 
   const profile = await getMyProfile(input.companyId, input.actorUserId);
   const complaintRefNo = input.complaintRefNo?.trim() || (await getOrCreateNextComplaintRef(input.companyId));
@@ -252,10 +257,11 @@ export async function createCustomerComplaint(input: {
     source_entity_type: 'customer_complaint'
   });
 
+  const profileRow = profile as Record<string, unknown> | null;
   const insertPayload: Record<string, unknown> = {
     company_id: input.companyId,
-    site_id: (profile as any)?.site_id ?? null,
-    department_id: (profile as any)?.department_id ?? null,
+    site_id: (profileRow?.site_id as string | null) ?? null,
+    department_id: (profileRow?.department_id as string | null) ?? null,
     complaint_ref_no: complaintRefNo,
     customer_name: input.customerName.trim(),
     person_handling_user_id: input.personHandlingUserId ?? null,
@@ -484,7 +490,9 @@ export async function listComplaintHandlers(companyId: UUID): Promise<Array<{ us
     .in('role', ['owner', 'admin', 'manager', 'supervisor', 'consultant']);
   if (error) throw new Error(getErrorMessage(error));
 
-  const userIds = [...new Set((members ?? []).map((m: any) => m.user_id as UUID))];
+  type MemberRow = { user_id: UUID; role: string };
+  const memberRows = (members ?? []) as MemberRow[];
+  const userIds = [...new Set(memberRows.map((m) => m.user_id))];
   if (userIds.length === 0) return [];
 
   const { data: profiles } = await insforge.database
@@ -492,16 +500,17 @@ export async function listComplaintHandlers(companyId: UUID): Promise<Array<{ us
     .select('user_id, full_name, email')
     .eq('company_id', companyId)
     .in('user_id', userIds);
-  const profileMap = new Map<string, any>((profiles ?? []).map((p: any) => [p.user_id, p]));
+  type ComplaintProfileRow = { user_id: string; full_name: string | null; email: string | null };
+  const profileMap = new Map<string, ComplaintProfileRow>((profiles ?? []).map((p: ComplaintProfileRow) => [p.user_id, p]));
 
-  return (members ?? []).map((member: any) => {
+  return memberRows.map((member) => {
     const profile = profileMap.get(member.user_id);
     const displayName =
-      (profile?.full_name as string | undefined)?.trim() ||
-      (profile?.email as string | undefined)?.trim() ||
+      profile?.full_name?.trim() ||
+      profile?.email?.trim() ||
       String(member.user_id).slice(0, 8);
     return {
-      userId: member.user_id as UUID,
+      userId: member.user_id,
       role: String(member.role),
       displayName
     };

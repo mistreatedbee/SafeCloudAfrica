@@ -15,6 +15,7 @@ import {
   LEGAL_UPDATE_COMPLETION_OPTIONS,
   updateLegalUpdate
 } from '../api/services/legalRequirementsService';
+import { toUserFacingError } from '../utils/userFacingMessage';
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { useDraftRegistration } from '../session/useDraftRegistration';
 
@@ -48,6 +49,51 @@ const DEFAULT_UPDATE_FORM: UpdateForm = {
   closureNote: ''
 };
 
+function CloseLegalUpdateModal(props: {
+  closureNote: string;
+  onClosureNoteChange: (value: string) => void;
+  actionError: string | null;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') props.onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [props.onClose]);
+
+  return (
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div className="relative bg-white border border-surface-300 rounded-xl p-4 w-full max-w-md space-y-3 max-h-[90dvh] overflow-y-auto">
+        <p className="font-semibold text-charcoal">Close legal update</p>
+        <textarea
+          value={props.closureNote}
+          onChange={(e) => props.onClosureNoteChange(e.target.value)}
+          placeholder="Closure note (required)"
+          className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+          rows={3}
+        />
+        {props.actionError && (
+          <p className="text-sm text-critical">{props.actionError}</p>
+        )}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={props.onClose} className="px-3 py-2 rounded-lg border border-surface-300 text-sm">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void props.onConfirm()}
+            className="px-3 py-2 rounded-lg bg-teal text-white text-sm"
+          >
+            Close update
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LegalRequirementDetailPage() {
   const { requirementId } = useParams();
   const [searchParams] = useSearchParams();
@@ -59,6 +105,8 @@ export function LegalRequirementDetailPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [updateForm, setUpdateForm] = useState<UpdateForm>(DEFAULT_UPDATE_FORM);
   const [closingUpdateId, setClosingUpdateId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `legal-update-form:${requirementId ?? 'unknown'}:${user?.id ?? 'anon'}`;
 
@@ -298,15 +346,20 @@ export function LegalRequirementDetailPage() {
                                       if (!activeCompanyId || !user?.id) return;
                                       const next = prompt('Update summary of change', u.summary_of_change ?? '');
                                       if (next == null) return;
-                                      await updateLegalUpdate({
-                                        companyId: activeCompanyId,
-                                        updateId: u.id,
-                                        actorUserId: user.id as UUID,
-                                        actorRole: activeRole ?? null,
-                                        patch: { summaryOfChange: next }
-                                      });
-                                      setRefreshKey((k) => k + 1);
-                                      await refresh();
+                                      try {
+                                        setActionError(null);
+                                        await updateLegalUpdate({
+                                          companyId: activeCompanyId,
+                                          updateId: u.id,
+                                          actorUserId: user.id as UUID,
+                                          actorRole: activeRole ?? null,
+                                          patch: { summaryOfChange: next }
+                                        });
+                                        setRefreshKey((k) => k + 1);
+                                        await refresh();
+                                      } catch (err) {
+                                        setActionError(toUserFacingError(err, 'Could not update legal update. Please try again.'));
+                                      }
                                     }}
                                     className="px-2 py-1 rounded border border-surface-300 text-xs disabled:opacity-60"
                                   >
@@ -328,14 +381,19 @@ export function LegalRequirementDetailPage() {
                                       onClick={async () => {
                                         if (!activeCompanyId || !user?.id) return;
                                         if (!window.confirm('Delete this legal update? This cannot be undone.')) return;
-                                        await deleteLegalUpdate({
-                                          companyId: activeCompanyId,
-                                          updateId: u.id,
-                                          actorUserId: user.id as UUID,
-                                          actorRole: activeRole ?? null
-                                        });
-                                        setRefreshKey((k) => k + 1);
-                                        await refresh();
+                                        try {
+                                          setActionError(null);
+                                          await deleteLegalUpdate({
+                                            companyId: activeCompanyId,
+                                            updateId: u.id,
+                                            actorUserId: user.id as UUID,
+                                            actorRole: activeRole ?? null
+                                          });
+                                          setRefreshKey((k) => k + 1);
+                                          await refresh();
+                                        } catch (err) {
+                                          setActionError(toUserFacingError(err, 'Could not delete legal update. Please try again.'));
+                                        }
                                       }}
                                       className="px-2 py-1 rounded border border-critical/30 text-critical text-xs"
                                     >
@@ -388,34 +446,46 @@ export function LegalRequirementDetailPage() {
                           <textarea value={updateForm.closureNote} onChange={(e) => setUpdateForm((p) => ({ ...p, closureNote: e.target.value }))} placeholder="Closure note" className="px-3 py-2 border border-surface-300 rounded-lg text-sm md:col-span-2" rows={2} />
                         )}
                       </div>
+                      {actionError && (
+                        <p className="text-sm text-critical">{actionError}</p>
+                      )}
                       <button
                         type="button"
+                        disabled={actionLoading}
                         onClick={async () => {
                           if (!activeCompanyId || !user?.id) return;
-                          await createLegalUpdate({
-                            companyId: activeCompanyId,
-                            legalRequirementId: requirementId as UUID,
-                            actorUserId: user.id as UUID,
-                            actorRole: activeRole ?? null,
-                            dateAmended: updateForm.dateAmended || null,
-                            lawUpdatedDate: updateForm.lawUpdatedDate || null,
-                            summaryOfChange: updateForm.summaryOfChange || null,
-                            impactOnBusiness: updateForm.impactOnBusiness || null,
-                            actionRequired: updateForm.actionRequired || null,
-                            responsibleUserId: (updateForm.responsibleUserId || null) as UUID | null,
-                            responsibleExternalName: updateForm.responsibleExternalName || null,
-                            deadline: updateForm.deadline || null,
-                            completionStatus: updateForm.completionStatus,
-                            closureNote: updateForm.closureNote || null
-                          });
-                          setUpdateForm(DEFAULT_UPDATE_FORM);
-                          clearDraft(draftKey);
-                          setRefreshKey((k) => k + 1);
-                          await refresh();
+                          try {
+                            setActionError(null);
+                            setActionLoading(true);
+                            await createLegalUpdate({
+                              companyId: activeCompanyId,
+                              legalRequirementId: requirementId as UUID,
+                              actorUserId: user.id as UUID,
+                              actorRole: activeRole ?? null,
+                              dateAmended: updateForm.dateAmended || null,
+                              lawUpdatedDate: updateForm.lawUpdatedDate || null,
+                              summaryOfChange: updateForm.summaryOfChange || null,
+                              impactOnBusiness: updateForm.impactOnBusiness || null,
+                              actionRequired: updateForm.actionRequired || null,
+                              responsibleUserId: (updateForm.responsibleUserId || null) as UUID | null,
+                              responsibleExternalName: updateForm.responsibleExternalName || null,
+                              deadline: updateForm.deadline || null,
+                              completionStatus: updateForm.completionStatus,
+                              closureNote: updateForm.closureNote || null
+                            });
+                            setUpdateForm(DEFAULT_UPDATE_FORM);
+                            clearDraft(draftKey);
+                            setRefreshKey((k) => k + 1);
+                            await refresh();
+                          } catch (err) {
+                            setActionError(toUserFacingError(err, 'Could not add legal update. Please try again.'));
+                          } finally {
+                            setActionLoading(false);
+                          }
                         }}
-                        className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold"
+                        className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold disabled:opacity-60"
                       >
-                        Add update
+                        {actionLoading ? 'Saving...' : 'Add update'}
                       </button>
                     </div>
                   )}
@@ -427,44 +497,31 @@ export function LegalRequirementDetailPage() {
       </div>
 
       {closingUpdateId && activeCompanyId && user?.id && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setClosingUpdateId(null)} />
-          <div className="relative bg-white border border-surface-300 rounded-xl p-4 w-full max-w-md space-y-3 max-h-[90dvh] overflow-y-auto">
-            <p className="font-semibold text-charcoal">Close legal update</p>
-            <textarea
-              value={updateForm.closureNote}
-              onChange={(e) => setUpdateForm((p) => ({ ...p, closureNote: e.target.value }))}
-              placeholder="Closure note (required)"
-              className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
-              rows={3}
-            />
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setClosingUpdateId(null)} className="px-3 py-2 rounded-lg border border-surface-300 text-sm">
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!closingUpdateId || !activeCompanyId || !user?.id) return;
-                  await closeLegalUpdate({
-                    companyId: activeCompanyId,
-                    updateId: closingUpdateId as UUID,
-                    actorUserId: user.id as UUID,
-                    actorRole: activeRole ?? null,
-                    closureNote: updateForm.closureNote
-                  });
-                  setClosingUpdateId(null);
-                  setUpdateForm((p) => ({ ...p, closureNote: '' }));
-                  setRefreshKey((k) => k + 1);
-                  await refresh();
-                }}
-                className="px-3 py-2 rounded-lg bg-teal text-white text-sm"
-              >
-                Close update
-              </button>
-            </div>
-          </div>
-        </div>
+        <CloseLegalUpdateModal
+          closureNote={updateForm.closureNote}
+          onClosureNoteChange={(value) => setUpdateForm((p) => ({ ...p, closureNote: value }))}
+          actionError={actionError}
+          onClose={() => setClosingUpdateId(null)}
+          onConfirm={async () => {
+            if (!closingUpdateId || !activeCompanyId || !user?.id) return;
+            try {
+              setActionError(null);
+              await closeLegalUpdate({
+                companyId: activeCompanyId,
+                updateId: closingUpdateId as UUID,
+                actorUserId: user.id as UUID,
+                actorRole: activeRole ?? null,
+                closureNote: updateForm.closureNote
+              });
+              setClosingUpdateId(null);
+              setUpdateForm((p) => ({ ...p, closureNote: '' }));
+              setRefreshKey((k) => k + 1);
+              await refresh();
+            } catch (err) {
+              setActionError(toUserFacingError(err, 'Could not close legal update. Please try again.'));
+            }
+          }}
+        />
       )}
     </Layout>
   );

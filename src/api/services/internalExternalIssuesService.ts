@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { CompanyRole, UUID } from '../models/core';
 import type {
@@ -24,8 +25,9 @@ export async function listRiskAssessmentOptions(companyId: UUID): Promise<Array<
     .order('created_at', { ascending: false })
     .limit(500);
   if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []).map((row: any) => ({
-    id: row.id as UUID,
+  type RiskAssessmentRow = { id: UUID; assessment_number: string | null; title: string | null };
+  return (data ?? []).map((row: RiskAssessmentRow) => ({
+    id: row.id,
     label: `${row.assessment_number ?? 'RA'} - ${row.title ?? 'Untitled'}`
   }));
 }
@@ -120,7 +122,7 @@ async function getOwnersAndAdmins(companyId: UUID): Promise<UUID[]> {
     .eq('company_id', companyId)
     .in('role', ['owner', 'admin']);
   if (error) throw new Error(getErrorMessage(error));
-  return [...new Set((data ?? []).map((x: any) => x.user_id as UUID))];
+  return [...new Set((data ?? []).map((x: { user_id: UUID }) => x.user_id))];
 }
 
 async function getEmailsForUserIds(companyId: UUID, userIds: UUID[]): Promise<string[]> {
@@ -131,7 +133,7 @@ async function getEmailsForUserIds(companyId: UUID, userIds: UUID[]): Promise<st
     .select('user_id, email')
     .eq('company_id', companyId)
     .in('user_id', ids);
-  return Array.from(new Set((data ?? []).map((row: any) => String(row.email ?? '').trim()).filter(Boolean)));
+  return Array.from(new Set((data ?? []).map((row: { user_id: string; email: string | null }) => String(row.email ?? '').trim()).filter(Boolean)));
 }
 
 async function notifyHighSeriousIssue(input: {
@@ -197,7 +199,7 @@ async function getNextIssueNo(companyId: UUID, year: number): Promise<string> {
       .eq('year', year)
       .single();
     if (readError) throw new Error(getErrorMessage(readError));
-    const last = Number((counter as any)?.last_number ?? 0);
+    const last = Number((counter as Record<string, unknown>)?.last_number ?? 0);
     const next = last + 1;
 
     const { data: updated, error: updateError } = await insforge.database
@@ -225,7 +227,7 @@ async function getNextRefNo(companyId: UUID, registerId: UUID): Promise<number> 
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
-  return Number((data as any)?.ref_no ?? 0) + 1;
+  return Number((data as Record<string, unknown>)?.ref_no ?? 0) + 1;
 }
 
 async function getRegisterById(companyId: UUID, registerId: UUID): Promise<QualityInternalExternalIssuesRegister | null> {
@@ -287,6 +289,7 @@ export async function listInternalExternalIssueRegisters(input: {
   limit?: number;
 }): Promise<QualityInternalExternalIssuesRegister[]> {
   assertRead(input.actorRole);
+  return withInsforgeSession('quality-ie:list-registers', async () => {
   let q = insforge.database
     .from('quality_internal_external_issues_registers')
     .select('*')
@@ -300,6 +303,7 @@ export async function listInternalExternalIssueRegisters(input: {
   const { data, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as QualityInternalExternalIssuesRegister[];
+  });
 }
 
 export async function createInternalExternalIssueRegister(input: {
@@ -313,6 +317,7 @@ export async function createInternalExternalIssueRegister(input: {
   assessmentDoneOn?: string | null;
 }): Promise<QualityInternalExternalIssuesRegister> {
   assertWrite(input.actorRole);
+  return withInsforgeSession('quality-ie:create-register', async () => {
   const assessmentDoneOn = normalizeDateOnly(input.assessmentDoneOn) ?? dateOnly(new Date());
   const assessmentYear = Number(new Date(assessmentDoneOn).getFullYear());
   if (!Number.isFinite(assessmentYear)) throw new Error('Invalid assessment done on date.');
@@ -361,6 +366,7 @@ export async function createInternalExternalIssueRegister(input: {
     metadata: { docNo: created.doc_no, issueNo: created.issue_no }
   });
   return created;
+  });
 }
 
 export async function updateInternalExternalIssueRegister(input: {
@@ -509,6 +515,7 @@ export async function listInternalExternalIssues(input: {
   limit?: number;
 }): Promise<QualityInternalExternalIssue[]> {
   assertRead(input.actorRole);
+  return withInsforgeSession('quality-ie:list-issues', async () => {
   let q = insforge.database
     .from('quality_internal_external_issues')
     .select('*')
@@ -538,12 +545,13 @@ export async function listInternalExternalIssues(input: {
       if (input.dateTo) registerQuery = registerQuery.lte('assessment_done_on', input.dateTo);
       const { data: dateFilteredRegisters, error: registerError } = await registerQuery;
       if (registerError) throw new Error(getErrorMessage(registerError));
-      const allowed = new Set((dateFilteredRegisters ?? []).map((r: any) => r.id as UUID));
+      const allowed = new Set((dateFilteredRegisters ?? []).map((r: { id: UUID }) => r.id));
       rows = rows.filter((row) => allowed.has(row.register_id));
     }
   }
 
   return rows;
+  });
 }
 
 export async function createInternalExternalIssue(input: {
@@ -570,6 +578,7 @@ export async function createInternalExternalIssue(input: {
   linkedNcrId?: UUID | null;
 }): Promise<QualityInternalExternalIssue> {
   assertWrite(input.actorRole);
+  return withInsforgeSession('quality-ie:create-issue', async () => {
   const register = await getRegisterById(input.companyId, input.registerId);
   if (!register) throw new Error('Register not found.');
   const registerRevision = await startRevisionIfApproved({
@@ -665,6 +674,7 @@ export async function createInternalExternalIssue(input: {
   }
 
   return created;
+  }); // end withInsforgeSession
 }
 
 export async function updateInternalExternalIssue(input: {
@@ -675,6 +685,7 @@ export async function updateInternalExternalIssue(input: {
   patch: Partial<QualityInternalExternalIssue>;
 }): Promise<QualityInternalExternalIssue> {
   assertWrite(input.actorRole);
+  return withInsforgeSession('quality-ie:update-issue', async () => {
   const { data: row, error: rowError } = await insforge.database
     .from('quality_internal_external_issues')
     .select('*')
@@ -793,6 +804,7 @@ export async function updateInternalExternalIssue(input: {
   }
 
   return updated;
+  }); // end withInsforgeSession
 }
 
 export async function deleteInternalExternalIssue(input: {
@@ -802,7 +814,7 @@ export async function deleteInternalExternalIssue(input: {
   actorRole: CompanyRole | null;
 }): Promise<void> {
   assertWrite(input.actorRole);
-
+  return withInsforgeSession('quality-ie:delete-issue', async () => {
   const { data: row, error: rowError } = await insforge.database
     .from('quality_internal_external_issues')
     .select('*')
@@ -828,6 +840,7 @@ export async function deleteInternalExternalIssue(input: {
     entityId: input.issueId,
     metadata: { registerId: existing.register_id, refNo: existing.ref_no }
   });
+  }); // end withInsforgeSession
 }
 
 export async function getInternalExternalIssuesSummary(input: {

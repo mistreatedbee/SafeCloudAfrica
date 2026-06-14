@@ -113,17 +113,24 @@ async function getMembershipScope(companyId: UUID, userId?: UUID | null): Promis
     .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) return { role: null, site_id: null, department_id: null };
+  const row = data as Record<string, unknown>;
   return {
-    role: (data as any).role as CompanyRole,
-    site_id: ((data as any).site_id as UUID | null) ?? null,
-    department_id: ((data as any).department_id as UUID | null) ?? null
+    role: (row.role as CompanyRole) ?? null,
+    site_id: (row.site_id as UUID | null) ?? null,
+    department_id: (row.department_id as UUID | null) ?? null
   };
 }
 
 function isScopedMatch(record: Pick<CalibrationRecord, 'site_id' | 'department_id'>, membership: MembershipScope): boolean {
   if ((membership.role === 'manager' || membership.role === 'supervisor') && (membership.site_id || membership.department_id)) {
-    const siteMatches = !!membership.site_id && membership.site_id === record.site_id;
-    const deptMatches = !!membership.department_id && membership.department_id === record.department_id;
+    const siteMatches =
+      !!membership.site_id &&
+      !!record.site_id &&
+      membership.site_id === record.site_id;
+    const deptMatches =
+      !!membership.department_id &&
+      !!record.department_id &&
+      membership.department_id === record.department_id;
     return siteMatches || deptMatches;
   }
   return true;
@@ -160,7 +167,7 @@ async function getOrCreateNextSrNo(companyId: UUID): Promise<number> {
       .single();
     if (readError) throw new Error(getErrorMessage(readError));
 
-    const last = Number((current as any)?.last_number ?? 0);
+    const last = Number((current as Record<string, unknown> | null)?.last_number ?? 0);
     const next = last + 1;
 
     const { data: updated, error: writeError } = await insforge.database
@@ -278,9 +285,23 @@ export async function createCalibrationRecord(input: {
   createNcrOnFailure?: boolean;
 }): Promise<CalibrationRecord> {
   if (!canWrite(input.actorRole)) throw new Error('You do not have permission to create calibration records.');
-
   ensureRequired(input);
+  return withInsforgeSession('calibration:create-record', async () => {
+
+  // Duplication check: prevent duplicate active equipment
+  const { data: existingDup } = await insforge.database
+    .from('calibration_records')
+    .select('id')
+    .eq('company_id', input.companyId)
+    .ilike('equipment_name', input.equipmentName.trim())
+    .limit(1)
+    .maybeSingle();
+  if (existingDup) {
+    throw new Error(`A calibration record for equipment "${input.equipmentName.trim()}" already exists for this company. Please edit the existing record or use a distinct equipment name.`);
+  }
+
   const profile = await getMyProfile(input.companyId, input.actorUserId);
+  const profileRow = profile as Record<string, unknown> | null;
   const srNo = await getOrCreateNextSrNo(input.companyId);
   const moduleTags = canManageModuleTags(input.actorRole) ? normalizeModuleTags(input.moduleTags) : ['Quality'];
 
@@ -307,8 +328,8 @@ export async function createCalibrationRecord(input: {
     .from('calibration_records')
     .insert({
       company_id: input.companyId,
-      site_id: (profile as any)?.site_id ?? null,
-      department_id: (profile as any)?.department_id ?? null,
+      site_id: (profileRow?.site_id as string | null) ?? null,
+      department_id: (profileRow?.department_id as string | null) ?? null,
       sr_no: srNo,
       equipment_name: input.equipmentName.trim(),
       equipment_id: input.equipmentId.trim(),
@@ -363,6 +384,7 @@ export async function createCalibrationRecord(input: {
   });
 
   return created;
+  }); // end withInsforgeSession
 }
 
 function changedFields(existing: CalibrationRecord, patch: Partial<CalibrationRecord>): string[] {
@@ -379,6 +401,7 @@ export async function updateCalibrationRecord(input: {
   createNcrOnFailure?: boolean;
 }): Promise<CalibrationRecord> {
   if (!canWrite(input.actorRole)) throw new Error('You do not have permission to update calibration records.');
+  return withInsforgeSession('calibration:update-record', async () => {
 
   const existing = await getCalibrationRecord({
     companyId: input.companyId,
@@ -463,6 +486,7 @@ export async function updateCalibrationRecord(input: {
   });
 
   return updated;
+  }); // end withInsforgeSession
 }
 
 export async function deleteCalibrationRecord(input: {
@@ -472,6 +496,7 @@ export async function deleteCalibrationRecord(input: {
   actorRole: CompanyRole | null;
 }): Promise<void> {
   if (!canDeleteCalibration(input.actorRole)) throw new Error('Only admin can delete calibration records.');
+  return withInsforgeSession('calibration:delete-record', async () => {
 
   const existing = await getCalibrationRecord({
     companyId: input.companyId,
@@ -496,6 +521,7 @@ export async function deleteCalibrationRecord(input: {
     entityId: input.recordId,
     metadata: { srNo: existing.sr_no, equipmentName: existing.equipment_name }
   });
+  }); // end withInsforgeSession
 }
 
 export async function getCalibrationSummary(input: {
@@ -540,7 +566,9 @@ export async function listCalibrationResponsiblePeople(companyId: UUID): Promise
     .eq('status', 'ACTIVE');
   if (membersErr) throw new Error(getErrorMessage(membersErr));
 
-  const userIds = [...new Set((memberships ?? []).map((m: any) => m.user_id as UUID).filter(Boolean))];
+  type MemberRow = { user_id: UUID; role: CompanyRole };
+  const memberRows = (memberships ?? []) as MemberRow[];
+  const userIds = [...new Set(memberRows.map((m) => m.user_id).filter(Boolean))];
   if (userIds.length === 0) return [];
 
   const { data: profiles, error: profileErr } = await insforge.database
@@ -550,16 +578,17 @@ export async function listCalibrationResponsiblePeople(companyId: UUID): Promise
     .in('user_id', userIds);
   if (profileErr) throw new Error(getErrorMessage(profileErr));
 
+  type ProfileRow = { user_id: string; full_name: string | null; email: string | null };
   const profileMap = new Map<string, { full_name: string | null; email: string | null }>();
-  for (const profile of profiles ?? []) {
-    profileMap.set((profile as any).user_id as string, {
-      full_name: ((profile as any).full_name as string | null) ?? null,
-      email: ((profile as any).email as string | null) ?? null
+  for (const profile of (profiles ?? []) as ProfileRow[]) {
+    profileMap.set(profile.user_id, {
+      full_name: profile.full_name ?? null,
+      email: profile.email ?? null
     });
   }
 
-  return (memberships ?? []).map((member: any) => {
-    const userId = member.user_id as UUID;
+  return memberRows.map((member) => {
+    const userId = member.user_id;
     const profile = profileMap.get(userId);
     const displayName =
       profile?.full_name?.trim() ||
@@ -567,7 +596,7 @@ export async function listCalibrationResponsiblePeople(companyId: UUID): Promise
       String(userId).slice(0, 8);
     return {
       userId,
-      role: member.role as CompanyRole,
+      role: member.role,
       displayName
     };
   });
@@ -588,7 +617,7 @@ async function markReminderAsSent(input: {
   });
 
   if (!error) return true;
-  if ((error as any).code === '23505') return false;
+  if ((error as { code?: string }).code === '23505') return false;
   throw new Error(getErrorMessage(error));
 }
 
@@ -600,7 +629,7 @@ async function listRoleUserIds(companyId: UUID, roles: CompanyRole[]): Promise<U
     .eq('status', 'ACTIVE')
     .in('role', roles);
   if (error) throw new Error(getErrorMessage(error));
-  return [...new Set((data ?? []).map((row: any) => row.user_id as UUID).filter(Boolean))];
+  return [...new Set((data ?? []).map((row: { user_id: UUID }) => row.user_id).filter(Boolean))];
 }
 
 async function notifyUsers(input: {
@@ -730,15 +759,25 @@ export async function runCalibrationReminderSweep(companyId: UUID): Promise<{
   };
 }
 
-const EVIDENCE_BUCKET: string =
-  typeof import.meta !== 'undefined' && (import.meta as Record<string, unknown>).env
-    ? ((import.meta as { env: Record<string, string> }).env.VITE_EVIDENCE_BUCKET ?? 'sca-evidence')
-    : 'sca-evidence';
+export const EVIDENCE_BUCKET = 'sca-evidence';
 
 /** @deprecated use EVIDENCE_BUCKET */
 const CALIBRATION_EVIDENCE_BUCKET = EVIDENCE_BUCKET;
 
 const OVERDUE_REMINDER_DAYS = [30, 7, 0] as const;
+
+const ALLOWED_UPLOAD_MIME_PREFIXES = ['image/', 'application/pdf'];
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+
+function validateAttachmentFile(file: File): void {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`File "${file.name}" exceeds the 10 MB size limit.`);
+  }
+  const mimeOk = ALLOWED_UPLOAD_MIME_PREFIXES.some((prefix) => file.type.startsWith(prefix));
+  if (!mimeOk) {
+    throw new Error(`File "${file.name}" must be a PDF or image (received: ${file.type || 'unknown type'}).`);
+  }
+}
 
 export async function uploadCalibrationAttachments(input: {
   companyId: UUID;
@@ -747,6 +786,7 @@ export async function uploadCalibrationAttachments(input: {
   itemPictureFile?: File | null;
   certificateFiles?: File[];
 }): Promise<CalibrationRecord> {
+  return withInsforgeSession('calibration:upload-attachments', async () => {
   const existing = await getCalibrationRecord({
     companyId: input.companyId,
     recordId: input.recordId,
@@ -759,16 +799,18 @@ export async function uploadCalibrationAttachments(input: {
   const certificateFileIds = [...(existing.certificate_file_ids ?? [])];
 
   if (input.itemPictureFile) {
+    validateAttachmentFile(input.itemPictureFile);
     const key = `${input.companyId}/calibration_record/${input.recordId}/item-picture-${Date.now()}-${input.itemPictureFile.name}`.replace(/\s+/g, '_');
     const { data, error } = await insforge.storage.from(CALIBRATION_EVIDENCE_BUCKET).upload(key, input.itemPictureFile);
     if (error) throw new Error(getErrorMessage(error));
+    const uploadedPath = (data as Record<string, unknown> | null)?.path as string | undefined;
 
     const evidence = await createEvidence({
       companyId: input.companyId,
       entityType: 'calibration_record',
       entityId: input.recordId,
       storageBucket: CALIBRATION_EVIDENCE_BUCKET,
-      storageKey: (data as any)?.path ?? key,
+      storageKey: uploadedPath ?? key,
       createdByUserId: input.actorUserId,
       originalFilename: input.itemPictureFile.name,
       displayTitle: 'Item Picture',
@@ -778,16 +820,18 @@ export async function uploadCalibrationAttachments(input: {
   }
 
   for (const file of input.certificateFiles ?? []) {
+    validateAttachmentFile(file);
     const key = `${input.companyId}/calibration_record/${input.recordId}/certificate-${Date.now()}-${file.name}`.replace(/\s+/g, '_');
     const { data, error } = await insforge.storage.from(CALIBRATION_EVIDENCE_BUCKET).upload(key, file);
     if (error) throw new Error(getErrorMessage(error));
 
+    const certUploadedPath = (data as Record<string, unknown> | null)?.path as string | undefined;
     const evidence = await createEvidence({
       companyId: input.companyId,
       entityType: 'calibration_record',
       entityId: input.recordId,
       storageBucket: CALIBRATION_EVIDENCE_BUCKET,
-      storageKey: (data as any)?.path ?? key,
+      storageKey: certUploadedPath ?? key,
       createdByUserId: input.actorUserId,
       originalFilename: file.name,
       displayTitle: `Calibration Certificate: ${file.name}`,
@@ -824,4 +868,5 @@ export async function uploadCalibrationAttachments(input: {
   });
 
   return updated as CalibrationRecord;
+  }); // end withInsforgeSession
 }

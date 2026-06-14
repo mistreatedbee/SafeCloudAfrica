@@ -292,6 +292,9 @@ export type ListHealthMedicalsInput = {
 };
 
 export async function listHealthMedicals(input: ListHealthMedicalsInput): Promise<HealthMedical[]> {
+  if (input.dateFrom && input.dateTo && input.dateFrom > input.dateTo) {
+    throw new Error('From date must not be after the to date.');
+  }
   let q = insforge.database.from('health_medicals').select('*').eq('company_id', input.companyId);
   if (input.employeeUserId) q = q.eq('employee_user_id', input.employeeUserId);
   if (input.fitnessStatus) q = q.eq('fitness_status', input.fitnessStatus);
@@ -340,6 +343,9 @@ export async function createHealthMedical(input: {
   uploadedDocuments?: unknown[] | null;
   createdByUserId: UUID;
 }): Promise<HealthMedical> {
+  if (input.medicalCost != null && input.medicalCost < 0) {
+    throw new Error('Medical cost cannot be negative.');
+  }
   const { data, error } = await insforge.database
     .from('health_medicals')
     .insert({

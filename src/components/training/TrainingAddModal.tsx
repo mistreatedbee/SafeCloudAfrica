@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { TrainingCourse, UUID } from '../../api/models/entities';
 import { createTrainingCourse, createTrainingRecord } from '../../api/services/trainingService';
 import { insforge } from '../../api/insforge/client';
@@ -170,16 +171,27 @@ export function TrainingAddModal(props: {
       setFile(null);
       setError(null);
     } catch (err: any) {
-      setError(formatAuthError(err));
+      setError(toUserFacingError(err, formatAuthError(err)));
     } finally {
       setLoading(false);
     }
   }
 
+  useEffect(() => {
+    if (!props.open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeWithDraftClear();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  // closeWithDraftClear is stable (no deps), safe to omit from deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open]);
+
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">

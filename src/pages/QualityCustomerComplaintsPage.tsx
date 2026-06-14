@@ -20,6 +20,7 @@ import { EvidenceModal } from '../components/evidence/EvidenceModal';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
 import { HrEmployeeSelect } from '../components/ui/HrEmployeeSelect';
 import { MessageSquareWarningIcon } from 'lucide-react';
+import { toUserFacingError } from '../utils/userFacingMessage';
 import {
   applyComplaintStatusChange,
   getComplaintCloseWarningMessage,
@@ -240,7 +241,7 @@ export default function QualityCustomerComplaintsPage() {
       setModalOpen(false);
       await reload();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to save complaint.');
+      setFormError(toUserFacingError(err, 'Failed to save complaint. Please try again.'));
     } finally {
       setSaving(false);
     }
@@ -262,7 +263,7 @@ export default function QualityCustomerComplaintsPage() {
       });
       await reload();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update status.');
+      alert(toUserFacingError(err, 'Failed to update status. Please try again.'));
     }
   }
 
@@ -279,7 +280,7 @@ export default function QualityCustomerComplaintsPage() {
       });
       await reload();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete complaint.');
+      alert(toUserFacingError(err, 'Failed to delete complaint. Please try again.'));
     }
   }
 
