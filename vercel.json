@@ -97,7 +97,7 @@
     },
     {
       "source": "/api/cron/send-monthly-safety-report",
-      "destination": "/api/cron/send-monthly-safety-report"
+      "destination": "/api/cron/generate-monthly-report"
     },
     {
       "source": "/api/health/insforge-db",
@@ -139,7 +139,7 @@
       "schedule": "0 0 * * *"
     },
     {
-      "path": "/api/cron/send-monthly-safety-report",
+      "path": "/api/cron/generate-monthly-report",
       "schedule": "0 7 1 * *"
     }
   ]
