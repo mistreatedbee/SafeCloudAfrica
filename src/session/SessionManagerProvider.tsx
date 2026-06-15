@@ -6,10 +6,10 @@ import { refreshSessionThroughProxy, saveStoredSession } from '../api/insforge/s
 import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY, USER_SIGNED_OUT_KEY } from '../auth/AuthSessionListener';
 import { useDraftManager } from './DraftManagerProvider';
 
-const CHECK_INTERVAL_MS = 15 * 1000;
+const CHECK_INTERVAL_MS = 60 * 1000;
 const REFRESH_LEEWAY_MS = 5 * 60 * 1000;
-const REFRESH_RETRY_MS = 12 * 1000;
-const MAX_REFRESH_RETRIES = 2;
+const REFRESH_RETRY_MS = 30 * 1000;
+const MAX_REFRESH_RETRIES = 10;
 const EXPIRES_PARSE_THROTTLE_MS = 5 * 60 * 1000;
 const SESSION_DEBUG = (import.meta as any)?.env?.VITE_SESSION_DEBUG === '1';
 function debugSession(...args: unknown[]) {
@@ -354,12 +354,31 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       console.warn('[session] refresh failed', refreshed);
       return transientRefreshFailure();
     } catch (error) {
-      if (isInvalidSessionError(error)) {
-        insforge.getHttpClient().setAuthToken(null);
-        refreshRetryCountRef.current = MAX_REFRESH_RETRIES + 1;
-        console.warn('[session] refresh rejected', error);
-        return invalidSessionFailure();
-      }
+      if (isInvalidSessionError(currentError)) {
+  const existingTokenExpiry =
+    decodeTokenExpiryMs(existingClientToken);
+
+  if (
+    existingClientToken &&
+    existingTokenExpiry &&
+    existingTokenExpiry > Date.now()
+  ) {
+    console.warn(
+      '[session] Session validation failed but token remains valid.'
+    );
+
+    refreshRetryCountRef.current = 0;
+
+    return refreshSucceeded();
+  }
+
+  insforge.getHttpClient().setAuthToken(null);
+
+  refreshRetryCountRef.current =
+    MAX_REFRESH_RETRIES + 1;
+
+  return invalidSessionFailure();
+}
       // If we have enough info to tell the token hasn't expired yet, treat refresh errors as non-fatal.
       const tokenStillValid = !!lastKnownExpiresAtMs && lastKnownExpiresAtMs > Date.now();
       if (lastKnownToken && tokenStillValid) {
@@ -388,14 +407,29 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   }, []);
 
   const continueSession = useCallback(async () => {
-    if (isLoggingOutRef.current) return;
-    registerActivity();
-    const outcome = await refreshSessionIfNeeded();
-    if (!outcome.ok && outcome.shouldLogout) {
+  if (isLoggingOutRef.current) return;
+
+  registerActivity();
+
+  const outcome = await refreshSessionIfNeeded();
+
+  if (!outcome.ok && outcome.shouldLogout) {
+    const token = readClientAuthToken();
+    const expiry = decodeTokenExpiryMs(token);
+
+    if (expiry && expiry < Date.now()) {
       await markSessionExpiredAndLogout('refresh_failure');
-      return;
+    } else {
+      console.warn(
+        '[session] Refresh failed but session token is still valid.'
+      );
     }
-  }, [markSessionExpiredAndLogout, refreshSessionIfNeeded, registerActivity]);
+  }
+}, [
+  markSessionExpiredAndLogout,
+  refreshSessionIfNeeded,
+  registerActivity
+]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -451,8 +485,17 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       void (async () => {
         const outcome = await refreshSessionIfNeeded();
         if (!outcome.ok && outcome.shouldLogout) {
-          await markSessionExpiredAndLogout('refresh_failure');
-        } else if (!outcome.ok && refreshRetryCountRef.current <= MAX_REFRESH_RETRIES) {
+  const token = readClientAuthToken();
+  const expiry = decodeTokenExpiryMs(token);
+
+  if (expiry && expiry < Date.now()) {
+    await markSessionExpiredAndLogout('refresh_failure');
+  } else {
+    console.warn(
+      '[session] Refresh failed but token is still valid. Skipping logout.'
+    );
+  }
+} else if (!outcome.ok && refreshRetryCountRef.current <= MAX_REFRESH_RETRIES) {
           window.setTimeout(() => {
             void refreshSessionIfNeeded();
           }, REFRESH_RETRY_MS);
