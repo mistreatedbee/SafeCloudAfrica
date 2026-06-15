@@ -833,6 +833,7 @@ export function HealthHygienePage() {
             </tbody>
           </table>
         </div>
+        )}
 
         {activeCompanyId && user?.id && evidenceForId && (
           <EvidenceModal
