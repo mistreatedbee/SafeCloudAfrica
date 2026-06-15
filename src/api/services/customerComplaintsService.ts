@@ -347,6 +347,7 @@ export async function createCustomerComplaint(input: {
   }
 
   return created;
+  });
 }
 
 export async function updateCustomerComplaint(input: {
