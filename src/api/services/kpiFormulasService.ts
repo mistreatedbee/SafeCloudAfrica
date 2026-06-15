@@ -1,11 +1,9 @@
 import { insforge } from '../insforge/client';
 import type { UUID } from '../models/entities';
-import { getErrorMessage } from '../insforge/errors';
 import { getOrCreateKPISettings, getMultiplier } from './kpiSettingsService';
 import { listWorkHoursMonthly, sumTotalHoursForPeriod } from './workHoursMonthlyService';
 import { listOperationalInputsMonthly } from './operationalInputsService';
 import { getIncidentCountsForKpi } from './incidentsService';
-import type { WorkHoursMonthly } from '../models/entities';
 
 export type KpiPeriod = {
   periodStart: { year: number; month: number };

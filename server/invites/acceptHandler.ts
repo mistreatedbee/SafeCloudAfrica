@@ -111,7 +111,7 @@ export async function acceptResolvedInvite(input: {
   if (companyRes.error) {
     logStructuredLine({
       module: MODULE,
-      level: 'warning',
+      level: 'warn',
       message: 'invite_accept_company_lookup_failed_continuing',
       organization_id: companyId
     });

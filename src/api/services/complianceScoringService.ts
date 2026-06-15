@@ -264,7 +264,6 @@ export async function upsertComplianceIsoLink(input: {
 }
 
 async function collectDomainMetrics(companyId: UUID): Promise<Record<ComplianceDomainKey, ComplianceDomainSummary>> {
-  const period = getRolling12Period();
   const todayIso = new Date().toISOString();
   const todayDate = todayIso.slice(0, 10);
 
@@ -430,15 +429,15 @@ async function collectDomainMetrics(companyId: UUID): Promise<Record<ComplianceD
 
   const questionsByAuditId = new Map<UUID, Array<Record<string, unknown>>>();
   for (const question of auditQuestions) {
-    const list = questionsByAuditId.get(question.audit_id) ?? [];
+    const list = questionsByAuditId.get(question.audit_id as UUID) ?? [];
     list.push(question);
-    questionsByAuditId.set(question.audit_id, list);
+    questionsByAuditId.set(question.audit_id as UUID, list);
   }
 
   const responseByQuestionId = new Map<UUID, Record<string, unknown>>();
   for (const response of auditResponses) {
-    if (!responseByQuestionId.has(response.audit_question_id)) {
-      responseByQuestionId.set(response.audit_question_id, response);
+    if (!responseByQuestionId.has(response.audit_question_id as UUID)) {
+      responseByQuestionId.set(response.audit_question_id as UUID, response);
     }
   }
 
@@ -446,10 +445,10 @@ async function collectDomainMetrics(companyId: UUID): Promise<Record<ComplianceD
     metricAccumulators.audits.totalCount += 1;
     const selectedDate = audit.selected_date ? String(audit.selected_date).slice(0, 10) : null;
     const overdue = selectedDate ? selectedDate < todayDate && !['completed', 'archived'].includes(String(audit.status)) : false;
-    const questions = questionsByAuditId.get(audit.id) ?? [];
+    const questions = questionsByAuditId.get(audit.id as UUID) ?? [];
     const totalPossibleScore = questions.reduce((sum, question) => sum + (Number(question.allocated_score) || 1), 0);
     const achievedScore = questions.reduce((sum, question) => {
-      const response = responseByQuestionId.get(question.id);
+      const response = responseByQuestionId.get(question.id as UUID);
       if (!response) return sum;
       if (response.achieved_score != null) return sum + Number(response.achieved_score || 0);
       return sum + (response.is_compliant ? Number(question.allocated_score) || 1 : 0);
@@ -473,10 +472,6 @@ async function collectDomainMetrics(companyId: UUID): Promise<Record<ComplianceD
   const recentRuns = await listRecentComplianceScoreRuns(companyId, 2).catch(() => []);
   const previousRun = recentRuns.length > 0 ? recentRuns[0] : null;
   const previousDomains = previousRun ? await listComplianceScoreRunDomains(previousRun.id).catch(() => []) : [];
-  const previousScoreByDomain = new Map(
-    previousDomains.map((domain) => [domain.domain_key as ComplianceDomainKey, Number(domain.score_percentage || 0)])
-  );
-
   return {
     documents: {
       domainKey: 'documents',

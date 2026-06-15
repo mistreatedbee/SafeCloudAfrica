@@ -94,7 +94,7 @@ export default async function handler(req: any, res: any) {
     const upstreamRes = await fetch(upstreamUrl, {
       method,
       headers,
-      body: proxyBody,
+      body: proxyBody as BodyInit | undefined,
       signal: controller.signal
     });
 
@@ -123,7 +123,7 @@ export default async function handler(req: any, res: any) {
       const legacyRes = await fetch(legacyUrl, {
         method: legacyRoute.legacyMethod,
         headers,
-        body: legacyRoute.legacyMethod === 'GET' ? undefined : proxyBody,
+        body: legacyRoute.legacyMethod === 'GET' ? undefined : proxyBody as BodyInit | undefined,
         signal: controller.signal
       });
 

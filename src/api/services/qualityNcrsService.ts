@@ -332,7 +332,6 @@ export async function closeQualityNcr(
     companyId,
     {
       status: 'closed',
-      signed_by_user_id: signedByUserId,
       signed_at: closedAt,
       closed_by_user_id: actorUserId,
       closed_at: closedAt,
@@ -578,7 +577,6 @@ async function applyNcrRoleFilter(
     ncr.auditor_user_id === actorUserId ||
     ncr.auditee_user_id === actorUserId ||
     ncr.corrective_action_owner_user_id === actorUserId ||
-    ncr.raised_by_user_id === actorUserId ||
     ncr.created_by_user_id === actorUserId;
 
   if (actorRole === 'manager' || actorRole === 'supervisor') {

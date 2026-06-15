@@ -153,10 +153,12 @@ export async function setAssessmentsReviewRequiredAndNotify(params: {
     })
     .in('id', params.assessmentIds);
 
+  const notificationType: 'error' | 'warning' | 'info' =
+    severity === 'critical' ? 'error' : severity === 'high' ? 'warning' : 'info';
   const message = `Risk assessment requires review: ${params.reason}`;
   for (const userId of userIdsToNotify) {
     try {
-      await createNotification(params.companyId, userId, severity, 'Risk assessment review required', message);
+      await createNotification(params.companyId, userId, notificationType, 'Risk assessment review required', message);
     } catch (_) {
       // ignore per-user notification failures
     }
