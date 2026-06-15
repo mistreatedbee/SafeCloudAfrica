@@ -32,6 +32,7 @@ import {
 } from '../api/services/improvementService';
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { useDraftRegistration } from '../session/useDraftRegistration';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 type FormState = {
   dateRaised: string;
@@ -321,8 +322,8 @@ export function ImprovementDetailPage() {
         setDraftBaseline(form);
         await refresh();
       }
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to save');
+    } catch (e: unknown) {
+      setError(toUserFacingError(e, 'Failed to save improvement.'));
     } finally {
       setSaving(false);
     }
@@ -330,9 +331,13 @@ export function ImprovementDetailPage() {
 
   async function postComment() {
     if (!activeCompanyId || !improvementId || !user?.id || !newComment.trim()) return;
-    await addImprovementComment({ companyId: activeCompanyId, improvementId: improvementId as UUID, userId: user.id as UUID, message: newComment.trim() });
-    setNewComment('');
-    await refreshComments();
+    try {
+      await addImprovementComment({ companyId: activeCompanyId, improvementId: improvementId as UUID, userId: user.id as UUID, message: newComment.trim() });
+      setNewComment('');
+      await refreshComments();
+    } catch (e: unknown) {
+      setError(toUserFacingError(e, 'Unable to post comment.'));
+    }
   }
 
   async function onDelete() {
@@ -341,14 +346,18 @@ export function ImprovementDetailPage() {
     if (!confirmed) return;
 
     setError(null);
-    await deleteImprovement({
-      companyId: activeCompanyId,
-      improvementId: improvementId as UUID,
-      actorUserId: user.id as UUID,
-      actorRole: activeRole ?? null
-    });
-    clearDraft(draftKey);
-    navigate('/improvement');
+    try {
+      await deleteImprovement({
+        companyId: activeCompanyId,
+        improvementId: improvementId as UUID,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole ?? null
+      });
+      clearDraft(draftKey);
+      navigate('/improvement');
+    } catch (e: unknown) {
+      setError(toUserFacingError(e, 'Unable to delete improvement record.'));
+    }
   }
 
   return (

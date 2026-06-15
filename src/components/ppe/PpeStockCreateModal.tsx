@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { Department, PPEItem, Site, UUID } from '../../api/models/entities';
 import { createPpeStock } from '../../api/services/ppeService';
 import { getMyProfile } from '../../api/services/profilesService';
@@ -199,16 +199,25 @@ export function PpeStockCreateModal(props: {
       setCapturedEmployeeId('');
       setSizeQtys({});
     } catch (err: unknown) {
-      setError(formatAuthError(err as Error));
+      setError(toUserFacingError(err, 'Unable to create stock record right now.'));
     } finally {
       setLoading(false);
     }
   }
 
+  useEffect(() => {
+    if (!props.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeWithDraftClear();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.open]);
+
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="Add PPE Stock">
       <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
@@ -415,7 +424,7 @@ export function PpeStockCreateModal(props: {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-700 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading && <LoadingSpinner size={16} />}
-              Create
+              {loading ? 'Saving...' : 'Create'}
             </button>
           </div>
         </form>

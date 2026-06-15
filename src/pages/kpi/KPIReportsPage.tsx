@@ -8,6 +8,7 @@ import { exportKPIReports } from '../../api/services/kpiExportService';
 import { downloadFile } from '../../api/services/exportService';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { listDepartments } from '../../api/services/departmentsService';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 type ReportType = 'individual_history' | 'department_trends' | 'achieved_vs_not_achieved' | 'manager_rating_distribution' | 'period_comparison';
 
@@ -20,6 +21,7 @@ export function KPIReportsPage() {
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const { data: assessments, loading } = useAsync<KPIAssessment[]>(
     async () => {
@@ -122,6 +124,7 @@ export function KPIReportsPage() {
 
   const handleExport = async (format: 'pdf' | 'excel') => {
     if (!activeCompanyId) return;
+    setExportError(null);
     setExporting(format);
     try {
       const blob = await exportKPIReports(
@@ -138,6 +141,8 @@ export function KPIReportsPage() {
       );
       const ext = format === 'pdf' ? 'html' : 'csv';
       downloadFile(blob, `kpi-assessment-${reportType}-${periodFrom || 'all'}-${periodTo || 'all'}.${ext}`);
+    } catch (err: unknown) {
+      setExportError(toUserFacingError(err, 'Export failed. Please try again.'));
     } finally {
       setExporting(null);
     }
@@ -180,6 +185,12 @@ export function KPIReportsPage() {
           {exporting === 'excel' ? 'Exporting...' : 'Export Excel'}
         </button>
       </div>
+
+      {exportError && (
+        <div className="bg-critical/5 border border-critical/20 rounded-xl p-3 text-sm text-critical">
+          {exportError}
+        </div>
+      )}
 
       {loading && (
         <div className="flex items-center gap-3 p-6">

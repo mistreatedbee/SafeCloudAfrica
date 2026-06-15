@@ -34,6 +34,10 @@ export type ListInspectionsInput = {
 
 export async function listInspections(input: ListInspectionsInput): Promise<Inspection[]> {
   return withInsforgeSession('inspections:list', async () => {
+  // Date range validation
+  if (input.fromDate && input.toDate && input.fromDate > input.toDate) {
+    throw new Error('From date must be before or equal to to date.');
+  }
   const base = insforge.database.from('inspections').select('*').eq('company_id', input.companyId);
   const q1 = input.module ? base.eq('module', input.module) : base;
   const q2 = input.status ? q1.eq('status', input.status) : q1;
@@ -86,6 +90,7 @@ export type CreateInspectionInput = {
 };
 
 export async function createInspection(input: CreateInspectionInput): Promise<Inspection> {
+  return withInsforgeSession('inspections:create', async () => {
   const profile = await getMyProfile(input.companyId, input.createdByUserId);
   const { data, error } = await insforge.database
     .from('inspections')
@@ -135,6 +140,7 @@ export async function createInspection(input: CreateInspectionInput): Promise<In
   }
 
   return inspection;
+  });
 }
 
 // ---------------------------
@@ -164,7 +170,7 @@ export async function listInspectionChecklistTemplates(
   if (input.scope) q = q.eq('scope', input.scope);
   if (input.siteId) q = q.eq('site_id', input.siteId);
   if (input.departmentId) q = q.eq('department_id', input.departmentId);
-  if (input.search) q = q.ilike('name', `%${input.search}%`);
+  if (input.search) q = q.ilike('name', `%${input.search.trim().slice(0, 200)}%`);
 
   const { data, error } = await q.order('name', { ascending: true });
   if (error) throw new Error(getErrorMessage(error));
@@ -350,6 +356,7 @@ export async function upsertInspectionChecklistItems(input: {
 // ---------------------------
 
 export async function getInspectionById(companyId: UUID, inspectionId: UUID): Promise<Inspection | null> {
+  return withInsforgeSession('inspections:get', async () => {
   const { data, error } = await insforge.database
     .from('inspections')
     .select('*')
@@ -358,6 +365,7 @@ export async function getInspectionById(companyId: UUID, inspectionId: UUID): Pr
     .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? null) as Inspection | null;
+  });
 }
 
 export async function createInspectionRunFromTemplate(input: {

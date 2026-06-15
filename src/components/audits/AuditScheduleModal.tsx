@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { ModuleKey, UUID } from '../../api/models/core';
 import { createAudit } from '../../api/services/auditsService';
 import { listAuditChecklistTemplates } from '../../api/services/auditChecklistTemplatesService';
@@ -251,19 +251,28 @@ export function AuditScheduleModal(props: {
       setChecklistTemplateId('');
       setModule('safety');
       setAuditType('internal');
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err) {
+      setError(toUserFacingError(err, 'Failed to schedule audit. Please try again.'));
     } finally {
       setLoading(false);
     }
   }
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') props.onClose();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.open, props.onClose]);
 
   if (!props.open) return null;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+      <div role="dialog" aria-modal="true" className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
             <p className="text-sm font-semibold text-charcoal">Plan new audit</p>
@@ -525,7 +534,7 @@ export function AuditScheduleModal(props: {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading && <LoadingSpinner size={16} />}
-              Create audit
+              {loading ? 'Saving...' : 'Create audit'}
             </button>
           </div>
         </form>

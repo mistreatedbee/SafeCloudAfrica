@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import { ClipboardCheckIcon } from 'lucide-react';
 import { useTenant } from '../../tenant/TenantContext';
+
 import { listPreWorkInstances } from '../../api/services/risksService';
 import {
   listRiskAssessments,
@@ -33,11 +35,13 @@ export function PreWorkInstancesPage() {
   const [instances, setInstances] = useState<Array<{ id: string; risk_assessment_id: string; instance_date: string; supervisor_signed_at: string | null }>>([]);
   const [assessments, setAssessments] = useState<RiskAssessment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const scope = useMemo(() => getScopeForActiveMembership(memberships as any, activeCompanyId as UUID | null), [activeCompanyId, memberships]);
 
   useEffect(() => {
     if (!activeCompanyId || !user?.id) return;
     setLoading(true);
+    setError(null);
     Promise.all([
       listPreWorkInstances({ companyId: activeCompanyId }),
       listRiskAssessments({
@@ -53,7 +57,8 @@ export function PreWorkInstancesPage() {
         setInstances(instanceRows as never);
         setAssessments(assessmentRows);
       })
-      .catch(() => {
+      .catch((e: unknown) => {
+        setError(toUserFacingError(e, 'Failed to load pre-work instances'));
         setInstances([]);
         setAssessments([]);
       })
@@ -77,8 +82,11 @@ export function PreWorkInstancesPage() {
         <p className="text-gray-600 mb-6">
           View daily pre-work risk assessment instances by date. Each instance shows employee signatures and supervisor sign-off.
         </p>
+        {error && (
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>
+        )}
         {loading ? (
-          <p className="text-gray-500">Loading...</p>
+          <div className="text-center py-8 text-sm text-charcoal-500">Loading…</div>
         ) : visibleInstances.length === 0 ? (
           <ListEmptyState
             icon={ClipboardCheckIcon}

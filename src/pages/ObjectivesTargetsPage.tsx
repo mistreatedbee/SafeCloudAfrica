@@ -19,7 +19,7 @@ import type {
   UUID
 } from '../api/models/entities';
 import type { ModuleKey } from '../api/models/core';
-import { formatAuthError } from '../auth/authMessages';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -121,7 +121,7 @@ function ReviewEditor(props: {
       });
       props.onSaved();
     } catch (err) {
-      setError(formatAuthError(err));
+      setError(toUserFacingError(err, 'Unable to save target review.'));
     } finally {
       setSaving(false);
     }
@@ -346,7 +346,7 @@ export function ObjectivesTargetsPage() {
       if (status === 'not_achieved') setExpandedReviewId(target.id);
       setRefreshKey((k) => k + 1);
     } catch (err) {
-      setPageError(formatAuthError(err));
+      setPageError(toUserFacingError(err, 'Unable to update target status.'));
     } finally {
       setStatusUpdatingId(null);
     }

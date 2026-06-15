@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type { Approval, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
@@ -16,14 +17,16 @@ async function getProfileEmail(companyId: UUID, userId: UUID): Promise<string | 
 }
 
 export async function listApprovals(companyId: UUID): Promise<Approval[]> {
-  const { data, error } = await insforge.database
-    .from('approvals')
-    .select('*')
-    .eq('company_id', companyId)
-    .order('created_at', { ascending: false })
-    .limit(200);
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as Approval[];
+  return withInsforgeSession('approvals:list', async () => {
+    const { data, error } = await insforge.database
+      .from('approvals')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as Approval[];
+  });
 }
 
 export async function createApproval(input: {
@@ -33,6 +36,7 @@ export async function createApproval(input: {
   requestedByUserId: UUID;
   approverUserId: UUID;
 }): Promise<Approval> {
+  return withInsforgeSession('approvals:create', async () => {
   const { data, error } = await insforge.database
     .from('approvals')
     .insert({
@@ -82,6 +86,7 @@ export async function createApproval(input: {
   }
 
   return data as Approval;
+  });
 }
 
 export async function decideApproval(input: {
@@ -91,26 +96,28 @@ export async function decideApproval(input: {
   decision: 'approved' | 'rejected';
   signatureNote?: string;
 }): Promise<Approval> {
-  const patch = {
-    status: input.decision,
-    signed_at: new Date().toISOString(),
-    signature_note: input.signatureNote ?? null
-  };
-  const { data, error } = await insforge.database
-    .from('approvals')
-    .update(patch)
-    .eq('company_id', input.companyId)
-    .eq('id', input.approvalId)
-    .select('*')
-    .single();
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to update approval.');
-  await createActivityLog({
-    companyId: input.companyId,
-    actorUserId: input.actorUserId,
-    action: `approvals.${input.decision}`,
-    entityType: 'approval',
-    entityId: input.approvalId
+  return withInsforgeSession('approvals:decide', async () => {
+    const patch = {
+      status: input.decision,
+      signed_at: new Date().toISOString(),
+      signature_note: input.signatureNote ?? null
+    };
+    const { data, error } = await insforge.database
+      .from('approvals')
+      .update(patch)
+      .eq('company_id', input.companyId)
+      .eq('id', input.approvalId)
+      .select('*')
+      .single();
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to update approval.');
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.actorUserId,
+      action: `approvals.${input.decision}`,
+      entityType: 'approval',
+      entityId: input.approvalId
+    });
+    return data as Approval;
   });
-  return data as Approval;
 }

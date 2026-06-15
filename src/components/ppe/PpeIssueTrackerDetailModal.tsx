@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { XIcon, CheckCircle2Icon, ClipboardListIcon } from 'lucide-react';
 import type { PpeIssueTracker, PpeIssueTrackerStatus, UUID } from '../../api/models/entities';
-import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import {
   addPpeIssueProgressUpdate,
   deletePpeIssueTracker,
@@ -70,8 +70,8 @@ export function PpeIssueTrackerDetailModal(props: {
       });
       setLocalIssue(updated);
       props.onChanged?.();
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Unable to update PPE issue status.'));
     } finally {
       setSaving(false);
     }
@@ -91,8 +91,8 @@ export function PpeIssueTrackerDetailModal(props: {
       setLocalIssue(updated);
       setNote('');
       props.onChanged?.();
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Unable to add progress note.'));
     } finally {
       setSaving(false);
     }
@@ -109,8 +109,8 @@ export function PpeIssueTrackerDetailModal(props: {
       });
       setLocalIssue(updated);
       props.onChanged?.();
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Unable to record manager sign-off.'));
     } finally {
       setSaving(false);
     }
@@ -127,8 +127,8 @@ export function PpeIssueTrackerDetailModal(props: {
       });
       setLocalIssue(updated);
       props.onChanged?.();
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Unable to record safety officer verification.'));
     } finally {
       setSaving(false);
     }
@@ -145,8 +145,8 @@ export function PpeIssueTrackerDetailModal(props: {
       });
       setLocalIssue(updated);
       props.onChanged?.();
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Unable to record auditor confirmation.'));
     } finally {
       setSaving(false);
     }
@@ -166,16 +166,24 @@ export function PpeIssueTrackerDetailModal(props: {
       });
       props.onChanged?.();
       props.onClose();
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Unable to delete PPE issue record.'));
     } finally {
       setSaving(false);
     }
   }
 
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') props.onClose();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.onClose]);
+
   return (
     <>
-      <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+      <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="PPE Issue details">
         <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
         <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-hidden flex flex-col">
           <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
@@ -447,7 +455,7 @@ export function PpeIssueTrackerDetailModal(props: {
                       className="px-3 py-2 rounded-lg bg-teal text-white text-xs font-medium hover:bg-teal-600 disabled:opacity-60 disabled:cursor-not-allowed"
                       disabled={saving}
                     >
-                      Manager sign-off
+                      {saving ? 'Saving…' : 'Manager sign-off'}
                     </button>
                   )}
                   {props.canSafetyVerify && !localIssue.safety_officer_user_id && (
@@ -457,7 +465,7 @@ export function PpeIssueTrackerDetailModal(props: {
                       className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
                       disabled={saving}
                     >
-                      Safety officer verify
+                      {saving ? 'Saving…' : 'Safety officer verify'}
                     </button>
                   )}
                   {props.canAuditorConfirm &&

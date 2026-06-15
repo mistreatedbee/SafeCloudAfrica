@@ -13,6 +13,7 @@ import type { UUID } from '../../api/models/core';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 type QuestionnaireInput = {
   kpiItemId: UUID | null;
@@ -238,6 +239,11 @@ export function KPIAssessmentCreatePage() {
       return;
     }
 
+    if (periodStartDate && periodEndDate && periodStartDate > periodEndDate) {
+      setError('Period start date must be before or equal to the period end date.');
+      return;
+    }
+
     setError(null);
     setSuccessMessage(null);
     setSaving(true);
@@ -267,8 +273,8 @@ export function KPIAssessmentCreatePage() {
         }
         serverDraftAssessmentIdRef.current = null;
       setTimeout(() => navigate(`/modules/hr/kpis/assessments/${created.assessment_id}`), 300);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to create KPI Assessment.');
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Failed to create KPI Assessment.'));
     } finally {
       setSaving(false);
     }

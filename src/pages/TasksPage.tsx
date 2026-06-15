@@ -49,6 +49,7 @@ import { useIdentity } from '../hooks/useIdentity';
 import { TASK_CATEGORY_LABELS, TASK_TIME_STATUS_LABELS, TASK_SOURCE_ENTITY_LABELS } from '../api/constants/taskLabels';
 import { getMyProfile } from '../api/services/profilesService';
 import { canManageTasks } from '../api/permissions/taskPermissions';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -206,11 +207,12 @@ export function TasksPage() {
 
   async function onCloseCapa(id: string) {
     if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm('Close this CAPA? This action cannot be undone.')) return;
     try {
       await closeCorrectiveAction(id as any, activeCompanyId, user.id as any);
       setRefreshKey((k) => k + 1);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Unable to close CAPA.');
+      alert(toUserFacingError(err, 'Unable to close CAPA.'));
     }
   }
 
@@ -228,36 +230,57 @@ export function TasksPage() {
 
   async function handleAcceptTask(task: Task) {
     if (!activeCompanyId || !user?.id) return;
-    await acceptTask({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
-    setRefreshKey((k) => k + 1);
+    try {
+      await acceptTask({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      alert(toUserFacingError(err, 'Unable to accept this task right now.'));
+    }
   }
   async function handleStartTask(task: Task) {
     if (!activeCompanyId || !user?.id) return;
-    await startTask({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
-    setRefreshKey((k) => k + 1);
+    try {
+      await startTask({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      alert(toUserFacingError(err, 'Unable to update this task right now.'));
+    }
   }
   async function handleMarkAwaitingEvidence(task: Task) {
     if (!activeCompanyId || !user?.id) return;
-    await markAwaitingEvidence({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
-    setRefreshKey((k) => k + 1);
+    try {
+      await markAwaitingEvidence({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      alert(toUserFacingError(err, 'Unable to move this task forward right now.'));
+    }
   }
   async function handleSubmitForReview(task: Task) {
     if (!activeCompanyId || !user?.id) return;
-    await submitForReview({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
-    setRefreshKey((k) => k + 1);
+    try {
+      await submitForReview({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      alert(toUserFacingError(err, 'Unable to submit this task for review right now.'));
+    }
   }
   async function handleApproveTask(task: Task) {
     if (!activeCompanyId || !user?.id) return;
-    await approveTask({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
-    setRefreshKey((k) => k + 1);
+    try {
+      await approveTask({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      alert(toUserFacingError(err, 'Unable to approve this task right now.'));
+    }
   }
   async function handleCloseTask(task: Task) {
     if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm('Close this task? This will lock the task record.')) return;
     try {
       await closeTask({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
       setRefreshKey((k) => k + 1);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Cannot close: missing evidence or approvals.');
+      alert(toUserFacingError(err, 'Cannot close: missing evidence or approvals.'));
     }
   }
 

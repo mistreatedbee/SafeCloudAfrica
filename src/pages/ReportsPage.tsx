@@ -27,6 +27,7 @@ import { listAuditFindings } from '../api/services/auditFindingsService';
 import { isNearMiss } from '../api/utils/incidents';
 import { useIdentity } from '../hooks/useIdentity';
 import { checkCanExport } from '../api/services/licensingService';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 type ReportTemplate = {
   id: 'compliance' | 'incidents' | 'training' | 'audits' | 'inspections' | 'pjo';
@@ -112,6 +113,8 @@ export function ReportsPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [exportFormat, setExportFormat] = useState<ReportFormat>('xlsx');
+  const [generatingId, setGeneratingId] = useState<ReportTemplate['id'] | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const { data: canExport } = useAsync(
     () => (activeCompanyId ? checkCanExport(activeCompanyId) : false),
@@ -155,7 +158,9 @@ export function ReportsPage() {
     if (canExport === false) {
       return;
     }
-
+    setExportError(null);
+    setGeneratingId(template.id);
+    try {
     const now = new Date();
     const dateStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const safeOrg = organisationName.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'safecloudafrica';
@@ -444,6 +449,11 @@ export function ReportsPage() {
 
     // Fallback (should not happen)
     await downloadReport(template.id, []);
+    } catch (err) {
+      setExportError(toUserFacingError(err, 'Export failed. Please try again.'));
+    } finally {
+      setGeneratingId(null);
+    }
   }
 
   const recentReports = (recent ?? []).map((r) => ({
@@ -472,6 +482,11 @@ export function ReportsPage() {
               Exports are not available during trial. Upgrade your subscription to download reports.
             </div>
           )}
+          {exportError && (
+            <div className="mb-4 rounded-lg bg-critical/5 border border-critical/20 px-4 py-3 text-sm text-critical">
+              {exportError}
+            </div>
+          )}
           <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-surface-300 bg-white p-4 md:grid-cols-3">
             <label className="text-sm">
               <span className="mb-1 block text-xs text-charcoal-500">From</span>
@@ -495,7 +510,7 @@ export function ReportsPage() {
             <button
               key={template.id}
               type="button"
-              disabled={canExport === false}
+              disabled={canExport === false || generatingId !== null}
               onClick={() => void generate(template)}
               className="flex flex-col items-start gap-3 p-5 bg-white rounded-xl border border-surface-300 shadow-card hover:shadow-card-hover transition-all text-left active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:shadow-card">
 
@@ -513,7 +528,9 @@ export function ReportsPage() {
 
                 </div>
                 <div>
-                  <p className="font-medium text-charcoal">{template.name}</p>
+                  <p className="font-medium text-charcoal">
+                    {generatingId === template.id ? 'Generating…' : template.name}
+                  </p>
                   <p className="text-sm text-charcoal-400 mt-1">
                     {template.description}
                   </p>

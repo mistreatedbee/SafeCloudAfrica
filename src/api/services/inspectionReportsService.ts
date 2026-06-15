@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type { UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import type { InspectionItemEvidence } from './inspectionEvidenceService';
@@ -21,6 +22,7 @@ export type InspectionRunReport = {
 };
 
 export async function getInspectionRunReport(companyId: UUID, runId: UUID): Promise<InspectionRunReport> {
+  return withInsforgeSession('inspection_run_report:get', async () => {
   const { data: runData, error: runError } = await insforge.database
     .from('inspection_runs')
     .select('*')
@@ -146,4 +148,5 @@ export async function getInspectionRunReport(companyId: UUID, runId: UUID): Prom
     highRiskFindings,
     evidenceByItemId
   };
+  });
 }

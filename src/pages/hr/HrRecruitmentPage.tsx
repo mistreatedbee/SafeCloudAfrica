@@ -6,12 +6,10 @@ import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { createHrRecord, deleteHrRecord, listHrRecords, updateHrRecord, upsertHrEmployee } from '../../api/services/hrService';
-import { SelectOrType } from '../../components/ui/SelectOrType';
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 
-const COMPETENCY_OPTIONS = ['Communication', 'Safety compliance', 'Technical', 'Leadership', 'Administration'].map((value) => ({ id: value, value, label: value }));
-const EXPERIENCE_OPTIONS = ['0-1 years', '2-3 years', '4-5 years', '6+ years'].map((value) => ({ id: value, value, label: value }));
+const EXPERIENCE_OPTIONS = ['0-1 years', '2-3 years', '4-5 years', '6+ years'];
 
 export function HrRecruitmentPage() {
   const { activeCompanyId, activeRole } = useTenant();
@@ -262,22 +260,39 @@ export function HrRecruitmentPage() {
               <textarea className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm min-h-[100px]" value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} placeholder="Job description (rich text supported as plain text input)" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <SelectOrType
-                    label="Competency required"
-                    value={competencyInput}
-                    options={COMPETENCY_OPTIONS}
-                    onChange={(value) => {
-                      if (value && !competenciesRequired.includes(value)) {
-                        setCompetenciesRequired((prev) => [...prev, value]);
-                      }
-                      setCompetencyInput('');
-                    }}
-                    companyId={activeCompanyId ?? undefined}
-                    moduleKey="hr"
-                    fieldKey="vacancy_competency_required"
-                    createdByUserId={user?.id as UUID | undefined}
-                    allowCreate={!!activeCompanyId}
-                  />
+                  <label className="text-sm">
+                    <span className="block text-xs text-charcoal-500 mb-1">Competencies required</span>
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 border border-surface-300 rounded-lg px-3 py-2 text-sm"
+                        autoComplete="off"
+                        value={competencyInput}
+                        onChange={(e) => setCompetencyInput(e.target.value)}
+                        placeholder="Type a competency and press Add"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const val = competencyInput.trim();
+                            if (val && !competenciesRequired.includes(val)) {
+                              setCompetenciesRequired((prev) => [...prev, val]);
+                            }
+                            setCompetencyInput('');
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                        onClick={() => {
+                          const val = competencyInput.trim();
+                          if (val && !competenciesRequired.includes(val)) {
+                            setCompetenciesRequired((prev) => [...prev, val]);
+                          }
+                          setCompetencyInput('');
+                        }}
+                      >Add</button>
+                    </div>
+                  </label>
                   {competenciesRequired.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {competenciesRequired.map((c) => (
@@ -294,17 +309,19 @@ export function HrRecruitmentPage() {
                     </div>
                   )}
                 </div>
-                <SelectOrType
-                  label="Experience required"
-                  value={experienceRequired}
-                  options={EXPERIENCE_OPTIONS}
-                  onChange={(value) => setExperienceRequired(value)}
-                  companyId={activeCompanyId ?? undefined}
-                  moduleKey="hr"
-                  fieldKey="vacancy_experience_required"
-                  createdByUserId={user?.id as UUID | undefined}
-                  allowCreate={!!activeCompanyId}
-                />
+                <label className="text-sm">
+                  <span className="block text-xs text-charcoal-500 mb-1">Experience required</span>
+                  <select
+                    className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"
+                    value={experienceRequired}
+                    onChange={(e) => setExperienceRequired(e.target.value)}
+                  >
+                    <option value="">Select experience level</option>
+                    {EXPERIENCE_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
               <label className="text-sm flex items-center gap-2">
                 <input type="checkbox" checked={referenceChecksDone} onChange={(e) => setReferenceChecksDone(e.target.checked)} />

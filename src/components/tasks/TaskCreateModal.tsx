@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { ModuleKey, Severity, UUID } from '../../api/models/core';
 import { createTask, listTasksWithFilters, countTasksByAssignee } from '../../api/services/tasksService';
 import { UserMultiSelect } from '../ui/UserMultiSelect';
@@ -269,17 +269,26 @@ export function TaskCreateModal(props: {
       props.onCreated?.();
       props.onClose();
       resetForm();
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Unable to create task right now.'));
     } finally {
       setLoading(false);
     }
   }
 
+  React.useEffect(() => {
+    if (!props.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') props.onClose();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.open, props.onClose]);
+
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 sm:p-6">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="Create Task">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
       <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">

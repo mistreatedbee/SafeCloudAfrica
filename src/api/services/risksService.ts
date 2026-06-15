@@ -157,16 +157,17 @@ export type CreateRiskInput = {
 };
 
 export async function createRisk(input: CreateRiskInput): Promise<Risk> {
+  return withInsforgeSession('risks:create', async () => {
   const riskRating = Math.max(1, Number(input.likelihood || 1) * Number(input.consequence || 1));
   const { data, error } = await insforge.database
     .from('risks')
     .insert({
       company_id: input.companyId,
       module: input.module,
-      title: input.title,
-      description: input.description ?? null,
-      hazard: input.hazard ?? null,
-      controls: input.controls ?? null,
+      title: input.title.trim().slice(0, 500),
+      description: input.description?.trim().slice(0, 2000) ?? null,
+      hazard: input.hazard?.trim().slice(0, 500) ?? null,
+      controls: input.controls?.trim().slice(0, 2000) ?? null,
       likelihood: input.likelihood,
       consequence: input.consequence,
       risk_rating: riskRating,
@@ -183,10 +184,11 @@ export async function createRisk(input: CreateRiskInput): Promise<Risk> {
     actorUserId: input.createdByUserId,
     action: 'risks.create',
     entityType: 'risk',
-    entityId: (data as any).id as UUID
+    entityId: (data as unknown as { id: UUID }).id
   });
 
   return data as Risk;
+  });
 }
 
 export type CreateRiskAssessmentInput = {
@@ -258,7 +260,7 @@ export async function createRiskAssessment(input: CreateRiskAssessmentInput): Pr
         .from('risk_assessments')
         .update({ ...patch, updated_at: new Date().toISOString() })
         .eq('id', created.id);
-      Object.assign(created as any, patch);
+      Object.assign(created as Record<string, unknown>, patch);
     } catch {
       // Column might not exist yet on older tenants; keep base record.
     }
@@ -283,36 +285,40 @@ export type ListRiskAssessmentsInput = {
 };
 
 export async function listRiskAssessments(input: ListRiskAssessmentsInput): Promise<RiskAssessment[]> {
-  let query = insforge.database.from('risk_assessments').select('*').eq('company_id', input.companyId);
+  return withInsforgeSession('risk_assessments_legacy:list', async () => {
+    let query = insforge.database.from('risk_assessments').select('*').eq('company_id', input.companyId);
 
-  if (input.assessmentType) {
-    if (input.assessmentType === 'baseline') {
-      query = query.eq('assessment_type', 'baseline');
-    } else {
-      query = query.eq('assessment_type', 'task-based');
+    if (input.assessmentType) {
+      if (input.assessmentType === 'baseline') {
+        query = query.eq('assessment_type', 'baseline');
+      } else {
+        query = query.eq('assessment_type', 'task-based');
+      }
     }
-  }
 
-  if (input.status) {
-    query = query.eq('status', input.status);
-  }
+    if (input.status) {
+      query = query.eq('status', input.status);
+    }
 
-  const { data, error } = await query.order('created_at', { ascending: false }).limit(input.limit ?? 200);
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as RiskAssessment[];
+    const { data, error } = await query.order('created_at', { ascending: false }).limit(input.limit ?? 200);
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as RiskAssessment[];
+  });
 }
 
 export async function getRiskAssessment(assessmentId: UUID): Promise<RiskAssessment> {
-  const { data, error } = await insforge.database
-    .from('risk_assessments')
-    .select('*')
-    .eq('id', assessmentId)
-    .single();
+  return withInsforgeSession('risk_assessments_legacy:get', async () => {
+    const { data, error } = await insforge.database
+      .from('risk_assessments')
+      .select('*')
+      .eq('id', assessmentId)
+      .single();
 
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Risk assessment not found');
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Risk assessment not found');
 
-  return data as RiskAssessment;
+    return data as RiskAssessment;
+  });
 }
 
 export type AddRiskAssessmentItemInput = {
@@ -335,6 +341,7 @@ export type AddRiskAssessmentItemInput = {
 };
 
 export async function addRiskAssessmentItem(input: AddRiskAssessmentItemInput): Promise<RiskAssessmentItem> {
+  return withInsforgeSession('risk_assessment_items:create', async () => {
   const riskRating = input.likelihood * input.consequence;
   const riskLevel = calculateRiskLevel(input.likelihood, input.consequence);
 
@@ -375,7 +382,7 @@ export async function addRiskAssessmentItem(input: AddRiskAssessmentItemInput): 
     actorUserId: input.createdByUserId,
     action: 'risk_assessment_items.create',
     entityType: 'risk_assessment_item',
-    entityId: (data as any).id as UUID
+    entityId: (data as unknown as { id: UUID }).id
   });
 
   // Authoritative NCR integration for risk deviations.
@@ -395,7 +402,7 @@ export async function addRiskAssessmentItem(input: AddRiskAssessmentItemInput): 
       source_entity_type: 'risk',
       source_entity_id: input.riskAssessmentId,
       metadata: {
-        riskAssessmentItemId: (data as any).id as UUID,
+        riskAssessmentItemId: (data as unknown as { id: UUID }).id,
         likelihood: input.likelihood,
         consequence: input.consequence,
         riskRating
@@ -404,9 +411,11 @@ export async function addRiskAssessmentItem(input: AddRiskAssessmentItemInput): 
   }
 
   return data as RiskAssessmentItem;
+  }); // end withInsforgeSession
 }
 
 export async function listRiskAssessmentItems(assessmentId: UUID): Promise<RiskAssessmentItem[]> {
+  return withInsforgeSession('risk_assessment_items:list', async () => {
   const { data, error } = await insforge.database
     .from('risk_assessment_items')
     .select('*')
@@ -415,6 +424,7 @@ export async function listRiskAssessmentItems(assessmentId: UUID): Promise<RiskA
 
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as RiskAssessmentItem[];
+  });
 }
 
 export async function updateRiskAssessmentCounts(assessmentId: UUID): Promise<void> {
@@ -452,45 +462,47 @@ export type UpdateRiskAssessmentStatusInput = {
 };
 
 export async function updateRiskAssessmentStatus(input: UpdateRiskAssessmentStatusInput): Promise<RiskAssessment> {
-  const updateData: Record<string, unknown> = {
-    status: input.status,
-    updated_at: new Date().toISOString()
-  };
+  return withInsforgeSession('risk_assessments_legacy:status_update', async () => {
+    const updateData: Record<string, unknown> = {
+      status: input.status,
+      updated_at: new Date().toISOString()
+    };
 
-  if (input.status === 'reviewed' && input.reviewedByUserId) {
-    updateData.reviewed_by_user_id = input.reviewedByUserId;
-    updateData.reviewed_at = new Date().toISOString();
-  }
+    if (input.status === 'reviewed' && input.reviewedByUserId) {
+      updateData.reviewed_by_user_id = input.reviewedByUserId;
+      updateData.reviewed_at = new Date().toISOString();
+    }
 
-  if (input.status === 'approved' && input.approvedByUserId) {
-    updateData.approved_by_user_id = input.approvedByUserId;
-    updateData.approved_at = new Date().toISOString();
-  }
+    if (input.status === 'approved' && input.approvedByUserId) {
+      updateData.approved_by_user_id = input.approvedByUserId;
+      updateData.approved_at = new Date().toISOString();
+    }
 
-  if (input.clearReviewDueAt) {
-    updateData.review_due_at = null;
-  }
+    if (input.clearReviewDueAt) {
+      updateData.review_due_at = null;
+    }
 
-  const { data, error } = await insforge.database
-    .from('risk_assessments')
-    .update(updateData)
-    .eq('id', input.assessmentId)
-    .select('*')
-    .single();
+    const { data, error } = await insforge.database
+      .from('risk_assessments')
+      .update(updateData)
+      .eq('id', input.assessmentId)
+      .select('*')
+      .single();
 
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to update risk assessment');
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to update risk assessment');
 
-  await createActivityLog({
-    companyId: input.companyId,
-    actorUserId: input.updatedByUserId,
-    action: 'risk_assessments.status_change',
-    entityType: 'risk_assessment',
-    entityId: input.assessmentId,
-    details: { newStatus: input.status }
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.updatedByUserId,
+      action: 'risk_assessments.status_change',
+      entityType: 'risk_assessment',
+      entityId: input.assessmentId,
+      details: { newStatus: input.status }
+    });
+
+    return data as RiskAssessment;
   });
-
-  return data as RiskAssessment;
 }
 
 export type UpdateRiskAssessmentInput = {
@@ -510,37 +522,39 @@ export type UpdateRiskAssessmentInput = {
 };
 
 export async function updateRiskAssessment(input: UpdateRiskAssessmentInput): Promise<RiskAssessment> {
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (typeof input.title !== 'undefined') patch.title = input.title;
-  if (typeof input.description !== 'undefined') patch.description = input.description;
-  if (typeof input.processInvolved !== 'undefined') patch.process_involved = input.processInvolved;
-  if (typeof input.location !== 'undefined') patch.location = input.location;
-  if (typeof input.scope !== 'undefined') patch.scope = input.scope;
-  if (typeof input.objective !== 'undefined') patch.objective = input.objective;
-  if (typeof input.status !== 'undefined') patch.status = input.status;
-  if (typeof input.reviewDueAt !== 'undefined') patch.review_due_at = input.reviewDueAt;
-  if (typeof input.isCritical !== 'undefined') patch.is_critical = input.isCritical;
-  if (typeof input.isPrework !== 'undefined') patch.is_prework = input.isPrework;
+  return withInsforgeSession('risk_assessments_legacy:update', async () => {
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (typeof input.title !== 'undefined') patch.title = input.title;
+    if (typeof input.description !== 'undefined') patch.description = input.description;
+    if (typeof input.processInvolved !== 'undefined') patch.process_involved = input.processInvolved;
+    if (typeof input.location !== 'undefined') patch.location = input.location;
+    if (typeof input.scope !== 'undefined') patch.scope = input.scope;
+    if (typeof input.objective !== 'undefined') patch.objective = input.objective;
+    if (typeof input.status !== 'undefined') patch.status = input.status;
+    if (typeof input.reviewDueAt !== 'undefined') patch.review_due_at = input.reviewDueAt;
+    if (typeof input.isCritical !== 'undefined') patch.is_critical = input.isCritical;
+    if (typeof input.isPrework !== 'undefined') patch.is_prework = input.isPrework;
 
-  const { data, error } = await insforge.database
-    .from('risk_assessments')
-    .update(patch)
-    .eq('id', input.assessmentId)
-    .eq('company_id', input.companyId)
-    .select('*')
-    .single();
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to update risk assessment');
+    const { data, error } = await insforge.database
+      .from('risk_assessments')
+      .update(patch)
+      .eq('id', input.assessmentId)
+      .eq('company_id', input.companyId)
+      .select('*')
+      .single();
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to update risk assessment');
 
-  await createActivityLog({
-    companyId: input.companyId,
-    actorUserId: input.updatedByUserId,
-    action: 'risk_assessments.update',
-    entityType: 'risk_assessment',
-    entityId: input.assessmentId
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.updatedByUserId,
+      action: 'risk_assessments.update',
+      entityType: 'risk_assessment',
+      entityId: input.assessmentId
+    });
+
+    return data as RiskAssessment;
   });
-
-  return data as RiskAssessment;
 }
 
 export type UpdateRiskAssessmentItemInput = {
@@ -559,47 +573,49 @@ export type UpdateRiskAssessmentItemInput = {
 };
 
 export async function updateRiskAssessmentItem(input: UpdateRiskAssessmentItemInput): Promise<RiskAssessmentItem> {
-  const updateData: Record<string, unknown> = {
-    updated_at: new Date().toISOString()
-  };
+  return withInsforgeSession('risk_assessment_items:update', async () => {
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString()
+    };
 
-  if (input.likelihood && input.consequence) {
-    const riskRating = input.likelihood * input.consequence;
-    const riskLevel = calculateRiskLevel(input.likelihood, input.consequence);
-    updateData.likelihood = input.likelihood;
-    updateData.consequence = input.consequence;
-    updateData.risk_rating = riskRating;
-    updateData.risk_level = riskLevel;
-  }
+    if (input.likelihood && input.consequence) {
+      const riskRating = input.likelihood * input.consequence;
+      const riskLevel = calculateRiskLevel(input.likelihood, input.consequence);
+      updateData.likelihood = input.likelihood;
+      updateData.consequence = input.consequence;
+      updateData.risk_rating = riskRating;
+      updateData.risk_level = riskLevel;
+    }
 
-  if (input.existingControls !== undefined) updateData.existing_controls = input.existingControls;
-  if (input.controlEffectiveness !== undefined) updateData.control_effectiveness = input.controlEffectiveness;
-  if (input.improvementActions !== undefined) updateData.improvement_actions = input.improvementActions;
-  if (input.responsibleUserId !== undefined) updateData.responsible_user_id = input.responsibleUserId;
-  if (input.actionDueDate !== undefined) updateData.action_due_date = input.actionDueDate;
-  if (input.actionStatus !== undefined) updateData.action_status = input.actionStatus;
+    if (input.existingControls !== undefined) updateData.existing_controls = input.existingControls;
+    if (input.controlEffectiveness !== undefined) updateData.control_effectiveness = input.controlEffectiveness;
+    if (input.improvementActions !== undefined) updateData.improvement_actions = input.improvementActions;
+    if (input.responsibleUserId !== undefined) updateData.responsible_user_id = input.responsibleUserId;
+    if (input.actionDueDate !== undefined) updateData.action_due_date = input.actionDueDate;
+    if (input.actionStatus !== undefined) updateData.action_status = input.actionStatus;
 
-  const { data, error } = await insforge.database
-    .from('risk_assessment_items')
-    .update(updateData)
-    .eq('id', input.itemId)
-    .select('*')
-    .single();
+    const { data, error } = await insforge.database
+      .from('risk_assessment_items')
+      .update(updateData)
+      .eq('id', input.itemId)
+      .select('*')
+      .single();
 
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to update risk assessment item');
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to update risk assessment item');
 
-  await updateRiskAssessmentCounts(input.riskAssessmentId);
+    await updateRiskAssessmentCounts(input.riskAssessmentId);
 
-  await createActivityLog({
-    companyId: input.companyId,
-    actorUserId: input.updatedByUserId,
-    action: 'risk_assessment_items.update',
-    entityType: 'risk_assessment_item',
-    entityId: input.itemId
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.updatedByUserId,
+      action: 'risk_assessment_items.update',
+      entityType: 'risk_assessment_item',
+      entityId: input.itemId
+    });
+
+    return data as RiskAssessmentItem;
   });
-
-  return data as RiskAssessmentItem;
 }
 
 export async function deleteRiskAssessmentItem(
@@ -608,17 +624,19 @@ export async function deleteRiskAssessmentItem(
   companyId: UUID,
   deletedByUserId: UUID
 ): Promise<void> {
-  const { error } = await insforge.database.from('risk_assessment_items').delete().eq('id', itemId);
-  if (error) throw new Error(getErrorMessage(error));
+  return withInsforgeSession('risk_assessment_items:delete', async () => {
+    const { error } = await insforge.database.from('risk_assessment_items').delete().eq('id', itemId);
+    if (error) throw new Error(getErrorMessage(error));
 
-  await updateRiskAssessmentCounts(assessmentId);
+    await updateRiskAssessmentCounts(assessmentId);
 
-  await createActivityLog({
-    companyId,
-    actorUserId: deletedByUserId,
-    action: 'risk_assessment_items.delete',
-    entityType: 'risk_assessment_item',
-    entityId: itemId
+    await createActivityLog({
+      companyId,
+      actorUserId: deletedByUserId,
+      action: 'risk_assessment_items.delete',
+      entityType: 'risk_assessment_item',
+      entityId: itemId
+    });
   });
 }
 
@@ -690,7 +708,7 @@ export async function createRiskAssessmentVersion(input: {
       .select('id')
       .single();
     if (error) throw error;
-    return { id: (data as any)?.id ?? null };
+    return { id: ((data as unknown as { id?: UUID | null })?.id) ?? null };
   } catch {
     return { id: null };
   }
@@ -705,6 +723,9 @@ export async function listPreWorkInstances(input: {
   Array<{ id: UUID; risk_assessment_id: UUID; instance_date: string; supervisor_signed_at: string | null }>
 > {
   try {
+    if (input.fromDate && input.toDate && input.fromDate > input.toDate) {
+      throw new Error('From date must be before or equal to to date.');
+    }
     let q = insforge.database
       .from('risk_assessment_prework_instances')
       .select('id,risk_assessment_id,instance_date,supervisor_signed_at')

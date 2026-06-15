@@ -87,7 +87,7 @@ function buildReportTable(input: KPIReportInput): { title: string; headers: stri
       headers: ['Department', 'Period', 'Average Score', 'Assessments'],
       rows: Object.values(byDeptPeriod)
         .sort((a, b) => a.period.localeCompare(b.period) || a.dept.localeCompare(b.dept))
-        .map((x) => [x.dept, x.period, (x.sum / x.count).toFixed(2), String(x.count)])
+        .map((x) => [x.dept, x.period, x.count > 0 ? (x.sum / x.count).toFixed(2) : '—', String(x.count)])
     };
   }
 
@@ -115,10 +115,11 @@ function buildReportTable(input: KPIReportInput): { title: string; headers: stri
     };
   }
 
-  const byPeriod: Record<string, { sum: number; count: number }> = {};
+  const byPeriod: Record<string, { sum: number; count: number; total: number }> = {};
   assessments.forEach((a) => {
     const key = a.period_type;
-    if (!byPeriod[key]) byPeriod[key] = { sum: 0, count: 0 };
+    if (!byPeriod[key]) byPeriod[key] = { sum: 0, count: 0, total: 0 };
+    byPeriod[key].total += 1;
     if (a.overall_score != null) {
       byPeriod[key].sum += a.overall_score;
       byPeriod[key].count += 1;
@@ -127,7 +128,7 @@ function buildReportTable(input: KPIReportInput): { title: string; headers: stri
   return {
     title: 'Period Comparison',
     headers: ['Period Type', 'Average Score', 'Assessments'],
-    rows: Object.entries(byPeriod).map(([period, v]) => [period, v.count ? (v.sum / v.count).toFixed(2) : '0.00', String(v.count)])
+    rows: Object.entries(byPeriod).map(([period, v]) => [period, v.count > 0 ? (v.sum / v.count).toFixed(2) : '—', String(v.total)])
   };
 }
 

@@ -154,44 +154,52 @@ export function SafetyStatisticsPage() {
 
             {/* 12-Month Rolling Trend Charts */}
             {seriesLoading ? (
-              <p className="text-charcoal-500 text-sm">Loading trend charts…</p>
-            ) : series && series.length > 0 ? (
+              <div className="bg-white rounded-xl border border-surface-200 p-6 shadow-card">
+                <p className="text-charcoal-500 text-sm">Loading trend charts…</p>
+              </div>
+            ) : (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold text-charcoal">12-Month Rolling Trends</h2>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <SafetyKpiChart
-                    title="LTI Frequency Rate (Rolling 12-Month)"
-                    data={series}
-                    barKey="ltiCount"
-                    barLabel="LTI Count"
-                    lineKey="ltifr"
-                    lineLabel="LTIFR"
-                  />
-                  <SafetyKpiChart
-                    title="All-Injury Frequency Rate (Rolling 12-Month)"
-                    data={series}
-                    barKey="allInjuryCount"
-                    barLabel="All-Injury Count"
-                    lineKey="aifr"
-                    lineLabel="AIFR"
-                  />
-                  <SafetyKpiChart
-                    title="Severity Rate (Rolling 12-Month)"
-                    data={series}
-                    barKey="severityDays"
-                    barLabel="Severity Days"
-                    lineKey="ltisr"
-                    lineLabel="LTISR"
-                  />
-                  <SafetyKpiChart
-                    title="Accumulative LTI-Free Man Hours"
-                    data={series}
-                    barKey="freeManHours"
-                    barLabel="LTI-Free Hours"
-                  />
-                </div>
+                {(!series || series.length === 0) ? (
+                  <div className="bg-white rounded-xl border border-surface-200 p-6 shadow-card text-center">
+                    <p className="text-sm text-charcoal-500">No data yet — add hours worked and incidents to see rolling trends.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <SafetyKpiChart
+                      title="LTI Frequency Rate (Rolling 12-Month)"
+                      data={series}
+                      barKey="ltiCount"
+                      barLabel="LTI Count"
+                      lineKey="ltifr"
+                      lineLabel="LTIFR"
+                    />
+                    <SafetyKpiChart
+                      title="All-Injury Frequency Rate (Rolling 12-Month)"
+                      data={series}
+                      barKey="allInjuryCount"
+                      barLabel="All-Injury Count"
+                      lineKey="aifr"
+                      lineLabel="AIFR"
+                    />
+                    <SafetyKpiChart
+                      title="Severity Rate (Rolling 12-Month)"
+                      data={series}
+                      barKey="severityDays"
+                      barLabel="Severity Days"
+                      lineKey="ltisr"
+                      lineLabel="LTISR"
+                    />
+                    <SafetyKpiChart
+                      title="Accumulative LTI-Free Man Hours"
+                      data={series}
+                      barKey="freeManHours"
+                      barLabel="LTI-Free Hours"
+                    />
+                  </div>
+                )}
               </div>
-            ) : null}
+            )}
           </>
         ) : null}
       </motion.div>

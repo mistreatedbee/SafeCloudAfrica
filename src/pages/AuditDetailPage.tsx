@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { toUserFacingError } from '../utils/userFacingMessage';
 import { CalendarIcon, ClipboardCheckIcon, ArrowLeftIcon, AlertCircleIcon, FileTextIcon, DownloadIcon } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
@@ -118,6 +119,7 @@ export function AuditDetailPage() {
 
   const [savingResponseId, setSavingResponseId] = useState<UUID | null>(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isNcrModalOpen, setIsNcrModalOpen] = useState(false);
   const [ncrLinkedQuestionId, setNcrLinkedQuestionId] = useState<UUID | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
@@ -292,9 +294,12 @@ export function AuditDetailPage() {
   async function handleStartAudit() {
     if (!audit || !activeCompanyId || !user?.id) return;
     setStatusUpdating(true);
+    setActionError(null);
     try {
       await startAudit(audit.id as UUID, activeCompanyId, user.id as any);
       await refreshAudit();
+    } catch (e) {
+      setActionError(toUserFacingError(e, 'Failed to start audit. Please try again.'));
     } finally {
       setStatusUpdating(false);
     }
@@ -303,10 +308,13 @@ export function AuditDetailPage() {
   async function handleCompleteAudit() {
     if (!audit || !activeCompanyId || !user?.id) return;
     setStatusUpdating(true);
+    setActionError(null);
     try {
       await completeAudit(audit.id as UUID, activeCompanyId, null, user.id as any);
       await updateAuditFindingsCounts(audit.id as UUID, activeCompanyId, user.id as any);
       await refreshAudit();
+    } catch (e) {
+      setActionError(toUserFacingError(e, 'Failed to complete audit. Please try again.'));
     } finally {
       setStatusUpdating(false);
     }
@@ -399,6 +407,12 @@ export function AuditDetailPage() {
           <div className="bg-white rounded-xl border border-surface-300 p-6 shadow-card flex items-center gap-3">
             <LoadingSpinner size={18} />
             <p className="text-sm text-charcoal-500">Loading audit details…</p>
+          </div>
+        )}
+
+        {actionError && (
+          <div className="bg-white rounded-xl border border-critical/30 p-3 shadow-card">
+            <p className="text-sm text-critical">{actionError}</p>
           </div>
         )}
 

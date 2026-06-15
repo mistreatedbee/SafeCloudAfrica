@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { toUserFacingError } from '../utils/userFacingMessage';
 import { ArrowLeftIcon, CalendarIcon, ClipboardCheckIcon, CheckCircleIcon } from 'lucide-react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../components/layout/Layout';
@@ -110,6 +111,7 @@ export function InspectionDetailPage() {
   const [completingRun, setCompletingRun] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [evidenceItemId, setEvidenceItemId] = useState<string | null>(null);
+  const [runActionError, setRunActionError] = useState<string | null>(null);
 
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `inspection-detail:${activeCompanyId ?? 'company'}:${inspectionId ?? 'unknown'}:${user?.id ?? 'anon'}`;
@@ -149,9 +151,12 @@ export function InspectionDetailPage() {
   async function handleUpdateItem(item: InspectionRunItem, patch: Record<string, unknown>) {
     if (!activeCompanyId) return;
     setSavingItemId(String(item.id));
+    setRunActionError(null);
     try {
       await updateInspectionRunItem(activeCompanyId as UUID, item.id as UUID, patch as any);
       await refreshRun();
+    } catch (e) {
+      setRunActionError(toUserFacingError(e, 'Failed to update checklist item. Please try again.'));
     } finally {
       setSavingItemId(null);
     }
@@ -160,10 +165,13 @@ export function InspectionDetailPage() {
   async function handleCompleteRun() {
     if (!activeCompanyId || !latestRun || !user?.id) return;
     setCompletingRun(true);
+    setRunActionError(null);
     try {
       await completeInspectionRun({ companyId: activeCompanyId as UUID, runId: latestRun.run.id as UUID, actorUserId: user.id as UUID });
       await refreshRun();
       clearDraft(draftKey);
+    } catch (e) {
+      setRunActionError(toUserFacingError(e, 'Failed to complete run. Please try again.'));
     } finally {
       setCompletingRun(false);
     }
@@ -171,9 +179,14 @@ export function InspectionDetailPage() {
 
   async function handleSubmitSelfAssessment() {
     if (!activeCompanyId || !latestRun || !user?.id) return;
-    await submitAuditeeSelfAssessment({ companyId: activeCompanyId as UUID, runId: latestRun.run.id as UUID, actorUserId: user.id as UUID });
-    await refreshRun();
-    clearDraft(draftKey);
+    setRunActionError(null);
+    try {
+      await submitAuditeeSelfAssessment({ companyId: activeCompanyId as UUID, runId: latestRun.run.id as UUID, actorUserId: user.id as UUID });
+      await refreshRun();
+      clearDraft(draftKey);
+    } catch (e) {
+      setRunActionError(toUserFacingError(e, 'Failed to submit self-assessment. Please try again.'));
+    }
   }
 
   const loading = inspectionLoading || runLoading;
@@ -279,6 +292,7 @@ export function InspectionDetailPage() {
               {activeTab === 'checklist' && (
                 <>
                   {runError && <div className="text-xs text-critical">{runError.message}</div>}
+                  {runActionError && <div className="text-xs text-critical bg-critical/5 border border-critical/20 rounded-lg p-2">{runActionError}</div>}
                   {!latestRun && <p className="text-sm text-charcoal-500">No checklist run found for this inspection.</p>}
                   {latestRun && (
                     <>

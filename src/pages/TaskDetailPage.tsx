@@ -209,6 +209,7 @@ export function TaskDetailPage() {
   }
   async function handleClose() {
     if (!activeCompanyId || !taskId || !user?.id) return;
+    if (!window.confirm('Close this task? This will lock the task record.')) return;
     setPageError(null);
     setPageSuccess(null);
     try {
@@ -317,6 +318,7 @@ export function TaskDetailPage() {
 
   async function onDecideApproval(approvalId: UUID, decision: 'approved' | 'rejected') {
     if (!activeCompanyId || !user?.id) return;
+    if (decision === 'rejected' && !window.confirm('Reject this approval request? This cannot be undone.')) return;
     setPageError(null);
     setPageSuccess(null);
     try {
@@ -541,8 +543,8 @@ export function TaskDetailPage() {
                       try {
                         const blob = await downloadDocumentFile({ bucket: e.storage_bucket, key: e.storage_key });
                         openBlobInNewTab(blob);
-                      } catch (err: any) {
-                        setAttachmentError(err?.message ? String(err.message) : 'Unable to open attachment.');
+                      } catch (err: unknown) {
+                        setAttachmentError(toUserFacingError(err, 'Unable to open attachment.'));
                       }
                     }}
                     className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors"
@@ -558,8 +560,8 @@ export function TaskDetailPage() {
                         const filename = e.storage_key.split('/').pop() ?? 'attachment';
                         const blob = await downloadDocumentFile({ bucket: e.storage_bucket, key: e.storage_key });
                         downloadBlob(blob, filename);
-                      } catch (err: any) {
-                        setAttachmentError(err?.message ? String(err.message) : 'Unable to download attachment.');
+                      } catch (err: unknown) {
+                        setAttachmentError(toUserFacingError(err, 'Unable to download attachment.'));
                       }
                     }}
                     className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors"

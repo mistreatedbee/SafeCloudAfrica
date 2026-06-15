@@ -19,6 +19,7 @@ import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { KPI_RATING_LEGEND } from '../../constants/kpiRatingLegend';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 function getAchievementLabel(line: KPIAssessmentLine): 'Not Achieved' | 'Partially Achieved' | 'Achieved' | '-' {
   const rating = line.manager_rating;
@@ -240,8 +241,8 @@ export function KPIAssessmentDetailPage() {
     try {
       await updateKPIAssessmentLine(lineId as any, assessment.assessment_id, activeCompanyId, patch as any);
       setMessage('KPI Questionnaire changes saved.');
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to save KPI Questionnaire.');
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Failed to save KPI Questionnaire.'));
     } finally {
       inFlightLineSavesRef.current.delete(lineId);
       setSavingLineIds((prev) => ({ ...prev, [lineId]: false }));
@@ -273,8 +274,8 @@ export function KPIAssessmentDetailPage() {
     try {
       await updateKPIAssessment(assessmentId as any, activeCompanyId, patch, user.id as any);
       setMessage('Comments saved successfully.');
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to save comments.');
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Failed to save comments.'));
     } finally {
       inFlightCommentsSaveRef.current = false;
       setSavingAssessmentComments(false);
@@ -316,8 +317,8 @@ export function KPIAssessmentDetailPage() {
         restoredOnceRef.current = false;
       }
       setRefresher((r) => r + 1);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to update KPI Assessment status.');
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Failed to update KPI Assessment status.'));
     }
   };
 
@@ -336,8 +337,8 @@ export function KPIAssessmentDetailPage() {
       });
       setMessage('Corrective action finding generated.');
       setRefresher((r) => r + 1);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to generate finding.');
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Failed to generate finding.'));
     }
   };
 
@@ -366,8 +367,8 @@ export function KPIAssessmentDetailPage() {
         restoredOnceRef.current = false;
       }
       setRefresher((r) => r + 1);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to delete KPI questionnaire line.');
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Failed to delete KPI questionnaire line.'));
     } finally {
       setDeletingLineId(null);
     }

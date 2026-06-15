@@ -4,6 +4,7 @@ import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import type { UUID } from '../api/models/core';
+import { toUserFacingError } from '../utils/userFacingMessage';
 import {
   createRiskAssessmentFromTemplate,
   deleteRiskAssessmentTemplate,
@@ -79,7 +80,7 @@ export function RisksPage() {
       setRows(a);
       setTemplates(t);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load risk assessments');
+      setError(toUserFacingError(e, 'Failed to load risk assessments'));
     } finally {
       setLoading(false);
     }
@@ -109,7 +110,7 @@ export function RisksPage() {
       });
       navigate(`/risk-assessments/${created.assessment.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create from template');
+      setError(toUserFacingError(e, 'Failed to create from template'));
     }
   }
 
@@ -124,7 +125,7 @@ export function RisksPage() {
       });
       setTemplates((current) => current.filter((template) => template.id !== templateId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete template');
+      setError(toUserFacingError(e, 'Failed to delete template'));
     }
   }
 

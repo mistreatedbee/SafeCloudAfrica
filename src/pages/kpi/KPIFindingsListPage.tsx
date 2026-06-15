@@ -9,6 +9,7 @@ import type { KPIFinding, KpiFindingStatus } from '../../api/models/entities';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import { SearchIcon } from 'lucide-react';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 export function KPIFindingsListPage() {
   const navigate = useNavigate();
@@ -19,6 +20,7 @@ export function KPIFindingsListPage() {
   const [closingId, setClosingId] = useState<string | null>(null);
   const [signOffComments, setSignOffComments] = useState<Record<string, string>>({});
   const [proofFile, setProofFile] = useState<File | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { data: findings, loading } = useAsync<KPIFinding[]>(
     async () => {
@@ -37,26 +39,32 @@ export function KPIFindingsListPage() {
 
   const handleUploadProof = async (findingId: string) => {
     if (!activeCompanyId || !proofFile || !user?.id) return;
-    const result = await uploadFile('sca-evidence', proofFile, {
-      key: `kpi-finding-${findingId}-${Date.now()}-${proofFile.name}`
-    });
-    await attachProofToFinding(
-      findingId as any,
-      activeCompanyId,
-      {
-        storage_bucket: result.bucket,
-        storage_key: result.key,
-        url: result.url,
-        filename: proofFile.name
-      },
-      user.id as any
-    );
-    setProofFile(null);
-    setRefreshKey((k) => k + 1);
+    setActionError(null);
+    try {
+      const result = await uploadFile('sca-evidence', proofFile, {
+        key: `kpi-finding-${findingId}-${Date.now()}-${proofFile.name}`
+      });
+      await attachProofToFinding(
+        findingId as any,
+        activeCompanyId,
+        {
+          storage_bucket: result.bucket,
+          storage_key: result.key,
+          url: result.url,
+          filename: proofFile.name
+        },
+        user.id as any
+      );
+      setProofFile(null);
+      setRefreshKey((k) => k + 1);
+    } catch (err: unknown) {
+      setActionError(toUserFacingError(err, 'Failed to upload proof.'));
+    }
   };
 
   const handleClose = async (f: KPIFinding) => {
     if (!activeCompanyId || !user?.id) return;
+    setActionError(null);
     setClosingId(f.finding_id);
     try {
       await closeKPIFindingWithSignOff({
@@ -72,6 +80,8 @@ export function KPIFindingsListPage() {
         return next;
       });
       setRefreshKey((k) => k + 1);
+    } catch (err: unknown) {
+      setActionError(toUserFacingError(err, 'Failed to close finding.'));
     } finally {
       setClosingId(null);
     }
@@ -95,6 +105,12 @@ export function KPIFindingsListPage() {
           <option value="overdue">Overdue</option>
         </select>
       </div>
+
+      {actionError && (
+        <div className="bg-critical/5 border border-critical/20 rounded-xl p-3 text-sm text-critical">
+          {actionError}
+        </div>
+      )}
 
       {loading && (
         <div className="flex items-center gap-3 p-6">

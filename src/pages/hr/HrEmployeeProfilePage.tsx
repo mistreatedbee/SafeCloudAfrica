@@ -5,7 +5,7 @@ import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
-import { canViewRestrictedFields, getEmployeeIntegratedProfile, logRestrictedFieldAccess } from '../../api/services/hrService';
+import { canViewRestrictedFields, getEmployeeIntegratedProfile, listHrPersonalDocuments, logRestrictedFieldAccess } from '../../api/services/hrService';
 import type { UUID } from '../../api/models/core';
 import type { CompanyRole } from '../../api/models/core';
 import type { HrEmployee, HrEmployeeDependent, HrEmployeeSensitiveDetails } from '../../api/services/hrService';
@@ -70,6 +70,16 @@ export function HrEmployeeProfilePage() {
     if (!activeCompanyId || !id) return [] as EvidenceAttachment[];
     return listEvidence(activeCompanyId, { entityType: 'hr_employee', entityId: id as UUID });
   }, [activeCompanyId, id, docRefreshKey]);
+
+  const { data: personalDocs } = useAsync(async () => {
+    if (!activeCompanyId || !user?.id || !id) return [];
+    return listHrPersonalDocuments({
+      companyId: activeCompanyId,
+      actorRole: activeRole ?? null,
+      actorUserId: user.id as UUID,
+      employeeId: id as UUID
+    });
+  }, [activeCompanyId, activeRole, user?.id, id, docRefreshKey]);
 
   const employee = payload?.employee as HrEmployee | undefined;
   const canSensitive = Boolean(payload?.canSensitive);
@@ -399,9 +409,48 @@ export function HrEmployeeProfilePage() {
                 </div>
               </div>
             )}
+            {(personalDocs ?? []).length > 0 && (
+              <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+                <div className="px-4 py-3 border-b border-surface-200">
+                  <h3 className="font-semibold text-sm">HR Document Records ({(personalDocs ?? []).length})</h3>
+                </div>
+                <table className="w-full min-w-[540px] text-sm">
+                  <thead className="bg-surface-100">
+                    <tr>
+                      <th className="text-left px-4 py-2">Document name</th>
+                      <th className="text-left px-4 py-2">Type</th>
+                      <th className="text-left px-4 py-2">Expiry date</th>
+                      <th className="text-left px-4 py-2">Status</th>
+                      <th className="text-left px-4 py-2">Acknowledged</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(personalDocs ?? []).map((doc) => (
+                      <tr key={String(doc.id)} className="border-t border-surface-100">
+                        <td className="px-4 py-2 font-medium">{String(doc.doc_name ?? doc.title ?? '-')}</td>
+                        <td className="px-4 py-2 text-charcoal-500">{String(doc.doc_type ?? '-')}</td>
+                        <td className="px-4 py-2 text-charcoal-500">{String(doc.expiry_date ?? '-')}</td>
+                        <td className="px-4 py-2">
+                          <span className={`px-2 py-0.5 rounded text-xs ${String(doc.status) === 'EXPIRED' ? 'bg-critical/20 text-critical' : 'bg-surface-100 text-charcoal-600'}`}>
+                            {String(doc.status ?? 'ACTIVE')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-charcoal-500">
+                          {(doc as Record<string, unknown>).acknowledged_by_employee ? (
+                            <span className="text-emerald-700 text-xs">Yes</span>
+                          ) : (
+                            <span className="text-charcoal-400 text-xs">No</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <div className="px-4 py-3 border-b border-surface-200">
-                <h3 className="font-semibold text-sm">Documents ({(employeeDocs ?? []).length})</h3>
+                <h3 className="font-semibold text-sm">Uploaded Files ({(employeeDocs ?? []).length})</h3>
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-surface-100">

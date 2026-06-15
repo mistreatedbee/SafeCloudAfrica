@@ -81,7 +81,7 @@ async function getAuditEmails(companyId: UUID, userIds: Array<UUID | null | unde
       .eq('company_id', companyId)
       .in('user_id', ids);
     for (const row of data ?? []) {
-      const email = String((row as any).email ?? '').trim();
+      const email = String((row as unknown as { email?: string }).email ?? '').trim();
       if (email) emails.add(email);
     }
   }
@@ -89,13 +89,15 @@ async function getAuditEmails(companyId: UUID, userIds: Array<UUID | null | unde
 }
 
 export async function getAudit(auditId: UUID): Promise<Audit | null> {
-  const { data, error } = await insforge.database
-    .from('audits')
-    .select('*')
-    .eq('id', auditId)
-    .maybeSingle();
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? null) as Audit | null;
+  return withInsforgeSession('audits:get', async () => {
+    const { data, error } = await insforge.database
+      .from('audits')
+      .select('*')
+      .eq('id', auditId)
+      .maybeSingle();
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? null) as Audit | null;
+  });
 }
 
 export async function createAudit(input: {
@@ -119,6 +121,7 @@ export async function createAudit(input: {
   checklistTemplateId?: UUID;
   inviteeEmail?: string | null;
 }): Promise<Audit> {
+  return withInsforgeSession('audits:create', async () => {
   const auditNumber = generateAuditNumber();
   const { data, error } = await insforge.database
     .from('audits')
@@ -195,6 +198,7 @@ export async function createAudit(input: {
   }
 
   return audit;
+  }); // end withInsforgeSession
 }
 
 export async function updateAudit(
@@ -203,32 +207,34 @@ export async function updateAudit(
   updates: Partial<Audit>,
   actorUserId: UUID
 ): Promise<Audit> {
-  const { data, error } = await insforge.database
-    .from('audits')
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', auditId)
-    .eq('company_id', companyId)
-    .select('*')
-    .single();
+  return withInsforgeSession('audits:update', async () => {
+    const { data, error } = await insforge.database
+      .from('audits')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', auditId)
+      .eq('company_id', companyId)
+      .select('*')
+      .single();
 
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to update audit.');
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to update audit.');
 
-  await createActivityLog({
-    companyId,
-    actorUserId,
-    action: 'audits.update',
-    entityType: 'audit',
-    entityId: auditId,
-    metadata: {
-      status: (data as Audit).status
-    }
+    await createActivityLog({
+      companyId,
+      actorUserId,
+      action: 'audits.update',
+      entityType: 'audit',
+      entityId: auditId,
+      metadata: {
+        status: (data as Audit).status
+      }
+    });
+
+    return data as Audit;
   });
-
-  return data as Audit;
 }
 
 export async function scheduleAudit(
@@ -434,13 +440,15 @@ export async function listAuditInvitationTokens(auditId: UUID): Promise<AuditInv
 }
 
 export async function listAuditQuestions(auditId: UUID): Promise<AuditQuestion[]> {
-  const { data, error } = await insforge.database
-    .from('audit_questions')
-    .select('*')
-    .eq('audit_id', auditId)
-    .order('question_order', { ascending: true });
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as AuditQuestion[];
+  return withInsforgeSession('audit_questions:list', async () => {
+    const { data, error } = await insforge.database
+      .from('audit_questions')
+      .select('*')
+      .eq('audit_id', auditId)
+      .order('question_order', { ascending: true });
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as AuditQuestion[];
+  });
 }
 
 export async function createAuditQuestion(input: {
@@ -469,17 +477,19 @@ export async function createAuditQuestion(input: {
 }
 
 export async function deleteAuditQuestion(questionId: UUID): Promise<void> {
-  const { error: responsesError } = await insforge.database
-    .from('audit_responses')
-    .delete()
-    .eq('audit_question_id', questionId);
-  if (responsesError) throw new Error(getErrorMessage(responsesError));
+  return withInsforgeSession('audit_questions:delete', async () => {
+    const { error: responsesError } = await insforge.database
+      .from('audit_responses')
+      .delete()
+      .eq('audit_question_id', questionId);
+    if (responsesError) throw new Error(getErrorMessage(responsesError));
 
-  const { error } = await insforge.database
-    .from('audit_questions')
-    .delete()
-    .eq('id', questionId);
-  if (error) throw new Error(getErrorMessage(error));
+    const { error } = await insforge.database
+      .from('audit_questions')
+      .delete()
+      .eq('id', questionId);
+    if (error) throw new Error(getErrorMessage(error));
+  });
 }
 
 export async function listAuditResponses(auditId: UUID): Promise<AuditResponse[]> {
@@ -502,36 +512,44 @@ export async function submitAuditResponse(input: {
   achievedScore?: number | null;
   riskRating: 'low' | 'medium' | 'high';
   answeredByUserId: UUID;
+  deviationType?: string | null;
+  allocatedScore?: number | null;
+  evidenceFiles?: unknown[] | null;
 }): Promise<AuditResponse> {
-  const { data: existing, error: existingError } = await insforge.database
-    .from('audit_responses')
-    .select('*')
-    .eq('audit_question_id', input.auditQuestionId)
-    .eq('answered_by_user_id', input.answeredByUserId)
-    .maybeSingle();
-  if (existingError) throw new Error(getErrorMessage(existingError));
+  return withInsforgeSession('audit_responses:submit', async () => {
+    const { data: existing, error: existingError } = await insforge.database
+      .from('audit_responses')
+      .select('*')
+      .eq('audit_question_id', input.auditQuestionId)
+      .eq('answered_by_user_id', input.answeredByUserId)
+      .maybeSingle();
+    if (existingError) throw new Error(getErrorMessage(existingError));
 
-  const payload = {
-    is_compliant: input.isCompliant,
-    finding: input.finding ?? null,
-    evidence_document_url: input.evidenceDocumentUrl ?? null,
-    achieved_score: input.achievedScore ?? null,
-    risk_rating: input.riskRating,
-    answered_at: new Date().toISOString()
-  };
+    const payload: Record<string, unknown> = {
+      is_compliant: input.isCompliant,
+      finding: input.finding ?? null,
+      evidence_document_url: input.evidenceDocumentUrl ?? null,
+      achieved_score: input.achievedScore ?? null,
+      risk_rating: input.riskRating,
+      answered_at: new Date().toISOString()
+    };
+    if (input.deviationType !== undefined) payload.deviation_type = input.deviationType;
+    if (input.allocatedScore !== undefined) payload.allocated_score = input.allocatedScore;
+    if (input.evidenceFiles !== undefined) payload.evidence_files = input.evidenceFiles;
 
-  const query = existing
-    ? insforge.database.from('audit_responses').update(payload).eq('id', (existing as AuditResponse).id)
-    : insforge.database.from('audit_responses').insert({
-        audit_question_id: input.auditQuestionId,
-        answered_by_user_id: input.answeredByUserId,
-        ...payload
-      });
+    const query = existing
+      ? insforge.database.from('audit_responses').update(payload).eq('id', (existing as AuditResponse).id)
+      : insforge.database.from('audit_responses').insert({
+          audit_question_id: input.auditQuestionId,
+          answered_by_user_id: input.answeredByUserId,
+          ...payload
+        });
 
-  const { data, error } = await query.select('*').single();
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to submit audit response.');
-  return data as AuditResponse;
+    const { data, error } = await query.select('*').single();
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to submit audit response.');
+    return data as AuditResponse;
+  });
 }
 
 export async function calculateAuditFindings(auditId: UUID): Promise<{
@@ -574,5 +592,45 @@ export async function updateAuditFindingsCounts(
       observations_count: counts.observations_count
     },
     actorUserId
+  );
+}
+
+export async function approveAuditDate(
+  auditId: UUID,
+  companyId: UUID,
+  selectedDate: string,
+  actorUserId: UUID
+): Promise<Audit> {
+  return withInsforgeSession('audits:approve_date', async () =>
+    updateAudit(
+      auditId,
+      companyId,
+      {
+        selected_date: selectedDate,
+        status: 'scheduled',
+        date_approval_status: 'approved',
+        date_decline_reason: null
+      },
+      actorUserId
+    )
+  );
+}
+
+export async function declineAuditDate(
+  auditId: UUID,
+  companyId: UUID,
+  declineReason: string,
+  actorUserId: UUID
+): Promise<Audit> {
+  return withInsforgeSession('audits:decline_date', async () =>
+    updateAudit(
+      auditId,
+      companyId,
+      {
+        date_approval_status: 'declined',
+        date_decline_reason: declineReason || null
+      },
+      actorUserId
+    )
   );
 }

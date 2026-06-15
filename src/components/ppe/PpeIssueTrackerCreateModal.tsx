@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { Department, PpeIssueTrackerRiskLevel, Site, UUID } from '../../api/models/entities';
 import { createPpeIssueTracker } from '../../api/services/ppeIssueTrackerService';
 import { useDraftManager } from '../../session/DraftManagerProvider';
@@ -266,17 +266,26 @@ export function PpeIssueTrackerCreateModal(props: {
       setCorrectiveRequired(true);
       setResponsibleName('');
       setNotes('');
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Unable to create PPE issue right now.'));
     } finally {
       setLoading(false);
     }
   }
 
+  useEffect(() => {
+    if (!props.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeWithDraftClear();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.open]);
+
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="Report PPE Issue">
       <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
@@ -548,7 +557,7 @@ export function PpeIssueTrackerCreateModal(props: {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-700 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading && <LoadingSpinner size={16} />}
-              Save issue
+              {loading ? 'Saving...' : 'Save issue'}
             </button>
           </div>
         </form>

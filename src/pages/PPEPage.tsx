@@ -66,6 +66,7 @@ import { PpeIssueTrackerCreateModal } from '../components/ppe/PpeIssueTrackerCre
 import { PpeIssueTrackerDetailModal } from '../components/ppe/PpeIssueTrackerDetailModal';
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { OrgStructureManager } from '../components/org/OrgStructureManager';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -502,9 +503,9 @@ export function PPEPage() {
       expiryStatus === 'expired'
         ? 'Expired'
         : expiryStatus === 'expiring_7'
-        ? 'Expiring ?7d'
+        ? 'Expiring ≤7d'
         : expiryStatus === 'expiring_30'
-        ? 'Expiring ?30d'
+        ? 'Expiring ≤30d'
         : expiryStatus === 'valid'
         ? 'Valid'
         : 'No expiry';
@@ -1200,7 +1201,7 @@ export function PPEPage() {
                   {trackerLoading && (
                     <tr>
                       <td colSpan={8} className="px-5 py-4 text-sm text-charcoal-500">
-                        Loading PPE issues?
+                        Loading PPE issues…
                       </td>
                     </tr>
                   )}
@@ -1410,7 +1411,7 @@ export function PPEPage() {
                     {loading && (
                       <tr>
                         <td colSpan={11} className="px-5 py-4 text-sm text-charcoal-500">
-                          Loading?
+                          Loading…
                         </td>
                       </tr>
                     )}
@@ -1530,8 +1531,8 @@ export function PPEPage() {
                                     actorUserId: user.id
                                   });
                                   setRefreshKey((k) => k + 1);
-                                } catch (err: any) {
-                                  alert(err instanceof Error ? err.message : 'Failed to delete PPE item.');
+                                } catch (err: unknown) {
+                                  alert(toUserFacingError(err, 'Failed to delete PPE item.'));
                                 }
                               }}
                               className="px-2 py-1 rounded border border-critical/30 text-xs text-critical hover:bg-critical/5 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -1566,8 +1567,8 @@ export function PPEPage() {
                   >
                     <option value="all">All</option>
                     <option value="expired">Expired</option>
-                    <option value="expiring_7">Expiring ?7 days</option>
-                    <option value="expiring_30">Expiring ?30 days</option>
+                    <option value="expiring_7">Expiring ≤7 days</option>
+                    <option value="expiring_30">Expiring ≤30 days</option>
                     <option value="valid">Valid</option>
                     <option value="no_expiry">No expiry date</option>
                   </select>
@@ -1633,7 +1634,7 @@ export function PPEPage() {
                   {stocksLoading && (
                     <tr>
                       <td colSpan={14} className="px-5 py-4 text-sm text-charcoal-500">
-                        Loading inventory?
+                        Loading inventory…
                       </td>
                     </tr>
                   )}

@@ -28,6 +28,7 @@ import { uploadDocumentFile, downloadBlob, openBlobInNewTab } from '../api/servi
 import { listDocuments } from '../api/services/documentsService';
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { useDraftRegistration } from '../session/useDraftRegistration';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 const ITEM_STATUS_OPTIONS: ReviewMeetingItemStatus[] = ['OUTSTANDING', 'IN_PROGRESS', 'COMPLETED'];
 
@@ -473,11 +474,11 @@ export function ReviewMeetingDetailPage() {
         clearDraft(draftKey);
         await refreshLinkedImprovements();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Log detailed error for development while showing a user-friendly message.
       // eslint-disable-next-line no-console
       console.error('Failed to save review meeting', err);
-      setError(err?.message ?? 'Failed to save review meeting.');
+      setError(toUserFacingError(err, 'Failed to save review meeting.'));
     } finally {
       setSaving(false);
     }
@@ -500,8 +501,8 @@ export function ReviewMeetingDetailPage() {
       setSignatureStatus(signed.meeting.signature_status);
       setIsLocked(signed.meeting.is_locked);
       alert('Meeting minutes signed and locked.');
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to sign meeting.');
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Failed to sign meeting.'));
     } finally {
       setSigning(false);
     }
@@ -615,8 +616,8 @@ export function ReviewMeetingDetailPage() {
         }))
       });
       alert('Action item updated.');
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to update action item.');
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Failed to update action item.'));
     } finally {
       setItemSavingIndex(null);
     }

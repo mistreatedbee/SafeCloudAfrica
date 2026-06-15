@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type {
   PpeIssueTracker,
   PpeIssueTrackerRiskLevel,
@@ -26,6 +27,7 @@ export type PpeIssueTrackerFilters = {
 };
 
 export async function listPpeIssueTracker(input: PpeIssueTrackerFilters): Promise<PpeIssueTracker[]> {
+  return withInsforgeSession('ppe_issue_tracker:list', async () => {
   const {
     companyId,
     status,
@@ -91,12 +93,14 @@ export async function listPpeIssueTracker(input: PpeIssueTrackerFilters): Promis
 
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as PpeIssueTracker[];
+  });
 }
 
 export async function getPpeIssueTrackerById(
   companyId: UUID,
   issueId: UUID
 ): Promise<PpeIssueTracker | null> {
+  return withInsforgeSession('ppe_issue_tracker:get', async () => {
   const { data, error } = await insforge.database
     .from('ppe_issue_tracker')
     .select('*')
@@ -105,6 +109,7 @@ export async function getPpeIssueTrackerById(
     .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? null) as PpeIssueTracker | null;
+  });
 }
 
 export async function deletePpeIssueTracker(input: {
@@ -188,6 +193,7 @@ export type CreatePpeIssueTrackerInput = {
 export async function createPpeIssueTracker(
   input: CreatePpeIssueTrackerInput
 ): Promise<PpeIssueTracker> {
+  return withInsforgeSession('ppe_issue_tracker:create', async () => {
   const nowIso = new Date().toISOString();
   const dateReported =
     input.dateReported && String(input.dateReported).length > 0
@@ -325,6 +331,7 @@ export async function createPpeIssueTracker(
   }
 
   return created;
+  });
 }
 
 export type UpdatePpeIssueTrackerInput = {
@@ -363,6 +370,7 @@ export type UpdatePpeIssueTrackerInput = {
 export async function updatePpeIssueTracker(
   input: UpdatePpeIssueTrackerInput
 ): Promise<PpeIssueTracker> {
+  return withInsforgeSession('ppe_issue_tracker:update', async () => {
   const nowIso = new Date().toISOString();
 
   const { data, error } = await insforge.database
@@ -385,10 +393,11 @@ export async function updatePpeIssueTracker(
     action: 'ppe_issue_tracker.update',
     entityType: 'ppe_issue_tracker',
     entityId: input.issueId,
-    metadata: input.patch as any
+    metadata: input.patch as Record<string, unknown>
   });
 
   return data as PpeIssueTracker;
+  });
 }
 
 export async function addPpeIssueProgressUpdate(input: {
@@ -411,7 +420,7 @@ export async function addPpeIssueProgressUpdate(input: {
   const { data, error } = await insforge.database
     .from('ppe_issue_tracker')
     .update({
-      progress_updates: updates as any,
+      progress_updates: updates as unknown[],
       updated_at: nowIso
     })
     .eq('company_id', input.companyId)
@@ -467,18 +476,18 @@ export async function transitionPpeIssueStatus(input: {
   }
 
   const nowIso = new Date().toISOString();
-  const patch: Partial<PpeIssueTracker> = {
+  const patch: Record<string, unknown> = {
     status: input.nextStatus,
     updated_at: nowIso
-  } as any;
+  };
 
   if (input.nextStatus === 'closed') {
-    (patch as any).closure_date = nowIso;
+    patch.closure_date = nowIso;
   }
 
   const { data, error } = await insforge.database
     .from('ppe_issue_tracker')
-    .update(patch as any)
+    .update(patch)
     .eq('company_id', input.companyId)
     .eq('id', input.issueId)
     .select('*')

@@ -10,7 +10,12 @@ vi.mock('../insforge/client', () => ({
     database: {
       from: (...args: unknown[]) => mocks.from(...args)
     }
-  }
+  },
+  insforgeReady: Promise.resolve()
+}));
+
+vi.mock('../insforge/ensureSession', () => ({
+  withInsforgeSession: (_reason: string, fn: () => Promise<unknown>) => fn()
 }));
 
 vi.mock('./emailService', async () => {

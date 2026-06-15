@@ -8,6 +8,7 @@ import { useUser } from '@insforge/react';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { XIcon } from 'lucide-react';
 import type { UUID } from '../api/models/core';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 function HrKpiCreateModal(props: {
   open: boolean;
@@ -117,8 +118,8 @@ function HrKpiCreateModal(props: {
 
       props.onSaved?.();
       props.onClose();
-    } catch (err: any) {
-      setError(err?.message ?? 'Could not create KPI');
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Could not save KPI. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -131,7 +132,7 @@ function HrKpiCreateModal(props: {
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
       <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
-          <p className="text-sm font-semibold text-charcoal">Add HR KPI</p>
+          <p className="text-sm font-semibold text-charcoal">{props.existing ? 'Edit HR KPI' : 'Add HR KPI'}</p>
           <button
             type="button"
             onClick={props.onClose}
@@ -338,7 +339,7 @@ export function HrKpisPage() {
       await deleteHrKpi({ companyId: activeCompanyId as any, kpiId: row.id as any, actorUserId: user.id as any });
       await refresh();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete KPI.');
+      alert(toUserFacingError(err, 'Failed to delete KPI. Please try again.'));
     } finally {
       setDeletingId(null);
     }

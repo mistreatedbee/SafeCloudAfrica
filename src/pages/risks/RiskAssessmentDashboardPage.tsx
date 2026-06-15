@@ -11,6 +11,7 @@ import {
 import { AlertOctagonIcon, BarChart3Icon, AlertTriangleIcon, ClipboardListIcon } from 'lucide-react';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import type { UUID } from '../../api/models/core';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 function getScopeForActiveMembership(
   memberships: Array<{ company_id: UUID; site_id?: UUID | null; department_id?: UUID | null; consultant_scope?: any }> | undefined,
@@ -49,7 +50,7 @@ export function RiskAssessmentDashboardPage() {
         });
         setAssessments(data ?? []);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load risk assessments');
+        setError(toUserFacingError(e, 'Failed to load risk assessments'));
       } finally {
         setLoading(false);
       }

@@ -1,18 +1,21 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { AuditFinding, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
 
 export async function listAuditFindings(companyId: UUID, inspectionId: UUID, limit = 200): Promise<AuditFinding[]> {
-  const { data, error } = await insforge.database
-    .from('audit_findings')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('inspection_id', inspectionId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as AuditFinding[];
+  return withInsforgeSession('audit_findings:list', async () => {
+    const { data, error } = await insforge.database
+      .from('audit_findings')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('inspection_id', inspectionId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as AuditFinding[];
+  });
 }
 
 export async function createAuditFinding(input: {
@@ -24,12 +27,13 @@ export async function createAuditFinding(input: {
   nonconformance?: boolean;
   createdByUserId: UUID;
 }): Promise<AuditFinding> {
+  return withInsforgeSession('audit_findings:create', async () => {
   const { data, error } = await insforge.database
     .from('audit_findings')
     .insert({
       company_id: input.companyId,
       inspection_id: input.inspectionId,
-      title: input.title,
+      title: input.title.trim().slice(0, 500),
       severity: input.severity ?? 'medium',
       status: input.status ?? 'open',
       nonconformance: input.nonconformance ?? false,
@@ -45,7 +49,7 @@ export async function createAuditFinding(input: {
     actorUserId: input.createdByUserId,
     action: 'audit_findings.create',
     entityType: 'audit_finding',
-    entityId: (data as any).id as UUID
+    entityId: (data as unknown as { id: UUID }).id
   });
 
   const created = data as AuditFinding;
@@ -65,4 +69,5 @@ export async function createAuditFinding(input: {
   }
 
   return data as AuditFinding;
+  });
 }

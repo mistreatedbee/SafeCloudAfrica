@@ -20,6 +20,7 @@ import { listUserProfiles } from '../api/services/profilesService';
 import { toCsv, downloadTextFile } from '../utils/csv';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
 import { ClipboardListIcon } from 'lucide-react';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 type DateRange = {
   from: string;
@@ -176,17 +177,21 @@ export function ImprovementPage() {
     if (!canEdit) return;
     if ((nextStatus === 'closed' || nextStatus === 'monitoring_required') && !canClose) return;
     const comment = prompt('Optional status update comment:') ?? '';
-    await updateImprovementStatus({
-      companyId: activeCompanyId,
-      improvementId: rec.id,
-      actorUserId: user.id as UUID,
-      actorRole: activeRole ?? null,
-      status: nextStatus,
-      comment: comment.trim() || undefined
-    });
-    setRefreshKey((v) => v + 1);
-    await refresh();
-    await refreshSummary();
+    try {
+      await updateImprovementStatus({
+        companyId: activeCompanyId,
+        improvementId: rec.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole ?? null,
+        status: nextStatus,
+        comment: comment.trim() || undefined
+      });
+      setRefreshKey((v) => v + 1);
+      await refresh();
+      await refreshSummary();
+    } catch (err) {
+      alert(toUserFacingError(err, 'Unable to update improvement status.'));
+    }
   }
 
   async function onAddComment(rec: ImprovementRecord) {
@@ -199,16 +204,19 @@ export function ImprovementPage() {
     if (!activeCompanyId || !user?.id || !canEdit) return;
     const confirmed = window.confirm(`Delete improvement ${rec.reference_number}? This cannot be undone.`);
     if (!confirmed) return;
-
-    await deleteImprovement({
-      companyId: activeCompanyId,
-      improvementId: rec.id,
-      actorUserId: user.id as UUID,
-      actorRole: activeRole ?? null
-    });
-    setRefreshKey((v) => v + 1);
-    await refresh();
-    await refreshSummary();
+    try {
+      await deleteImprovement({
+        companyId: activeCompanyId,
+        improvementId: rec.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole ?? null
+      });
+      setRefreshKey((v) => v + 1);
+      await refresh();
+      await refreshSummary();
+    } catch (err) {
+      alert(toUserFacingError(err, 'Unable to delete improvement record.'));
+    }
   }
 
   const hasImprovementFilters =

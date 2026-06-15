@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { ImprovementAction, ModuleKey, UUID } from '../../api/models/entities';
 import { createImprovementAction } from '../../api/services/improvementActionsService';
 import { useDraftManager } from '../../session/DraftManagerProvider';
@@ -122,17 +122,26 @@ export function ImprovementCreateModal(props: {
       setStatus('planned');
       setTargetDate('');
       setDraftBaselineJson(null);
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err: unknown) {
+      setError(toUserFacingError(err, 'Unable to create improvement action right now.'));
     } finally {
       setLoading(false);
     }
   }
 
+  React.useEffect(() => {
+    if (!props.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') { clearDraft(draftKey); props.onClose(); }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.open, props.onClose, clearDraft, draftKey]);
+
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="Create improvement action">
       <div
         className="absolute inset-0 bg-black/40"
         onClick={() => {

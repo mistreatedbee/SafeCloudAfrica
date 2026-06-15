@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import type {
   PPEIssue,
   PPEItem,
@@ -31,11 +32,13 @@ async function getPpeEmail(companyId: UUID, userId?: UUID | null): Promise<strin
 }
 
 export async function listPpeItems(companyId: UUID): Promise<PPEItem[]> {
-  const { data, error } = await insforge.database.from('ppe_items').select('*').eq('company_id', companyId).order('created_at', {
-    ascending: false
+  return withInsforgeSession('ppe_items:list', async () => {
+    const { data, error } = await insforge.database.from('ppe_items').select('*').eq('company_id', companyId).order('created_at', {
+      ascending: false
+    });
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as PPEItem[];
   });
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as PPEItem[];
 }
 
 export type PpeIssuesFilters = {
@@ -55,6 +58,7 @@ export async function listPpeIssues(
   companyIdOrFilters: UUID | PpeIssuesFilters,
   limit = 200
 ): Promise<PPEIssue[]> {
+  return withInsforgeSession('ppe_issues:list', async () => {
   const input: PpeIssuesFilters =
     typeof companyIdOrFilters === 'string' || typeof companyIdOrFilters === 'object'
       ? typeof companyIdOrFilters === 'object'
@@ -100,6 +104,7 @@ export async function listPpeIssues(
     .limit(lim ?? limit);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as PPEIssue[];
+  });
 }
 
 export async function getPpeIssueById(companyId: UUID, issueId: UUID): Promise<PPEIssue | null> {
@@ -260,6 +265,7 @@ export type CreatePpeIssueInput = {
 };
 
 export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIssue> {
+  return withInsforgeSession('ppe_issues:create', async () => {
   const quantity = Number.isFinite(input.quantityIssued) && input.quantityIssued! > 0 ? input.quantityIssued! : 1;
   const issueDate = input.issueDate || new Date().toISOString().slice(0, 10);
   const issuedAt = new Date().toISOString();
@@ -385,6 +391,7 @@ export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIss
   }
 
   return issue;
+  });
 }
 
 // ---------------------------
@@ -399,6 +406,7 @@ export async function listPpeStock(input: {
   ppeItemId?: UUID | null;
   size?: string | null;
 }): Promise<PpeStock[]> {
+  return withInsforgeSession('ppe_stock:list', async () => {
   let query = insforge.database.from('ppe_stock').select('*').eq('company_id', input.companyId);
 
   if (input.siteId !== undefined) {
@@ -420,6 +428,7 @@ export async function listPpeStock(input: {
   const { data, error } = await query.order('updated_at', { ascending: false });
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as PpeStock[];
+  });
 }
 
 /** Resolve a stock record by location, item, and optional size (e.g. for issuing). Returns first match. */
@@ -461,6 +470,7 @@ export async function createPpeStock(input: {
   expiryDate?: string | null;
   size?: string | null;
 }): Promise<PpeStock> {
+  return withInsforgeSession('ppe_stock:create', async () => {
   const capturedByUserId = input.capturedByUserId ?? input.createdByUserId;
   let capturedByName = input.capturedByName ?? null;
   if (!capturedByName && capturedByUserId) {
@@ -528,6 +538,7 @@ export async function createPpeStock(input: {
   }
 
   return data as PpeStock;
+  });
 }
 
 export async function updatePpeStock(input: {
@@ -572,7 +583,7 @@ export async function updatePpeStock(input: {
     action: 'ppe_stock.update',
     entityType: 'ppe_stock',
     entityId: input.stockId,
-    metadata: input.patch as any
+    metadata: input.patch as Record<string, unknown>
   });
 
   return data as PpeStock;
@@ -886,7 +897,7 @@ export async function updatePpeReorderRequestStatus(input: {
   if (fetchError) throw new Error(getErrorMessage(fetchError));
   if (!existingRow) throw new Error('Reorder request not found.');
 
-  const patch: any = {
+  const patch: Record<string, unknown> = {
     status: input.status,
     updated_at: nowIso
   };

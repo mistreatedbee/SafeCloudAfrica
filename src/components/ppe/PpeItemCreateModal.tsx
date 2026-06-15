@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { PPEItem, PpeSizeWithPrice, UUID } from '../../api/models/entities';
 import { PPE_CATEGORY_OPTIONS } from '../../api/models/entities';
 import { createPpeItem, updatePpeItem } from '../../api/services/ppeService';
@@ -240,16 +240,25 @@ export function PpeItemCreateModal(props: {
       resetFormFromItem(null);
       setDraftBaselineJson(null);
     } catch (err: unknown) {
-      setError(formatAuthError(err as Error));
+      setError(toUserFacingError(err, 'Unable to save PPE item right now.'));
     } finally {
       setLoading(false);
     }
   }
 
+  useEffect(() => {
+    if (!props.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeWithDraftClear();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.open]);
+
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6" role="dialog" aria-modal="true" aria-label={isEditMode ? 'Edit PPE item' : 'Add PPE item'}>
       <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-4 py-4 sm:px-6 border-b border-surface-200">
@@ -417,7 +426,7 @@ export function PpeItemCreateModal(props: {
               className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-700 disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto"
             >
               {loading && <LoadingSpinner size={16} />}
-              {isEditMode ? 'Save changes' : 'Create'}
+              {loading ? 'Saving...' : isEditMode ? 'Save changes' : 'Create'}
             </button>
           </div>
         </form>

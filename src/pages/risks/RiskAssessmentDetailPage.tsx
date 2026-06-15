@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { useTenant } from '../../tenant/TenantContext';
@@ -117,7 +118,7 @@ export function RiskAssessmentDetailPage() {
       setLinkedNcrs(ncrs);
       setLinkedLegalRequirements(legalReqs);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load assessment');
+      setError(toUserFacingError(e, 'Failed to load assessment'));
     } finally {
       setLoading(false);
     }
@@ -148,7 +149,7 @@ export function RiskAssessmentDetailPage() {
       });
       navigate('/risk-assessments');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete assessment');
+      setError(toUserFacingError(e, 'Failed to delete assessment'));
     }
   }
 
@@ -173,7 +174,7 @@ export function RiskAssessmentDetailPage() {
       });
       alert('Template saved.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save template');
+      setError(toUserFacingError(e, 'Failed to save template'));
     }
   }
 
@@ -191,17 +192,18 @@ export function RiskAssessmentDetailPage() {
       setA('');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to add Q&A');
+      setError(toUserFacingError(e, 'Failed to add Q&A'));
     }
   }
 
   async function onDeleteQna(qnaId: UUID) {
     if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm('Delete this Q&A note? This cannot be undone.')) return;
     try {
       await deleteRiskAssessmentQna({ companyId: activeCompanyId as UUID, qnaId, actorUserId: user.id as UUID });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete Q&A');
+      setError(toUserFacingError(e, 'Failed to delete Q&A'));
     }
   }
 
@@ -219,7 +221,7 @@ export function RiskAssessmentDetailPage() {
       setEmployeeSignature('');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to sign off');
+      setError(toUserFacingError(e, 'Failed to sign off'));
     }
   }
 
@@ -234,7 +236,7 @@ export function RiskAssessmentDetailPage() {
       });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed supervisor sign-off');
+      setError(toUserFacingError(e, 'Failed supervisor sign-off'));
     }
   }
 

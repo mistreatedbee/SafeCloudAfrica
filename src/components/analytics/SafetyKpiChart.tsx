@@ -32,6 +32,17 @@ export function SafetyKpiChart({
   lineLabel,
   height = 260
 }: SafetyKpiChartProps) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-surface-200 p-4 shadow-card">
+        <p className="text-sm font-medium text-charcoal mb-3">{title}</p>
+        <div className="flex items-center justify-center text-charcoal-400 text-sm" style={{ height }}>
+          No data for this period
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-xl border border-surface-200 p-4 shadow-card">
       <p className="text-sm font-medium text-charcoal mb-3">{title}</p>

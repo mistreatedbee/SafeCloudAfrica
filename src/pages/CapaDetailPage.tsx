@@ -18,6 +18,7 @@ import {
 } from '../api/services/correctiveActionsService';
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { useDraftRegistration } from '../session/useDraftRegistration';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 type CapaSourceType = 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation' | 'complaint' | 'pjo' | 'kpi' | 'audit_finding';
 
@@ -229,8 +230,8 @@ export function CapaDetailPage() {
       await refresh();
       setSuccess('CAPA saved successfully.');
       clearDraft(draftKey);
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to save CAPA.');
+    } catch (e: unknown) {
+      setError(toUserFacingError(e, 'Failed to save CAPA.'));
     } finally {
       setSaving(false);
     }
@@ -245,8 +246,8 @@ export function CapaDetailPage() {
       await refresh();
       clearDraft(draftKey);
       setSuccess('CAPA closed successfully.');
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to close CAPA.');
+    } catch (e: unknown) {
+      setError(toUserFacingError(e, 'Failed to close CAPA.'));
     }
   }
 
@@ -261,8 +262,8 @@ export function CapaDetailPage() {
       await deleteCorrectiveAction(capaId as UUID, activeCompanyId, user.id as UUID);
       clearDraft(draftKey);
       navigate('/dashboard/management/tasks?view=capa');
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to delete CAPA.');
+    } catch (e: unknown) {
+      setError(toUserFacingError(e, 'Failed to delete CAPA.'));
     }
   }
 

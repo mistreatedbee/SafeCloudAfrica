@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type {
   Department,
   PPEItem,
@@ -314,6 +314,10 @@ export function PpeIssueModal(props: {
     e.preventDefault();
     if (!canSubmit) return;
     setError(null);
+    if (quantityIssued < 0) {
+      setError('Quantity cannot be negative');
+      return;
+    }
     try {
       setLoading(true);
       const payload: CreatePpeIssueInput = {
@@ -354,7 +358,7 @@ export function PpeIssueModal(props: {
       props.onClose();
       resetForm();
     } catch (err: unknown) {
-      setError(formatAuthError(err as Error));
+      setError(toUserFacingError(err, 'Unable to issue PPE right now.'));
     } finally {
       setLoading(false);
     }
@@ -385,7 +389,7 @@ export function PpeIssueModal(props: {
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="Issue PPE">
       <div className="absolute inset-0 bg-black/40" onClick={closeWithDraftClear} />
       <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">

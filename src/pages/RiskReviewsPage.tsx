@@ -8,6 +8,7 @@ import { useUser } from '@insforge/react';
 import type { UUID } from '../api/models/entities';
 import type { MembershipScope, RiskAssessment } from '../api/services/riskAssessmentsService';
 import { listRiskAssessments } from '../api/services/riskAssessmentsService';
+import { toUserFacingError } from '../utils/userFacingMessage';
 
 type ReviewFilter = 'all' | 'due-today' | 'overdue' | 'next-30';
 
@@ -53,7 +54,7 @@ export function RiskReviewsPage() {
         });
         setAssessments((data ?? []).filter((a) => !!a.next_review_date));
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load risk assessments for review');
+        setError(toUserFacingError(e, 'Failed to load risk assessments for review'));
       } finally {
         setLoading(false);
       }

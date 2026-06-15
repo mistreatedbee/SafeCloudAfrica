@@ -144,32 +144,44 @@ export function ComplianceAnalyticsPage() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               <div className="rounded-xl border border-surface-300 bg-white p-4 shadow-card">
                 <h3 className="text-base font-semibold text-charcoal mb-4">12-Month Compliance Trend</h3>
-                <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={data.trendHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E8ECF0" />
-                    <XAxis dataKey="month" tick={{ fill: '#757575', fontSize: 12 }} />
-                    <YAxis tick={{ fill: '#757575', fontSize: 12 }} domain={[0, 100]} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="scorePercentage" stroke="#0FB9B1" strokeWidth={3} dot={{ r: 4 }} />
-                  </LineChart>
-                </ResponsiveContainer>
+                {data.trendHistory.length === 0 ? (
+                  <div className="flex items-center justify-center text-charcoal-400 text-sm" style={{ height: 260 }}>
+                    No trend data for this period
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <LineChart data={data.trendHistory}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E8ECF0" />
+                      <XAxis dataKey="month" tick={{ fill: '#757575', fontSize: 12 }} />
+                      <YAxis tick={{ fill: '#757575', fontSize: 12 }} domain={[0, 100]} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="scorePercentage" stroke="#0FB9B1" strokeWidth={3} dot={{ r: 4 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
               </div>
 
               <div className="rounded-xl border border-surface-300 bg-white p-4 shadow-card">
                 <h3 className="text-base font-semibold text-charcoal mb-4">Module Performance</h3>
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={data.domains}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E8ECF0" />
-                    <XAxis dataKey="label" tick={{ fill: '#757575', fontSize: 12 }} />
-                    <YAxis tick={{ fill: '#757575', fontSize: 12 }} domain={[0, 100]} />
-                    <Tooltip />
-                    <Bar dataKey="scorePercentage" radius={[8, 8, 0, 0]}>
-                      {data.domains.map((entry) => (
-                        <Cell key={entry.domainKey} fill={scoreBarColor(entry.scorePercentage)} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                {data.domains.length === 0 ? (
+                  <div className="flex items-center justify-center text-charcoal-400 text-sm" style={{ height: 260 }}>
+                    No module data available
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={data.domains}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E8ECF0" />
+                      <XAxis dataKey="label" tick={{ fill: '#757575', fontSize: 12 }} />
+                      <YAxis tick={{ fill: '#757575', fontSize: 12 }} domain={[0, 100]} />
+                      <Tooltip />
+                      <Bar dataKey="scorePercentage" radius={[8, 8, 0, 0]}>
+                        {data.domains.map((entry) => (
+                          <Cell key={entry.domainKey} fill={scoreBarColor(entry.scorePercentage)} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
 

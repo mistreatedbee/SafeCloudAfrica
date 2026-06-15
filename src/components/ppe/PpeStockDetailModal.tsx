@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { PPEItem, PpeReorderRequest, PpeStock, PpeStockMovement, UUID } from '../../api/models/entities';
 import {
   createPpeReorderRequest,
@@ -106,6 +106,11 @@ export function PpeStockDetailModal(props: {
   async function handleMovementSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!quantity) return;
+    const qty = Number(quantity);
+    if (qty < 0) {
+      setMovementError('Quantity cannot be negative');
+      return;
+    }
     setMovementError(null);
     try {
       setMovementLoading(true);
@@ -113,7 +118,7 @@ export function PpeStockDetailModal(props: {
         companyId: props.companyId,
         stockId: props.stock.id,
         movementType,
-        quantity: Number(quantity),
+        quantity: qty,
         reason: reason.trim() || null,
         actorUserId: props.actorUserId
       });
@@ -121,8 +126,8 @@ export function PpeStockDetailModal(props: {
       setReason('');
       setRefreshKey((k) => k + 1);
       props.onChanged?.();
-    } catch (err: any) {
-      setMovementError(formatAuthError(err));
+    } catch (err: unknown) {
+      setMovementError(toUserFacingError(err, 'Unable to record stock movement.'));
     } finally {
       setMovementLoading(false);
     }
@@ -131,13 +136,18 @@ export function PpeStockDetailModal(props: {
   async function handleReorderSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!reorderQty) return;
+    const rqty = Number(reorderQty);
+    if (rqty < 0) {
+      setReorderError('Quantity cannot be negative');
+      return;
+    }
     setReorderError(null);
     try {
       setReorderLoading(true);
       await createPpeReorderRequest({
         companyId: props.companyId,
         stockId: props.stock.id,
-        requestedQty: Number(reorderQty),
+        requestedQty: rqty,
         reason: reorderReason.trim() || null,
         requestedByUserId: props.actorUserId
       });
@@ -145,8 +155,8 @@ export function PpeStockDetailModal(props: {
       setReorderReason('');
       setRefreshKey((k) => k + 1);
       props.onChanged?.();
-    } catch (err: any) {
-      setReorderError(formatAuthError(err));
+    } catch (err: unknown) {
+      setReorderError(toUserFacingError(err, 'Unable to create reorder request.'));
     } finally {
       setReorderLoading(false);
     }
@@ -175,8 +185,8 @@ export function PpeStockDetailModal(props: {
       });
       setRefreshKey((k) => k + 1);
       props.onChanged?.();
-    } catch (err: any) {
-      setMetaError(formatAuthError(err));
+    } catch (err: unknown) {
+      setMetaError(toUserFacingError(err, 'Unable to update stock details.'));
     } finally {
       setMetaLoading(false);
     }
@@ -196,19 +206,28 @@ export function PpeStockDetailModal(props: {
       });
       props.onChanged?.();
       props.onClose();
-    } catch (err: any) {
-      setMetaError(formatAuthError(err));
+    } catch (err: unknown) {
+      setMetaError(toUserFacingError(err, 'Unable to archive stock record.'));
     } finally {
       setArchiveLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!props.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') props.onClose();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.open, props.onClose]);
 
   if (!props.open) return null;
 
   const title = props.item?.name ?? `Item ${String(props.stock.ppe_item_id).slice(0, 8)}`;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="PPE Stock details">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
       <div className="relative w-full max-w-5xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-hidden flex flex-col">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">

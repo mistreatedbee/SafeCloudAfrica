@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { CompanyRole, UUID } from '../models/core';
 import { createActivityLog } from './activityLogService';
@@ -257,15 +258,17 @@ export async function listRiskAssessments(input: {
   status?: RiskAssessmentStatus;
   limit?: number;
 }): Promise<RiskAssessment[]> {
-  let q = insforge.database.from('risk_assessments').select('*').eq('company_id', input.companyId);
-  if (input.type) q = q.eq('type', input.type);
-  if (input.status) q = q.eq('status_v2', input.status);
-  const { data, error } = await q.order('updated_at', { ascending: false }).limit(input.limit ?? 500);
-  if (error) throw new Error(getErrorMessage(error));
+  return withInsforgeSession('risk_assessments:list', async () => {
+    let q = insforge.database.from('risk_assessments').select('*').eq('company_id', input.companyId);
+    if (input.type) q = q.eq('type', input.type);
+    if (input.status) q = q.eq('status_v2', input.status);
+    const { data, error } = await q.order('updated_at', { ascending: false }).limit(input.limit ?? 500);
+    if (error) throw new Error(getErrorMessage(error));
 
-  return (data ?? [])
-    .map(mapAssessment)
-    .filter((row) => canReadAssessment(row, { userId: input.actorUserId, role: input.actorRole, scope: input.scope }));
+    return (data ?? [])
+      .map(mapAssessment)
+      .filter((row) => canReadAssessment(row, { userId: input.actorUserId, role: input.actorRole, scope: input.scope }));
+  });
 }
 
 export async function getRiskAssessment(input: {
@@ -276,32 +279,34 @@ export async function getRiskAssessment(input: {
   scope?: MembershipScope | null;
   logView?: boolean;
 }): Promise<RiskAssessment> {
-  const { data, error } = await insforge.database
-    .from('risk_assessments')
-    .select('*')
-    .eq('id', input.assessmentId)
-    .eq('company_id', input.companyId)
-    .single();
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Risk assessment not found');
+  return withInsforgeSession('risk_assessments:get', async () => {
+    const { data, error } = await insforge.database
+      .from('risk_assessments')
+      .select('*')
+      .eq('id', input.assessmentId)
+      .eq('company_id', input.companyId)
+      .single();
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Risk assessment not found');
 
-  const mapped = mapAssessment(data);
-  if (!canReadAssessment(mapped, { userId: input.actorUserId, role: input.actorRole, scope: input.scope })) {
-    throw new Error('Access denied');
-  }
+    const mapped = mapAssessment(data);
+    if (!canReadAssessment(mapped, { userId: input.actorUserId, role: input.actorRole, scope: input.scope })) {
+      throw new Error('Access denied');
+    }
 
-  if (input.logView !== false) {
-    await createActivityLog({
-      companyId: input.companyId,
-      actorUserId: input.actorUserId,
-      action: 'risk_assessments.view',
-      entityType: 'risk_assessment',
-      entityId: input.assessmentId,
-      metadata: { type: mapped.type }
-    });
-  }
+    if (input.logView !== false) {
+      await createActivityLog({
+        companyId: input.companyId,
+        actorUserId: input.actorUserId,
+        action: 'risk_assessments.view',
+        entityType: 'risk_assessment',
+        entityId: input.assessmentId,
+        metadata: { type: mapped.type }
+      });
+    }
 
-  return mapped;
+    return mapped;
+  });
 }
 
 export async function createRiskAssessment(input: {
@@ -506,14 +511,16 @@ export async function listRiskAssessmentRows(input: {
   companyId: UUID;
   assessmentId: UUID;
 }): Promise<RiskAssessmentRow[]> {
-  const { data, error } = await insforge.database
-    .from('risk_assessment_rows')
-    .select('*')
-    .eq('company_id', input.companyId)
-    .eq('risk_assessment_id', input.assessmentId)
-    .order('row_index', { ascending: true });
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as RiskAssessmentRow[];
+  return withInsforgeSession('risk_assessment_rows:list', async () => {
+    const { data, error } = await insforge.database
+      .from('risk_assessment_rows')
+      .select('*')
+      .eq('company_id', input.companyId)
+      .eq('risk_assessment_id', input.assessmentId)
+      .order('row_index', { ascending: true });
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as RiskAssessmentRow[];
+  });
 }
 
 export async function replaceRiskAssessmentRows(input: {
@@ -604,14 +611,16 @@ export async function replaceRiskAssessmentRows(input: {
 }
 
 export async function listRiskAssessmentQna(input: { companyId: UUID; assessmentId: UUID }): Promise<RiskAssessmentQna[]> {
-  const { data, error } = await insforge.database
-    .from('risk_assessment_qna')
-    .select('*')
-    .eq('company_id', input.companyId)
-    .eq('risk_assessment_id', input.assessmentId)
-    .order('created_at', { ascending: false });
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as RiskAssessmentQna[];
+  return withInsforgeSession('risk_assessment_qna:list', async () => {
+    const { data, error } = await insforge.database
+      .from('risk_assessment_qna')
+      .select('*')
+      .eq('company_id', input.companyId)
+      .eq('risk_assessment_id', input.assessmentId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as RiskAssessmentQna[];
+  });
 }
 
 export async function createRiskAssessmentQna(input: {
@@ -667,14 +676,16 @@ export async function listRiskAssessmentSignoffs(input: {
   companyId: UUID;
   assessmentId: UUID;
 }): Promise<RiskAssessmentSignoff[]> {
-  const { data, error } = await insforge.database
-    .from('risk_assessment_signoffs')
-    .select('*')
-    .eq('company_id', input.companyId)
-    .eq('risk_assessment_id', input.assessmentId)
-    .order('signed_at', { ascending: true });
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as RiskAssessmentSignoff[];
+  return withInsforgeSession('risk_assessment_signoffs:list', async () => {
+    const { data, error } = await insforge.database
+      .from('risk_assessment_signoffs')
+      .select('*')
+      .eq('company_id', input.companyId)
+      .eq('risk_assessment_id', input.assessmentId)
+      .order('signed_at', { ascending: true });
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as RiskAssessmentSignoff[];
+  });
 }
 
 export async function addRiskAssessmentSignoff(input: {
@@ -746,11 +757,13 @@ export async function listRiskAssessmentTemplates(input: {
   companyId: UUID;
   type?: RiskAssessmentType;
 }): Promise<RiskAssessmentTemplate[]> {
-  let q = insforge.database.from('risk_assessment_templates').select('*').eq('company_id', input.companyId);
-  if (input.type) q = q.eq('type', input.type);
-  const { data, error } = await q.order('updated_at', { ascending: false });
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as RiskAssessmentTemplate[];
+  return withInsforgeSession('risk_assessment_templates:list', async () => {
+    let q = insforge.database.from('risk_assessment_templates').select('*').eq('company_id', input.companyId);
+    if (input.type) q = q.eq('type', input.type);
+    const { data, error } = await q.order('updated_at', { ascending: false });
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as RiskAssessmentTemplate[];
+  });
 }
 
 export async function createRiskAssessmentTemplate(input: {

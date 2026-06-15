@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { formatAuthError } from '../../auth/authMessages';
 import type { ModuleKey, UUID } from '../../api/models/core';
 import { createRisk } from '../../api/services/risksService';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 export function RiskCreateModal(props: {
   open: boolean;
@@ -110,19 +110,28 @@ export function RiskCreateModal(props: {
       props.onCreated?.();
       props.onClose();
       resetForm();
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err) {
+      setError(toUserFacingError(err, 'Failed to create risk. Please try again.'));
     } finally {
       setLoading(false);
     }
   }
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') props.onClose();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.open, props.onClose]);
 
   if (!props.open) return null;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+      <div role="dialog" aria-modal="true" className="relative w-full max-w-xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
             <p className="text-sm font-semibold text-charcoal">New risk assessment</p>
@@ -234,7 +243,7 @@ export function RiskCreateModal(props: {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:bg-navy-700 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading && <LoadingSpinner size={16} />}
-              Save risk
+              {loading ? 'Saving...' : 'Save risk'}
             </button>
           </div>
         </form>

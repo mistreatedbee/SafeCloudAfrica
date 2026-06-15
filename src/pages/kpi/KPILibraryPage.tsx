@@ -8,6 +8,7 @@ import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { XIcon, BookMarkedIcon } from 'lucide-react';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
 import type { UUID } from '../../api/models/core';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 export function KPILibraryPage() {
   const { activeCompanyId } = useTenant();
@@ -21,6 +22,7 @@ export function KPILibraryPage() {
   const [deletingId, setDeletingId] = useState<UUID | null>(null);
   const [togglingId, setTogglingId] = useState<UUID | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const { data: items, loading } = useAsync<KPIItem[]>(
     async () => {
@@ -49,6 +51,7 @@ export function KPILibraryPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeCompanyId || !user?.id || !title.trim()) return;
+    setSaveError(null);
     setSaving(true);
     try {
       if (editingId) {
@@ -77,6 +80,8 @@ export function KPILibraryPage() {
       setModalOpen(false);
       setEditingId(null);
       setRefreshKey((k) => k + 1);
+    } catch (err: unknown) {
+      setSaveError(toUserFacingError(err, 'Failed to save KPI template.'));
     } finally {
       setSaving(false);
     }
@@ -213,6 +218,11 @@ export function KPILibraryPage() {
               </button>
             </div>
             <form onSubmit={handleSave} className="p-5 space-y-4">
+              {saveError && (
+                <div className="bg-critical/5 border border-critical/20 rounded-lg p-3 text-sm text-critical">
+                  {saveError}
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1">KPI Questionnaire *</label>
                 <input

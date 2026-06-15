@@ -27,6 +27,7 @@ import { uploadFile, getPublicUrl, type StorageBucket } from '../../api/services
 import type { UUID, CompanyRole } from '../../api/models/core';
 import { downloadTextFile, toCsv } from '../../utils/csv';
 import { createActivityLog } from '../../api/services/activityLogService';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 type Tab = 'personal' | 'acknowledgement';
 
@@ -54,6 +55,9 @@ export function HrDocumentsPage() {
   const [expiryDate, setExpiryDate] = useState('');
   const [notes, setNotes] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [sendExpiryNotification, setSendExpiryNotification] = useState(false);
+  const [expiryNotificationEmail, setExpiryNotificationEmail] = useState('');
+  const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState('');
   const [docTypeFilter, setDocTypeFilter] = useState('');
   const [expiryFilter, setExpiryFilter] = useState<'all' | 'active' | 'expiring_30' | 'expiring_7' | 'expired' | 'archived'>('all');
@@ -173,6 +177,8 @@ export function HrDocumentsPage() {
       return;
     }
     setError(null);
+    setSuccess(null);
+    setSaving(true);
     try {
       const created = await createHrPersonalDocument({
         companyId: activeCompanyId,
@@ -194,15 +200,32 @@ export function HrDocumentsPage() {
           patch: { file_ids: [evidenceId] }
         });
       }
+      // Persist notification preference — silently ignored if DB columns don't yet exist
+      if (sendExpiryNotification) {
+        await updateHrPersonalDocument({
+          companyId: activeCompanyId,
+          documentId: created.id as UUID,
+          actorUserId: user.id as UUID,
+          patch: {
+            send_expiry_notification: true,
+            expiry_notification_email: expiryNotificationEmail.trim() || null
+          }
+        }).catch(() => undefined);
+      }
       setDocName('');
       setDocType('');
       setIssueDate('');
       setExpiryDate('');
       setNotes('');
       setFile(null);
+      setSendExpiryNotification(false);
+      setExpiryNotificationEmail('');
+      setSuccess('Record saved.');
       await refetchPersonal();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create personal document.');
+      setError(toUserFacingError(err, 'Failed to save document record. Please try again.'));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -242,9 +265,10 @@ export function HrDocumentsPage() {
       setAckVersion('');
       setAckAssignedRoleCsv('');
       setAckFile(null);
+      setSuccess('Record saved.');
       await refetchAck();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create acknowledgement document.');
+      setError(toUserFacingError(err, 'Failed to create acknowledgement document. Please try again.'));
     }
   }
 
@@ -392,9 +416,9 @@ export function HrDocumentsPage() {
         {error && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
         {success && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700">{success}</div>}
 
-        <div className="bg-white border border-surface-300 rounded-xl p-3 flex gap-2">
-          <button className={`px-3 py-1.5 rounded-lg text-sm ${tab === 'personal' ? 'bg-teal text-white' : 'hover:bg-surface-100'}`} onClick={() => setTab('personal')}>Employee Personal Documents</button>
-          <button className={`px-3 py-1.5 rounded-lg text-sm ${tab === 'acknowledgement' ? 'bg-teal text-white' : 'hover:bg-surface-100'}`} onClick={() => setTab('acknowledgement')}>Acknowledgement / Policy Documents</button>
+        <div className="bg-white border border-surface-300 rounded-xl p-3 flex flex-wrap gap-2">
+          <button className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${tab === 'personal' ? 'bg-teal text-white' : 'hover:bg-surface-100'}`} onClick={() => setTab('personal')}>Employee Personal Documents</button>
+          <button className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${tab === 'acknowledgement' ? 'bg-teal text-white' : 'hover:bg-surface-100'}`} onClick={() => setTab('acknowledgement')}>Acknowledgement / Policy Documents</button>
         </div>
 
         {ownerSummaryOnly && (
@@ -407,8 +431,8 @@ export function HrDocumentsPage() {
         {tab === 'personal' && (
           <>
             <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
-              <h3 className="font-semibold">Upload employee personal document</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <h3 className="font-semibold">Save document record</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
                   <HrEmployeeSelect
                     companyId={activeCompanyId ?? null}
@@ -426,17 +450,40 @@ export function HrDocumentsPage() {
                 <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Issue date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} /></label>
                 <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Expiry date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} /></label>
                 <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">File</span><input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" className="w-full border border-surface-300 rounded-lg px-3 py-2" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label>
-                <label className="text-sm md:col-span-3"><span className="block text-xs text-charcoal-500 mb-1">Notes</span><textarea className="w-full border border-surface-300 rounded-lg px-3 py-2" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+                <div className="text-sm space-y-2">
+                  <span className="block text-xs text-charcoal-500">Send expiry notification?</span>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sendExpiryNotification}
+                      onChange={(e) => setSendExpiryNotification(e.target.checked)}
+                      className="w-4 h-4 accent-teal"
+                    />
+                    <span className="font-medium">{sendExpiryNotification ? 'Yes' : 'No'}</span>
+                  </label>
+                  {sendExpiryNotification && (
+                    <input
+                      type="email"
+                      className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="Notification email address"
+                      value={expiryNotificationEmail}
+                      onChange={(e) => setExpiryNotificationEmail(e.target.value)}
+                    />
+                  )}
+                </div>
+                <label className="text-sm sm:col-span-2 md:col-span-3"><span className="block text-xs text-charcoal-500 mb-1">Notes</span><textarea className="w-full border border-surface-300 rounded-lg px-3 py-2" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
               </div>
-              <div className="flex gap-2">
-                <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm" onClick={() => void onCreatePersonal()} disabled={!canEdit && !isSupervisor(activeRole ?? null)}>Upload document</button>
+              <div className="flex flex-wrap gap-2">
+                <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-60" onClick={() => void onCreatePersonal()} disabled={saving || (!canEdit && !isSupervisor(activeRole ?? null))}>
+                  {saving ? 'Saving...' : 'Save Record'}
+                </button>
                 {canEdit && <button className="px-4 py-2 rounded-lg border border-surface-300 text-sm" onClick={() => void onSendExpiryAlerts()}>Send expiry alerts</button>}
               </div>
             </div>
 
             <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
               <h3 className="font-semibold">Search / Filter / Reporting</h3>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Search employee/document" value={query} onChange={(e) => setQuery(e.target.value)} />
                 <input className="border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Filter by document type" value={docTypeFilter} onChange={(e) => setDocTypeFilter(e.target.value)} />
                 <select
@@ -475,7 +522,7 @@ export function HrDocumentsPage() {
               ) : filteredPersonalDocs.length === 0 ? (
                 <div className="text-center py-10 text-sm text-charcoal-500">No documents yet.</div>
               ) : (
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[700px] text-sm">
                 <thead className="bg-surface-100">
                   <tr>
                     <th className="text-left px-3 py-2">Employee</th>
@@ -653,7 +700,7 @@ export function HrDocumentsPage() {
                 ) : (ackDocs ?? []).length === 0 ? (
                   <div className="text-center py-10 text-sm text-charcoal-500">No documents yet.</div>
                 ) : (
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[600px] text-sm">
                   <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Title</th><th className="text-left px-3 py-2">Category</th><th className="text-left px-3 py-2">Version</th><th className="text-left px-3 py-2">Dates</th><th className="text-left px-3 py-2">Completion</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
                   <tbody>
                     {(ackDocs ?? []).map((row) => {

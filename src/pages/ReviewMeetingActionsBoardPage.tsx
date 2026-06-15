@@ -106,6 +106,13 @@ export function ReviewMeetingActionsBoardPage() {
                   </td>
                 </tr>
               )}
+              {!loading && !error && items.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-5 text-sm text-charcoal-500">
+                    No action items yet.
+                  </td>
+                </tr>
+              )}
               {!loading &&
                 !error &&
                 items.map((item) => (

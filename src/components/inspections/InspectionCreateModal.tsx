@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { formatAuthError } from '../../auth/authMessages';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { ModuleKey, UUID } from '../../api/models/core';
 import { createInspection, listInspectionChecklistTemplates } from '../../api/services/inspectionsService';
 import { listUserProfiles } from '../../api/services/profilesService';
@@ -150,6 +150,15 @@ export function InspectionCreateModal(props: {
 
   const canSubmit = useMemo(() => !!templateId && !loading, [templateId, loading]);
 
+  useEffect(() => {
+    if (!props.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') props.onClose();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.open, props.onClose]);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
@@ -178,8 +187,8 @@ export function InspectionCreateModal(props: {
       props.onCreated?.();
       props.onClose();
       resetForm();
-    } catch (err: any) {
-      setError(formatAuthError(err));
+    } catch (err) {
+      setError(toUserFacingError(err, 'Failed to create inspection. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -203,7 +212,7 @@ export function InspectionCreateModal(props: {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative w-full max-w-5xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+      <div role="dialog" aria-modal="true" className="relative w-full max-w-5xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-surface-200 px-4 py-4 sm:px-6 flex items-center justify-between z-10">
           <div>
             <p className="text-sm font-semibold text-charcoal">Create Inspection Checklist</p>
@@ -373,7 +382,7 @@ export function InspectionCreateModal(props: {
               className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto"
             >
               {loading && <LoadingSpinner size={16} />}
-              Create Inspection
+              {loading ? 'Saving...' : 'Create Inspection'}
             </button>
           </div>
         </form>
