@@ -278,7 +278,7 @@ export function SessionManagerProvider({
     let lastKnownToken: string | null = null;
     let lastKnownExpiresAtMs: number | null = null;
     try {
-      const current = await insforge.auth.refreshSession();
+      const current = await insforge.auth.getCurrentSession();
       const existingTokenStillValid =
         !!existingClientToken &&
         !!existingClientTokenExpiresAtMs &&
