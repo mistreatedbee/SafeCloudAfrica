@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useAuth } from '@insforge/react';
 import { insforge } from '../api/insforge/client';
 import { useDraftManager } from '../session/DraftManagerProvider';
@@ -8,14 +8,16 @@ const SESSION_EXPIRED_MESSAGE_KEY = 'sca_session_expired_message';
 const USER_SIGNED_OUT_KEY = 'sca_user_signed_out';
 
 /**
- * When the auth session is cleared (e.g. after 401 on token refresh), set a flag
- * so the login page can show "Your session expired". Skips the flag when the user
- * explicitly signed out (LogoutPage sets USER_SIGNED_OUT_KEY before signOut).
+ * Listens for explicit sca:auth-failure events (dispatched only when the backend
+ * returns a definitive 401/403 on a protected call) and signs the user out cleanly.
+ *
+ * We do NOT watch isSignedIn here. The SDK's internal auth state can wobble when
+ * autoRefreshToken is off and getCurrentSession is called — watching that flag would
+ * cause false logouts whenever any background call temporarily loses its token.
  */
 export function AuthSessionListener() {
-  const { isLoaded, isSignedIn, signOut } = useAuth();
+  const { signOut } = useAuth();
   const { flushAllDrafts } = useDraftManager();
-  const wasSignedInRef = useRef(false);
 
   useEffect(() => {
     const onAuthFailure = () => {
@@ -40,56 +42,14 @@ export function AuthSessionListener() {
         try {
           await signOut();
         } catch {
-          // RequireSignedIn will still handle navigation if auth state clears elsewhere.
+          // ignore — RequireSignedIn will redirect to login if auth state clears
         }
       })();
     };
+
     window.addEventListener('sca:auth-failure', onAuthFailure);
     return () => window.removeEventListener('sca:auth-failure', onAuthFailure);
   }, [flushAllDrafts, signOut]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    if (isSignedIn) {
-      wasSignedInRef.current = true;
-      return;
-    }
-    if (wasSignedInRef.current) {
-      wasSignedInRef.current = false;
-      const userSignedOut = typeof sessionStorage !== 'undefined' && sessionStorage.getItem(USER_SIGNED_OUT_KEY);
-      if (userSignedOut) {
-        sessionStorage.removeItem(USER_SIGNED_OUT_KEY);
-      } else {
-        const currentHeaders = (() => {
-          try {
-            return insforge.getHttpClient().getHeaders();
-          } catch {
-            return {};
-          }
-        })();
-        const authHeader = String((currentHeaders as any).Authorization ?? (currentHeaders as any).authorization ?? '').trim();
-        if (authHeader) {
-          // If a bearer token is still attached to the shared client, treat this as a recoverable
-          // auth-state wobble and avoid showing the "session expired" banner.
-          return;
-        }
-        // Best-effort: persist any local draft snapshots before redirecting to login.
-        void (async () => {
-          try {
-            await flushAllDrafts();
-          } catch {
-            // keep going; session recovery will still work for the user
-          }
-
-          sessionStorage.setItem(SESSION_EXPIRED_KEY, '1');
-          sessionStorage.setItem(
-            SESSION_EXPIRED_MESSAGE_KEY,
-            'Your session has expired. Please log in again.'
-          );
-        })();
-      }
-    }
-  }, [flushAllDrafts, isLoaded, isSignedIn]);
 
   return null;
 }

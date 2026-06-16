@@ -70,6 +70,17 @@ const ncrRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor', 'con
 const adminOnlyRoles: CompanyRole[] = ['owner', 'admin'];
 const moduleRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
 
+// Mapping from sellable feature keys to their corresponding module key, for consultant scope checks.
+const SELLABLE_TO_MODULE: Partial<Record<SellableFeatureKey, ModuleKey>> = {
+  assetManagement: 'asset_management',
+  hazardousChemicals: 'hazardous_chemical_management',
+};
+
+/** Returns true if the active role is a scoped external role (consultant or auditor). */
+function isConsultantScoped(role: CompanyRole | null): boolean {
+  return role === 'consultant' || role === 'auditor';
+}
+
 const modules: NavItem[] = [
   { name: 'General', path: '/modules/general', icon: FolderIcon, roles: moduleRoles, module: 'general' },
   { name: 'Safety', path: '/modules/safety', icon: ShieldIcon, roles: moduleRoles, module: 'safety' },
@@ -252,7 +263,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapsed }: Sid
   const [modulesExpanded, setModulesExpanded] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const location = useLocation();
-  const { activeRole, enabledModules, sellableFeatures: sellableFeatureConfig } = useTenant();
+  const { activeRole, enabledModules, sellableFeatures: sellableFeatureConfig, consultantAllowedModules } = useTenant();
 
   useEffect(() => {
     try {
@@ -274,40 +285,64 @@ export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapsed }: Sid
   }, [expandedGroups]);
 
   const dashboardPath = useMemo(() => dashboardPathForRole(activeRole), [activeRole]);
-  const filteredModules = useMemo(
-    () => modules.filter((item) => isRoleVisible(item.roles, activeRole) && isModuleVisible(item.module, enabledModules)),
-    [activeRole, enabledModules]
-  );
+  const filteredModules = useMemo(() => {
+    return modules.filter((item) => {
+      if (!isModuleVisible(item.module, enabledModules)) return false;
+      if (isConsultantScoped(activeRole)) {
+        if (!item.module) return consultantAllowedModules.length > 0;
+        return consultantAllowedModules.includes(item.module);
+      }
+      return isRoleVisible(item.roles, activeRole);
+    });
+  }, [activeRole, enabledModules, consultantAllowedModules]);
 
   const filteredManagementGroups = useMemo(() => {
     return managementGroups
-      .filter((group) => isRoleVisible(group.roles, activeRole) && isModuleVisible(group.module, enabledModules))
+      .filter((group) => {
+        if (!isModuleVisible(group.module, enabledModules)) return false;
+        if (isConsultantScoped(activeRole)) {
+          // Show group if it has no module restriction (cross-cutting) or its module is in scope.
+          if (!group.module) return consultantAllowedModules.length > 0;
+          return consultantAllowedModules.includes(group.module);
+        }
+        return isRoleVisible(group.roles, activeRole);
+      })
       .map((group) => ({
         ...group,
         items: group.items.filter((item) => {
-          if (!isRoleVisible(item.roles, activeRole)) return false;
           if (!isModuleVisible(item.module, enabledModules)) return false;
-          if (!item.sellableFeatureKey) return true;
-          return sellableFeatureConfig[item.sellableFeatureKey].enabled;
+          if (item.sellableFeatureKey && !sellableFeatureConfig[item.sellableFeatureKey].enabled) return false;
+          if (isConsultantScoped(activeRole)) {
+            if (!item.module) return true;
+            return consultantAllowedModules.includes(item.module);
+          }
+          return isRoleVisible(item.roles, activeRole);
         })
       }))
       .filter((group) => group.items.length > 0);
-  }, [activeRole, enabledModules, sellableFeatureConfig]);
+  }, [activeRole, enabledModules, sellableFeatureConfig, consultantAllowedModules]);
 
-  const filteredSellable = useMemo(
-    () =>
-      sellableFeatures.filter((item) => {
-        if (!isRoleVisible(item.roles, activeRole)) return false;
-        if (!item.sellableFeatureKey) return true;
-        return sellableFeatureConfig[item.sellableFeatureKey].enabled;
-      }),
-    [activeRole, sellableFeatureConfig]
-  );
+  const filteredSellable = useMemo(() => {
+    return sellableFeatures.filter((item) => {
+      if (!item.sellableFeatureKey) return false;
+      if (!sellableFeatureConfig[item.sellableFeatureKey].enabled) return false;
+      if (isConsultantScoped(activeRole)) {
+        // Only show sellable features that map to an explicitly scoped module key.
+        const moduleKey = SELLABLE_TO_MODULE[item.sellableFeatureKey];
+        if (!moduleKey) return false;
+        return consultantAllowedModules.includes(moduleKey);
+      }
+      return isRoleVisible(item.roles, activeRole);
+    });
+  }, [activeRole, sellableFeatureConfig, consultantAllowedModules]);
 
-  const filteredSettings = useMemo(
-    () => settingsItems.filter((item) => isRoleVisible(item.roles, activeRole)),
-    [activeRole]
-  );
+  const filteredSettings = useMemo(() => {
+    if (isConsultantScoped(activeRole)) {
+      // Consultants only see items with no role restriction (e.g. Support Centre).
+      return settingsItems.filter((item) => !item.roles);
+    }
+    return settingsItems.filter((item) => isRoleVisible(item.roles, activeRole));
+  }, [activeRole]);
 
   const toggleGroup = (groupId: string) => {
     setExpandedGroups((prev) => ({

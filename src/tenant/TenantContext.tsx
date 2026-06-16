@@ -6,7 +6,7 @@ import type { Company, CompanyMembership, UUID } from '../api/models/entities';
 import { createActivityLog } from '../api/services/activityLogService';
 import type { CompanyRole, ModuleKey } from '../api/models/core';
 import { ensureMeAsSuperAdmin, isPlatformAdmin as checkPlatformAdmin } from '../api/services/platformAdminService';
-import { getEnabledModuleKeys } from '../api/services/orgModulesService';
+import { getEnabledModuleKeys, ALL_MODULE_KEYS } from '../api/services/orgModulesService';
 import { upsertMyProfile } from '../api/services/profilesService';
 import { getSellableFeaturesConfig, type SellableFeaturesConfig } from '../api/services/sellableFeaturesService';
 
@@ -21,6 +21,12 @@ type TenantContextValue = {
   activeMembership: MembershipWithCompany | null;
   /** Module keys enabled for the active org (Super Admin control). Empty = all enabled (e.g. no config). */
   enabledModules: ModuleKey[];
+  /**
+   * For consultant/auditor roles: the module keys explicitly granted in their consultant_scope.
+   * Empty means no modules have been assigned (all module access denied).
+   * For all other roles this is an empty array and should not be used for access decisions.
+   */
+  consultantAllowedModules: ModuleKey[];
   sellableFeatures: SellableFeaturesConfig;
   isPlatformAdmin: boolean;
   /** True after first refreshTenant() has completed for the current user (so isPlatformAdmin is known). */
@@ -227,6 +233,15 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const enabledModules = useMemo<ModuleKey[]>(() => {
     return getEnabledModuleKeys(activeCompany ?? null);
   }, [activeCompany]);
+
+  const consultantAllowedModules = useMemo<ModuleKey[]>(() => {
+    const role = activeMembership?.role;
+    if (role !== 'consultant' && role !== 'auditor') return [];
+    const allowed = activeMembership?.consultant_scope?.allowedModules;
+    if (!allowed?.length) return [];
+    const validSet = new Set<string>(ALL_MODULE_KEYS);
+    return allowed.filter((m): m is ModuleKey => validSet.has(m));
+  }, [activeMembership]);
   const sellableFeatures = useMemo<SellableFeaturesConfig>(() => {
     return getSellableFeaturesConfig(activeCompany ?? null);
   }, [activeCompany]);
@@ -239,6 +254,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       activeRole,
       activeMembership,
       enabledModules,
+      consultantAllowedModules,
       sellableFeatures,
       isPlatformAdmin,
       isTenantLoaded,
@@ -251,6 +267,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       activeRole,
       activeMembership,
       enabledModules,
+      consultantAllowedModules,
       isPlatformAdmin,
       isTenantLoaded,
       memberships,

@@ -1,9 +1,5 @@
-import {
-  clearAuthStorage,
-  emitAuthFailure,
-  markSessionExpired,
-  refreshSessionThroughProxy
-} from './insforge/sessionState';
+// sessionState helpers are used only when an explicit auth failure is dispatched from outside this module.
+
 
 const LIVE_DATA_MUTATED_EVENT = 'sca:data-mutated';
 const BACKEND_UNAVAILABLE_EVENT = 'sca:backend-unavailable';
@@ -106,25 +102,6 @@ export function subscribeToBackendUnavailable(listener: (detail: BackendUnavaila
   return () => window.removeEventListener(BACKEND_UNAVAILABLE_EVENT, handler as EventListener);
 }
 
-function cloneBodyForRetry(request: Request | null, init?: RequestInit): RequestInit['body'] {
-  if (init && 'body' in init) return init.body;
-  if (!request) return undefined;
-  return undefined;
-}
-
-function shouldAttemptRefresh(response: Response): boolean {
-  return response.status === 401 || response.status === 403;
-}
-
-function isAuthRefreshRequest(input: RequestInfo | URL): boolean {
-  const raw = input instanceof Request ? input.url : String(input);
-  try {
-    const url = new URL(raw, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
-    return url.pathname === '/api/auth/refresh';
-  } catch {
-    return raw.includes('/api/auth/refresh');
-  }
-}
 
 export function createFreshFetch(baseFetch: typeof fetch, auth?: AuthenticatedFetchHandlers): typeof fetch {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -155,42 +132,6 @@ export function createFreshFetch(baseFetch: typeof fetch, auth?: AuthenticatedFe
         url
       });
       throw err;
-    }
-
-    if (auth && shouldAttemptRefresh(response) && !isAuthRefreshRequest(input)) {
-      const refresh = await refreshSessionThroughProxy({
-        baseUrl: auth.getBaseUrl(),
-        fetch: baseFetch
-      });
-      if (refresh.ok) {
-        auth.setAccessToken(refresh.accessToken);
-        const retryHeaders = getNoStoreHeaders(init?.headers ?? request?.headers);
-        retryHeaders.set('Authorization', `Bearer ${refresh.accessToken}`);
-        const retryInit: RequestInit = {
-          ...init,
-          credentials: init?.credentials ?? request?.credentials ?? 'include',
-          cache: 'no-store',
-          headers: retryHeaders,
-          body: cloneBodyForRetry(request, init)
-        };
-        response = request
-          ? await baseFetch(new Request(request, retryInit))
-          : await baseFetch(input, retryInit);
-      }
-
-      if (!refresh.ok && refresh.reason === 'invalid_session') {
-        auth.setAccessToken(null);
-        clearAuthStorage();
-        markSessionExpired();
-        emitAuthFailure(refresh.error ?? response.statusText);
-      } else if (refresh.ok && shouldAttemptRefresh(response)) {
-        // Refresh succeeded but server still rejected the retry → genuine bad token
-        auth.setAccessToken(null);
-        clearAuthStorage();
-        markSessionExpired();
-        emitAuthFailure(response.statusText);
-      }
-      // refresh_unavailable / transient_failure → do NOT clear; session may still be valid
     }
 
     if (response.status === 502 || response.status === 503 || response.status === 504) {

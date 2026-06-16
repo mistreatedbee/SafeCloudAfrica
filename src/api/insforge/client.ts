@@ -58,7 +58,7 @@ export const insforge = createClient({
   }),
   headers: Object.fromEntries(getNoStoreHeaders().entries()),
   persistSession: true,
-  autoRefreshToken: true
+  autoRefreshToken: false
 });
 
 type RuntimeClientConfig = {
