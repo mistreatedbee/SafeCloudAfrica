@@ -82,15 +82,10 @@ export function AuthSessionListener() {
           }
 
           sessionStorage.setItem(SESSION_EXPIRED_KEY, '1');
-          // Preserve any more specific message already set by SessionManagerProvider.
-          // This prevents refresh-failure from being shown as an inactivity expiration.
-          const existingMessage = sessionStorage.getItem(SESSION_EXPIRED_MESSAGE_KEY);
-          if (!existingMessage) {
-            sessionStorage.setItem(
-              SESSION_EXPIRED_MESSAGE_KEY,
-              'Your session has expired. Please log in again.'
-            );
-          }
+          sessionStorage.setItem(
+            SESSION_EXPIRED_MESSAGE_KEY,
+            'Your session has expired. Please log in again.'
+          );
         })();
       }
     }

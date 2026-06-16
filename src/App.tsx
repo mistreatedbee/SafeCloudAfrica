@@ -135,7 +135,6 @@ import { OperationalInputsPage } from './pages/management/OperationalInputsPage'
 import { SELLABLE_FEATURE_ROUTE_PATHS } from './api/services/sellableFeaturesService';
 import { DraftManagerProvider } from './session/DraftManagerProvider';
 import { DraftExperience } from './session/DraftExperience';
-import { SessionManagerProvider } from './session/SessionManagerProvider';
 import { IdentityProvider } from './hooks/useIdentity';
 import { FloatingSupportChat } from './components/support/FloatingSupportChat';
 export function App() {
@@ -144,7 +143,6 @@ export function App() {
       <TenantProvider>
         <IdentityProvider>
           <DraftManagerProvider>
-            <SessionManagerProvider>
               <AuthSessionListener />
               <DraftExperience />
               <Routes>
@@ -1901,7 +1899,6 @@ export function App() {
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
-            </SessionManagerProvider>
           </DraftManagerProvider>
         </IdentityProvider>
       </TenantProvider>
