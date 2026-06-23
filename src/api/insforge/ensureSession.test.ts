@@ -80,6 +80,51 @@ describe('ensureInsforgeSession', () => {
     expect(guarded).toHaveBeenCalledTimes(1);
   });
 
+  it('treats a token expiring within the leeway window as expired and attempts a refresh', async () => {
+    const soonToExpireToken = createJwt({ sub: 'user-1', exp: Math.floor((Date.now() + 5_000) / 1000) });
+    const refreshedToken = createJwt({ sub: 'user-1', exp: Math.floor((Date.now() + 60_000) / 1000) });
+    authMock.getCurrentSession.mockResolvedValue({ data: { session: null }, error: null });
+    httpMock.getHeaders.mockReturnValue({ Authorization: `Bearer ${soonToExpireToken}` });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ accessToken: refreshedToken, user: { id: 'user-1' } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    ) as unknown as typeof fetch;
+
+    const { ensureInsforgeSession } = await import('./ensureSession');
+    await expect(ensureInsforgeSession({ reason: 'test' })).resolves.toEqual({
+      accessToken: refreshedToken,
+      userId: 'user-1'
+    });
+    expect(globalThis.fetch).toHaveBeenCalled();
+  });
+
+  it('emits sca:auth-failure when no valid session can be established', async () => {
+    const dispatchEvent = vi.fn();
+    const addEventListener = vi.fn();
+    (globalThis as any).window = { dispatchEvent, addEventListener };
+
+    authMock.getCurrentSession.mockResolvedValue({ data: { session: null }, error: null });
+    httpMock.getHeaders.mockReturnValue({});
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: 'not_found' }), { status: 404 })
+    ) as unknown as typeof fetch;
+
+    try {
+      const { ensureInsforgeSession } = await import('./ensureSession');
+      await expect(ensureInsforgeSession({ reason: 'test' })).rejects.toMatchObject({
+        code: 'AUTH_SESSION_MISSING'
+      });
+
+      expect(dispatchEvent).toHaveBeenCalledTimes(1);
+      const dispatchedEvent = dispatchEvent.mock.calls[0][0] as CustomEvent;
+      expect(dispatchedEvent.type).toBe('sca:auth-failure');
+    } finally {
+      delete (globalThis as any).window;
+    }
+  });
+
   it('refreshes an expired stored session before attaching it', async () => {
     const expiredToken = createJwt({ sub: 'user-1', exp: Math.floor((Date.now() - 60_000) / 1000) });
     const refreshedToken = createJwt({ sub: 'user-1', exp: Math.floor((Date.now() + 60_000) / 1000) });

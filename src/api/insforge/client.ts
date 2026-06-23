@@ -56,9 +56,10 @@ export const insforge = createClient({
       insforge.getHttpClient().setAuthToken(token);
     }
   }),
-  headers: Object.fromEntries(getNoStoreHeaders().entries()),
-  persistSession: true,
-  autoRefreshToken: false
+  headers: Object.fromEntries(getNoStoreHeaders().entries())
+  // Token persistence and refresh are handled by this app's own code
+  // (sessionState.ts + ensureSession.ts), not by SDK config — InsForgeConfig
+  // has no persistSession/autoRefreshToken option in @insforge/sdk@1.2.9.
 });
 
 type RuntimeClientConfig = {
