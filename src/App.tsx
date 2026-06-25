@@ -75,6 +75,7 @@ import { HrLeavePage } from './pages/hr/HrLeavePage';
 import { HrSettingsPage } from './pages/hr/HrSettingsPage';
 import { HrDepartmentsPage } from './pages/hr/HrDepartmentsPage';
 import { HrSitesPage } from './pages/hr/HrSitesPage';
+import { HrEmployeeWellnessPage } from './pages/hr/HrEmployeeWellnessPage';
 import { ToolboxTalksPage } from './pages/sheq/ToolboxTalksPage';
 import { PermitToWorkPage } from './pages/sheq/PermitToWorkPage';
 import { LotoPage } from './pages/sheq/LotoPage';
@@ -748,6 +749,18 @@ export function App() {
                 <RequireWorkspace>
                   <RequireModuleEnabled module="hr">
                     <HrDepartmentsPage />
+                  </RequireModuleEnabled>
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/hr/wellness"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <RequireModuleEnabled module="hr">
+                    <HrEmployeeWellnessPage />
                   </RequireModuleEnabled>
                 </RequireWorkspace>
               </RequireSignedIn>

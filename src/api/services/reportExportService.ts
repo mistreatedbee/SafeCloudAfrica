@@ -36,7 +36,13 @@ export function downloadCsvReport(filename: string, rows: ReportRow[], metaLines
   downloadBlob(filename, new Blob([content], { type: 'text/csv;charset=utf-8' }));
 }
 
-export function downloadPdfReport(filename: string, title: string, rows: ReportRow[], metaLines: string[] = []): void {
+export function downloadPdfReport(
+  filename: string,
+  title: string,
+  rows: ReportRow[],
+  metaLines: string[] = [],
+  options: { headerColor?: [number, number, number] } = {}
+): void {
   const headers = Array.from(rows.reduce((set, row) => {
     Object.keys(row).forEach((key) => set.add(key));
     return set;
@@ -56,8 +62,16 @@ export function downloadPdfReport(filename: string, title: string, rows: ReportR
       ? rows.map((row) => headers.map((header) => String(row[header] ?? '')))
       : [['No records found']],
     styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak' },
-    headStyles: { fillColor: [15, 118, 110], textColor: 255 },
+    headStyles: { fillColor: options.headerColor ?? [15, 118, 110], textColor: 255 },
     alternateRowStyles: { fillColor: [248, 250, 252] }
   });
+
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page++) {
+    doc.setPage(page);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Page ${page} of ${pageCount}`, doc.internal.pageSize.getWidth() - 100, doc.internal.pageSize.getHeight() - 20);
+  }
   doc.save(filename);
 }

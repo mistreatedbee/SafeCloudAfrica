@@ -3,6 +3,11 @@ import { getErrorMessage } from '../insforge/errors';
 import type { EvidenceAttachment, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
 
+function isMissingObjectError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return message.includes('not found') || message.includes('404');
+}
+
 export async function listEvidence(companyId: UUID, input: { entityType: string; entityId: UUID; limit?: number }): Promise<EvidenceAttachment[]> {
   const { data, error } = await insforge.database
     .from('evidence_attachments')
@@ -98,5 +103,29 @@ export async function updateEvidence(
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update evidence.');
   return data as EvidenceAttachment;
+}
+
+export async function deleteEvidence(
+  evidenceId: UUID,
+  input: { companyId: UUID; actorUserId: UUID; storageBucket: string; storageKey: string; entityType?: string }
+): Promise<void> {
+  const { error: removeError } = await insforge.storage.from(input.storageBucket).remove(input.storageKey);
+  if (removeError && !isMissingObjectError(removeError)) throw new Error(getErrorMessage(removeError));
+
+  const { error } = await insforge.database
+    .from('evidence_attachments')
+    .delete()
+    .eq('id', evidenceId)
+    .eq('company_id', input.companyId);
+  if (error) throw new Error(getErrorMessage(error));
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'evidence_attachments.delete',
+    entityType: 'evidence_attachment',
+    entityId: evidenceId,
+    metadata: input.entityType ? { entityType: input.entityType } : undefined
+  });
 }
 

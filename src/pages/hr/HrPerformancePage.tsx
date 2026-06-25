@@ -13,6 +13,7 @@ import type { UUID } from '../../api/models/core';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 import { toUserFacingError } from '../../utils/userFacingMessage';
+import { HrExportMenu } from '../../components/hr/HrExportMenu';
 
 type KpaRow = {
   id: string;
@@ -183,6 +184,50 @@ export function HrPerformancePage() {
     return (reviews ?? []).filter((row) => row.corrective_due_date && String(row.corrective_due_date) < today && String(row.status ?? '') !== 'CLOSED').length;
   }, [reviews]);
 
+  const avgEmployeeKpaRating = useMemo(() => {
+    const valid = kpaRows
+      .map((row) => Number(row.employeeRating))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (valid.length === 0) return null;
+    return valid.reduce((sum, n) => sum + n, 0) / valid.length;
+  }, [kpaRows]);
+
+  const computedOverallRating = useMemo(() => {
+    const mgr = Number(managerRating);
+    if (avgEmployeeKpaRating === null || !managerRating || !Number.isFinite(mgr) || mgr <= 0) return null;
+    return Math.round(((avgEmployeeKpaRating + mgr) / 2) * 10) / 10;
+  }, [avgEmployeeKpaRating, managerRating]);
+
+  const [filterQuery, setFilterQuery] = useState('');
+  const [filterCycle, setFilterCycle] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+
+  const filtersActiveCount = [filterQuery, filterCycle, filterDateFrom, filterDateTo].filter(Boolean).length;
+
+  function clearFilters() {
+    setFilterQuery('');
+    setFilterCycle('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+  }
+
+  const filteredReviews = useMemo(() => {
+    return (reviews ?? []).filter((row) => {
+      const r = row as Record<string, unknown>;
+      const q = filterQuery.trim().toLowerCase();
+      if (q) {
+        const name = (employeeLabel.get(r['employee_id'] as UUID) ?? '').toLowerCase();
+        if (!name.includes(q)) return false;
+      }
+      if (filterCycle && String(r['cycle'] ?? '') !== filterCycle) return false;
+      const due = String(r['corrective_due_date'] ?? '');
+      if (filterDateFrom && due && due < filterDateFrom) return false;
+      if (filterDateTo && due && due > filterDateTo) return false;
+      return true;
+    });
+  }, [reviews, employeeLabel, filterQuery, filterCycle, filterDateFrom, filterDateTo]);
+
   function resetForm() {
     setEditingReviewId(null);
     setEmployeeId('');
@@ -264,7 +309,7 @@ export function HrPerformancePage() {
           patch: {
             employee_id: employeeId,
             cycle,
-            overall_rating: null,
+            overall_rating: computedOverallRating,
             kpa_rows: kpaRowsToSave,
             strengths,
             assistance_required: assistanceRequired || null,
@@ -284,7 +329,7 @@ export function HrPerformancePage() {
           cycle,
           review_date: new Date().toISOString().slice(0, 10),
           reviewer_user_id: user.id,
-          overall_rating: null,
+          overall_rating: computedOverallRating,
           kpa_rows: kpaRowsToSave,
           strengths,
           assistance_required: assistanceRequired || null,
@@ -435,6 +480,14 @@ export function HrPerformancePage() {
               <span className="block text-xs text-charcoal-500 mb-1">Overall manager rating (1–5)</span>
               <input type="number" min={1} max={5} className="w-32 border border-surface-300 rounded-lg px-3 py-2" value={managerRating} onChange={(e) => setManagerRating(e.target.value)} placeholder="1–5" />
             </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Overall Rating (computed)</span>
+              <input
+                className="w-32 border border-surface-300 rounded-lg px-3 py-2 bg-surface-50"
+                readOnly
+                value={computedOverallRating !== null ? computedOverallRating.toFixed(1) : '—'}
+              />
+            </label>
             <label className="text-sm md:col-span-2"><span className="block text-xs text-charcoal-500 mb-1">Strengths</span><textarea rows={2} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={strengths} onChange={(e) => setStrengths(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Assistance required</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" autoComplete="off" value={assistanceRequired} onChange={(e) => setAssistanceRequired(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Weaknesses</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" autoComplete="off" value={weaknesses} onChange={(e) => setWeaknesses(e.target.value)} /></label>
@@ -464,16 +517,77 @@ export function HrPerformancePage() {
           <p className="text-sm text-charcoal-600">Overdue corrective actions: <span className="font-semibold">{overdueCorrective}</span></p>
         </div>
 
+        <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Search</span>
+              <input
+                className="w-56 border border-surface-300 rounded-lg px-3 py-2 text-sm"
+                placeholder="Employee name"
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Cycle</span>
+              <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterCycle} onChange={(e) => setFilterCycle(e.target.value)}>
+                <option value="">All</option>
+                <option value="Annual">Annual</option>
+                <option value="Quarterly">Quarterly</option>
+                <option value="Monthly">Monthly</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Due from</span>
+              <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Due to</span>
+              <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
+            </label>
+            {filtersActiveCount > 0 && (
+              <div className="flex items-center gap-2 text-xs text-charcoal-500">
+                <span>{filtersActiveCount} filter{filtersActiveCount === 1 ? '' : 's'} active</span>
+                <button type="button" className="text-teal underline" onClick={clearFilters}>Clear filters</button>
+              </div>
+            )}
+            <HrExportMenu
+              moduleName="Performance Reviews"
+              columns={[
+                { key: 'employee', label: 'Employee' },
+                { key: 'cycle', label: 'Cycle' },
+                { key: 'overall_rating', label: 'Overall Rating' },
+                { key: 'manager_rating', label: 'Manager Rating' },
+                { key: 'corrective_actions_required', label: 'Corrective Action' },
+                { key: 'corrective_due_date', label: 'Due Date' },
+                { key: 'status', label: 'Status' }
+              ]}
+              rows={filteredReviews.map((row) => {
+                const r = row as Record<string, unknown>;
+                return {
+                  employee: employeeLabel.get(r['employee_id'] as UUID) ?? r['employee_id'],
+                  cycle: r['cycle'],
+                  overall_rating: r['overall_rating'],
+                  manager_rating: r['manager_rating'],
+                  corrective_actions_required: r['corrective_actions_required'],
+                  corrective_due_date: r['corrective_due_date'],
+                  status: r['status']
+                };
+              })}
+            />
+          </div>
+        </div>
+
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
           {reviewsLoading ? (
             <div className="flex justify-center py-10"><LoadingSpinner /></div>
-          ) : (reviews ?? []).length === 0 ? (
-            <div className="text-center py-10 text-sm text-charcoal-500">No performance reviews yet.</div>
+          ) : filteredReviews.length === 0 ? (
+            <div className="text-center py-10 text-sm text-charcoal-500">No performance reviews match your filters.</div>
           ) : (
           <table className="w-full text-sm">
             <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Cycle</th><th className="text-left px-3 py-2">Ratings</th><th className="text-left px-3 py-2">Corrective action</th><th className="text-left px-3 py-2">Task</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
             <tbody>
-              {(reviews ?? []).map((row) => {
+              {filteredReviews.map((row) => {
                 const r = row as Record<string, unknown>;
                 return (
                 <tr key={String(r['id'])} className="border-t border-surface-100">

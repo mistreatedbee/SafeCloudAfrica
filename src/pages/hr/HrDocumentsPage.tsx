@@ -25,9 +25,9 @@ import { SelectOrType } from '../../components/ui/SelectOrType';
 import { createEvidence, listEvidence } from '../../api/services/evidenceService';
 import { uploadFile, getPublicUrl, type StorageBucket } from '../../api/services/storageService';
 import type { UUID, CompanyRole } from '../../api/models/core';
-import { downloadTextFile, toCsv } from '../../utils/csv';
 import { createActivityLog } from '../../api/services/activityLogService';
 import { toUserFacingError } from '../../utils/userFacingMessage';
+import { HrExportMenu } from '../../components/hr/HrExportMenu';
 
 type Tab = 'personal' | 'acknowledgement';
 
@@ -502,17 +502,28 @@ export function HrDocumentsPage() {
                   <option value="">All departments</option>
                   {(departments ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
-                <button className="px-3 py-2 rounded-lg border border-surface-300 text-sm" onClick={() => {
-                  const expired = filteredPersonalDocs.filter((d) => getDocumentExpiryStatus(d) === 'expired');
-                  const csv = toCsv(expired.map((d) => ({
-                    employee: (() => { const e = employeeById.get(d.employee_id as UUID); return e ? `${e.first_name} ${e.last_name}` : d.employee_id; })(),
-                    document_name: d.doc_name ?? d.title,
-                    document_type: d.doc_type,
-                    expiry_date: d.expiry_date,
-                    status: getDocumentExpiryStatus(d)
-                  })));
-                  downloadTextFile(`hr-documents-expired-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-                }}>Export Expired (Excel/CSV)</button>
+                <HrExportMenu
+                  moduleName="HR Documents — Expired"
+                  columns={[
+                    { key: 'employee', label: 'Employee' },
+                    { key: 'document_name', label: 'Document Name' },
+                    { key: 'document_type', label: 'Document Type' },
+                    { key: 'expiry_date', label: 'Expiry Date' },
+                    { key: 'status', label: 'Status' }
+                  ]}
+                  rows={filteredPersonalDocs
+                    .filter((d) => getDocumentExpiryStatus(d) === 'expired')
+                    .map((d) => {
+                      const e = employeeById.get(d.employee_id as UUID);
+                      return {
+                        employee: e ? `${e.first_name} ${e.last_name}` : d.employee_id,
+                        document_name: d.doc_name ?? d.title,
+                        document_type: d.doc_type,
+                        expiry_date: d.expiry_date,
+                        status: getDocumentExpiryStatus(d)
+                      };
+                    })}
+                />
               </div>
             </div>
 
@@ -741,18 +752,25 @@ export function HrDocumentsPage() {
 
             {(canEdit || isSupervisor(activeRole ?? null)) && (
               <div className="bg-white border border-surface-300 rounded-xl p-4">
-                <button className="px-3 py-2 rounded-lg border border-surface-300 text-sm" onClick={() => {
-                  const flattened = (ackDocs ?? []).flatMap((d) => (d.receipts ?? []).map((r) => ({
+                <HrExportMenu
+                  moduleName="HR Acknowledgement Completion"
+                  columns={[
+                    { key: 'document', label: 'Document' },
+                    { key: 'status', label: 'Status' },
+                    { key: 'employee_id', label: 'Employee ID' },
+                    { key: 'acknowledged_at', label: 'Acknowledged At' },
+                    { key: 'signed_at', label: 'Signed At' },
+                    { key: 'device_info', label: 'Device Info' }
+                  ]}
+                  rows={(ackDocs ?? []).flatMap((d) => (d.receipts ?? []).map((r) => ({
                     document: d.title,
                     status: r.status,
                     employee_id: r.employee_id,
                     acknowledged_at: r.acknowledged_at,
                     signed_at: r.signed_at,
                     device_info: r.device_info
-                  })));
-                  const csv = toCsv(flattened);
-                  downloadTextFile(`hr-acknowledgement-completion-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-                }}>Export Acknowledgement Completion (Excel/CSV)</button>
+                  })))}
+                />
               </div>
             )}
           </>

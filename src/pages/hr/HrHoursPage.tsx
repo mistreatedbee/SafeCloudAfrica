@@ -17,7 +17,7 @@ import {
   upsertHrTimesheet
 } from '../../api/services/hrService';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
-import { downloadTextFile, toCsv } from '../../utils/csv';
+import { HrExportMenu } from '../../components/hr/HrExportMenu';
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 
@@ -95,6 +95,45 @@ export function HrHoursPage() {
     return ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][parsed.getDay()] ?? '';
   }, [date]);
   const selectedDayIsWorkingDay = !selectedDayName || workingDays.includes(selectedDayName);
+
+  const [filterQuery, setFilterQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+
+  const filtersActiveCount = [filterQuery, filterStatus, filterDepartment, filterDateFrom, filterDateTo].filter(Boolean).length;
+
+  function clearFilters() {
+    setFilterQuery('');
+    setFilterStatus('');
+    setFilterDepartment('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+  }
+
+  const employeeDepartmentId = useMemo(
+    () => new Map((employees ?? []).map((e) => [e.id as UUID, e.department_id as UUID | null])),
+    [employees]
+  );
+
+  const filteredRows = useMemo(() => {
+    return (rows ?? []).filter((row) => {
+      const q = filterQuery.trim().toLowerCase();
+      if (q) {
+        const name = String(employeeLabel.get(row.employee_id as UUID) ?? '').toLowerCase();
+        if (!name.includes(q)) return false;
+      }
+      if (filterStatus && String(row.status ?? '') !== filterStatus) return false;
+      if (filterDepartment) {
+        const deptId = employeeDepartmentId.get(row.employee_id as UUID);
+        if (!deptId || String(deptId) !== filterDepartment) return false;
+      }
+      if (filterDateFrom && row.date < filterDateFrom) return false;
+      if (filterDateTo && row.date > filterDateTo) return false;
+      return true;
+    });
+  }, [rows, employeeLabel, employeeDepartmentId, filterQuery, filterStatus, filterDepartment, filterDateFrom, filterDateTo]);
 
   const byMonth = useMemo(() => {
     const map = new Map<string, number>();
@@ -275,10 +314,60 @@ export function HrHoursPage() {
           </button>
         </div>
 
+        <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Search</span>
+              <input className="w-48 border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Employee name" value={filterQuery} onChange={(e) => setFilterQuery(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Status</span>
+              <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                <option value="">All</option>
+                <option value="SUBMITTED">SUBMITTED</option>
+                <option value="APPROVED">APPROVED</option>
+                <option value="DECLINED">DECLINED</option>
+              </select>
+            </label>
+            {(departments ?? []).length > 0 && (
+              <label className="text-sm">
+                <span className="block text-xs text-charcoal-500 mb-1">Department</span>
+                <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)}>
+                  <option value="">All</option>
+                  {(departments ?? []).map((d) => <option key={String(d.id)} value={String(d.id)}>{d.name}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Date from</span>
+              <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Date to</span>
+              <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
+            </label>
+            {filtersActiveCount > 0 && (
+              <div className="flex items-center gap-2 text-xs text-charcoal-500">
+                <span>{filtersActiveCount} filter{filtersActiveCount === 1 ? '' : 's'} active</span>
+                <button type="button" className="text-teal underline" onClick={clearFilters}>Clear filters</button>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="flex justify-end">
-          <button className="px-3 py-2 rounded-lg border border-surface-300 text-sm" onClick={() => {
-            const csv = toCsv((rows ?? []).map((row) => ({
-              id: row.id,
+          <HrExportMenu
+            moduleName="Timesheets"
+            columns={[
+              { key: 'employee', label: 'Employee' },
+              { key: 'date', label: 'Date' },
+              { key: 'hours_worked', label: 'Hours Worked' },
+              { key: 'overtime_hours', label: 'Overtime' },
+              { key: 'daily_total', label: 'Daily Total' },
+              { key: 'status', label: 'Status' },
+              { key: 'project_or_client', label: 'Project / Client' }
+            ]}
+            rows={filteredRows.map((row) => ({
               employee: employeeLabel.get(row.employee_id as UUID) ?? row.employee_id,
               date: row.date,
               hours_worked: row.hours_worked,
@@ -286,21 +375,20 @@ export function HrHoursPage() {
               daily_total: Number(row.hours_worked ?? 0) + Number(row.overtime_hours ?? 0),
               status: row.status,
               project_or_client: row.project_or_client
-            })));
-            downloadTextFile(`hr-timesheets-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-          }}>Export CSV</button>
+            }))}
+          />
         </div>
 
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
           {rowsLoading ? (
             <div className="flex justify-center py-10"><LoadingSpinner /></div>
-          ) : (rows ?? []).length === 0 ? (
-            <div className="text-center py-10 text-sm text-charcoal-500">No timesheet entries yet.</div>
+          ) : filteredRows.length === 0 ? (
+            <div className="text-center py-10 text-sm text-charcoal-500">No timesheet entries match your filters.</div>
           ) : (
           <table className="w-full text-sm">
             <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Date</th><th className="text-left px-3 py-2">Hours worked</th><th className="text-left px-3 py-2">Overtime</th><th className="text-left px-3 py-2">Daily total</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Decline reason</th><th className="text-left px-3 py-2">Action</th></tr></thead>
             <tbody>
-              {(rows ?? []).map((row) => (
+              {filteredRows.map((row) => (
                 <tr key={row.id} className="border-t border-surface-100">
                   <td className="px-3 py-2">{employeeLabel.get(row.employee_id as UUID) ?? row.employee_id}</td>
                   <td className="px-3 py-2">{row.date}</td>

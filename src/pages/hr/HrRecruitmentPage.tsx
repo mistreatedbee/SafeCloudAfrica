@@ -8,6 +8,7 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { createHrRecord, deleteHrRecord, listHrRecords, updateHrRecord, upsertHrEmployee } from '../../api/services/hrService';
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
+import { HrExportMenu } from '../../components/hr/HrExportMenu';
 
 const EXPERIENCE_OPTIONS = ['0-1 years', '2-3 years', '4-5 years', '6+ years'];
 
@@ -46,6 +47,42 @@ export function HrRecruitmentPage() {
   }, [activeCompanyId]);
 
   const vacancyMap = useMemo(() => new Map((vacancies ?? []).map((row) => [row.id as UUID, String(row.title ?? '')])), [vacancies]);
+
+  const [vacancyQuery, setVacancyQuery] = useState('');
+  const [vacancyStatusFilter, setVacancyStatusFilter] = useState('');
+  const vacancyStatusOptions = useMemo(
+    () => Array.from(new Set((vacancies ?? []).map((row) => String(row.status ?? '')).filter(Boolean))),
+    [vacancies]
+  );
+  const vacancyFiltersActiveCount = [vacancyQuery, vacancyStatusFilter].filter(Boolean).length;
+  const filteredVacancies = useMemo(() => {
+    return (vacancies ?? []).filter((row) => {
+      const q = vacancyQuery.trim().toLowerCase();
+      if (q && !String(row.title ?? '').toLowerCase().includes(q)) return false;
+      if (vacancyStatusFilter && String(row.status ?? '') !== vacancyStatusFilter) return false;
+      return true;
+    });
+  }, [vacancies, vacancyQuery, vacancyStatusFilter]);
+
+  const [applicantQuery, setApplicantQuery] = useState('');
+  const [applicantStatusFilter, setApplicantStatusFilter] = useState('');
+  const applicantStatusOptions = useMemo(
+    () => Array.from(new Set((applicants ?? []).map((row) => String(row.status ?? '')).filter(Boolean))),
+    [applicants]
+  );
+  const applicantFiltersActiveCount = [applicantQuery, applicantStatusFilter].filter(Boolean).length;
+  const filteredApplicants = useMemo(() => {
+    return (applicants ?? []).filter((row) => {
+      const q = applicantQuery.trim().toLowerCase();
+      if (q) {
+        const name = String(row.full_name ?? '').toLowerCase();
+        const vacancyTitle = String(vacancyMap.get(row.vacancy_id as UUID) ?? '').toLowerCase();
+        if (!name.includes(q) && !vacancyTitle.includes(q)) return false;
+      }
+      if (applicantStatusFilter && String(row.status ?? '') !== applicantStatusFilter) return false;
+      return true;
+    });
+  }, [applicants, vacancyMap, applicantQuery, applicantStatusFilter]);
 
   async function onCreateVacancy() {
     if (!activeCompanyId || !user?.id || !vacancyTitle.trim()) return;
@@ -331,12 +368,48 @@ export function HrRecruitmentPage() {
                 Create Vacancy
               </button>
             </div>
+            <div className="flex flex-wrap items-end gap-2 border-t border-surface-100 pt-3">
+              <label className="text-sm">
+                <span className="block text-xs text-charcoal-500 mb-1">Search</span>
+                <input className="w-44 border border-surface-300 rounded-lg px-3 py-1.5 text-sm" placeholder="Vacancy title" value={vacancyQuery} onChange={(e) => setVacancyQuery(e.target.value)} />
+              </label>
+              <label className="text-sm">
+                <span className="block text-xs text-charcoal-500 mb-1">Status</span>
+                <select className="border border-surface-300 rounded-lg px-3 py-1.5 text-sm" value={vacancyStatusFilter} onChange={(e) => setVacancyStatusFilter(e.target.value)}>
+                  <option value="">All</option>
+                  {vacancyStatusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </label>
+              {vacancyFiltersActiveCount > 0 && (
+                <div className="flex items-center gap-2 text-xs text-charcoal-500">
+                  <span>{vacancyFiltersActiveCount} filter{vacancyFiltersActiveCount === 1 ? '' : 's'} active</span>
+                  <button type="button" className="text-teal underline" onClick={() => { setVacancyQuery(''); setVacancyStatusFilter(''); }}>Clear filters</button>
+                </div>
+              )}
+              <HrExportMenu
+                moduleName="Vacancies"
+                columns={[
+                  { key: 'title', label: 'Title' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'experience_required', label: 'Experience Required' },
+                  { key: 'reference_checks_done', label: 'Reference Checks Done' },
+                  { key: 'department_manager_approved', label: 'Department Manager Approved' }
+                ]}
+                rows={filteredVacancies.map((row) => ({
+                  title: row.title,
+                  status: row.status,
+                  experience_required: row.experience_required,
+                  reference_checks_done: row.reference_checks_done,
+                  department_manager_approved: row.department_manager_approved
+                }))}
+              />
+            </div>
             <div className="space-y-2 text-sm">
               {vacanciesLoading ? (
                 <div className="flex justify-center py-6"><LoadingSpinner /></div>
-              ) : (vacancies ?? []).length === 0 ? (
-                <p className="text-sm text-charcoal-500 py-4 text-center">No vacancies yet.</p>
-              ) : (vacancies ?? []).map((row) => (
+              ) : filteredVacancies.length === 0 ? (
+                <p className="text-sm text-charcoal-500 py-4 text-center">No vacancies match your filters.</p>
+              ) : filteredVacancies.map((row) => (
                 <div key={String(row.id)} className="border border-surface-200 rounded-lg p-3">
                   <p className="font-medium">{String(row.title ?? '')}</p>
                   <p className="text-charcoal-500">
@@ -402,12 +475,50 @@ export function HrRecruitmentPage() {
               </button>
             </div>
 
+            <div className="flex flex-wrap items-end gap-2 border-t border-surface-100 pt-3">
+              <label className="text-sm">
+                <span className="block text-xs text-charcoal-500 mb-1">Search</span>
+                <input className="w-44 border border-surface-300 rounded-lg px-3 py-1.5 text-sm" placeholder="Name or vacancy" value={applicantQuery} onChange={(e) => setApplicantQuery(e.target.value)} />
+              </label>
+              <label className="text-sm">
+                <span className="block text-xs text-charcoal-500 mb-1">Status</span>
+                <select className="border border-surface-300 rounded-lg px-3 py-1.5 text-sm" value={applicantStatusFilter} onChange={(e) => setApplicantStatusFilter(e.target.value)}>
+                  <option value="">All</option>
+                  {applicantStatusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </label>
+              {applicantFiltersActiveCount > 0 && (
+                <div className="flex items-center gap-2 text-xs text-charcoal-500">
+                  <span>{applicantFiltersActiveCount} filter{applicantFiltersActiveCount === 1 ? '' : 's'} active</span>
+                  <button type="button" className="text-teal underline" onClick={() => { setApplicantQuery(''); setApplicantStatusFilter(''); }}>Clear filters</button>
+                </div>
+              )}
+              <HrExportMenu
+                moduleName="Applicants"
+                columns={[
+                  { key: 'full_name', label: 'Full Name' },
+                  { key: 'vacancy', label: 'Vacancy' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'interviewed_met_requirements', label: 'Met Requirements' },
+                  { key: 'offer_accepted', label: 'Offer Accepted' },
+                  { key: 'criminal_record', label: 'Criminal Record' }
+                ]}
+                rows={filteredApplicants.map((row) => ({
+                  full_name: row.full_name,
+                  vacancy: vacancyMap.get(row.vacancy_id as UUID) ?? row.vacancy_id,
+                  status: row.status,
+                  interviewed_met_requirements: row.interviewed_met_requirements,
+                  offer_accepted: row.offer_accepted,
+                  criminal_record: row.criminal_record
+                }))}
+              />
+            </div>
             <div className="space-y-2 text-sm">
               {applicantsLoading ? (
                 <div className="flex justify-center py-6"><LoadingSpinner /></div>
-              ) : (applicants ?? []).length === 0 ? (
-                <p className="text-sm text-charcoal-500 py-4 text-center">No applicants yet.</p>
-              ) : (applicants ?? []).map((row) => (
+              ) : filteredApplicants.length === 0 ? (
+                <p className="text-sm text-charcoal-500 py-4 text-center">No applicants match your filters.</p>
+              ) : filteredApplicants.map((row) => (
                 <div key={String(row.id)} className="border border-surface-200 rounded-lg p-3">
                   <p className="font-medium">{String(row.full_name ?? '')}</p>
                   <p className="text-charcoal-500">Vacancy: {row.vacancy_id ? String(vacancyMap.get(row.vacancy_id as UUID) ?? row.vacancy_id) : '-'}</p>

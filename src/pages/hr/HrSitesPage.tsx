@@ -9,6 +9,7 @@ import { listSites, createSite, updateSite, deleteSite } from '../../api/service
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { Site } from '../../api/models/entities';
+import { HrExportMenu } from '../../components/hr/HrExportMenu';
 
 export function HrSitesPage() {
   const { activeCompanyId, activeRole } = useTenant();
@@ -95,8 +96,14 @@ export function HrSitesPage() {
     }
   }
 
-  const active = (sites ?? []).filter((s) => s.is_active);
-  const archived = (sites ?? []).filter((s) => !s.is_active);
+  const [searchQuery, setSearchQuery] = useState('');
+  const matchesSearch = (site: Site) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return site.name.toLowerCase().includes(q) || (site.address ?? '').toLowerCase().includes(q);
+  };
+  const active = (sites ?? []).filter((s) => s.is_active && matchesSearch(s));
+  const archived = (sites ?? []).filter((s) => !s.is_active && matchesSearch(s));
 
   return (
     <Layout title="Site Management">
@@ -130,6 +137,33 @@ export function HrSitesPage() {
             </div>
           </div>
         )}
+
+        <div className="bg-white border border-surface-300 rounded-xl p-4 flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            <span className="block text-xs text-charcoal-500 mb-1">Search</span>
+            <input
+              className="w-56 border border-surface-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="Site name or address"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </label>
+          {searchQuery && (
+            <div className="flex items-center gap-2 text-xs text-charcoal-500">
+              <span>1 filter active</span>
+              <button type="button" className="text-teal underline" onClick={() => setSearchQuery('')}>Clear filters</button>
+            </div>
+          )}
+          <HrExportMenu
+            moduleName="Sites"
+            columns={[
+              { key: 'name', label: 'Site Name' },
+              { key: 'address', label: 'Address' },
+              { key: 'is_active', label: 'Active' }
+            ]}
+            rows={[...active, ...archived].map((site) => ({ name: site.name, address: site.address ?? '', is_active: site.is_active ? 'Yes' : 'No' }))}
+          />
+        </div>
 
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
           <div className="px-4 py-3 border-b border-surface-200">

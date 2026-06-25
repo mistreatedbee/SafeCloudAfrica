@@ -18,8 +18,8 @@ import { createNotification } from '../../api/services/notificationsService';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { SelectOrType } from '../../components/ui/SelectOrType';
 import { EvidenceModal } from '../../components/evidence/EvidenceModal';
+import { HrExportMenu } from '../../components/hr/HrExportMenu';
 import type { UUID } from '../../api/models/core';
-import { downloadTextFile, toCsv } from '../../utils/csv';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 
 type SeverityFlag = 'minor' | 'major' | 'repeat';
@@ -102,6 +102,36 @@ export function HrLabourPage() {
     () => new Map((employees ?? []).map((row) => [row.id as UUID, `${row.first_name} ${row.last_name} (${row.employee_no})`])),
     [employees]
   );
+
+  const [filterQuery, setFilterQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+
+  const filtersActiveCount = [filterQuery, filterStatus, filterDateFrom, filterDateTo].filter(Boolean).length;
+
+  function clearFilters() {
+    setFilterQuery('');
+    setFilterStatus('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+  }
+
+  const filteredCases = useMemo(() => {
+    return (cases ?? []).filter((row) => {
+      const q = filterQuery.trim().toLowerCase();
+      if (q) {
+        const name = (employeeLabel.get(row.employee_id as UUID) ?? '').toLowerCase();
+        const offence = String(row.offence_type ?? row.offence_category ?? '').toLowerCase();
+        if (!name.includes(q) && !offence.includes(q)) return false;
+      }
+      if (filterStatus && String(row.status ?? '') !== filterStatus) return false;
+      const issued = String(row.date_issued ?? '');
+      if (filterDateFrom && issued && issued < filterDateFrom) return false;
+      if (filterDateTo && issued && issued > filterDateTo) return false;
+      return true;
+    });
+  }, [cases, employeeLabel, filterQuery, filterStatus, filterDateFrom, filterDateTo]);
 
   const repeatCount = useMemo(() => {
     if (!employeeId) return 0;
@@ -222,22 +252,30 @@ export function HrLabourPage() {
     }
   }
 
-  const onExport = () => {
-    const csv = toCsv((cases ?? []).map((row) => ({
-      id: row.id,
-      employee: employeeLabel.get(row.employee_id as UUID) ?? row.employee_id,
-      offence_type: row.offence_type ?? row.offence_category,
-      description: row.description,
-      disciplinary_action_taken: row.disciplinary_action_taken,
-      repeat_offence_action: row.repeat_offence_action,
-      recommended_action: row.recommended_action,
-      offence_severity: row.offence_severity,
-      repeat_offence_flag: row.repeat_offence_flag,
-      status: row.status,
-      date_issued: row.date_issued
-    })));
-    downloadTextFile(`hr-offence-log-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-  };
+  const exportRows = filteredCases.map((row) => ({
+    employee: employeeLabel.get(row.employee_id as UUID) ?? row.employee_id,
+    offence_type: row.offence_type ?? row.offence_category,
+    description: row.description,
+    disciplinary_action_taken: row.disciplinary_action_taken,
+    repeat_offence_action: row.repeat_offence_action,
+    recommended_action: row.recommended_action,
+    offence_severity: row.offence_severity,
+    repeat_offence_flag: row.repeat_offence_flag,
+    status: row.status,
+    date_issued: row.date_issued
+  }));
+  const exportColumns = [
+    { key: 'employee', label: 'Employee' },
+    { key: 'offence_type', label: 'Offence Type' },
+    { key: 'description', label: 'Description' },
+    { key: 'disciplinary_action_taken', label: 'Disciplinary Action Taken' },
+    { key: 'repeat_offence_action', label: 'Repeat Offence Action' },
+    { key: 'recommended_action', label: 'Recommended Action' },
+    { key: 'offence_severity', label: 'Severity' },
+    { key: 'repeat_offence_flag', label: 'Repeat Offence' },
+    { key: 'status', label: 'Status' },
+    { key: 'date_issued', label: 'Date Issued' }
+  ];
 
   return (
     <Layout title="Labour Relations & Compliance">
@@ -307,15 +345,52 @@ export function HrLabourPage() {
             <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-60" onClick={() => void onCreate()} disabled={!canManage || saving}>
               {saving ? 'Saving...' : 'Report Offence / Log Case'}
             </button>
-            <button className="px-3 py-2 rounded-lg border border-surface-300 text-sm" onClick={onExport}>Export CSV</button>
+            <HrExportMenu moduleName="Labour Relations" columns={exportColumns} rows={exportRows} />
+          </div>
+        </div>
+
+        <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Search</span>
+              <input
+                className="w-56 border border-surface-300 rounded-lg px-3 py-2 text-sm"
+                placeholder="Employee or offence type"
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Status</span>
+              <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                <option value="">All</option>
+                <option value="OPEN">OPEN</option>
+                <option value="IN_PROGRESS">IN_PROGRESS</option>
+                <option value="CLOSED">CLOSED</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Date from</span>
+              <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Date to</span>
+              <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
+            </label>
+            {filtersActiveCount > 0 && (
+              <div className="flex items-center gap-2 text-xs text-charcoal-500">
+                <span>{filtersActiveCount} filter{filtersActiveCount === 1 ? '' : 's'} active</span>
+                <button type="button" className="text-teal underline" onClick={clearFilters}>Clear filters</button>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
           {casesLoading ? (
             <div className="flex justify-center py-10"><LoadingSpinner /></div>
-          ) : (cases ?? []).length === 0 ? (
-            <div className="text-center py-10 text-sm text-charcoal-500">No labour cases yet.</div>
+          ) : filteredCases.length === 0 ? (
+            <div className="text-center py-10 text-sm text-charcoal-500">No labour cases match your filters.</div>
           ) : (
           <table className="w-full text-sm">
             <thead className="bg-surface-100">
@@ -329,7 +404,7 @@ export function HrLabourPage() {
               </tr>
             </thead>
             <tbody>
-              {(cases ?? []).map((row) => (
+              {filteredCases.map((row) => (
                 <tr key={row.id} className="border-t border-surface-100">
                   <td className="px-3 py-2">{employeeLabel.get(row.employee_id as UUID) ?? String(row.employee_id ?? '')}</td>
                   <td className="px-3 py-2">{String(row.offence_type ?? row.offence_category ?? '')}</td>

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useUser } from '@insforge/react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
@@ -13,9 +13,11 @@ import { HrEmployeeEditModal } from '../../components/hr/HrEmployeeEditModal';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { uploadFile, getPublicUrl } from '../../api/services/storageService';
 import { listEvidence, createEvidence } from '../../api/services/evidenceService';
-import type { EvidenceAttachment } from '../../api/models/entities';
+import type { EvidenceAttachment, HrActionSignoffRequest } from '../../api/models/entities';
+import { listSignoffRequestsForEmployee, signOffWellnessAction } from '../../api/services/hrActionSignoffService';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
-const TABS = ['overview', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'tasks', 'documents', 'audit'] as const;
+const TABS = ['overview', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'tasks', 'documents', 'sign_offs', 'audit'] as const;
 const DOC_TYPES = ['ID Copy', 'Contract', 'Certificate', 'Medical', 'Other'] as const;
 type Tab = (typeof TABS)[number];
 
@@ -80,6 +82,34 @@ export function HrEmployeeProfilePage() {
       employeeId: id as UUID
     });
   }, [activeCompanyId, activeRole, user?.id, id, docRefreshKey]);
+
+  const [signoffRefreshKey, setSignoffRefreshKey] = useState(0);
+  const [signingOffRequestId, setSigningOffRequestId] = useState<UUID | null>(null);
+  const [signoffError, setSignoffError] = useState<string | null>(null);
+
+  const { data: pendingSignoffs } = useAsync<HrActionSignoffRequest[]>(async () => {
+    if (!activeCompanyId || !id) return [];
+    return listSignoffRequestsForEmployee(activeCompanyId, id as UUID, 'pending');
+  }, [activeCompanyId, id, signoffRefreshKey]);
+
+  const handleSignOff = async (request: HrActionSignoffRequest) => {
+    if (!activeCompanyId || !user?.id) return;
+    setSignoffError(null);
+    setSigningOffRequestId(request.id);
+    try {
+      await signOffWellnessAction({
+        companyId: activeCompanyId,
+        requestId: request.id,
+        actionId: request.entity_id,
+        actorUserId: user.id as UUID
+      });
+      setSignoffRefreshKey((k) => k + 1);
+    } catch (err) {
+      setSignoffError(toUserFacingError(err, 'Failed to sign off.'));
+    } finally {
+      setSigningOffRequestId(null);
+    }
+  };
 
   const employee = payload?.employee as HrEmployee | undefined;
   const canSensitive = Boolean(payload?.canSensitive);
@@ -486,6 +516,50 @@ export function HrEmployeeProfilePage() {
               </table>
             </div>
           </div>
+        )}
+
+        {tab === 'sign_offs' && (
+          <Card title="Pending sign-offs">
+            {signoffError && <div className="bg-critical/10 border border-critical/30 rounded-lg p-2 text-sm text-critical mb-3">{signoffError}</div>}
+            <div className="space-y-2">
+              {(pendingSignoffs ?? []).map((request) => {
+                const canSignOff = request.requested_for_user_id === user?.id || canEditEmployee;
+                return (
+                  <div key={request.id} className="flex items-center justify-between border border-surface-200 rounded-lg px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-charcoal">{request.action_summary ?? 'Action item sign-off'}</p>
+                      <p className="text-xs text-charcoal-500 mt-0.5">
+                        Requested {new Date(request.created_at).toLocaleDateString('en-ZA')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 text-sm">
+                      {request.assessment_id && (
+                        <Link
+                          to={`/dashboard/hr/wellness?assessmentId=${request.assessment_id}&actionId=${request.entity_id}`}
+                          className="text-teal hover:underline"
+                        >
+                          View
+                        </Link>
+                      )}
+                      {canSignOff && (
+                        <button
+                          type="button"
+                          className="px-3 py-1 rounded-lg bg-teal text-white text-xs font-semibold disabled:opacity-60"
+                          disabled={signingOffRequestId === request.id}
+                          onClick={() => void handleSignOff(request)}
+                        >
+                          {signingOffRequestId === request.id ? 'Signing off...' : 'Sign off'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {(pendingSignoffs ?? []).length === 0 && (
+                <p className="text-sm text-charcoal-500">No pending sign-offs for this employee.</p>
+              )}
+            </div>
+          </Card>
         )}
 
         {tab === 'audit' && (

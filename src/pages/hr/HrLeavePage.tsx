@@ -18,7 +18,7 @@ import {
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { SelectOrType } from '../../components/ui/SelectOrType';
 import { EvidenceModal } from '../../components/evidence/EvidenceModal';
-import { downloadTextFile, toCsv } from '../../utils/csv';
+import { HrExportMenu } from '../../components/hr/HrExportMenu';
 import type { UUID } from '../../api/models/core';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
@@ -364,6 +364,37 @@ export function HrLeavePage() {
 
   const pending = useMemo(() => (requests ?? []).filter((row) => row.status === 'SUBMITTED'), [requests]);
 
+  const [filterQuery, setFilterQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+
+  const filtersActiveCount = [filterQuery, filterStatus, filterDateFrom, filterDateTo].filter(Boolean).length;
+
+  function clearFilters() {
+    setFilterQuery('');
+    setFilterStatus('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+  }
+
+  const filteredRequests = useMemo(() => {
+    return (requests ?? []).filter((row) => {
+      const q = filterQuery.trim().toLowerCase();
+      if (q) {
+        const name = String(employeeLabel.get(row.employee_id as UUID) ?? '').toLowerCase();
+        const leaveType = String(leaveTypeLabelById.get(row.leave_type_id as UUID) ?? '').toLowerCase();
+        if (!name.includes(q) && !leaveType.includes(q)) return false;
+      }
+      if (filterStatus && String(row.status ?? '') !== filterStatus) return false;
+      const start = String(row.start_date ?? '');
+      const end = String(row.end_date ?? '');
+      if (filterDateFrom && end && end < filterDateFrom) return false;
+      if (filterDateTo && start && start > filterDateTo) return false;
+      return true;
+    });
+  }, [requests, employeeLabel, leaveTypeLabelById, filterQuery, filterStatus, filterDateFrom, filterDateTo]);
+
   return (
     <Layout title="Leave Management">
       <div className="space-y-4">
@@ -472,31 +503,82 @@ export function HrLeavePage() {
               </div>
             </div>
           )}
-          <button className="mt-3 px-3 py-2 rounded-lg border border-surface-300 text-sm" onClick={() => {
-            const csv = toCsv((requests ?? []).map((row) => ({
-              id: row.id,
-              employee: employeeLabel.get(row.employee_id as UUID) ?? row.employee_id,
-              leave_type: leaveTypeLabelById.get(row.leave_type_id as UUID) ?? row.leave_type_id,
-              start_date: row.start_date,
-              end_date: row.end_date,
-              total_days: row.total_days,
-              status: row.status,
-              supervisor_approval_status: row.supervisor_approval_status,
-              hr_approval_status: row.hr_approval_status,
-              decline_reason: row.decline_reason
-            })));
-            downloadTextFile(`hr-leave-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-          }}>Export CSV</button>
+          <div className="mt-3">
+            <HrExportMenu
+              moduleName="Leave Requests"
+              columns={[
+                { key: 'employee', label: 'Employee' },
+                { key: 'leave_type', label: 'Leave Type' },
+                { key: 'start_date', label: 'Start Date' },
+                { key: 'end_date', label: 'End Date' },
+                { key: 'total_days', label: 'Total Days' },
+                { key: 'status', label: 'Status' },
+                { key: 'supervisor_approval_status', label: 'Supervisor Approval' },
+                { key: 'hr_approval_status', label: 'HR Approval' },
+                { key: 'decline_reason', label: 'Decline Reason' }
+              ]}
+              rows={filteredRequests.map((row) => ({
+                employee: employeeLabel.get(row.employee_id as UUID) ?? row.employee_id,
+                leave_type: leaveTypeLabelById.get(row.leave_type_id as UUID) ?? row.leave_type_id,
+                start_date: row.start_date,
+                end_date: row.end_date,
+                total_days: row.total_days,
+                status: row.status,
+                supervisor_approval_status: row.supervisor_approval_status,
+                hr_approval_status: row.hr_approval_status,
+                decline_reason: row.decline_reason
+              }))}
+            />
+          </div>
+        </div>
+
+        <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Search</span>
+              <input
+                className="w-56 border border-surface-300 rounded-lg px-3 py-2 text-sm"
+                placeholder="Employee or leave type"
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Status</span>
+              <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                <option value="">All</option>
+                <option value="DRAFT">DRAFT</option>
+                <option value="SUBMITTED">SUBMITTED</option>
+                <option value="APPROVED">APPROVED</option>
+                <option value="DECLINED">DECLINED</option>
+                <option value="CANCELLED">CANCELLED</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">From</span>
+              <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">To</span>
+              <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
+            </label>
+            {filtersActiveCount > 0 && (
+              <div className="flex items-center gap-2 text-xs text-charcoal-500">
+                <span>{filtersActiveCount} filter{filtersActiveCount === 1 ? '' : 's'} active</span>
+                <button type="button" className="text-teal underline" onClick={clearFilters}>Clear filters</button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
-          {(requests ?? []).length === 0 ? (
-            <div className="text-center py-10 text-sm text-charcoal-500">No leave requests yet.</div>
+          {filteredRequests.length === 0 ? (
+            <div className="text-center py-10 text-sm text-charcoal-500">No leave requests match your filters.</div>
           ) : (
           <table className="w-full text-sm">
             <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Leave type</th><th className="text-left px-3 py-2">Dates</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Workflow</th><th className="text-left px-3 py-2">Decline reason</th><th className="text-left px-3 py-2">Action</th></tr></thead>
             <tbody>
-              {(requests ?? []).map((row) => (
+              {filteredRequests.map((row) => (
                 <tr key={row.id} className="border-t border-surface-100">
                   <td className="px-3 py-2">{employeeLabel.get(row.employee_id as UUID) ?? row.employee_id}</td>
                   <td className="px-3 py-2">{leaveTypeLabelById.get(row.leave_type_id as UUID) ?? row.leave_type_id}</td>

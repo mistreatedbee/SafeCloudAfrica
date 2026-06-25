@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
@@ -8,7 +8,8 @@ import { toUserFacingError } from '../../utils/userFacingMessage';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
-import type { UUID } from '../../api/models/entities';
+import { EvidenceModal } from '../../components/evidence/EvidenceModal';
+import type { EvidenceAttachment, HrActionSignoffRequest, UUID } from '../../api/models/entities';
 import {
   deleteHrRecord,
   listHrEmployees,
@@ -16,10 +17,17 @@ import {
   createEmployeeWellnessAssessment,
   getEmployeeWellnessAssessment,
   updateEmployeeWellnessAssessment,
+  updateHrRecord,
   type HrEmployee,
   type HrEmployeeWellnessAssessment,
   type HrEmployeeWellnessAction
 } from '../../api/services/hrService';
+import { listEvidenceForEntityType } from '../../api/services/evidenceService';
+import {
+  createSignoffRequest,
+  listSignoffRequestsForAssessment,
+  signOffWellnessAction
+} from '../../api/services/hrActionSignoffService';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 
@@ -59,7 +67,22 @@ type ActionPlanRow = {
   actionRequired: string;
   responsibleEmployeeId: UUID | null;
   targetDate: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CLOSED';
+  completedDate: string | null;
+  createdByUserId?: UUID | null;
 };
+
+function createBlankActionRow(): ActionPlanRow {
+  return {
+    identifiedIssue: '',
+    actionRequired: '',
+    responsibleEmployeeId: null,
+    targetDate: '',
+    status: 'OPEN',
+    completedDate: null,
+    createdByUserId: null
+  };
+}
 
 const WELLNESS_ROWS: Omit<WellnessRow, 'answer' | 'comments'>[] = [
   { key: 'physically_healthy', label: 'Employee feels physically healthy' },
@@ -94,8 +117,11 @@ const ACTIVITY_ROWS: Omit<ActivityRow, 'participation' | 'comments'>[] = [
 
 export function HrEmployeeWellnessPage() {
   const location = useLocation();
-  const { activeCompanyId } = useTenant();
+  const [searchParams] = useSearchParams();
+  const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
+  const canManage = ['owner', 'admin', 'manager', 'supervisor'].includes(activeRole ?? '');
+  const canDelete = activeRole === 'admin' || activeRole === 'owner';
   const [selectedEmployeeUserId, setSelectedEmployeeUserId] = useState<UUID | ''>('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<UUID | null>(null);
   const [assessmentDate, setAssessmentDate] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -119,13 +145,20 @@ export function HrEmployeeWellnessPage() {
   const [activityRows, setActivityRows] = useState<ActivityRow[]>(
     ACTIVITY_ROWS.map((row) => ({ ...row, participation: '', comments: '' }))
   );
-  const [actionPlanRows, setActionPlanRows] = useState<ActionPlanRow[]>([
-    { identifiedIssue: '', actionRequired: '', responsibleEmployeeId: null, targetDate: '' }
-  ]);
+  const [actionPlanRows, setActionPlanRows] = useState<ActionPlanRow[]>([createBlankActionRow()]);
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<UUID | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingAssessmentId, setDeletingAssessmentId] = useState<UUID | null>(null);
+  const [evidenceActionRowId, setEvidenceActionRowId] = useState<UUID | null>(null);
+  const [evidenceRefreshKey, setEvidenceRefreshKey] = useState(0);
+  const [signoffModalRowId, setSignoffModalRowId] = useState<UUID | null>(null);
+  const [signoffTargetEmployeeId, setSignoffTargetEmployeeId] = useState<UUID | ''>('');
+  const [signoffSubmitting, setSignoffSubmitting] = useState(false);
+  const [signingOffActionId, setSigningOffActionId] = useState<UUID | null>(null);
+  const [closingActionId, setClosingActionId] = useState<UUID | null>(null);
+  const [deletingActionId, setDeletingActionId] = useState<UUID | null>(null);
+  const [highlightedActionId, setHighlightedActionId] = useState<UUID | null>(null);
 
   const { data: employees } = useAsync<HrEmployee[]>(
     async () => {
@@ -152,6 +185,38 @@ export function HrEmployeeWellnessPage() {
   );
 
   const employeeById = useMemo(() => new Map((employees ?? []).map((e) => [e.id, e])), [employees]);
+
+  const { data: actionEvidence } = useAsync<EvidenceAttachment[]>(
+    async () => {
+      if (!activeCompanyId) return [];
+      return listEvidenceForEntityType(activeCompanyId, 'hr_employee_wellness_action');
+    },
+    [activeCompanyId, evidenceRefreshKey]
+  );
+
+  const evidenceCountByActionId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of actionEvidence ?? []) {
+      map.set(String(item.entity_id), (map.get(String(item.entity_id)) ?? 0) + 1);
+    }
+    return map;
+  }, [actionEvidence]);
+
+  const { data: signoffRequests, refetch: refetchSignoffRequests } = useAsync<HrActionSignoffRequest[]>(
+    async () => {
+      if (!activeCompanyId || !selectedAssessmentId) return [];
+      return listSignoffRequestsForAssessment(activeCompanyId, selectedAssessmentId);
+    },
+    [activeCompanyId, selectedAssessmentId]
+  );
+
+  const pendingSignoffByActionId = useMemo(() => {
+    const map = new Map<string, HrActionSignoffRequest>();
+    for (const req of signoffRequests ?? []) {
+      if (req.status === 'pending') map.set(String(req.entity_id), req);
+    }
+    return map;
+  }, [signoffRequests]);
 
   const handleEmployeeChange = (
     employeeId: UUID | '',
@@ -215,11 +280,7 @@ export function HrEmployeeWellnessPage() {
   };
 
   const handleAddActionRow = () => {
-    setActionPlanRows((rows) => [...rows, { identifiedIssue: '', actionRequired: '', responsibleEmployeeId: null, targetDate: '' }]);
-  };
-
-  const handleRemoveActionRow = (index: number) => {
-    setActionPlanRows((rows) => (rows.length <= 1 ? rows : rows.filter((_, i) => i !== index)));
+    setActionPlanRows((rows) => [...rows, createBlankActionRow()]);
   };
 
   const serializeWellnessAnswers = () => {
@@ -354,7 +415,7 @@ export function HrEmployeeWellnessPage() {
     const nextHealthRows = HEALTH_ROWS.map((row) => ({ ...row, status: '', comments: '' }));
     const nextSupportRows = SUPPORT_ROWS.map((row) => ({ ...row, answer: null, comments: '' }));
     const nextActivityRows = ACTIVITY_ROWS.map((row) => ({ ...row, participation: '', comments: '' }));
-    const nextActionPlanRows: ActionPlanRow[] = [{ identifiedIssue: '', actionRequired: '', responsibleEmployeeId: null, targetDate: '' }];
+    const nextActionPlanRows: ActionPlanRow[] = [createBlankActionRow()];
 
     setAssessmentDate(nextAssessmentDate);
     setWellnessRows(nextWellnessRows);
@@ -435,13 +496,31 @@ export function HrEmployeeWellnessPage() {
           identifiedIssue: action.identified_issue,
           actionRequired: action.action_required,
           responsibleEmployeeId: action.responsible_employee_id ?? null,
-          targetDate: action.target_date ?? ''
+          targetDate: action.target_date ?? '',
+          status: action.status ?? 'OPEN',
+          completedDate: action.completed_date ?? null,
+          createdByUserId: action.created_by_user_id ?? null
         }))
       );
     } catch (err) {
       setError(toUserFacingError(err, 'Failed to load wellness assessment.'));
     }
   };
+
+  useEffect(() => {
+    const assessmentIdParam = searchParams.get('assessmentId');
+    const actionIdParam = searchParams.get('actionId');
+    if (!assessmentIdParam || assessmentIdParam === selectedAssessmentId) return;
+    void loadAssessment(assessmentIdParam as UUID).then(() => {
+      if (!actionIdParam) return;
+      setHighlightedActionId(actionIdParam as UUID);
+      setTimeout(() => {
+        document.getElementById(`action-row-${actionIdParam}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+      setTimeout(() => setHighlightedActionId(null), 5000);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, selectedAssessmentId]);
 
   const handleSave = async () => {
     if (!activeCompanyId || !user?.id || !selectedEmployee || !selectedEmployee.id) {
@@ -463,7 +542,9 @@ export function HrEmployeeWellnessPage() {
         identifiedIssue: row.identifiedIssue,
         actionRequired: row.actionRequired,
         responsibleEmployeeId: row.responsibleEmployeeId,
-        targetDate: row.targetDate || null
+        targetDate: row.targetDate || null,
+        status: row.status,
+        completedDate: row.completedDate
       }));
 
       if (!selectedAssessmentId) {
@@ -566,6 +647,122 @@ export function HrEmployeeWellnessPage() {
   const supportNeededCount = useMemo(() => {
     return supportRows.filter((row) => row.answer === 'yes').length;
   }, [supportRows]);
+
+  function canEditActionRow(row: ActionPlanRow): boolean {
+    if (row.status === 'CLOSED') return false;
+    return canManage || (Boolean(row.id) && row.createdByUserId === user?.id);
+  }
+
+  function canCloseActionRow(row: ActionPlanRow): boolean {
+    if (!row.id || row.status === 'CLOSED' || !canEditActionRow(row)) return false;
+    return (evidenceCountByActionId.get(String(row.id)) ?? 0) > 0;
+  }
+
+  async function handleCloseAction(row: ActionPlanRow) {
+    if (!activeCompanyId || !user?.id || !row.id) return;
+    if (!window.confirm('Are you sure you want to close this action? This cannot be undone.')) return;
+    setError(null);
+    setClosingActionId(row.id);
+    try {
+      const nowIso = new Date().toISOString();
+      await updateHrRecord('hr_employee_wellness_actions', {
+        companyId: activeCompanyId,
+        rowId: row.id,
+        actorUserId: user.id as UUID,
+        patch: {
+          status: 'CLOSED',
+          completed_date: nowIso.slice(0, 10),
+          closed_by_user_id: user.id,
+          closed_at: nowIso
+        }
+      });
+      setActionPlanRows((rows) =>
+        rows.map((r) => (r.id === row.id ? { ...r, status: 'CLOSED', completedDate: nowIso.slice(0, 10) } : r))
+      );
+    } catch (err) {
+      setError(toUserFacingError(err, 'Failed to close action.'));
+    } finally {
+      setClosingActionId(null);
+    }
+  }
+
+  async function handleDeleteAction(row: ActionPlanRow) {
+    if (!row.id) {
+      setActionPlanRows((rows) => rows.filter((r) => r !== row));
+      return;
+    }
+    if (!activeCompanyId || !user?.id) return;
+    if (!window.confirm('Are you sure you want to delete this record? This cannot be undone.')) return;
+    setError(null);
+    setDeletingActionId(row.id);
+    try {
+      await deleteHrRecord('hr_employee_wellness_actions', {
+        companyId: activeCompanyId,
+        rowId: row.id,
+        actorUserId: user.id as UUID
+      });
+      setActionPlanRows((rows) => rows.filter((r) => r.id !== row.id));
+    } catch (err) {
+      setError(toUserFacingError(err, 'Failed to delete action.'));
+    } finally {
+      setDeletingActionId(null);
+    }
+  }
+
+  async function handleRequestSignoff() {
+    if (!activeCompanyId || !user?.id || !signoffModalRowId || !signoffTargetEmployeeId) return;
+    const row = actionPlanRows.find((r) => r.id === signoffModalRowId);
+    const targetEmployee = (employees ?? []).find((e) => e.id === signoffTargetEmployeeId);
+    setSignoffSubmitting(true);
+    setError(null);
+    try {
+      await createSignoffRequest({
+        companyId: activeCompanyId,
+        entityType: 'hr_employee_wellness_action',
+        entityId: signoffModalRowId,
+        assessmentId: selectedAssessmentId,
+        actionSummary: row ? `${row.identifiedIssue} — ${row.actionRequired}`.trim() : null,
+        requestedForEmployeeId: signoffTargetEmployeeId,
+        requestedForUserId: targetEmployee?.user_id ?? null,
+        requestedByUserId: user.id as UUID,
+        notificationTitle: 'Sign-off requested',
+        notificationMessage: row
+          ? `Please sign off on: ${row.actionRequired || row.identifiedIssue}`
+          : 'Please sign off on an action item.'
+      });
+      setSignoffModalRowId(null);
+      setSignoffTargetEmployeeId('');
+      await refetchSignoffRequests();
+    } catch (err) {
+      setError(toUserFacingError(err, 'Failed to request sign-off.'));
+    } finally {
+      setSignoffSubmitting(false);
+    }
+  }
+
+  async function handleSignOffAction(row: ActionPlanRow) {
+    if (!activeCompanyId || !user?.id || !row.id) return;
+    const request = pendingSignoffByActionId.get(String(row.id));
+    if (!request) return;
+    setSigningOffActionId(row.id);
+    setError(null);
+    try {
+      await signOffWellnessAction({
+        companyId: activeCompanyId,
+        requestId: request.id,
+        actionId: row.id,
+        actorUserId: user.id as UUID
+      });
+      setActionPlanRows((rows) =>
+        rows.map((r) => (r.id === row.id ? { ...r, status: 'COMPLETED', completedDate: new Date().toISOString().slice(0, 10) } : r))
+      );
+      await refetchSignoffRequests();
+    } catch (err) {
+      setError(toUserFacingError(err, 'Failed to sign off action.'));
+    } finally {
+      setSigningOffActionId(null);
+    }
+  }
 
   return (
     <Layout title="Employee Wellness Programme">
@@ -928,16 +1125,29 @@ export function HrEmployeeWellnessPage() {
                   <th className="text-left px-3 py-2">Action Required</th>
                   <th className="text-left px-3 py-2 w-56">Responsible Person</th>
                   <th className="text-left px-3 py-2 w-40">Target Date</th>
-                  <th className="text-center px-3 py-2 w-16">Remove</th>
+                  <th className="text-left px-3 py-2 w-28">Status</th>
+                  <th className="text-left px-3 py-2 w-72">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {actionPlanRows.map((row, index) => (
-                  <tr key={row.id ?? index} className="border-t border-surface-100">
+                {actionPlanRows.map((row, index) => {
+                  const editable = canEditActionRow(row);
+                  const closable = canCloseActionRow(row);
+                  const evidenceCount = row.id ? evidenceCountByActionId.get(String(row.id)) ?? 0 : 0;
+                  const pendingSignoff = row.id ? pendingSignoffByActionId.get(String(row.id)) : undefined;
+                  const canSignOffHere = Boolean(pendingSignoff) && pendingSignoff?.requested_for_user_id === user?.id;
+                  const isHighlighted = Boolean(row.id) && row.id === highlightedActionId;
+                  return (
+                  <tr
+                    key={row.id ?? index}
+                    id={row.id ? `action-row-${row.id}` : undefined}
+                    className={`border-t border-surface-100 transition-colors ${isHighlighted ? 'bg-teal-50' : ''}`}
+                  >
                     <td className="px-3 py-2">
                       <input
-                        className="w-full border border-surface-300 rounded-lg px-2 py-1 text-sm"
+                        className="w-full border border-surface-300 rounded-lg px-2 py-1 text-sm disabled:bg-surface-50 disabled:text-charcoal-400"
                         value={row.identifiedIssue}
+                        disabled={!editable}
                         onChange={(e) =>
                           setActionPlanRows((rows) =>
                             rows.map((r, i) => (i === index ? { ...r, identifiedIssue: e.target.value } : r))
@@ -947,8 +1157,9 @@ export function HrEmployeeWellnessPage() {
                     </td>
                     <td className="px-3 py-2">
                       <input
-                        className="w-full border border-surface-300 rounded-lg px-2 py-1 text-sm"
+                        className="w-full border border-surface-300 rounded-lg px-2 py-1 text-sm disabled:bg-surface-50 disabled:text-charcoal-400"
                         value={row.actionRequired}
+                        disabled={!editable}
                         onChange={(e) =>
                           setActionPlanRows((rows) =>
                             rows.map((r, i) => (i === index ? { ...r, actionRequired: e.target.value } : r))
@@ -958,8 +1169,9 @@ export function HrEmployeeWellnessPage() {
                     </td>
                     <td className="px-3 py-2">
                       <select
-                        className="w-full border border-surface-300 rounded-lg px-2 py-1 text-sm"
+                        className="w-full border border-surface-300 rounded-lg px-2 py-1 text-sm disabled:bg-surface-50 disabled:text-charcoal-400"
                         value={row.responsibleEmployeeId ?? ''}
+                        disabled={!editable}
                         onChange={(e) =>
                           setActionPlanRows((rows) =>
                             rows.map((r, i) =>
@@ -987,8 +1199,9 @@ export function HrEmployeeWellnessPage() {
                     <td className="px-3 py-2">
                       <input
                         type="date"
-                        className="w-full border border-surface-300 rounded-lg px-2 py-1 text-sm"
+                        className="w-full border border-surface-300 rounded-lg px-2 py-1 text-sm disabled:bg-surface-50 disabled:text-charcoal-400"
                         value={row.targetDate}
+                        disabled={!editable}
                         onChange={(e) =>
                           setActionPlanRows((rows) =>
                             rows.map((r, i) => (i === index ? { ...r, targetDate: e.target.value } : r))
@@ -996,17 +1209,84 @@ export function HrEmployeeWellnessPage() {
                         }
                       />
                     </td>
-                    <td className="px-3 py-2 text-center">
-                      <button
-                        type="button"
-                        className="text-xs text-charcoal-500 hover:text-critical"
-                        onClick={() => handleRemoveActionRow(index)}
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                          row.status === 'CLOSED'
+                            ? 'bg-charcoal-100 text-charcoal-600'
+                            : row.status === 'COMPLETED'
+                            ? 'bg-success/10 text-success'
+                            : row.status === 'IN_PROGRESS'
+                            ? 'bg-warning/10 text-warning'
+                            : 'bg-teal/10 text-teal-700'
+                        }`}
                       >
-                        ✕
-                      </button>
+                        {row.status}
+                      </span>
+                      {pendingSignoff && (
+                        <p className="text-[10px] text-charcoal-500 mt-1">Sign-off pending</p>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <button
+                          type="button"
+                          className="text-charcoal-600 hover:text-teal disabled:opacity-50"
+                          disabled={!row.id}
+                          title={!row.id ? 'Save the row first' : undefined}
+                          onClick={() => row.id && setEvidenceActionRowId(row.id)}
+                        >
+                          Evidence{row.id ? ` (${evidenceCount})` : ''}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-charcoal-600 hover:text-teal disabled:opacity-50"
+                          disabled={!row.id}
+                          title={!row.id ? 'Save the row first' : undefined}
+                          onClick={() => row.id && setSignoffModalRowId(row.id)}
+                        >
+                          Request sign-off
+                        </button>
+                        {canSignOffHere && (
+                          <button
+                            type="button"
+                            className="text-teal-700 font-medium hover:underline disabled:opacity-50"
+                            disabled={signingOffActionId === row.id}
+                            onClick={() => void handleSignOffAction(row)}
+                          >
+                            {signingOffActionId === row.id ? 'Signing off...' : 'Sign off'}
+                          </button>
+                        )}
+                        {closable && (
+                          <button
+                            type="button"
+                            className="text-charcoal-600 hover:text-teal disabled:opacity-50"
+                            disabled={closingActionId === row.id}
+                            onClick={() => void handleCloseAction(row)}
+                          >
+                            {closingActionId === row.id ? 'Closing...' : 'Close'}
+                          </button>
+                        )}
+                        {row.id && editable && row.status !== 'CLOSED' && !closable && evidenceCount === 0 && (
+                          <span className="text-charcoal-400" title="Attach evidence before closing">
+                            Close (needs evidence)
+                          </span>
+                        )}
+                        {(!row.id || canDelete) && row.status !== 'CLOSED' && (
+                          <button
+                            type="button"
+                            className="text-critical hover:underline disabled:opacity-50"
+                            disabled={deletingActionId === row.id}
+                            onClick={() => void handleDeleteAction(row)}
+                          >
+                            {deletingActionId === row.id ? 'Deleting...' : row.id ? 'Delete' : 'Remove'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1122,6 +1402,59 @@ export function HrEmployeeWellnessPage() {
           </div>
         </div>
       </div>
+
+      {activeCompanyId && user?.id && evidenceActionRowId && (
+        <EvidenceModal
+          open={Boolean(evidenceActionRowId)}
+          onClose={() => {
+            setEvidenceActionRowId(null);
+            setEvidenceRefreshKey((k) => k + 1);
+          }}
+          companyId={activeCompanyId}
+          actorUserId={user.id as UUID}
+          entityType="hr_employee_wellness_action"
+          entityId={evidenceActionRowId}
+          title="Action evidence"
+          onUploaded={() => setEvidenceRefreshKey((k) => k + 1)}
+        />
+      )}
+
+      {signoffModalRowId && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSignoffModalRowId(null)} />
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl border border-surface-200 p-5 space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-charcoal">Request sign-off</p>
+              <p className="text-xs text-charcoal-500 mt-0.5">Pick the employee who should sign off on this action item.</p>
+            </div>
+            <HrEmployeeSelect
+              companyId={activeCompanyId ?? null}
+              valueField="id"
+              value={signoffTargetEmployeeId}
+              onChange={(value) => setSignoffTargetEmployeeId(value as UUID | '')}
+              label="Employee"
+              placeholder="Select employee"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg border border-surface-300 text-sm"
+                onClick={() => setSignoffModalRowId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!signoffTargetEmployeeId || signoffSubmitting}
+                onClick={() => void handleRequestSignoff()}
+                className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold disabled:opacity-60"
+              >
+                {signoffSubmitting ? 'Sending...' : 'Send request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

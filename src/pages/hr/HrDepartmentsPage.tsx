@@ -11,6 +11,7 @@ import { listHrEmployees } from '../../api/services/hrService';
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { Department } from '../../api/models/entities';
+import { HrExportMenu } from '../../components/hr/HrExportMenu';
 
 export function HrDepartmentsPage() {
   const { activeCompanyId, activeRole } = useTenant();
@@ -132,8 +133,17 @@ export function HrDepartmentsPage() {
     }
   }
 
-  const active = (departments ?? []).filter((d) => d.is_active);
-  const archived = (departments ?? []).filter((d) => !d.is_active);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterSiteId, setFilterSiteId] = useState('');
+  const filtersActiveCount = [searchQuery, filterSiteId].filter(Boolean).length;
+  const matchesFilters = (dept: Department) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q && !dept.name.toLowerCase().includes(q)) return false;
+    if (filterSiteId && String(dept.site_id ?? '') !== filterSiteId) return false;
+    return true;
+  };
+  const active = (departments ?? []).filter((d) => d.is_active && matchesFilters(d));
+  const archived = (departments ?? []).filter((d) => !d.is_active && matchesFilters(d));
 
   return (
     <Layout title="Department Management">
@@ -172,6 +182,46 @@ export function HrDepartmentsPage() {
             </div>
           </div>
         )}
+
+        <div className="bg-white border border-surface-300 rounded-xl p-4 flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            <span className="block text-xs text-charcoal-500 mb-1">Search</span>
+            <input
+              className="w-56 border border-surface-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="Department name"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </label>
+          {(sites ?? []).length > 0 && (
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Site</span>
+              <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterSiteId} onChange={(e) => setFilterSiteId(e.target.value)}>
+                <option value="">All</option>
+                {(sites ?? []).map((s) => <option key={String(s.id)} value={String(s.id)}>{s.name}</option>)}
+              </select>
+            </label>
+          )}
+          {filtersActiveCount > 0 && (
+            <div className="flex items-center gap-2 text-xs text-charcoal-500">
+              <span>{filtersActiveCount} filter{filtersActiveCount === 1 ? '' : 's'} active</span>
+              <button type="button" className="text-teal underline" onClick={() => { setSearchQuery(''); setFilterSiteId(''); }}>Clear filters</button>
+            </div>
+          )}
+          <HrExportMenu
+            moduleName="Departments"
+            columns={[
+              { key: 'name', label: 'Department Name' },
+              { key: 'site', label: 'Site' },
+              { key: 'is_active', label: 'Active' }
+            ]}
+            rows={[...active, ...archived].map((dept) => ({
+              name: dept.name,
+              site: dept.site_id ? (siteLabel.get(String(dept.site_id)) ?? '') : '',
+              is_active: dept.is_active ? 'Yes' : 'No'
+            }))}
+          />
+        </div>
 
         <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
           <div className="px-4 py-3 border-b border-surface-200">

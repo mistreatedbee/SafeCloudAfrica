@@ -1,9 +1,9 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { XIcon, UploadIcon, EyeIcon, DownloadIcon } from 'lucide-react';
+import { XIcon, UploadIcon, EyeIcon, DownloadIcon, Trash2Icon, CheckCircleIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { EvidenceAttachment, UUID } from '../../api/models/entities';
-import { createEvidence, listEvidence } from '../../api/services/evidenceService';
+import { createEvidence, deleteEvidence, listEvidence } from '../../api/services/evidenceService';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/services/documentsStorageService';
 import { insforge } from '../../api/insforge/client';
 import { useAsync } from '../../api/hooks/useAsync';
@@ -30,6 +30,7 @@ export function EvidenceModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [removingId, setRemovingId] = useState<UUID | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const hasEntityContext = Boolean(props.open && props.companyId && props.entityType && props.entityId);
 
@@ -77,6 +78,26 @@ export function EvidenceModal(props: {
       setError(formatAuthError(err));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function remove(item: EvidenceAttachment) {
+    if (!window.confirm('Remove this evidence file? This cannot be undone.')) return;
+    setError(null);
+    try {
+      setRemovingId(item.id);
+      await deleteEvidence(item.id, {
+        companyId: props.companyId,
+        actorUserId: props.actorUserId,
+        storageBucket: item.storage_bucket,
+        storageKey: item.storage_key,
+        entityType: props.entityType
+      });
+      setRefreshKey((k) => k + 1);
+    } catch (err: any) {
+      setError(formatAuthError(err));
+    } finally {
+      setRemovingId(null);
     }
   }
 
@@ -132,7 +153,7 @@ export function EvidenceModal(props: {
                 className="w-full text-sm"
               />
             </div>
-            <div className="sm:col-span-3 flex justify-end">
+            <div className="sm:col-span-3 flex justify-end gap-2">
               <button
                 type="button"
                 disabled={!canUpload || loading}
@@ -142,10 +163,23 @@ export function EvidenceModal(props: {
                 {loading ? <LoadingSpinner size={16} /> : <UploadIcon className="w-4 h-4" />}
                 Upload evidence
               </button>
+              <button
+                type="button"
+                onClick={props.onClose}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-surface-300 text-charcoal text-sm font-semibold hover:bg-surface-50"
+              >
+                Done
+              </button>
             </div>
             {selectedFileNames.length > 0 && (
               <div className="sm:col-span-3 rounded-lg border border-teal/20 bg-teal/5 px-3 py-2 text-xs text-teal-800">
                 Selected files: {selectedFileNames.join(', ')}
+              </div>
+            )}
+            {evidence.length > 0 && (
+              <div className="sm:col-span-3 flex items-center gap-2 rounded-lg border border-teal/20 bg-teal/5 px-3 py-2 text-xs text-teal-800">
+                <CheckCircleIcon className="w-4 h-4 shrink-0" />
+                {evidence.length} file{evidence.length === 1 ? '' : 's'} attached
               </div>
             )}
           </div>
@@ -181,7 +215,7 @@ export function EvidenceModal(props: {
                 />
               )}
               {evidence.map((evi) => (
-                <EvidenceRow key={evi.id} item={evi} />
+                <EvidenceRow key={evi.id} item={evi} onRemove={remove} removing={removingId === evi.id} />
               ))}
             </div>
           </div>
@@ -191,7 +225,7 @@ export function EvidenceModal(props: {
   );
 }
 
-function EvidenceRow({ item }: { item: EvidenceAttachment }) {
+function EvidenceRow({ item, onRemove, removing }: { item: EvidenceAttachment; onRemove: (item: EvidenceAttachment) => void; removing: boolean }) {
   const filename = item.storage_key.split('/').pop() ?? 'evidence';
   return (
     <div className="px-4 py-3 flex items-start justify-between gap-3">
@@ -223,6 +257,15 @@ function EvidenceRow({ item }: { item: EvidenceAttachment }) {
           aria-label="Download"
         >
           <DownloadIcon className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          disabled={removing}
+          onClick={() => onRemove(item)}
+          className="p-2 rounded-lg hover:bg-critical/10 text-charcoal-400 hover:text-critical transition-colors disabled:opacity-60"
+          aria-label="Remove"
+        >
+          {removing ? <LoadingSpinner size={16} /> : <Trash2Icon className="w-4 h-4" />}
         </button>
       </div>
     </div>

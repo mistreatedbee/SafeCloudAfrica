@@ -2404,6 +2404,23 @@ export type EvidenceAttachment = {
   file_kind?: string | null;
 };
 
+export type HrActionSignoffRequest = {
+  id: UUID;
+  company_id: UUID;
+  entity_type: string;
+  entity_id: UUID;
+  assessment_id: UUID | null;
+  action_summary: string | null;
+  requested_for_employee_id: UUID;
+  requested_for_user_id: UUID | null;
+  requested_by_user_id: UUID;
+  status: 'pending' | 'signed_off' | 'cancelled';
+  note: string | null;
+  signed_off_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ProgramAuditFindingStatus =
   | 'open'
   | 'in-progress'

@@ -7,7 +7,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import { archiveHrEmployee, listHrEmployees, upsertHrEmployee } from '../../api/services/hrService';
 import type { HrEmployee } from '../../api/services/hrService';
-import { downloadTextFile, toCsv } from '../../utils/csv';
+import { HrExportMenu } from '../../components/hr/HrExportMenu';
 import { listDepartments } from '../../api/services/departmentsService';
 import { listCompanyMemberships } from '../../api/services/tenantService';
 import { listUserProfiles } from '../../api/services/profilesService';
@@ -257,8 +257,19 @@ export function HrEmployeesPage() {
     }
   };
 
-  const onExportCsv = () => {
-    const csv = toCsv((employees ?? []).map((row) => ({
+  const exportColumns = [
+    { key: 'employee_no', label: 'Employee No' },
+    { key: 'first_name', label: 'First Name' },
+    { key: 'last_name', label: 'Last Name' },
+    { key: 'email', label: 'Email' },
+    { key: 'job_title', label: 'Job Title' },
+    { key: 'employment_status', label: 'Employment Status' },
+    { key: 'start_date', label: 'Start Date' }
+  ];
+  const exportRows = activeRows
+    .map(({ hrEmployee }) => hrEmployee)
+    .filter((row): row is HrEmployee => Boolean(row))
+    .map((row) => ({
       employee_no: row.employee_no,
       first_name: row.first_name,
       last_name: row.last_name,
@@ -266,9 +277,7 @@ export function HrEmployeesPage() {
       job_title: row.job_title,
       employment_status: row.employment_status,
       start_date: row.start_date
-    })));
-    downloadTextFile(`hr-employees-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-  };
+    }));
 
   return (
     <Layout title="HR Employees">
@@ -286,7 +295,7 @@ export function HrEmployeesPage() {
           <div className="space-y-3">
             <div className="flex gap-2">
               <input className="flex-1 border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Search name, employee no, email, department" value={query} onChange={(e) => setQuery(e.target.value)} />
-              <button className="px-3 py-2 rounded-lg border border-surface-300 text-sm" onClick={onExportCsv}>Export CSV</button>
+              <HrExportMenu moduleName="Employees" columns={exportColumns} rows={exportRows} />
             </div>
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <table className="w-full text-sm">

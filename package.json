@@ -24,10 +24,10 @@
     "react-router-dom": "^6.26.2",
     "recharts": "^2.12.7",
     "resend": "^6.9.2",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
-    "@rolldown/binding-linux-x64-gnu": "^1.0.0-rc.10",
     "@types/node": "^20.11.18",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",

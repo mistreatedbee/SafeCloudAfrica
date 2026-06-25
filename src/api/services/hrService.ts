@@ -154,8 +154,10 @@ export type HrEmployeeWellnessAction = HrSimpleRecord & {
   action_required: string;
   responsible_employee_id: UUID | null;
   target_date: string | null;
-  status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED';
+  status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CLOSED';
   completed_date: string | null;
+  closed_by_user_id: UUID | null;
+  closed_at: string | null;
   created_by_user_id: UUID;
   updated_by_user_id: UUID | null;
 };
@@ -858,7 +860,7 @@ export async function updateEmployeeWellnessAssessment(input: {
     actionRequired: string;
     responsibleEmployeeId: UUID | null;
     targetDate: string | null;
-    status?: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED';
+    status?: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CLOSED';
     completedDate?: string | null;
   }>;
   actorUserId: UUID;
