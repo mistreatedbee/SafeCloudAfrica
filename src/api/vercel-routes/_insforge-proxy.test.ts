@@ -142,7 +142,7 @@ describe('api/_insforge-proxy', () => {
     });
   });
 
-  it.each([401, 403, 405])('maps auth/refresh upstream %s to a local 404 payload', async (statusCode) => {
+  it.each([404, 405])('maps auth/refresh upstream %s to a local 404 payload', async (statusCode) => {
     const { default: handler } = await import('../../../api/insforge-proxy');
     fetchMock.mockResolvedValueOnce(new Response('refresh unavailable', { status: statusCode }));
 
@@ -157,6 +157,23 @@ describe('api/_insforge-proxy', () => {
       error: 'not_found',
       message: 'Refresh not supported'
     });
+  });
+
+  it.each([401, 403])('passes auth/refresh upstream invalid-session status %s through unchanged', async (statusCode) => {
+    const { default: handler } = await import('../../../api/insforge-proxy');
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'invalid_session' }), {
+      status: statusCode,
+      headers: { 'content-type': 'application/json' }
+    }));
+
+    const req = { method: 'POST', query: { path: 'auth/refresh' }, headers: {} };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(res.statusCode).toBe(statusCode);
+    expect(sharedMocks.writeUpstreamResponse).toHaveBeenCalledTimes(1);
   });
 
   it('passes non-auth routes straight through', async () => {

@@ -147,4 +147,31 @@ describe('ensureInsforgeSession', () => {
     });
     expect(httpMock.setAuthToken).toHaveBeenCalledWith(refreshedToken);
   });
+
+  it('throws a transient error without emitting sca:auth-failure when refresh fails transiently', async () => {
+    const dispatchEvent = vi.fn();
+    const addEventListener = vi.fn();
+    (globalThis as any).window = { dispatchEvent, addEventListener };
+
+    const expiredToken = createJwt({ sub: 'user-1', exp: Math.floor((Date.now() - 60_000) / 1000) });
+    authMock.getCurrentSession.mockResolvedValue({
+      data: { session: { accessToken: expiredToken, user: { id: 'user-1' } } },
+      error: null
+    });
+    httpMock.getHeaders.mockReturnValue({ Authorization: `Bearer ${expiredToken}` });
+    // Simulate an upstream 500 / malformed response — a transient_failure per refreshSessionThroughProxy.
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: 'internal' }), { status: 500 })
+    ) as unknown as typeof fetch;
+
+    try {
+      const { ensureInsforgeSession, InsforgeTransientSessionError } = await import('./ensureSession');
+      await expect(ensureInsforgeSession({ reason: 'test' })).rejects.toBeInstanceOf(InsforgeTransientSessionError);
+
+      expect(dispatchEvent).not.toHaveBeenCalled();
+      expect(httpMock.setAuthToken).not.toHaveBeenCalled();
+    } finally {
+      delete (globalThis as any).window;
+    }
+  });
 });

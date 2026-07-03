@@ -34,6 +34,24 @@ export class InsforgeAuthBootstrapError extends Error {
   }
 }
 
+/**
+ * Thrown when a proxy refresh attempt failed for a reason that is NOT evidence
+ * the session is actually invalid (network error, unexpected 5xx, malformed
+ * refresh response). Deliberately NOT a subclass of InsforgeAuthBootstrapError —
+ * callers that gate on `instanceof InsforgeAuthBootstrapError` to force a
+ * logout/redirect must not match this, so a transient blip doesn't log the
+ * user out of an otherwise-valid session.
+ */
+export class InsforgeTransientSessionError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = 'InsforgeTransientSessionError';
+    if (options && 'cause' in options) {
+      (this as Error & { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
 function debugAuthBootstrap(event: string, details?: Record<string, unknown>): void {
   if (!AUTH_BOOTSTRAP_DEBUG) return;
   console.debug('[auth-bootstrap]', event, details ?? {});
@@ -50,24 +68,30 @@ function getNonAnonAttachedToken(headers: Record<string, unknown>): string | nul
   return token;
 }
 
+type ProxyRefreshOutcome =
+  | { ok: true; accessToken: string; userId: string }
+  | { ok: false; reason: 'invalid_session' | 'refresh_unavailable' | 'transient_failure' };
+
 /**
  * One cookie-based refresh against the same /api/auth/refresh route the SDK itself
  * uses internally for its own request-level 401 retries. Failures here are non-fatal —
  * the caller falls through to AUTH_SESSION_MISSING, which only triggers a re-login
  * prompt, not a forced logout of an otherwise-valid session.
  */
-async function tryProxyRefresh(reason: string): Promise<{ accessToken: string; userId: string } | null> {
+async function tryProxyRefresh(reason: string): Promise<ProxyRefreshOutcome> {
   const httpClient = insforge.getHttpClient() as { baseUrl: string; setAuthToken: (token: string | null) => void };
   const refreshed = await refreshSessionThroughProxy({
     baseUrl: httpClient.baseUrl,
     fetch: globalThis.fetch.bind(globalThis)
   }).catch(() => null);
-  if (!refreshed || !refreshed.ok || !refreshed.accessToken) return null;
+  if (!refreshed) return { ok: false, reason: 'transient_failure' };
+  if (!refreshed.ok) return { ok: false, reason: refreshed.reason };
+  if (!refreshed.accessToken) return { ok: false, reason: 'transient_failure' };
   const userId = refreshed.userId ?? decodeJwtSession(refreshed.accessToken).sub;
-  if (!userId) return null;
+  if (!userId) return { ok: false, reason: 'transient_failure' };
   httpClient.setAuthToken(refreshed.accessToken);
   debugAuthBootstrap('ensure-session:proxy-refresh', { reason });
-  return { accessToken: refreshed.accessToken, userId };
+  return { ok: true, accessToken: refreshed.accessToken, userId };
 }
 
 /**
@@ -142,8 +166,16 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
 
   // --- A real session existed but its access token expired — try refreshing it once ---
   if (hadExpiredCandidate) {
-    const refreshed = await tryProxyRefresh(reason);
-    if (refreshed) return refreshed;
+    const outcome = await tryProxyRefresh(reason);
+    if (outcome.ok) return { accessToken: outcome.accessToken, userId: outcome.userId };
+    if (outcome.reason === 'transient_failure') {
+      debugAuthBootstrap('ensure-session:transient-refresh-failure', { reason });
+      throw new InsforgeTransientSessionError(
+        'We could not refresh your session right now. Please try again in a moment.'
+      );
+    }
+    // outcome.reason is 'invalid_session' or 'refresh_unavailable' — genuinely no
+    // usable session; fall through to the definitive logout below.
   }
 
   debugAuthBootstrap('ensure-session:no-valid-session', { reason });
