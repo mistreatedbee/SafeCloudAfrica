@@ -18,7 +18,11 @@ export function ApprovalDecisionModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = useMemo(() => !!props.approval, [props.approval]);
+  const canSubmit = useMemo(() => {
+    if (!props.approval) return false;
+    if (props.decision === 'rejected' && !note.trim()) return false;
+    return true;
+  }, [props.approval, props.decision, note]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -86,14 +90,19 @@ export function ApprovalDecisionModal(props: {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Signature note (optional)</label>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">
+              {props.decision === 'rejected' ? 'Reason for rejection (required)' : 'Signature note (optional)'}
+            </label>
             <textarea
               rows={3}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. Approved after review, evidence attached."
+              placeholder={props.decision === 'rejected' ? 'Explain what needs to change before this can be resubmitted.' : 'e.g. Approved after review, evidence attached.'}
               className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent resize-none"
             />
+            {props.decision === 'rejected' && !note.trim() && (
+              <p className="text-xs text-charcoal-500 mt-1">A reason is required so the responsible person knows what to fix.</p>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">

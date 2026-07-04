@@ -960,7 +960,7 @@ export function TasksPage() {
                             Send for review
                           </button>
                         )}
-                        {task.status === 'under-review' && (
+                        {task.status === 'under-review' && canManageTasks(activeRole) && (
                           <button
                             type="button"
                             onClick={() => handleApproveTask(task)}
@@ -969,7 +969,7 @@ export function TasksPage() {
                             Approve
                           </button>
                         )}
-                        {task.status === 'approved' && (
+                        {task.status === 'approved' && canManageTasks(activeRole) && (
                           <button
                             type="button"
                             onClick={() => handleCloseTask(task)}

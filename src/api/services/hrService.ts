@@ -89,6 +89,7 @@ export type HrLeaveRequest = {
   decline_reason: string | null;
   supervisor_approval_status: 'PENDING' | 'APPROVED' | 'DECLINED';
   hr_approval_status: 'PENDING' | 'APPROVED' | 'DECLINED' | 'NOT_REQUIRED';
+  archived: boolean;
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;
@@ -107,6 +108,7 @@ export type HrTimesheet = {
   approved_by_user_id: UUID | null;
   approved_at: string | null;
   decline_reason: string | null;
+  archived: boolean;
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;
@@ -219,10 +221,11 @@ export type HrAckReceiptRow = HrSimpleRecord & {
   ack_document_id: UUID;
   employee_id: UUID;
   employee_user_id: UUID | null;
-  status: 'PENDING' | 'ACKNOWLEDGED' | 'SIGNED';
+  status: 'PENDING' | 'ACKNOWLEDGED' | 'SIGNED' | 'DECLINED';
   acknowledged_at: string | null;
   signed_at: string | null;
   acknowledgement_method: string | null;
+  decline_reason: string | null;
   ip_address: string | null;
   device_info: string | null;
 };
@@ -470,7 +473,7 @@ export async function listHrLeaveRequests(companyId: UUID, employeeId?: UUID): P
   return listTable<HrLeaveRequest>('hr_leave_requests', companyId, employeeId ? { employee_id: employeeId } : undefined);
 }
 
-export async function createHrLeaveRequest(input: Omit<HrLeaveRequest, 'id' | 'created_at' | 'updated_at' | 'approved_by_user_id' | 'approved_at' | 'decline_reason'> & {
+export async function createHrLeaveRequest(input: Omit<HrLeaveRequest, 'id' | 'created_at' | 'updated_at' | 'approved_by_user_id' | 'approved_at' | 'decline_reason' | 'archived'> & {
   approverUserId?: UUID | null;
 }): Promise<HrLeaveRequest> {
   const row = await insertTable<HrLeaveRequest>('hr_leave_requests', {
@@ -486,7 +489,19 @@ export async function createHrLeaveRequest(input: Omit<HrLeaveRequest, 'id' | 'c
     entityId: row.id
   }).catch(() => undefined);
   if (input.approverUserId) {
-    await createNotification(input.company_id, input.approverUserId, 'info', 'Leave Approval Required', 'A new leave request requires your approval.');
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.company_id,
+      eventKey: `leave-submitted:${row.id}`,
+      eventType: 'leave_submitted',
+      title: 'Leave Approval Required',
+      message: 'A new leave request requires your approval.',
+      recipientUserIds: [input.approverUserId],
+      emailTemplateKey: 'hr_updates',
+      emailVariables: { title: 'Leave request submitted', status: 'Pending' },
+      actionUrl: `/dashboard/hr/leave?highlight=${row.id}`,
+      metadata: { itemType: 'hr_leave_request', itemId: row.id }
+    }).catch(() => undefined);
   }
   return row;
 }
@@ -525,15 +540,50 @@ export async function applyHrLeaveApproval(input: {
   });
   if (input.employeeUserId) {
     const approved = input.decision === 'SUPERVISOR_APPROVE' || input.decision === 'HR_APPROVE';
-    await createNotification(
-      input.companyId,
-      input.employeeUserId,
-      approved ? 'success' : 'warning',
-      approved ? 'Leave Approved' : 'Leave Declined',
-      approved ? 'Your leave request has been approved.' : `Your leave request was declined.${input.declineReason ? ` Reason: ${input.declineReason}` : ''}`
-    );
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `leave-decision:${input.leaveRequestId}:${input.decision}`,
+      eventType: approved ? 'leave_approved' : 'leave_declined',
+      title: approved ? 'Leave Approved' : 'Leave Declined',
+      message: approved
+        ? 'Your leave request has been approved.'
+        : `Your leave request was declined.${input.declineReason ? ` Reason: ${input.declineReason}` : ''}`,
+      recipientUserIds: [input.employeeUserId],
+      emailTemplateKey: 'hr_updates',
+      emailVariables: { title: approved ? 'Leave Approved' : 'Leave Declined', status: approved ? 'Approved' : 'Declined' },
+      actionUrl: `/dashboard/hr/leave?highlight=${input.leaveRequestId}`,
+      metadata: { itemType: 'hr_leave_request', itemId: input.leaveRequestId }
+    }).catch(() => undefined);
   }
   return row;
+  });
+}
+
+export async function archiveHrLeaveRequest(input: {
+  companyId: UUID;
+  leaveRequestId: UUID;
+  actorUserId: UUID;
+  archived: boolean;
+}): Promise<HrLeaveRequest> {
+  return withHrSession('leave:archive', async () => {
+  const { data, error } = await insforge.database
+    .from('hr_leave_requests')
+    .update({ archived: input.archived, updated_at: new Date().toISOString() })
+    .eq('company_id', input.companyId)
+    .eq('id', input.leaveRequestId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update leave request.');
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: input.archived ? 'hr.leave.archive' : 'hr.leave.unarchive',
+    entityType: 'hr_leave_request',
+    entityId: input.leaveRequestId
+  }).catch(() => undefined);
+  return data as HrLeaveRequest;
   });
 }
 
@@ -541,7 +591,7 @@ export async function listHrTimesheets(companyId: UUID, employeeId?: UUID): Prom
   return listTable<HrTimesheet>('hr_timesheets', companyId, employeeId ? { employee_id: employeeId } : undefined, 'date');
 }
 
-export async function upsertHrTimesheet(input: Omit<HrTimesheet, 'id' | 'created_at' | 'updated_at' | 'approved_by_user_id' | 'approved_at' | 'decline_reason'>): Promise<HrTimesheet> {
+export async function upsertHrTimesheet(input: Omit<HrTimesheet, 'id' | 'created_at' | 'updated_at' | 'approved_by_user_id' | 'approved_at' | 'decline_reason' | 'archived'>): Promise<HrTimesheet> {
   const row = await upsertTable<HrTimesheet>('hr_timesheets', { ...input, updated_at: new Date().toISOString() }, 'company_id,employee_id,date');
   const d = new Date(input.date);
   await createActivityLog({
@@ -590,6 +640,33 @@ export async function approveHrTimesheet(input: {
   }).catch(() => undefined);
   await recalculateHrMonthlyHours(row.company_id, row.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.actorUserId).catch(() => {});
   return row;
+  });
+}
+
+export async function archiveHrTimesheet(input: {
+  companyId: UUID;
+  timesheetId: UUID;
+  actorUserId: UUID;
+  archived: boolean;
+}): Promise<HrTimesheet> {
+  return withHrSession('timesheets:archive', async () => {
+  const { data, error } = await insforge.database
+    .from('hr_timesheets')
+    .update({ archived: input.archived, updated_at: new Date().toISOString() })
+    .eq('company_id', input.companyId)
+    .eq('id', input.timesheetId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update timesheet.');
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: input.archived ? 'hr.timesheet.archive' : 'hr.timesheet.unarchive',
+    entityType: 'hr_timesheet',
+    entityId: input.timesheetId
+  }).catch(() => undefined);
+  return data as HrTimesheet;
   });
 }
 
@@ -1587,6 +1664,22 @@ export async function createHrAcknowledgementDocument(input: {
   }));
   if (rows.length > 0) {
     await insforge.database.from('hr_ack_receipts').upsert(rows, { onConflict: 'company_id,ack_document_id,employee_id' });
+    const recipientUserIds = eligible.map((e) => e.user_id).filter((id): id is string => Boolean(id)) as UUID[];
+    if (recipientUserIds.length > 0) {
+      const { notifyRelevantUsers } = await import('./notificationEventsService');
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `ack-document-assigned:${(data as { id: string }).id}`,
+        eventType: 'hr_document_assigned',
+        title: 'Document requires acknowledgement',
+        message: `"${input.title}" has been assigned to you for acknowledgement.`,
+        recipientUserIds,
+        emailTemplateKey: 'hr_updates',
+        emailVariables: { title: input.title, status: 'Pending' },
+        actionUrl: '/dashboard/hr/documents',
+        metadata: { itemType: 'hr_ack_document', itemId: (data as { id: string }).id }
+      }).catch(() => undefined);
+    }
   }
 
   await createActivityLog({
@@ -1650,7 +1743,8 @@ export async function submitHrAcknowledgement(input: {
   companyId: UUID;
   actorUserId: UUID;
   ackDocumentId: UUID;
-  action: 'acknowledge' | 'sign';
+  action: 'acknowledge' | 'sign' | 'decline';
+  declineReason?: string;
   ipAddress?: string | null;
   deviceInfo?: string | null;
 }): Promise<HrAckReceiptRow> {
@@ -1658,10 +1752,11 @@ export async function submitHrAcknowledgement(input: {
   const me = await getHrEmployeeByUserId(input.companyId, input.actorUserId);
   if (!me) throw new Error('No linked employee profile.');
 
-  const nextStatus = input.action === 'sign' ? 'SIGNED' : 'ACKNOWLEDGED';
+  const nextStatus = input.action === 'sign' ? 'SIGNED' : input.action === 'decline' ? 'DECLINED' : 'ACKNOWLEDGED';
   const patch: Record<string, unknown> = {
     status: nextStatus,
-    acknowledgement_method: input.action === 'sign' ? 'Signature' : 'Click',
+    acknowledgement_method: input.action === 'sign' ? 'Signature' : input.action === 'decline' ? 'Declined' : 'Click',
+    decline_reason: input.action === 'decline' ? (input.declineReason ?? null) : null,
     ip_address: input.ipAddress ?? null,
     device_info: input.deviceInfo ?? null,
     updated_at: new Date().toISOString()
@@ -1686,7 +1781,7 @@ export async function submitHrAcknowledgement(input: {
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.actorUserId,
-    action: input.action === 'sign' ? 'hr.ack_document.sign' : 'hr.ack_document.acknowledge',
+    action: input.action === 'sign' ? 'hr.ack_document.sign' : input.action === 'decline' ? 'hr.ack_document.decline' : 'hr.ack_document.acknowledge',
     entityType: 'hr_ack_receipt',
     entityId: (data as { id: string }).id as UUID
   });

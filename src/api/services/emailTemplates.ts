@@ -14,6 +14,7 @@ export const EMAIL_TEMPLATE_KEYS = [
   'health_wellness_programme',
   'hr_updates',
   'kpi_updates',
+  'task_assigned',
   'document_reviews',
   'improvements',
   'approvals',
@@ -227,6 +228,18 @@ const TEMPLATE_DEFINITIONS: Record<EmailTemplateKey, EmailTemplateDefinition> = 
       { label: 'Update', variable: 'title' },
       { label: 'Employee', variable: 'employee' },
       { label: 'Status', variable: 'status' },
+      { label: 'Due date', variable: 'dueDate' }
+    ]
+  },
+  task_assigned: {
+    moduleLabel: 'Task Assigned',
+    subject: 'Task assigned: {{title}}',
+    summary: 'A task/action item has been assigned to you and requires attention.',
+    defaultActionLabel: 'Open task',
+    defaultRoute: '/dashboard/management/tasks',
+    detailLabels: [
+      { label: 'Task', variable: 'title' },
+      { label: 'Priority', variable: 'status' },
       { label: 'Due date', variable: 'dueDate' }
     ]
   },

@@ -191,3 +191,68 @@ export async function withInsforgeSession<T>(reason: string, fn: () => Promise<T
   await ensureInsforgeSession({ reason });
   return fn();
 }
+
+// ---------- Proactive background refresh ----------
+// Refreshes the access token shortly before it actually expires, so an
+// actively-used session never hits the reactive expiry path in
+// ensureInsforgeSession() above at all. This is a hardening layer on top of
+// the reactive refresh, not a replacement for it — reactive refresh still
+// handles the case where the tab was backgrounded/asleep past this timer.
+const PROACTIVE_REFRESH_LEAD_MS = 5 * 60 * 1000;
+const PROACTIVE_REFRESH_MIN_DELAY_MS = 5_000;
+const PROACTIVE_REFRESH_RETRY_DELAY_MS = 60_000;
+
+let proactiveRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
+
+export function stopProactiveSessionRefresh(): void {
+  if (proactiveRefreshTimeout) {
+    clearTimeout(proactiveRefreshTimeout);
+    proactiveRefreshTimeout = null;
+  }
+}
+
+function scheduleProactiveRefresh(delayMs: number): void {
+  stopProactiveSessionRefresh();
+  proactiveRefreshTimeout = setTimeout(() => {
+    void runProactiveRefresh();
+  }, Math.max(delayMs, PROACTIVE_REFRESH_MIN_DELAY_MS));
+}
+
+async function runProactiveRefresh(): Promise<void> {
+  const outcome = await tryProxyRefresh('proactive-refresh');
+  if (outcome.ok) {
+    debugAuthBootstrap('proactive-refresh:success', {});
+    const expMs = decodeJwtSession(outcome.accessToken).expMs;
+    if (expMs) scheduleProactiveRefresh(expMs - Date.now() - PROACTIVE_REFRESH_LEAD_MS);
+    return;
+  }
+  if (outcome.reason === 'transient_failure') {
+    debugAuthBootstrap('proactive-refresh:transient-failure-retry', {});
+    scheduleProactiveRefresh(PROACTIVE_REFRESH_RETRY_DELAY_MS);
+    return;
+  }
+  // invalid_session / refresh_unavailable — genuinely nothing to refresh.
+  // The reactive path in ensureInsforgeSession will surface the real logout
+  // the next time the app makes an authenticated call; don't reschedule.
+  debugAuthBootstrap('proactive-refresh:stopped', { reason: outcome.reason });
+}
+
+/**
+ * Starts the proactive refresh timer for the current session, if one exists.
+ * Safe to call multiple times (e.g. on remount) — each call replaces any
+ * previously scheduled timer rather than stacking them.
+ */
+export function startProactiveSessionRefresh(): void {
+  void (async () => {
+    try {
+      const { accessToken } = await ensureInsforgeSession({ reason: 'proactive-refresh:init' });
+      const expMs = decodeJwtSession(accessToken).expMs;
+      if (expMs) scheduleProactiveRefresh(expMs - Date.now() - PROACTIVE_REFRESH_LEAD_MS);
+    } catch (err) {
+      if (err instanceof InsforgeTransientSessionError) {
+        scheduleProactiveRefresh(PROACTIVE_REFRESH_RETRY_DELAY_MS);
+      }
+      // AUTH_SESSION_MISSING or anything else: no valid session to schedule around.
+    }
+  })();
+}

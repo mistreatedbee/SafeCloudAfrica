@@ -1,20 +1,39 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDownIcon, DownloadIcon } from 'lucide-react';
 import { useIdentity } from '../../hooks/useIdentity';
+import { useTenant } from '../../tenant/TenantContext';
+import { insforge } from '../../api/insforge/client';
 import { exportHrReport, type HrReportColumn } from '../../api/services/hrReportExportService';
 
 export function HrExportMenu({
   moduleName,
   columns,
-  rows
+  rows,
+  periodLabel,
+  fileNameBase
 }: {
   moduleName: string;
   columns: HrReportColumn[];
   rows: Record<string, unknown>[];
+  periodLabel?: string;
+  fileNameBase?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { fullName, organisationName } = useIdentity();
+  const { activeCompany } = useTenant();
+
+  const logoUrl = useMemo(() => {
+    const meta = (activeCompany?.metadata ?? {}) as Record<string, unknown>;
+    const bucket = meta.logo_bucket as string | undefined;
+    const key = meta.logo_key as string | undefined;
+    if (!bucket || !key) return null;
+    try {
+      return insforge.storage.from(bucket).getPublicUrl(key);
+    } catch {
+      return null;
+    }
+  }, [activeCompany?.metadata]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -28,12 +47,15 @@ export function HrExportMenu({
 
   function onExport(format: 'excel' | 'pdf') {
     setIsOpen(false);
-    exportHrReport({
+    void exportHrReport({
       moduleName,
       companyName: organisationName,
       generatedByName: fullName,
       columns,
       rows,
+      periodLabel,
+      logoUrl,
+      fileName: fileNameBase ? `${fileNameBase}.${format === 'excel' ? 'xlsx' : 'pdf'}` : undefined,
       format
     });
   }

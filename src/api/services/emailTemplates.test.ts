@@ -19,6 +19,7 @@ describe('emailTemplates', () => {
       'health_wellness_programme',
       'hr_updates',
       'kpi_updates',
+      'task_assigned',
       'document_reviews',
       'improvements',
       'approvals',

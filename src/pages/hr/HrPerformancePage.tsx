@@ -55,12 +55,12 @@ export function HrPerformancePage() {
   const [strengths, setStrengths] = useState('');
   const [assistanceRequired, setAssistanceRequired] = useState('');
   const [weaknesses, setWeaknesses] = useState('');
-  const [managerRating, setManagerRating] = useState('');
   const [managerRemarks, setManagerRemarks] = useState('');
   const [correctiveActionsRequired, setCorrectiveActionsRequired] = useState('');
   const [responsibleUserId, setResponsibleUserId] = useState('');
   const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
   const [editingReviewId, setEditingReviewId] = useState<UUID | null>(null);
+  const [editingCreatedAt, setEditingCreatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -71,7 +71,6 @@ export function HrPerformancePage() {
     strengths: string;
     assistanceRequired: string;
     weaknesses: string;
-    managerRating: string;
     managerRemarks: string;
     correctiveActionsRequired: string;
     responsibleUserId: string;
@@ -89,7 +88,6 @@ export function HrPerformancePage() {
       strengths,
       assistanceRequired,
       weaknesses,
-      managerRating,
       managerRemarks,
       correctiveActionsRequired,
       responsibleUserId,
@@ -102,7 +100,6 @@ export function HrPerformancePage() {
       strengths,
       assistanceRequired,
       weaknesses,
-      managerRating,
       managerRemarks,
       correctiveActionsRequired,
       responsibleUserId,
@@ -140,7 +137,6 @@ export function HrPerformancePage() {
     setStrengths(restored.strengths ?? '');
     setAssistanceRequired(restored.assistanceRequired ?? '');
     setWeaknesses(restored.weaknesses ?? '');
-    setManagerRating(restored.managerRating ?? '');
     setManagerRemarks(restored.managerRemarks ?? '');
     setCorrectiveActionsRequired(restored.correctiveActionsRequired ?? '');
     setResponsibleUserId(restored.responsibleUserId ?? '');
@@ -192,22 +188,36 @@ export function HrPerformancePage() {
     return valid.reduce((sum, n) => sum + n, 0) / valid.length;
   }, [kpaRows]);
 
+  const avgManagerKpaRating = useMemo(() => {
+    const valid = kpaRows
+      .map((row) => Number(row.managerRating))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (valid.length === 0) return null;
+    return valid.reduce((sum, n) => sum + n, 0) / valid.length;
+  }, [kpaRows]);
+
   const computedOverallRating = useMemo(() => {
-    const mgr = Number(managerRating);
-    if (avgEmployeeKpaRating === null || !managerRating || !Number.isFinite(mgr) || mgr <= 0) return null;
-    return Math.round(((avgEmployeeKpaRating + mgr) / 2) * 10) / 10;
-  }, [avgEmployeeKpaRating, managerRating]);
+    if (avgEmployeeKpaRating === null || avgManagerKpaRating === null) return null;
+    return Math.round(((avgEmployeeKpaRating + avgManagerKpaRating) / 2) * 10) / 10;
+  }, [avgEmployeeKpaRating, avgManagerKpaRating]);
+
+  const computedManagerRating = useMemo(() => {
+    if (avgManagerKpaRating === null) return null;
+    return Math.round(avgManagerKpaRating * 10) / 10;
+  }, [avgManagerKpaRating]);
 
   const [filterQuery, setFilterQuery] = useState('');
   const [filterCycle, setFilterCycle] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
 
-  const filtersActiveCount = [filterQuery, filterCycle, filterDateFrom, filterDateTo].filter(Boolean).length;
+  const filtersActiveCount = [filterQuery, filterCycle, filterStatus, filterDateFrom, filterDateTo].filter(Boolean).length;
 
   function clearFilters() {
     setFilterQuery('');
     setFilterCycle('');
+    setFilterStatus('');
     setFilterDateFrom('');
     setFilterDateTo('');
   }
@@ -221,22 +231,34 @@ export function HrPerformancePage() {
         if (!name.includes(q)) return false;
       }
       if (filterCycle && String(r['cycle'] ?? '') !== filterCycle) return false;
+      if (filterStatus && String(r['status'] ?? '') !== filterStatus) return false;
       const due = String(r['corrective_due_date'] ?? '');
       if (filterDateFrom && due && due < filterDateFrom) return false;
       if (filterDateTo && due && due > filterDateTo) return false;
       return true;
     });
-  }, [reviews, employeeLabel, filterQuery, filterCycle, filterDateFrom, filterDateTo]);
+  }, [reviews, employeeLabel, filterQuery, filterCycle, filterStatus, filterDateFrom, filterDateTo]);
+
+  useEffect(() => {
+    const highlightId = new URLSearchParams(window.location.search).get('highlight');
+    if (!highlightId) return;
+    const el = document.getElementById(`review-${highlightId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('ring-2', 'ring-teal', 'ring-offset-2');
+    const t = setTimeout(() => el.classList.remove('ring-2', 'ring-teal', 'ring-offset-2'), 3000);
+    return () => clearTimeout(t);
+  }, [filteredReviews]);
 
   function resetForm() {
     setEditingReviewId(null);
+    setEditingCreatedAt(null);
     setEmployeeId('');
     setCycle('Annual');
     setKpaRows([createBlankKpaRow()]);
     setStrengths('');
     setAssistanceRequired('');
     setWeaknesses('');
-    setManagerRating('');
     setManagerRemarks('');
     setCorrectiveActionsRequired('');
     setResponsibleUserId('');
@@ -247,23 +269,29 @@ export function HrPerformancePage() {
     const isDirty =
       employeeId !== '' ||
       kpaRows.some((r) => r.keyPerformanceArea || r.employeeRating || r.managerRating) ||
-      strengths !== '' ||
-      managerRating !== '';
+      strengths !== '';
     if (isDirty && !window.confirm('Load this review? Unsaved edits will be lost.')) return;
     setEditingReviewId(row.id as UUID);
+    setEditingCreatedAt(row['created_at'] ? String(row['created_at']) : null);
     setEmployeeId(String(row['employee_id'] ?? ''));
     setCycle(String(row['cycle'] ?? 'Annual'));
     setKpaRows(normalizeKpaRows(row['kpa_rows']));
     setStrengths(String(row['strengths'] ?? ''));
     setAssistanceRequired(String(row['assistance_required'] ?? ''));
     setWeaknesses(String(row['weaknesses'] ?? ''));
-    setManagerRating(String(row['manager_rating'] ?? ''));
     setManagerRemarks(String(row['manager_remarks'] ?? ''));
     setCorrectiveActionsRequired(String(row['corrective_actions_required'] ?? ''));
     setResponsibleUserId(String(row['corrective_responsible_user_id'] ?? ''));
     setDueDate(String(row['corrective_due_date'] ?? new Date().toISOString().slice(0, 10)));
     setError(null);
     setSuccess(null);
+  }
+
+  function formatCreatedOn(value: string | null): string {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
   }
 
   async function onCreate() {
@@ -314,7 +342,7 @@ export function HrPerformancePage() {
             strengths,
             assistance_required: assistanceRequired || null,
             weaknesses: weaknesses || null,
-            manager_rating: managerRating ? Math.max(1, Math.min(5, Number(managerRating))) : null,
+            manager_rating: computedManagerRating,
             manager_remarks: managerRemarks || null,
             corrective_actions_required: correctiveActionsRequired || null,
             corrective_responsible_user_id: responsibleUserId || null,
@@ -334,7 +362,7 @@ export function HrPerformancePage() {
           strengths,
           assistance_required: assistanceRequired || null,
           weaknesses: weaknesses || null,
-          manager_rating: managerRating ? Math.max(1, Math.min(5, Number(managerRating))) : null,
+          manager_rating: computedManagerRating,
           manager_remarks: managerRemarks || null,
           corrective_actions_required: correctiveActionsRequired || null,
           corrective_responsible_user_id: responsibleUserId || null,
@@ -360,7 +388,6 @@ export function HrPerformancePage() {
           strengths: '',
           assistanceRequired: '',
           weaknesses: '',
-          managerRating: '',
           managerRemarks: '',
           correctiveActionsRequired: '',
           responsibleUserId: '',
@@ -477,10 +504,6 @@ export function HrPerformancePage() {
               </table>
             </div>
             <label className="text-sm">
-              <span className="block text-xs text-charcoal-500 mb-1">Overall manager rating (1–5)</span>
-              <input type="number" min={1} max={5} className="w-32 border border-surface-300 rounded-lg px-3 py-2" value={managerRating} onChange={(e) => setManagerRating(e.target.value)} placeholder="1–5" />
-            </label>
-            <label className="text-sm">
               <span className="block text-xs text-charcoal-500 mb-1">Overall Rating (computed)</span>
               <input
                 className="w-32 border border-surface-300 rounded-lg px-3 py-2 bg-surface-50"
@@ -488,6 +511,16 @@ export function HrPerformancePage() {
                 value={computedOverallRating !== null ? computedOverallRating.toFixed(1) : '—'}
               />
             </label>
+            {editingReviewId && (
+              <label className="text-sm">
+                <span className="block text-xs text-charcoal-500 mb-1">Created on</span>
+                <input
+                  className="w-32 border border-surface-300 rounded-lg px-3 py-2 bg-surface-50"
+                  readOnly
+                  value={formatCreatedOn(editingCreatedAt)}
+                />
+              </label>
+            )}
             <label className="text-sm md:col-span-2"><span className="block text-xs text-charcoal-500 mb-1">Strengths</span><textarea rows={2} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={strengths} onChange={(e) => setStrengths(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Assistance required</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" autoComplete="off" value={assistanceRequired} onChange={(e) => setAssistanceRequired(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Weaknesses</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" autoComplete="off" value={weaknesses} onChange={(e) => setWeaknesses(e.target.value)} /></label>
@@ -496,8 +529,11 @@ export function HrPerformancePage() {
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Responsible person</span>
               <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={responsibleUserId} onChange={(e) => setResponsibleUserId(e.target.value)}>
                 <option value="">Select responsible person</option>
-                {(employees ?? []).map((employee) => <option key={employee.id} value={employee.user_id ?? ''}>{employee.first_name} {employee.last_name}</option>)}
+                {(employees ?? [])
+                  .filter((employee) => Boolean(employee.user_id))
+                  .map((employee) => <option key={employee.id} value={employee.user_id as string}>{employee.first_name} {employee.last_name}</option>)}
               </select>
+              <span className="block text-xs text-charcoal-400 mt-1">Only employees with a linked user account can be selected as responsible person.</span>
             </label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Due date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></label>
           </div>
@@ -535,6 +571,16 @@ export function HrPerformancePage() {
                 <option value="Annual">Annual</option>
                 <option value="Quarterly">Quarterly</option>
                 <option value="Monthly">Monthly</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Status</span>
+              <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                <option value="">All</option>
+                <option value="DRAFT">DRAFT</option>
+                <option value="IN_REVIEW">IN_REVIEW</option>
+                <option value="ACK_PENDING">ACK_PENDING</option>
+                <option value="CLOSED">CLOSED</option>
               </select>
             </label>
             <label className="text-sm">
@@ -590,7 +636,7 @@ export function HrPerformancePage() {
               {filteredReviews.map((row) => {
                 const r = row as Record<string, unknown>;
                 return (
-                <tr key={String(r['id'])} className="border-t border-surface-100">
+                <tr key={String(r['id'])} id={`review-${String(r['id'])}`} className="border-t border-surface-100">
                   <td className="px-3 py-2">{employeeLabel.get(r['employee_id'] as UUID) ?? String(r['employee_id'] ?? '')}</td>
                   <td className="px-3 py-2">{String(r['cycle'] ?? '')}</td>
                   <td className="px-3 py-2">{String(r['overall_rating'] ?? '')} / {String(r['manager_rating'] ?? '')}</td>

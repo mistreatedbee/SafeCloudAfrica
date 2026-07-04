@@ -1,13 +1,34 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MenuIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SearchIcon, UsersIcon } from 'lucide-react';
 import { NotificationBell, type NotificationItem } from '../ui/NotificationBell';
 import { UserMenu } from '../ui/UserMenu';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useIdentity } from '../../hooks/useIdentity';
-import { listMyNotifications } from '../../api/services/notificationsService';
+import { listMyNotifications, markNotificationRead } from '../../api/services/notificationsService';
 import { countActiveMembers, getSeatLimitForCompany } from '../../api/services/tenantService';
 import type { Notification } from '../../api/models/entities';
+
+const NOTIFICATION_ITEM_ROUTES: Record<string, string> = {
+  task: '/dashboard/management/tasks',
+  hr_leave_request: '/dashboard/hr/leave',
+  hr_ack_document: '/dashboard/hr/documents',
+  hr_performance_review: '/dashboard/hr/performance',
+  hr_timesheet: '/dashboard/hr/hours',
+  approval: '/dashboard/management/approvals'
+};
+
+function resolveNotificationTarget(metadata: Record<string, unknown> | undefined): string | null {
+  if (!metadata) return null;
+  const rawTaskId = metadata.taskId;
+  const itemType = String(metadata.itemType ?? (rawTaskId ? 'task' : '')).trim();
+  const itemId = String(metadata.itemId ?? rawTaskId ?? '').trim();
+  if (itemType === 'task' && itemId) return `/dashboard/management/tasks/${itemId}`;
+  const route = itemType ? NOTIFICATION_ITEM_ROUTES[itemType] : null;
+  if (!route) return null;
+  return itemId ? `${route}?highlight=${itemId}` : route;
+}
 
 type HeaderProps = {
   onMenuClick: () => void;
@@ -38,6 +59,7 @@ function SeatsRemainingBadge() {
 }
 
 export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed, title }: HeaderProps) {
+  const navigate = useNavigate();
   const { activeCompanyId, activeRole, isPlatformAdmin, isTenantLoaded } = useTenant();
   const { user } = useUser();
   const { organisationName, roleLabel } = useIdentity();
@@ -132,7 +154,16 @@ export function Header({ onMenuClick, onSidebarToggle, isSidebarCollapsed, title
           >
             <SearchIcon className="w-5 h-5" />
           </button>
-          <NotificationBell items={items} />
+          <NotificationBell
+            items={items}
+            onItemClick={(item) => {
+              void markNotificationRead(item.id as any).catch(() => undefined);
+              setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, read: true } : i)));
+              const target = resolveNotificationTarget(item.metadata);
+              navigate(target ?? '/dashboard/management/approvals');
+            }}
+            onViewAll={() => navigate('/dashboard/management/approvals')}
+          />
           <div className="w-px h-6 bg-surface-300 mx-2 hidden sm:block" />
           <UserMenu />
         </div>
@@ -155,7 +186,8 @@ function mapNotifications(records: Notification[]): NotificationItem[] {
       title: n.title,
       message: n.message,
       time: new Date(n.created_at).toLocaleString(),
-      read: !!(n as any).read_at
+      read: !!(n as any).read_at,
+      metadata: ((n as any).metadata ?? undefined) as Record<string, unknown> | undefined
     };
   });
 }

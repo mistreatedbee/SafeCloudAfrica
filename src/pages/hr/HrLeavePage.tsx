@@ -6,6 +6,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
 import {
   applyHrLeaveApproval,
+  archiveHrLeaveRequest,
   createHrLeaveRequest,
   ensureDefaultHrLeaveTypes,
   getHrEmployeeByUserId,
@@ -23,6 +24,25 @@ import type { UUID } from '../../api/models/core';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 import { toUserFacingError } from '../../utils/userFacingMessage';
+
+const LEAVE_STATUS_BADGES: Record<string, { label: string; classes: string }> = {
+  APPROVED: { label: 'Approved', classes: 'bg-emerald-100 text-emerald-700' },
+  DECLINED: { label: 'Declined', classes: 'bg-red-100 text-red-700' },
+  SUBMITTED: { label: 'Pending', classes: 'bg-amber-100 text-amber-700' },
+  CANCELLED: { label: 'Cancelled', classes: 'bg-charcoal-100 text-charcoal-600' },
+  DRAFT: { label: 'Draft', classes: 'bg-charcoal-100 text-charcoal-600' }
+};
+
+function leaveStatusBadge(status: string): { label: string; classes: string } {
+  return LEAVE_STATUS_BADGES[status] ?? { label: status, classes: 'bg-surface-100 text-charcoal-600' };
+}
+
+const MONTH_OPTIONS = [
+  { value: '01', label: 'January' }, { value: '02', label: 'February' }, { value: '03', label: 'March' },
+  { value: '04', label: 'April' }, { value: '05', label: 'May' }, { value: '06', label: 'June' },
+  { value: '07', label: 'July' }, { value: '08', label: 'August' }, { value: '09', label: 'September' },
+  { value: '10', label: 'October' }, { value: '11', label: 'November' }, { value: '12', label: 'December' }
+];
 
 export function HrLeavePage() {
   const { activeCompanyId, activeRole } = useTenant();
@@ -364,10 +384,19 @@ export function HrLeavePage() {
 
   const pending = useMemo(() => (requests ?? []).filter((row) => row.status === 'SUBMITTED'), [requests]);
 
+  const leaveTypeRequiresProofById = useMemo(
+    () => new Map((leaveTypes ?? []).map((row) => [row.id as UUID, Boolean((row as any).requires_proof)])),
+    [leaveTypes]
+  );
+
   const [filterQuery, setFilterQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterYear, setFilterYear] = useState(String(currentYear));
+  const [filterMonth, setFilterMonth] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivingId, setArchivingId] = useState<UUID | null>(null);
 
   const filtersActiveCount = [filterQuery, filterStatus, filterDateFrom, filterDateTo].filter(Boolean).length;
 
@@ -378,8 +407,25 @@ export function HrLeavePage() {
     setFilterDateTo('');
   }
 
+  async function onToggleArchive(row: Record<string, unknown>, archived: boolean) {
+    if (!activeCompanyId || !user?.id) return;
+    setError(null);
+    setSuccess(null);
+    setArchivingId(row.id as UUID);
+    try {
+      await archiveHrLeaveRequest({ companyId: activeCompanyId, leaveRequestId: row.id as UUID, actorUserId: user.id as UUID, archived });
+      await refetch();
+      setSuccess(archived ? 'Leave request archived.' : 'Leave request restored.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to update the archive status right now.'));
+    } finally {
+      setArchivingId(null);
+    }
+  }
+
   const filteredRequests = useMemo(() => {
     return (requests ?? []).filter((row) => {
+      if (Boolean((row as any).archived) !== showArchived) return false;
       const q = filterQuery.trim().toLowerCase();
       if (q) {
         const name = String(employeeLabel.get(row.employee_id as UUID) ?? '').toLowerCase();
@@ -391,9 +437,28 @@ export function HrLeavePage() {
       const end = String(row.end_date ?? '');
       if (filterDateFrom && end && end < filterDateFrom) return false;
       if (filterDateTo && start && start > filterDateTo) return false;
+      if (filterYear) {
+        const startYear = start.slice(0, 4);
+        if (startYear !== filterYear) return false;
+      }
+      if (filterMonth) {
+        const startMonth = start.slice(5, 7);
+        if (startMonth !== filterMonth) return false;
+      }
       return true;
     });
-  }, [requests, employeeLabel, leaveTypeLabelById, filterQuery, filterStatus, filterDateFrom, filterDateTo]);
+  }, [requests, employeeLabel, leaveTypeLabelById, filterQuery, filterStatus, filterDateFrom, filterDateTo, filterYear, filterMonth, showArchived]);
+
+  useEffect(() => {
+    const highlightId = new URLSearchParams(window.location.search).get('highlight');
+    if (!highlightId) return;
+    const el = document.getElementById(`leave-${highlightId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('ring-2', 'ring-teal', 'ring-offset-2');
+    const t = setTimeout(() => el.classList.remove('ring-2', 'ring-teal', 'ring-offset-2'), 3000);
+    return () => clearTimeout(t);
+  }, [filteredRequests]);
 
   return (
     <Layout title="Leave Management">
@@ -562,12 +627,46 @@ export function HrLeavePage() {
               <span className="block text-xs text-charcoal-500 mb-1">To</span>
               <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
             </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Year</span>
+              <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
+                <option value="">All</option>
+                {[currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map((y) => (
+                  <option key={y} value={String(y)}>{y}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Month</span>
+              <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}>
+                <option value="">All</option>
+                {MONTH_OPTIONS.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </label>
             {filtersActiveCount > 0 && (
               <div className="flex items-center gap-2 text-xs text-charcoal-500">
                 <span>{filtersActiveCount} filter{filtersActiveCount === 1 ? '' : 's'} active</span>
                 <button type="button" className="text-teal underline" onClick={clearFilters}>Clear filters</button>
               </div>
             )}
+            <div className="flex rounded-lg border border-surface-300 overflow-hidden text-sm ml-auto">
+              <button
+                type="button"
+                className={`px-3 py-2 ${!showArchived ? 'bg-teal text-white' : 'bg-white text-charcoal-600'}`}
+                onClick={() => setShowArchived(false)}
+              >
+                Active
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-2 ${showArchived ? 'bg-teal text-white' : 'bg-white text-charcoal-600'}`}
+                onClick={() => setShowArchived(true)}
+              >
+                View Archived
+              </button>
+            </div>
           </div>
         </div>
 
@@ -578,12 +677,17 @@ export function HrLeavePage() {
           <table className="w-full text-sm">
             <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Leave type</th><th className="text-left px-3 py-2">Dates</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Workflow</th><th className="text-left px-3 py-2">Decline reason</th><th className="text-left px-3 py-2">Action</th></tr></thead>
             <tbody>
-              {filteredRequests.map((row) => (
-                <tr key={row.id} className="border-t border-surface-100">
+              {filteredRequests.map((row) => {
+                const badge = leaveStatusBadge(String(row.status ?? ''));
+                const requiresProof = leaveTypeRequiresProofById.get(row.leave_type_id as UUID) ?? false;
+                return (
+                <tr key={row.id} id={`leave-${row.id}`} className="border-t border-surface-100">
                   <td className="px-3 py-2">{employeeLabel.get(row.employee_id as UUID) ?? row.employee_id}</td>
                   <td className="px-3 py-2">{leaveTypeLabelById.get(row.leave_type_id as UUID) ?? row.leave_type_id}</td>
                   <td className="px-3 py-2">{row.start_date} - {row.end_date}</td>
-                  <td className="px-3 py-2">{row.status}</td>
+                  <td className="px-3 py-2">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${badge.classes}`}>{badge.label}</span>
+                  </td>
                   <td className="px-3 py-2">{row.supervisor_approval_status} / {row.hr_approval_status}</td>
                   <td className="px-3 py-2">
                     <input
@@ -594,12 +698,23 @@ export function HrLeavePage() {
                     />
                   </td>
                   <td className="px-3 py-2 space-x-2">
-                    <button className="text-charcoal-700" onClick={() => setProofEvidenceRequestId(row.id as UUID)}>Proof</button>
+                    {requiresProof && <button className="text-charcoal-700" onClick={() => setProofEvidenceRequestId(row.id as UUID)}>View proof</button>}
                     {canApprove && row.status === 'SUBMITTED' && <button className="text-teal" onClick={() => void onApprove(row)}>Approve</button>}
                     {canApprove && row.status === 'SUBMITTED' && <button className="text-critical" onClick={() => void onDecline(row)}>Decline</button>}
+                    {canApprove && row.status === 'APPROVED' && !showArchived && (
+                      <button className="text-charcoal-700" disabled={archivingId === row.id} onClick={() => void onToggleArchive(row, true)}>
+                        {archivingId === row.id ? 'Archiving...' : 'Archive'}
+                      </button>
+                    )}
+                    {canApprove && showArchived && (
+                      <button className="text-charcoal-700" disabled={archivingId === row.id} onClick={() => void onToggleArchive(row, false)}>
+                        {archivingId === row.id ? 'Restoring...' : 'Restore'}
+                      </button>
+                    )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           )}

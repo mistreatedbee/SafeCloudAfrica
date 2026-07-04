@@ -36,21 +36,49 @@ export function downloadCsvReport(filename: string, rows: ReportRow[], metaLines
   downloadBlob(filename, new Blob([content], { type: 'text/csv;charset=utf-8' }));
 }
 
-export function downloadPdfReport(
+async function fetchImageAsDataUrl(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function downloadPdfReport(
   filename: string,
   title: string,
   rows: ReportRow[],
   metaLines: string[] = [],
-  options: { headerColor?: [number, number, number] } = {}
-): void {
+  options: { headerColor?: [number, number, number]; logoUrl?: string | null } = {}
+): Promise<void> {
   const headers = Array.from(rows.reduce((set, row) => {
     Object.keys(row).forEach((key) => set.add(key));
     return set;
   }, new Set<string>()));
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+  let titleX = 40;
+  if (options.logoUrl) {
+    const dataUrl = await fetchImageAsDataUrl(options.logoUrl);
+    if (dataUrl) {
+      try {
+        doc.addImage(dataUrl, 40, 20, 60, 30, undefined, 'FAST');
+        titleX = 112;
+      } catch {
+        // Ignore unsupported image formats — report still generates without the logo.
+      }
+    }
+  }
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
-  doc.text(title, 40, 40);
+  doc.text(title, titleX, 40);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   metaLines.filter(Boolean).slice(0, 6).forEach((line, index) => doc.text(String(line), 40, 58 + index * 12));

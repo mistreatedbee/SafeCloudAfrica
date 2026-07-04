@@ -3,6 +3,7 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { FloatingSupportChat } from '../support/FloatingSupportChat';
 import { subscribeToBackendUnavailable, type BackendUnavailableDetail } from '../../api/liveData';
+import { startProactiveSessionRefresh, stopProactiveSessionRefresh } from '../../api/insforge/ensureSession';
 
 type LayoutProps = {
   children: React.ReactNode;
@@ -23,6 +24,11 @@ export function Layout({ children, title }: LayoutProps) {
       setBackendIssue(detail);
     });
   }, [backendIssueDismissedAt]);
+
+  useEffect(() => {
+    startProactiveSessionRefresh();
+    return () => stopProactiveSessionRefresh();
+  }, []);
 
   return (
     <div className="flex h-screen bg-surface overflow-hidden">

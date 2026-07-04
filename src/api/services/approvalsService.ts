@@ -111,6 +111,7 @@ export async function decideApproval(input: {
       .single();
     if (error) throw new Error(getErrorMessage(error));
     if (!data) throw new Error('Failed to update approval.');
+    const approval = data as Approval;
     await createActivityLog({
       companyId: input.companyId,
       actorUserId: input.actorUserId,
@@ -118,6 +119,25 @@ export async function decideApproval(input: {
       entityType: 'approval',
       entityId: input.approvalId
     });
-    return data as Approval;
+
+    if (input.decision === 'rejected' && approval.requested_by_user_id) {
+      const { notifyRelevantUsers } = await import('./notificationEventsService');
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `approval-rejected:${approval.id}`,
+        eventType: 'approval_rejected',
+        title: 'Approval rejected',
+        message: input.signatureNote
+          ? `Your "${approval.entity_type}" submission was rejected: ${input.signatureNote}`
+          : `Your "${approval.entity_type}" submission was rejected.`,
+        recipientUserIds: [approval.requested_by_user_id as UUID],
+        emailTemplateKey: 'approvals',
+        emailVariables: { title: approval.entity_type, status: 'Rejected' },
+        actionUrl: '/dashboard/management/approvals',
+        metadata: { itemType: 'approval', itemId: approval.id, entityType: approval.entity_type, entityId: approval.entity_id }
+      }).catch(() => undefined);
+    }
+
+    return approval;
   });
 }

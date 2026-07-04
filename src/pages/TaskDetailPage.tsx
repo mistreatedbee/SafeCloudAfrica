@@ -29,6 +29,7 @@ import {
   submitForReview,
   approveTask,
   closeTask,
+  reopenTask,
   addTaskComment,
   addTaskProgressUpdate,
   listTaskTimeLogs,
@@ -36,13 +37,12 @@ import {
   startTimeEntry,
   stopTimeEntry,
   logTaskTimeIncrement,
-  requestTaskSupervisorApproval,
-  requestTaskManagerApproval,
-  requestTaskAuditorVerification,
+  requestTaskSignOff,
   setTaskEffectivenessCheck
 } from '../api/services/tasksService';
 import { listActivityLogsByEntity } from '../api/services/activityLogService';
-import { listApprovals, decideApproval } from '../api/services/approvalsService';
+import { listApprovals } from '../api/services/approvalsService';
+import { ApprovalDecisionModal } from '../components/approvals/ApprovalDecisionModal';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
 import { TASK_CATEGORY_LABELS, TASK_TIME_STATUS_LABELS, TASK_SOURCE_ENTITY_LABELS } from '../api/constants/taskLabels';
 import type { Task, Approval, ActivityLog, EvidenceAttachment, TaskTimeLog, UUID } from '../api/models/entities';
@@ -102,6 +102,7 @@ export function TaskDetailPage() {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [pageSuccess, setPageSuccess] = useState<string | null>(null);
+  const [approvalModal, setApprovalModal] = useState<{ approval: Approval; decision: 'approved' | 'rejected' } | null>(null);
 
   const backTo = useMemo(() => {
     if (location.pathname.startsWith('/tasks')) return '/tasks';
@@ -189,7 +190,12 @@ export function TaskDetailPage() {
     setPageSuccess(null);
     try {
       await submitForReview({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
-      setPageSuccess('Saved successfully');
+      const signOff = await requestTaskSignOff({ companyId: activeCompanyId, taskId: taskId as UUID, requestedByUserId: user.id });
+      if (signOff.requested) {
+        setPageSuccess('Submitted for review — the approver has been notified.');
+      } else {
+        setPageSuccess('Submitted for review, but no task owner/allocator is set, so no approver could be notified. Set one on this task to enable sign-off.');
+      }
       refresh();
     } catch (err) {
       setPageError(toUserFacingError(err, 'Unable to submit this task for review right now.'));
@@ -316,18 +322,18 @@ export function TaskDetailPage() {
     }
   }
 
-  async function onDecideApproval(approvalId: UUID, decision: 'approved' | 'rejected') {
-    if (!activeCompanyId || !user?.id) return;
-    if (decision === 'rejected' && !window.confirm('Reject this approval request? This cannot be undone.')) return;
+  async function onApprovalDecided(decision: 'approved' | 'rejected') {
+    if (!activeCompanyId || !taskId || !user?.id) return;
     setPageError(null);
-    setPageSuccess(null);
-    try {
-      await decideApproval({ companyId: activeCompanyId, approvalId, actorUserId: user.id, decision });
-      setPageSuccess('Saved successfully');
-      refresh();
-    } catch (err) {
-      setPageError(toUserFacingError(err, 'Unable to update this approval right now.'));
+    if (decision === 'rejected' && task?.status === 'under-review') {
+      try {
+        await reopenTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id, reason: 'Sign-off rejected' });
+      } catch (err) {
+        setPageError(toUserFacingError(err, 'Approval was rejected, but the task could not be reopened automatically.'));
+      }
     }
+    setPageSuccess(decision === 'approved' ? 'Approved.' : 'Rejected — the responsible person has been notified with your comments.');
+    refresh();
   }
 
   function sourceLink(): { label: string; path: string } | null {
@@ -735,33 +741,50 @@ export function TaskDetailPage() {
           <h2 className="text-sm font-semibold text-charcoal mb-3">Approvals & sign-offs</h2>
           <ul className="space-y-2">
             {taskApprovals.map((a) => (
-              <li key={a.id} className="flex items-center justify-between text-sm">
-                <span>
-                  {APPROVAL_LABELS[a.entity_type] ?? a.entity_type} — {a.status}
-                </span>
-                {a.status === 'pending' && a.approver_user_id === user?.id && (
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void onDecideApproval(a.id, 'rejected')}
-                      className="px-2 py-1 rounded bg-surface-200 text-charcoal text-xs"
-                    >
-                      Reject
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void onDecideApproval(a.id, 'approved')}
-                      className="px-2 py-1 rounded bg-teal text-white text-xs"
-                    >
-                      Approve
-                    </button>
-                  </div>
+              <li key={a.id} className="text-sm">
+                <div className="flex items-center justify-between">
+                  <span>
+                    {APPROVAL_LABELS[a.entity_type] ?? a.entity_type} — {a.status}
+                  </span>
+                  {a.status === 'pending' && a.approver_user_id === user?.id && (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setApprovalModal({ approval: a, decision: 'rejected' })}
+                        className="px-2 py-1 rounded bg-surface-200 text-charcoal text-xs"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setApprovalModal({ approval: a, decision: 'approved' })}
+                        className="px-2 py-1 rounded bg-teal text-white text-xs"
+                      >
+                        Approve
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {a.status === 'rejected' && a.signature_note && (
+                  <p className="text-xs text-critical mt-1">Rejection reason: {a.signature_note}</p>
                 )}
               </li>
             ))}
             {taskApprovals.length === 0 && <p className="text-charcoal-500 text-sm">No approval requests yet.</p>}
           </ul>
         </div>
+
+        {activeCompanyId && user?.id && (
+          <ApprovalDecisionModal
+            open={approvalModal !== null}
+            onClose={() => setApprovalModal(null)}
+            companyId={activeCompanyId}
+            actorUserId={user.id}
+            approval={approvalModal?.approval ?? null}
+            decision={approvalModal?.decision ?? 'approved'}
+            onDecided={() => void onApprovalDecided(approvalModal!.decision)}
+          />
+        )}
 
         {/* Effectiveness check (for closure) — managers/supervisors only */}
         {task.status !== 'closed' && canManageTasks && (

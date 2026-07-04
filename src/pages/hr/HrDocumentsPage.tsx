@@ -77,7 +77,8 @@ export function HrDocumentsPage() {
   const [deletingAckId, setDeletingAckId] = useState<UUID | null>(null);
   const [pendingAckDocId, setPendingAckDocId] = useState<UUID | null>(null);
   const [pendingAckSign, setPendingAckSign] = useState(false);
-  const [ackConfirmed, setAckConfirmed] = useState(false);
+  const [pendingAckDecline, setPendingAckDecline] = useState(false);
+  const [declineReason, setDeclineReason] = useState('');
   const [ackSubmitting, setAckSubmitting] = useState(false);
 
   const canEdit = isFullAccess(activeRole ?? null) || Boolean((user as any)?.is_hr_manager);
@@ -115,6 +116,17 @@ export function HrDocumentsPage() {
       actorUserId: user.id as UUID
     });
   }, [activeCompanyId, activeRole, user?.id]);
+
+  useEffect(() => {
+    const highlightId = new URLSearchParams(window.location.search).get('highlight');
+    if (!highlightId) return;
+    const el = document.getElementById(`ack-doc-${highlightId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('ring-2', 'ring-teal', 'ring-offset-2');
+    const t = setTimeout(() => el.classList.remove('ring-2', 'ring-teal', 'ring-offset-2'), 3000);
+    return () => clearTimeout(t);
+  }, [ackDocs]);
 
   const employeeById = useMemo(() => new Map((employees ?? []).map((e) => [e.id as UUID, e])), [employees]);
 
@@ -272,8 +284,9 @@ export function HrDocumentsPage() {
     }
   }
 
-  async function onAcknowledge(docId: UUID, sign = false) {
+  async function onAcknowledge(docId: UUID, decision: 'acknowledge' | 'sign' | 'decline') {
     if (!activeCompanyId || !user?.id) return;
+    if (decision === 'decline' && !declineReason.trim()) return;
     setAckSubmitting(true);
     try {
       const device = `${navigator.platform || 'unknown'} | ${navigator.userAgent || 'unknown'}`.slice(0, 400);
@@ -281,7 +294,8 @@ export function HrDocumentsPage() {
         companyId: activeCompanyId,
         actorUserId: user.id as UUID,
         ackDocumentId: docId,
-        action: sign ? 'sign' : 'acknowledge',
+        action: decision,
+        declineReason: decision === 'decline' ? declineReason.trim() : undefined,
         ipAddress: null,
         deviceInfo: device
       });
@@ -289,14 +303,16 @@ export function HrDocumentsPage() {
     } finally {
       setAckSubmitting(false);
       setPendingAckDocId(null);
-      setAckConfirmed(false);
+      setPendingAckDecline(false);
+      setDeclineReason('');
     }
   }
 
   function openAckModal(docId: UUID, sign: boolean) {
     setPendingAckDocId(docId);
     setPendingAckSign(sign);
-    setAckConfirmed(false);
+    setPendingAckDecline(false);
+    setDeclineReason('');
   }
 
   useEffect(() => {
@@ -304,7 +320,8 @@ export function HrDocumentsPage() {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape' && !ackSubmitting) {
         setPendingAckDocId(null);
-        setAckConfirmed(false);
+        setPendingAckDecline(false);
+        setDeclineReason('');
       }
     }
     window.addEventListener('keydown', onKeyDown);
@@ -660,7 +677,7 @@ export function HrDocumentsPage() {
                     const myReceipt = (row.receipts ?? [])[0];
                     const status = myReceipt?.status ?? 'PENDING';
                     return (
-                      <div key={row.id} className="border border-surface-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div key={row.id} id={`ack-doc-${row.id}`} className="border border-surface-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div className="space-y-1 min-w-0">
                           <p className="font-medium text-sm text-charcoal truncate">{row.title}</p>
                           <p className="text-xs text-charcoal-500">{row.category}{row.version ? ` · v${row.version}` : ''}</p>
@@ -671,10 +688,13 @@ export function HrDocumentsPage() {
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {status === 'SIGNED' && (
-                            <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">Signed</span>
+                            <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">Acknowledged ✓</span>
                           )}
                           {status === 'ACKNOWLEDGED' && (
-                            <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">Acknowledged</span>
+                            <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">Acknowledged ✓</span>
+                          )}
+                          {status === 'DECLINED' && (
+                            <span className="px-2 py-1 rounded-full bg-red-100 text-red-700 text-xs font-medium" title={myReceipt?.decline_reason ?? undefined}>Declined</span>
                           )}
                           {status === 'PENDING' && (
                             <span className="px-2 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">Pending</span>
@@ -684,14 +704,14 @@ export function HrDocumentsPage() {
                             if (url) window.open(url, '_blank', 'noopener,noreferrer');
                             else alert('No file uploaded.');
                           }}>Preview</button>
-                          {status !== 'ACKNOWLEDGED' && status !== 'SIGNED' && (
+                          {status !== 'ACKNOWLEDGED' && status !== 'SIGNED' && status !== 'DECLINED' && (
                             <button
                               className="px-3 py-1.5 rounded-lg bg-teal text-white text-xs disabled:opacity-60"
                               onClick={() => openAckModal(row.id as UUID, false)}
                               disabled={ackSubmitting}
-                            >Acknowledge</button>
+                            >Respond</button>
                           )}
-                          {row.signature_required && status !== 'SIGNED' && (
+                          {row.signature_required && status !== 'SIGNED' && status !== 'DECLINED' && (
                             <button
                               className="px-3 py-1.5 rounded-lg border border-teal text-teal text-xs disabled:opacity-60"
                               onClick={() => openAckModal(row.id as UUID, true)}
@@ -719,7 +739,7 @@ export function HrDocumentsPage() {
                       const completed = receipts.filter((r) => r.status === 'ACKNOWLEDGED' || r.status === 'SIGNED').length;
                       const completion = receipts.length ? Math.round((completed / receipts.length) * 100) : 0;
                       return (
-                        <tr key={row.id} className="border-t border-surface-100">
+                        <tr key={row.id} id={`ack-doc-${row.id}`} className="border-t border-surface-100">
                           <td className="px-3 py-2">{row.title}</td>
                           <td className="px-3 py-2">{row.category}</td>
                           <td className="px-3 py-2">{row.version ?? '-'}</td>
@@ -782,36 +802,64 @@ export function HrDocumentsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <h3 className="text-base font-semibold text-charcoal">Document Acknowledgement</h3>
             <p className="text-sm text-charcoal-700 leading-relaxed">
-              I hereby acknowledge that I have received, read, and understood the document provided.
+              I confirm I have read and understood this document.
             </p>
             <p className="text-sm text-charcoal-500">
               Please contact HR or your manager for any questions or queries regarding the document.
             </p>
-            <label className="flex items-center gap-3 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={ackConfirmed}
-                onChange={(e) => setAckConfirmed(e.target.checked)}
-                className="w-4 h-4 accent-teal"
-              />
-              <span>I confirm the above acknowledgement</span>
-            </label>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                className="px-4 py-2 rounded-lg border border-surface-300 text-sm"
-                onClick={() => { setPendingAckDocId(null); setAckConfirmed(false); }}
-                disabled={ackSubmitting}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-60"
-                disabled={!ackConfirmed || ackSubmitting}
-                onClick={() => void onAcknowledge(pendingAckDocId, pendingAckSign)}
-              >
-                {ackSubmitting ? 'Submitting...' : pendingAckSign ? 'Confirm & Sign' : 'Confirm & Acknowledge'}
-              </button>
-            </div>
+            {!pendingAckDecline ? (
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  className="px-4 py-2 rounded-lg border border-surface-300 text-sm"
+                  onClick={() => setPendingAckDocId(null)}
+                  disabled={ackSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="px-4 py-2 rounded-lg border border-critical text-critical text-sm disabled:opacity-60"
+                  onClick={() => setPendingAckDecline(true)}
+                  disabled={ackSubmitting}
+                >
+                  No
+                </button>
+                <button
+                  className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-60"
+                  disabled={ackSubmitting}
+                  onClick={() => void onAcknowledge(pendingAckDocId, pendingAckSign ? 'sign' : 'acknowledge')}
+                >
+                  {ackSubmitting ? 'Submitting...' : 'Yes'}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-charcoal">Reason for not acknowledging</label>
+                <textarea
+                  rows={3}
+                  className="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"
+                  value={declineReason}
+                  onChange={(e) => setDeclineReason(e.target.value)}
+                  placeholder="Please explain why you are declining to acknowledge this document."
+                  disabled={ackSubmitting}
+                />
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    className="px-4 py-2 rounded-lg border border-surface-300 text-sm"
+                    onClick={() => setPendingAckDecline(false)}
+                    disabled={ackSubmitting}
+                  >
+                    Back
+                  </button>
+                  <button
+                    className="px-4 py-2 rounded-lg bg-critical text-white text-sm disabled:opacity-60"
+                    disabled={!declineReason.trim() || ackSubmitting}
+                    onClick={() => void onAcknowledge(pendingAckDocId, 'decline')}
+                  >
+                    {ackSubmitting ? 'Submitting...' : 'Submit decline'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

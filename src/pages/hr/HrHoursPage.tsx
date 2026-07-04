@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
@@ -8,6 +8,7 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { listDepartments } from '../../api/services/departmentsService';
 import {
   approveHrTimesheet,
+  archiveHrTimesheet,
   getHrSettings,
   getHrEmployeeByUserId,
   listHrEmployees,
@@ -20,6 +21,13 @@ import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { HrExportMenu } from '../../components/hr/HrExportMenu';
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
+
+const MONTH_OPTIONS = [
+  { value: '01', label: 'January' }, { value: '02', label: 'February' }, { value: '03', label: 'March' },
+  { value: '04', label: 'April' }, { value: '05', label: 'May' }, { value: '06', label: 'June' },
+  { value: '07', label: 'July' }, { value: '08', label: 'August' }, { value: '09', label: 'September' },
+  { value: '10', label: 'October' }, { value: '11', label: 'November' }, { value: '12', label: 'December' }
+];
 
 export function HrHoursPage() {
   const { activeCompanyId, activeRole } = useTenant();
@@ -96,11 +104,18 @@ export function HrHoursPage() {
   }, [date]);
   const selectedDayIsWorkingDay = !selectedDayName || workingDays.includes(selectedDayName);
 
+  const currentYear = new Date().getFullYear();
+  const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+
   const [filterQuery, setFilterQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterYear, setFilterYear] = useState(String(currentYear));
+  const [filterMonth, setFilterMonth] = useState(currentMonth);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivingId, setArchivingId] = useState<UUID | null>(null);
 
   const filtersActiveCount = [filterQuery, filterStatus, filterDepartment, filterDateFrom, filterDateTo].filter(Boolean).length;
 
@@ -112,6 +127,22 @@ export function HrHoursPage() {
     setFilterDateTo('');
   }
 
+  async function onToggleArchive(rowId: UUID, archived: boolean) {
+    if (!activeCompanyId || !user?.id) return;
+    setError(null);
+    setSuccess(null);
+    setArchivingId(rowId);
+    try {
+      await archiveHrTimesheet({ companyId: activeCompanyId, timesheetId: rowId, actorUserId: user.id as UUID, archived });
+      await refetch();
+      setSuccess(archived ? 'Timesheet archived.' : 'Timesheet restored.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to update the archive status right now.'));
+    } finally {
+      setArchivingId(null);
+    }
+  }
+
   const employeeDepartmentId = useMemo(
     () => new Map((employees ?? []).map((e) => [e.id as UUID, e.department_id as UUID | null])),
     [employees]
@@ -119,6 +150,7 @@ export function HrHoursPage() {
 
   const filteredRows = useMemo(() => {
     return (rows ?? []).filter((row) => {
+      if (Boolean((row as any).archived) !== showArchived) return false;
       const q = filterQuery.trim().toLowerCase();
       if (q) {
         const name = String(employeeLabel.get(row.employee_id as UUID) ?? '').toLowerCase();
@@ -131,9 +163,22 @@ export function HrHoursPage() {
       }
       if (filterDateFrom && row.date < filterDateFrom) return false;
       if (filterDateTo && row.date > filterDateTo) return false;
+      if (filterYear && row.date.slice(0, 4) !== filterYear) return false;
+      if (filterMonth && row.date.slice(5, 7) !== filterMonth) return false;
       return true;
     });
-  }, [rows, employeeLabel, employeeDepartmentId, filterQuery, filterStatus, filterDepartment, filterDateFrom, filterDateTo]);
+  }, [rows, employeeLabel, employeeDepartmentId, filterQuery, filterStatus, filterDepartment, filterDateFrom, filterDateTo, filterYear, filterMonth, showArchived]);
+
+  useEffect(() => {
+    const highlightId = new URLSearchParams(window.location.search).get('highlight');
+    if (!highlightId) return;
+    const el = document.getElementById(`timesheet-${highlightId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('ring-2', 'ring-teal', 'ring-offset-2');
+    const t = setTimeout(() => el.classList.remove('ring-2', 'ring-teal', 'ring-offset-2'), 3000);
+    return () => clearTimeout(t);
+  }, [filteredRows]);
 
   const byMonth = useMemo(() => {
     const map = new Map<string, number>();
@@ -346,18 +391,54 @@ export function HrHoursPage() {
               <span className="block text-xs text-charcoal-500 mb-1">Date to</span>
               <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
             </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Year</span>
+              <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
+                <option value="">All</option>
+                {[currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map((y) => (
+                  <option key={y} value={String(y)}>{y}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Month</span>
+              <select className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}>
+                <option value="">All</option>
+                {MONTH_OPTIONS.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </label>
             {filtersActiveCount > 0 && (
               <div className="flex items-center gap-2 text-xs text-charcoal-500">
                 <span>{filtersActiveCount} filter{filtersActiveCount === 1 ? '' : 's'} active</span>
                 <button type="button" className="text-teal underline" onClick={clearFilters}>Clear filters</button>
               </div>
             )}
+            <div className="flex rounded-lg border border-surface-300 overflow-hidden text-sm ml-auto">
+              <button
+                type="button"
+                className={`px-3 py-2 ${!showArchived ? 'bg-teal text-white' : 'bg-white text-charcoal-600'}`}
+                onClick={() => setShowArchived(false)}
+              >
+                Active
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-2 ${showArchived ? 'bg-teal text-white' : 'bg-white text-charcoal-600'}`}
+                onClick={() => setShowArchived(true)}
+              >
+                View Archived
+              </button>
+            </div>
           </div>
         </div>
 
         <div className="flex justify-end">
           <HrExportMenu
             moduleName="Timesheets"
+            periodLabel={filterMonth && filterYear ? `${MONTH_OPTIONS.find((m) => m.value === filterMonth)?.label ?? filterMonth} ${filterYear}` : filterYear || undefined}
+            fileNameBase={`SCA_HoursWorked_${filterYear || new Date().getFullYear()}-${filterMonth || String(new Date().getMonth() + 1).padStart(2, '0')}`}
             columns={[
               { key: 'employee', label: 'Employee' },
               { key: 'date', label: 'Date' },
@@ -389,7 +470,7 @@ export function HrHoursPage() {
             <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Date</th><th className="text-left px-3 py-2">Hours worked</th><th className="text-left px-3 py-2">Overtime</th><th className="text-left px-3 py-2">Daily total</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Decline reason</th><th className="text-left px-3 py-2">Action</th></tr></thead>
             <tbody>
               {filteredRows.map((row) => (
-                <tr key={row.id} className="border-t border-surface-100">
+                <tr key={row.id} id={`timesheet-${row.id}`} className="border-t border-surface-100">
                   <td className="px-3 py-2">{employeeLabel.get(row.employee_id as UUID) ?? row.employee_id}</td>
                   <td className="px-3 py-2">{row.date}</td>
                   <td className="px-3 py-2">{row.hours_worked}</td>
@@ -420,7 +501,17 @@ export function HrHoursPage() {
                     {canReopen && row.status === 'DECLINED' && (!isEmployee || String(row.employee_id) === String(selfEmployee?.id)) && (
                       <button className="text-teal" onClick={() => onReopen(row.id as UUID)}>Reopen</button>
                     )}
-                    {row.status === 'APPROVED' && <span className="text-xs text-charcoal-500">Locked</span>}
+                    {row.status === 'APPROVED' && <span className="text-xs text-charcoal-500 mr-2">Locked</span>}
+                    {canApprove && row.status === 'APPROVED' && !showArchived && (
+                      <button className="text-charcoal-700" disabled={archivingId === row.id} onClick={() => void onToggleArchive(row.id as UUID, true)}>
+                        {archivingId === row.id ? 'Archiving...' : 'Archive'}
+                      </button>
+                    )}
+                    {canApprove && showArchived && (
+                      <button className="text-charcoal-700" disabled={archivingId === row.id} onClick={() => void onToggleArchive(row.id as UUID, false)}>
+                        {archivingId === row.id ? 'Restoring...' : 'Restore'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

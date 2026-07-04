@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAuth } from '@insforge/react';
 import { insforge } from '../api/insforge/client';
+import { stopProactiveSessionRefresh } from '../api/insforge/ensureSession';
 import { useDraftManager } from '../session/DraftManagerProvider';
 
 const SESSION_EXPIRED_KEY = 'sca_session_expired';
@@ -21,6 +22,7 @@ export function AuthSessionListener() {
 
   useEffect(() => {
     const onAuthFailure = () => {
+      stopProactiveSessionRefresh();
       void (async () => {
         try {
           sessionStorage.setItem(SESSION_EXPIRED_KEY, '1');

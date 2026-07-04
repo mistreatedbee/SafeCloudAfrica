@@ -16,6 +16,7 @@ export type NotificationItem = {
   message: string;
   time: string;
   read: boolean;
+  metadata?: Record<string, unknown>;
 };
 const iconMap: Record<
   NotificationType,
@@ -34,7 +35,15 @@ const iconColorMap: Record<NotificationType, string> = {
   success: 'text-success',
   info: 'text-teal'
 };
-export function NotificationBell({ items = [] }: { items?: NotificationItem[] }) {
+export function NotificationBell({
+  items = [],
+  onItemClick,
+  onViewAll
+}: {
+  items?: NotificationItem[];
+  onItemClick?: (item: NotificationItem) => void;
+  onViewAll?: () => void;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const unreadCount = items.filter((n) => !n.read).length;
@@ -86,7 +95,7 @@ export function NotificationBell({ items = [] }: { items?: NotificationItem[] })
           transition={{
             duration: 0.15
           }}
-          className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-elevated border border-surface-300 overflow-hidden z-50">
+          className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-elevated border border-surface-300 overflow-hidden z-50">
 
             <div className="flex items-center justify-between px-4 py-3 border-b border-surface-200">
               <h3 className="font-semibold text-charcoal">Notifications</h3>
@@ -112,6 +121,18 @@ export function NotificationBell({ items = [] }: { items?: NotificationItem[] })
               return (
                 <div
                   key={notification.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    setIsOpen(false);
+                    onItemClick?.(notification);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      setIsOpen(false);
+                      onItemClick?.(notification);
+                    }
+                  }}
                   className={`px-4 py-3 border-b border-surface-100 last:border-0 hover:bg-surface-50 cursor-pointer ${!notification.read ? 'bg-teal-50/30' : ''}`}>
 
                     <div className="flex gap-3">
@@ -141,7 +162,14 @@ export function NotificationBell({ items = [] }: { items?: NotificationItem[] })
             </div>
 
             <div className="px-4 py-3 border-t border-surface-200 bg-surface-50">
-              <button className="w-full text-sm font-medium text-teal hover:text-teal-700 transition-colors">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  onViewAll?.();
+                }}
+                className="w-full min-h-[44px] text-sm font-medium text-teal hover:text-teal-700 transition-colors"
+              >
                 View all notifications
               </button>
             </div>

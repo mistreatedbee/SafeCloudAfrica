@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
@@ -48,6 +48,9 @@ export function HrRecruitmentPage() {
 
   const vacancyMap = useMemo(() => new Map((vacancies ?? []).map((row) => [row.id as UUID, String(row.title ?? '')])), [vacancies]);
 
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+
   const [vacancyQuery, setVacancyQuery] = useState('');
   const [vacancyStatusFilter, setVacancyStatusFilter] = useState('');
   const vacancyStatusOptions = useMemo(
@@ -60,9 +63,12 @@ export function HrRecruitmentPage() {
       const q = vacancyQuery.trim().toLowerCase();
       if (q && !String(row.title ?? '').toLowerCase().includes(q)) return false;
       if (vacancyStatusFilter && String(row.status ?? '') !== vacancyStatusFilter) return false;
+      const createdAt = String((row as any).created_at ?? '').slice(0, 10);
+      if (filterDateFrom && createdAt && createdAt < filterDateFrom) return false;
+      if (filterDateTo && createdAt && createdAt > filterDateTo) return false;
       return true;
     });
-  }, [vacancies, vacancyQuery, vacancyStatusFilter]);
+  }, [vacancies, vacancyQuery, vacancyStatusFilter, filterDateFrom, filterDateTo]);
 
   const [applicantQuery, setApplicantQuery] = useState('');
   const [applicantStatusFilter, setApplicantStatusFilter] = useState('');
@@ -80,9 +86,23 @@ export function HrRecruitmentPage() {
         if (!name.includes(q) && !vacancyTitle.includes(q)) return false;
       }
       if (applicantStatusFilter && String(row.status ?? '') !== applicantStatusFilter) return false;
+      const createdAt = String((row as any).created_at ?? '').slice(0, 10);
+      if (filterDateFrom && createdAt && createdAt < filterDateFrom) return false;
+      if (filterDateTo && createdAt && createdAt > filterDateTo) return false;
       return true;
     });
-  }, [applicants, vacancyMap, applicantQuery, applicantStatusFilter]);
+  }, [applicants, vacancyMap, applicantQuery, applicantStatusFilter, filterDateFrom, filterDateTo]);
+
+  useEffect(() => {
+    const highlightId = new URLSearchParams(window.location.search).get('highlight');
+    if (!highlightId) return;
+    const el = document.getElementById(`vacancy-${highlightId}`) ?? document.getElementById(`applicant-${highlightId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('ring-2', 'ring-teal', 'ring-offset-2');
+    const t = setTimeout(() => el.classList.remove('ring-2', 'ring-teal', 'ring-offset-2'), 3000);
+    return () => clearTimeout(t);
+  }, [filteredVacancies, filteredApplicants]);
 
   async function onCreateVacancy() {
     if (!activeCompanyId || !user?.id || !vacancyTitle.trim()) return;
@@ -289,6 +309,25 @@ export function HrRecruitmentPage() {
         {error && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
         {success && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700">{success}</div>}
 
+        <div className="bg-white border border-surface-300 rounded-xl p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Created from</span>
+              <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Created to</span>
+              <input type="date" className="border border-surface-300 rounded-lg px-3 py-2 text-sm" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
+            </label>
+            {(filterDateFrom || filterDateTo) && (
+              <div className="flex items-center gap-2 text-xs text-charcoal-500">
+                <span>Date filter active (applies to vacancies and applicants)</span>
+                <button type="button" className="text-teal underline" onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); }}>Clear</button>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
             <h3 className="font-semibold">Vacancy Management</h3>
@@ -388,6 +427,8 @@ export function HrRecruitmentPage() {
               )}
               <HrExportMenu
                 moduleName="Vacancies"
+                periodLabel={filterDateFrom || filterDateTo ? `${filterDateFrom || 'earliest'} to ${filterDateTo || 'latest'}` : undefined}
+                fileNameBase={`SCA_Recruitment_Vacancies_${new Date().toISOString().slice(0, 10)}`}
                 columns={[
                   { key: 'title', label: 'Title' },
                   { key: 'status', label: 'Status' },
@@ -410,7 +451,7 @@ export function HrRecruitmentPage() {
               ) : filteredVacancies.length === 0 ? (
                 <p className="text-sm text-charcoal-500 py-4 text-center">No vacancies match your filters.</p>
               ) : filteredVacancies.map((row) => (
-                <div key={String(row.id)} className="border border-surface-200 rounded-lg p-3">
+                <div key={String(row.id)} id={`vacancy-${String(row.id)}`} className="border border-surface-200 rounded-lg p-3">
                   <p className="font-medium">{String(row.title ?? '')}</p>
                   <p className="text-charcoal-500">
                     {((row.competencies_required as string[] | undefined)?.length
@@ -495,6 +536,8 @@ export function HrRecruitmentPage() {
               )}
               <HrExportMenu
                 moduleName="Applicants"
+                periodLabel={filterDateFrom || filterDateTo ? `${filterDateFrom || 'earliest'} to ${filterDateTo || 'latest'}` : undefined}
+                fileNameBase={`SCA_Recruitment_Applicants_${new Date().toISOString().slice(0, 10)}`}
                 columns={[
                   { key: 'full_name', label: 'Full Name' },
                   { key: 'vacancy', label: 'Vacancy' },
@@ -519,7 +562,7 @@ export function HrRecruitmentPage() {
               ) : filteredApplicants.length === 0 ? (
                 <p className="text-sm text-charcoal-500 py-4 text-center">No applicants match your filters.</p>
               ) : filteredApplicants.map((row) => (
-                <div key={String(row.id)} className="border border-surface-200 rounded-lg p-3">
+                <div key={String(row.id)} id={`applicant-${String(row.id)}`} className="border border-surface-200 rounded-lg p-3">
                   <p className="font-medium">{String(row.full_name ?? '')}</p>
                   <p className="text-charcoal-500">Vacancy: {row.vacancy_id ? String(vacancyMap.get(row.vacancy_id as UUID) ?? row.vacancy_id) : '-'}</p>
                   <p className="text-charcoal-500">Interviewed+Met: {String(row.interviewed_met_requirements ?? '-')} | Offer accepted: {String(row.offer_accepted ?? '-')}</p>

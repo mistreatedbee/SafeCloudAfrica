@@ -34,7 +34,7 @@ const ALLOWED_TRANSITIONS: Partial<Record<TaskStatus, TaskStatus[]>> = {
   accepted: ['in-progress', 'overdue'],
   'in-progress': ['awaiting-evidence', 'overdue'],
   'awaiting-evidence': ['under-review', 'overdue'],
-  'under-review': ['approved', 'overdue'],
+  'under-review': ['approved', 'overdue', 'reopened'],
   approved: ['closed'],
   closed: ['reopened'],
   reopened: ['in-progress', 'assigned', 'overdue'],
@@ -361,21 +361,45 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   });
 
   const created = applyTimeStatusIndicator(data as Task);
+  const taskUrl = `/dashboard/management/tasks/${created.id}`;
 
   if (created.assignee_user_id) {
-    const { notifyTaskAssigned } = await import('./notificationsService');
-    await notifyTaskAssigned(
-      input.companyId,
-      created.assignee_user_id as UUID,
-      created.title,
-      created.priority as Severity
-    ).catch(() => undefined);
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `task-assigned:${created.id}`,
+      eventType: 'task_assigned',
+      title: 'Task assigned',
+      message: `You have been assigned a new task: "${created.title}".`,
+      recipientUserIds: [created.assignee_user_id as UUID],
+      emailTemplateKey: 'task_assigned',
+      emailVariables: { title: created.title, status: created.priority, dueDate: created.due_at ?? '' },
+      actionUrl: taskUrl,
+      metadata: { itemType: 'task', itemId: created.id }
+    }).catch(() => undefined);
   }
 
   const risk = (created.risk_level ?? created.priority) as string;
   if (risk === 'high' || risk === 'critical') {
-    const { notifyHighRiskTaskEscalation } = await import('./notificationsService');
-    await notifyHighRiskTaskEscalation(input.companyId, created).catch(() => undefined);
+    const { notifyRelevantUsers, listRelevantNotificationRecipientIds } = await import('./notificationEventsService');
+    const recipientUserIds = await listRelevantNotificationRecipientIds({
+      companyId: input.companyId,
+      roles: ['owner', 'admin', 'manager']
+    }).catch(() => [] as UUID[]);
+    if (recipientUserIds.length) {
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `task-high-risk:${created.id}`,
+        eventType: 'task_high_risk_escalation',
+        title: 'High-risk task created',
+        message: `A ${risk} risk task "${created.title}" was created and may need escalation.`,
+        recipientUserIds,
+        emailTemplateKey: 'task_assigned',
+        emailVariables: { title: created.title, status: risk, dueDate: created.due_at ?? '' },
+        actionUrl: taskUrl,
+        metadata: { itemType: 'task', itemId: created.id }
+      }).catch(() => undefined);
+    }
   }
 
   return created;
@@ -515,8 +539,6 @@ export async function submitForReview(input: {
   const task = await getTaskById(input.companyId, input.taskId);
   if (!task) throw new Error('Task not found.');
   if (!canTransition(task.status, 'under-review')) throw new Error(`Cannot submit for review from ${task.status}.`);
-  const evidence = await listEvidence(input.companyId, { entityType: 'task', entityId: input.taskId, limit: 1 });
-  if (!evidence.length) throw new Error('At least one evidence attachment is required before submitting for review.');
   const updated = await updateTaskStatusInternal({
     companyId: input.companyId,
     taskId: input.taskId,
@@ -563,11 +585,6 @@ export async function validateTaskReadyForClosure(companyId: UUID, taskId: UUID)
   if (!task) {
     return { ok: false, errors: ['Task not found.'] };
   }
-  const evidenceRequiredCategories = ['capa', 'audit_action', 'inspection', 'ppe_issue', 'safety_action', 'quality_action'];
-  if (task.category && evidenceRequiredCategories.includes(task.category)) {
-    const evidence = await listEvidence(companyId, { entityType: 'task', entityId: taskId, limit: 10 });
-    if (!evidence.length) errors.push('At least one evidence attachment is required for closure.');
-  }
   const approvals = await listApprovals(companyId);
   const taskApprovals = approvals.filter(
     (a) => a.entity_id === taskId && ['task_supervisor_review', 'task_manager_approval', 'task_auditor_verification'].includes(a.entity_type)
@@ -578,8 +595,9 @@ export async function validateTaskReadyForClosure(companyId: UUID, taskId: UUID)
   const managerApproved = taskApprovals.some(
     (a) => a.entity_type === 'task_manager_approval' && a.status === 'approved'
   );
-  if (!supervisorApproved) errors.push('Supervisor review approval is required.');
-  if (!managerApproved) errors.push('Department manager approval is required.');
+  if (!supervisorApproved && !managerApproved) {
+    errors.push('At least one sign-off (supervisor or manager approval) is required before closing.');
+  }
   const auditSourceTypes = ['audit_finding', 'audit', 'program_audit_finding'];
   if (task.source_entity_type && auditSourceTypes.includes(String(task.source_entity_type))) {
     const auditorApproved = taskApprovals.some(
@@ -879,6 +897,30 @@ export async function addTaskEvidenceFromUpload(input: {
 }
 
 // ---------- Task approval helpers ----------
+
+/**
+ * Resolves who should sign off on a task (the person it was allocated by, or
+ * its task owner) and creates a supervisor-review approval request for them.
+ * Used when the assignee submits work for review, and again on resubmission
+ * after a rejection — each call creates a fresh pending approval row.
+ */
+export async function requestTaskSignOff(input: {
+  companyId: UUID;
+  taskId: UUID;
+  requestedByUserId: UUID;
+}): Promise<{ requested: boolean; approverUserId: UUID | null }> {
+  const task = await getTaskById(input.companyId, input.taskId);
+  const approverUserId = (task?.allocated_by_user_id ?? task?.task_owner_user_id ?? null) as UUID | null;
+  if (!approverUserId) return { requested: false, approverUserId: null };
+  await requestTaskSupervisorApproval({
+    companyId: input.companyId,
+    taskId: input.taskId,
+    requestedByUserId: input.requestedByUserId,
+    approverUserId
+  });
+  return { requested: true, approverUserId };
+}
+
 export async function requestTaskSupervisorApproval(input: {
   companyId: UUID;
   taskId: UUID;

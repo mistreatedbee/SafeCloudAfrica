@@ -35,7 +35,7 @@ export function KPIFindingsListPage() {
   );
 
   const list = findings ?? [];
-  const canClose = (f: KPIFinding) => f.assigned_line_manager_id === user?.id || true;
+  const canClose = (f: KPIFinding) => f.assigned_line_manager_id === user?.id;
 
   const handleUploadProof = async (findingId: string) => {
     if (!activeCompanyId || !proofFile || !user?.id) return;
