@@ -698,7 +698,7 @@ export function HrLeavePage() {
                     />
                   </td>
                   <td className="px-3 py-2 space-x-2">
-                    {requiresProof && <button className="text-charcoal-700" onClick={() => setProofEvidenceRequestId(row.id as UUID)}>View proof</button>}
+                    {requiresProof && <button className="text-charcoal-700 underline text-xs" onClick={() => setProofEvidenceRequestId(row.id as UUID)}>View documents</button>}
                     {canApprove && row.status === 'SUBMITTED' && <button className="text-teal" onClick={() => void onApprove(row)}>Approve</button>}
                     {canApprove && row.status === 'SUBMITTED' && <button className="text-critical" onClick={() => void onDecline(row)}>Decline</button>}
                     {canApprove && row.status === 'APPROVED' && !showArchived && (

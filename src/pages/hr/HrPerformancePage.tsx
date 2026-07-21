@@ -281,7 +281,7 @@ export function HrPerformancePage() {
     setWeaknesses(String(row['weaknesses'] ?? ''));
     setManagerRemarks(String(row['manager_remarks'] ?? ''));
     setCorrectiveActionsRequired(String(row['corrective_actions_required'] ?? ''));
-    setResponsibleUserId(String(row['corrective_responsible_user_id'] ?? ''));
+    setResponsibleUserId(row['corrective_responsible_user_id'] ? String(row['corrective_responsible_user_id']) : '');
     setDueDate(String(row['corrective_due_date'] ?? new Date().toISOString().slice(0, 10)));
     setError(null);
     setSuccess(null);
@@ -631,7 +631,7 @@ export function HrPerformancePage() {
             <div className="text-center py-10 text-sm text-charcoal-500">No performance reviews match your filters.</div>
           ) : (
           <table className="w-full text-sm">
-            <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Cycle</th><th className="text-left px-3 py-2">Ratings</th><th className="text-left px-3 py-2">Corrective action</th><th className="text-left px-3 py-2">Task</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
+            <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Cycle</th><th className="text-left px-3 py-2">Overall Rating</th><th className="text-left px-3 py-2">Corrective action</th><th className="text-left px-3 py-2">Task</th><th className="text-left px-3 py-2">Created on</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
             <tbody>
               {filteredReviews.map((row) => {
                 const r = row as Record<string, unknown>;
@@ -639,9 +639,10 @@ export function HrPerformancePage() {
                 <tr key={String(r['id'])} id={`review-${String(r['id'])}`} className="border-t border-surface-100">
                   <td className="px-3 py-2">{employeeLabel.get(r['employee_id'] as UUID) ?? String(r['employee_id'] ?? '')}</td>
                   <td className="px-3 py-2">{String(r['cycle'] ?? '')}</td>
-                  <td className="px-3 py-2">{String(r['overall_rating'] ?? '')} / {String(r['manager_rating'] ?? '')}</td>
+                  <td className="px-3 py-2">{r['overall_rating'] != null ? String(r['overall_rating']) : '—'}</td>
                   <td className="px-3 py-2">{String(r['corrective_actions_required'] ?? '-')}<br /><span className="text-xs text-charcoal-500">Due: {String(r['corrective_due_date'] ?? '-')}</span></td>
                   <td className="px-3 py-2">{r['linked_task_id'] ? <a className="text-teal underline" href={`/dashboard/management/tasks/${String(r['linked_task_id'])}`}>Open task</a> : '-'}</td>
+                  <td className="px-3 py-2">{r['created_at'] ? new Date(String(r['created_at'])).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
                   <td className="px-3 py-2">{String(r['status'] ?? '')}</td>
                   <td className="px-3 py-2">
                     {canManage && (

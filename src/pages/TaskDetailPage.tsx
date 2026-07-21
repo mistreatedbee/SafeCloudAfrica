@@ -450,19 +450,28 @@ export function TaskDetailPage() {
               </button>
             )}
             {task.status === 'in-progress' && (
-              <button
-                type="button"
-                onClick={() => void handleAwaitingEvidence()}
-                className="px-3 py-1.5 rounded-lg bg-surface-200 text-charcoal text-sm font-medium hover:bg-surface-300"
-              >
-                Awaiting evidence
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => void handleAwaitingEvidence()}
+                  className="px-3 py-1.5 rounded-lg bg-surface-200 text-charcoal text-sm font-medium hover:bg-surface-300"
+                >
+                  Awaiting evidence
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSubmitForReview()}
+                  className="px-3 py-1.5 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
+                >
+                  Send for review
+                </button>
+              </>
             )}
             {task.status === 'awaiting-evidence' && (
               <button
                 type="button"
                 onClick={() => void handleSubmitForReview()}
-                className="px-3 py-1.5 rounded-lg bg-surface-200 text-charcoal text-sm font-medium hover:bg-surface-300"
+                className="px-3 py-1.5 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
               >
                 Send for review
               </button>

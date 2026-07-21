@@ -9,6 +9,34 @@ import type { Approval } from '../api/models/entities';
 import { useUser } from '@insforge/react';
 import { ApprovalDecisionModal } from '../components/approvals/ApprovalDecisionModal';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { useNavigate } from 'react-router-dom';
+
+const ENTITY_TYPE_LABELS: Record<string, string> = {
+  task_supervisor_review: 'Task — Supervisor review',
+  task_manager_approval: 'Task — Manager approval',
+  task_auditor_verification: 'Task — Auditor verification',
+  hr_performance_review: 'Performance review sign-off',
+  hr_leave_request: 'Leave request',
+  hr_timesheet: 'Timesheet approval',
+  ncr: 'Non-conformance (NCR)',
+  incident: 'Incident report',
+  audit_finding: 'Audit finding',
+  document: 'Document sign-off',
+  wellness_signoff: 'Wellness sign-off',
+};
+
+function entityLabel(type: string): string {
+  return ENTITY_TYPE_LABELS[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function entityPath(type: string, id: string): string | null {
+  if (type.startsWith('task_')) return `/dashboard/management/tasks/${id}`;
+  if (type === 'hr_leave_request') return `/dashboard/hr/leave?highlight=${id}`;
+  if (type === 'hr_performance_review') return `/dashboard/hr/performance?highlight=${id}`;
+  if (type === 'ncr') return `/dashboard/management/ncrs?highlight=${id}`;
+  if (type === 'incident') return `/incidents?highlight=${id}`;
+  return null;
+}
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -19,6 +47,7 @@ const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 
 export function ApprovalsPage() {
   const { activeCompanyId } = useTenant();
   const { user } = useUser();
+  const navigate = useNavigate();
   const [refreshKey, setRefreshKey] = useState(0);
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [decision, setDecision] = useState<'approved' | 'rejected'>('approved');
@@ -94,15 +123,30 @@ export function ApprovalsPage() {
               secondaryAction={{ kind: 'link', to: '/tasks', label: 'View tasks' }}
             />
           )}
-          {(mine.length ? mine : approvals).map((a) => (
+          {(mine.length ? mine : approvals).map((a) => {
+            const path = entityPath(a.entity_type, String(a.entity_id));
+            return (
             <div key={a.id} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium text-charcoal">
-                    {a.entity_type} • {String(a.entity_id).slice(0, 8)}
+                    {entityLabel(a.entity_type)}
                   </p>
-                  <p className="text-sm text-charcoal-400 mt-0.5">
-                    APR-{String(a.id).slice(0, 8)} • status: {a.status}
+                  {path ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(path)}
+                      className="text-sm text-teal hover:underline mt-0.5"
+                    >
+                      View record →
+                    </button>
+                  ) : (
+                    <p className="text-sm text-charcoal-400 mt-0.5">
+                      Ref: {String(a.entity_id).slice(0, 8)}
+                    </p>
+                  )}
+                  <p className="text-xs text-charcoal-400 mt-1">
+                    Status: <span className="font-medium capitalize">{a.status}</span>
                   </p>
                   {a.signature_note && <p className="text-sm text-charcoal-500 mt-2">{a.signature_note}</p>}
                 </div>
@@ -142,7 +186,8 @@ export function ApprovalsPage() {
                 </div>
               </div>
             </div>
-          ))}
+          );
+          })}
         </motion.div>
       </motion.div>
     </Layout>

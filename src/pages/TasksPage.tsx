@@ -943,19 +943,28 @@ export function TasksPage() {
                           </button>
                         )}
                         {task.status === 'in-progress' && (
-                          <button
-                            type="button"
-                            onClick={() => handleMarkAwaitingEvidence(task)}
-                            className="px-3 py-1.5 rounded-lg bg-surface-100 text-xs font-medium text-charcoal hover:bg-surface-200"
-                          >
-                            Awaiting evidence
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleMarkAwaitingEvidence(task)}
+                              className="px-3 py-1.5 rounded-lg bg-surface-100 text-xs font-medium text-charcoal hover:bg-surface-200"
+                            >
+                              Awaiting evidence
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSubmitForReview(task)}
+                              className="px-3 py-1.5 rounded-lg bg-teal text-white text-xs font-medium hover:bg-teal-600"
+                            >
+                              Send for review
+                            </button>
+                          </>
                         )}
                         {task.status === 'awaiting-evidence' && (
                           <button
                             type="button"
                             onClick={() => handleSubmitForReview(task)}
-                            className="px-3 py-1.5 rounded-lg bg-surface-100 text-xs font-medium text-charcoal hover:bg-surface-200"
+                            className="px-3 py-1.5 rounded-lg bg-teal text-white text-xs font-medium hover:bg-teal-600"
                           >
                             Send for review
                           </button>

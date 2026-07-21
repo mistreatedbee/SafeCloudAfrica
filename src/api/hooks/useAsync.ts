@@ -42,14 +42,18 @@ function isBackendUnavailableError(error: unknown): boolean {
 function isAuthFailureError(error: unknown): boolean {
   if (!error) return false;
   const status = Number((error as any)?.status ?? (error as any)?.statusCode ?? 0);
-  if (status === 401 || status === 403) return true;
+  // Only 401 (Unauthorized / token missing or expired) is a true auth failure.
+  // 403 (Forbidden) means the user is authenticated but an RLS policy denied access
+  // to a specific record — that is NOT a session failure and must NOT trigger logout.
+  if (status === 401) return true;
+  if (status === 403) return false;
   const message = String((error as any)?.message ?? (error as any)?.error ?? error).toLowerCase();
   return (
     message.includes('401') ||
-    message.includes('403') ||
     message.includes('unauthorized') ||
-    message.includes('not authorised') ||
-    message.includes('forbidden')
+    message.includes('not authorised')
+    // 'forbidden' and '403' deliberately excluded: these come from RLS policy denials,
+    // not from an expired or missing session.
   );
 }
 
