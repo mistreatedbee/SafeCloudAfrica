@@ -2,6 +2,25 @@ import { readBearerToken } from '../_insforge.js';
 import { logStructuredLine, recordOperationalEvent, sendAlertWebhook } from '../_observability.js';
 import { applyNoStoreHeaders } from '../_response.js';
 
+async function pingPaaqBackend() {
+  const token = process.env.VITE_PAAQ_SDK_TOKEN ?? 'sdk_live_aa2vjr8nhh14hfqeax0ywx4euz7vg3b2';
+  const projectKey = process.env.VITE_PAAQ_PROJECT_KEY ?? 'proj_6u2h0ixg';
+  try {
+    await fetch('https://mookyonwpovxscsbqwwl.supabase.co/functions/v1/sdk-init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Project-ID': projectKey,
+        'X-SDK-Version': '1.0.0',
+        'X-Platform': 'nodejs',
+        'X-Environment': process.env.NODE_ENV === 'production' ? 'production' : 'development',
+      },
+      body: JSON.stringify({ deviceId: 'vercel-server-safecloudafrica' }),
+    });
+  } catch { /* fire-and-forget */ }
+}
+
 const MODULE = 'api.cron.heartbeat';
 
 function authorizeCron(req: any): boolean {
@@ -44,6 +63,7 @@ export default async function handler(req: any, res: any) {
       message: detailMsg,
       details: { source: 'vercel_or_external' }
     });
+    void pingPaaqBackend();
     return res.status(200).json({ ok: true });
   }
 
