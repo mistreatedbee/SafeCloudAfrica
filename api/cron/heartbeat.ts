@@ -18,6 +18,19 @@ async function pingPaaqBackend() {
       },
       body: JSON.stringify({ deviceId: 'vercel-server-safecloudafrica' }),
     });
+    // Also register database connector layer
+    await fetch('https://mookyonwpovxscsbqwwl.supabase.co/functions/v1/sdk-init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Project-ID': projectKey,
+        'X-SDK-Version': '1.0.0',
+        'X-Platform': 'postgres',
+        'X-Environment': process.env.NODE_ENV === 'production' ? 'production' : 'development',
+      },
+      body: JSON.stringify({ deviceId: 'vercel-db-safecloudafrica' }),
+    });
   } catch { /* fire-and-forget */ }
 }
 
