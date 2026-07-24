@@ -4,6 +4,19 @@ import { InsforgeProvider } from '@insforge/react';
 import { App } from './App';
 import { insforge, insforgeReady } from './api/insforge/client';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { paaq } from './lib/paaq';
+
+const PAAQ_SDK_TOKEN = import.meta.env.VITE_PAAQ_SDK_TOKEN ?? 'sdk_live_aa2vjr8nhh14hfqeax0ywx4euz7vg3b2';
+const PAAQ_PROJECT_KEY = import.meta.env.VITE_PAAQ_PROJECT_KEY ?? 'proj_6u2h0ixg';
+
+paaq.init(PAAQ_SDK_TOKEN, PAAQ_PROJECT_KEY).then((result) => {
+  if (result.ok) {
+    paaq.track('sdk_connected', { source: 'safe_cloud_africa', sdkVersion: '1.0.0' });
+    console.log('[PAAQ] Connected — session:', result.sessionId);
+  } else {
+    console.warn('[PAAQ] Init failed:', result.error);
+  }
+});
 
 const root = createRoot(document.getElementById('root')!);
 
