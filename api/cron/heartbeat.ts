@@ -5,33 +5,29 @@ import { applyNoStoreHeaders } from '../_response.js';
 async function pingPaaqBackend() {
   const token = process.env.VITE_PAAQ_SDK_TOKEN ?? 'sdk_live_aa2vjr8nhh14hfqeax0ywx4euz7vg3b2';
   const projectKey = process.env.VITE_PAAQ_PROJECT_KEY ?? 'proj_6u2h0ixg';
-  try {
-    await fetch('https://mookyonwpovxscsbqwwl.supabase.co/functions/v1/sdk-init', {
+  const env = process.env.NODE_ENV === 'production' ? 'production' : 'development';
+  const base = 'https://mookyonwpovxscsbqwwl.supabase.co/functions/v1/sdk-init';
+
+  const layers = [
+    { platform: 'react',    deviceId: 'vercel-frontend-safecloudafrica' },
+    { platform: 'nodejs',   deviceId: 'vercel-server-safecloudafrica' },
+    { platform: 'postgres', deviceId: 'vercel-db-safecloudafrica' },
+  ];
+
+  await Promise.allSettled(layers.map(({ platform, deviceId }) =>
+    fetch(base, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
         'X-Project-ID': projectKey,
         'X-SDK-Version': '1.0.0',
-        'X-Platform': 'nodejs',
-        'X-Environment': process.env.NODE_ENV === 'production' ? 'production' : 'development',
+        'X-Platform': platform,
+        'X-Environment': env,
       },
-      body: JSON.stringify({ deviceId: 'vercel-server-safecloudafrica' }),
-    });
-    // Also register database connector layer
-    await fetch('https://mookyonwpovxscsbqwwl.supabase.co/functions/v1/sdk-init', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        'X-Project-ID': projectKey,
-        'X-SDK-Version': '1.0.0',
-        'X-Platform': 'postgres',
-        'X-Environment': process.env.NODE_ENV === 'production' ? 'production' : 'development',
-      },
-      body: JSON.stringify({ deviceId: 'vercel-db-safecloudafrica' }),
-    });
-  } catch { /* fire-and-forget */ }
+      body: JSON.stringify({ deviceId }),
+    })
+  ));
 }
 
 const MODULE = 'api.cron.heartbeat';
