@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth, useUser } from '@insforge/react';
 import { AuthShell } from '../../components/auth/AuthShell';
-import { SESSION_EXPIRED_KEY, SESSION_EXPIRED_MESSAGE_KEY } from '../../auth/AuthSessionListener';
 import { formatAuthError } from '../../auth/authMessages';
 import { recoverAuthState } from '../../auth/recoverAuthState';
 import { useTenant } from '../../tenant/TenantContext';
@@ -86,27 +85,6 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [sessionExpiredMessage] = useState(() => {
-    try {
-      if (typeof sessionStorage === 'undefined') return null;
-      if (sessionStorage.getItem(SESSION_EXPIRED_KEY) !== '1') return null;
-      return sessionStorage.getItem(SESSION_EXPIRED_MESSAGE_KEY) || 'Your session has expired. Please log in again.';
-    } catch {
-      return null;
-    }
-  });
-
-  useEffect(() => {
-    if (sessionExpiredMessage) {
-      try {
-        sessionStorage.removeItem(SESSION_EXPIRED_KEY);
-        sessionStorage.removeItem(SESSION_EXPIRED_MESSAGE_KEY);
-      } catch {
-        // ignore
-      }
-    }
-  }, [sessionExpiredMessage]);
-
   const resolveSignedInUserId = React.useCallback(async (initialResult: unknown): Promise<UUID | null> => {
     const initialSession = readAuthSession(initialResult);
     if (initialSession.accessToken) {
@@ -318,11 +296,6 @@ export function LoginPage() {
       subtitle="Enter your email and password below to access your company workspace."
       sideTitle="Safe Cloud Africa"
     >
-      {sessionExpiredMessage && (
-        <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
-          {sessionExpiredMessage}
-        </div>
-      )}
       {activated && (
         <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
           License activated. Please log in to continue.

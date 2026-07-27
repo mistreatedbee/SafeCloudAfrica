@@ -1,13 +1,12 @@
 import type { useAuth } from '@insforge/react';
 import { insforge } from '../api/insforge/client';
 import { clearSession } from './session';
-import { USER_SIGNED_OUT_KEY } from './AuthSessionListener';
 import { clearAuthStorage } from '../api/insforge/sessionState';
 
 type SignOutFn = ReturnType<typeof useAuth>['signOut'];
 
 const LOCAL_KEYS_TO_CLEAR = ['sca_session_v1', 'sca_active_company_id_v3'];
-const SESSION_KEYS_TO_CLEAR = ['sca_session_expired', 'sca_session_expired_message', USER_SIGNED_OUT_KEY];
+const SESSION_KEYS_TO_CLEAR = ['sca_session_expired', 'sca_session_expired_message', 'sca_user_signed_out'];
 
 function clearStorage(): void {
   try {
@@ -43,11 +42,6 @@ export async function recoverAuthState(signOut?: SignOutFn, refreshTenant?: () =
   }
 
   if (signOut) {
-    try {
-      sessionStorage.setItem(USER_SIGNED_OUT_KEY, '1');
-    } catch {
-      // ignore
-    }
     try {
       await signOut();
     } catch {

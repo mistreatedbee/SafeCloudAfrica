@@ -1,7 +1,6 @@
 import { insforge, insforgeReady } from './client';
 import {
   decodeJwtSession,
-  emitAuthFailure,
   isJwtExpired,
   readStoredAccessToken,
   refreshSessionThroughProxy
@@ -179,7 +178,6 @@ export async function ensureInsforgeSession(options: EnsureSessionOptions = {}):
   }
 
   debugAuthBootstrap('ensure-session:no-valid-session', { reason });
-  emitAuthFailure('Your session is not available. Please sign in again.');
   throw new InsforgeAuthBootstrapError(
     'AUTH_SESSION_MISSING',
     'Your session is not available. Please sign in again.'

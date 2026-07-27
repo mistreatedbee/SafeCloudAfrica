@@ -10,10 +10,6 @@ export type RefreshSessionResult =
 const AUTH_TOKEN_KEY = 'insforge-auth-token';
 const AUTH_USER_KEY = 'insforge-auth-user';
 const CSRF_TOKEN_COOKIE = 'insforge_csrf_token';
-const SESSION_EXPIRED_KEY = 'sca_session_expired';
-const SESSION_EXPIRED_MESSAGE_KEY = 'sca_session_expired_message';
-const USER_SIGNED_OUT_KEY = 'sca_user_signed_out';
-const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Please log in again.';
 
 export function decodeJwtSession(token: string | null | undefined): JwtSessionClaims {
   if (!token) return { sub: null, expMs: null };
@@ -103,24 +99,6 @@ export function clearAuthStorage(): void {
   clearCsrfTokenCookie();
 }
 
-export function markSessionExpired(message = SESSION_EXPIRED_MESSAGE): void {
-  try {
-    sessionStorage.setItem(SESSION_EXPIRED_KEY, '1');
-    sessionStorage.setItem(SESSION_EXPIRED_MESSAGE_KEY, message);
-    sessionStorage.removeItem(USER_SIGNED_OUT_KEY);
-  } catch {
-    // ignore storage errors
-  }
-}
-
-export function emitAuthFailure(error: unknown): void {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(
-    new CustomEvent('sca:auth-failure', {
-      detail: { message: String((error as any)?.message ?? error ?? 'Authentication failed') }
-    })
-  );
-}
 
 export function getAuthStatusCode(error: unknown): number {
   const raw = Number((error as any)?.statusCode ?? (error as any)?.status ?? 0);

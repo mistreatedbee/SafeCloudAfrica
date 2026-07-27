@@ -4,7 +4,6 @@ import { useAuth } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { ensureInsforgeSession, InsforgeAuthBootstrapError } from '../api/insforge/ensureSession';
-import { markSessionExpired } from '../api/insforge/sessionState';
 import { PendingInviteAcceptanceError } from '../api/services/tenantService';
 import { acceptPendingInviteAndActivateWorkspace } from './acceptPendingInviteWorkspace';
 
@@ -58,7 +57,6 @@ export function RequireWorkspace({ children }: { children: React.ReactElement })
       } catch (error) {
         if (cancelled) return;
         if (error instanceof InsforgeAuthBootstrapError) {
-          markSessionExpired();
           const redirect = encodeURIComponent(location.pathname + location.search);
           setAuthRedirectPath(`/login?redirect=${redirect}`);
           return;

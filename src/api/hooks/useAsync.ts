@@ -57,19 +57,6 @@ function isAuthFailureError(error: unknown): boolean {
   );
 }
 
-function emitAuthFailure(error: unknown): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (sessionStorage.getItem('sca_session_expired') === '1') return;
-  } catch {
-    // ignore storage access errors
-  }
-  window.dispatchEvent(
-    new CustomEvent('sca:auth-failure', {
-      detail: { message: String((error as any)?.message ?? error ?? 'Authentication failed') }
-    })
-  );
-}
 
 export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsyncOptions = {}): AsyncState<T> {
   const [reloadToken, setReloadToken] = useState(0);
@@ -127,10 +114,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
         if (unavailable) backendUnavailableUntilRef.current = Date.now() + 15_000;
         if (authFailure) {
           authFailureRef.current = true;
-          if (!authFailureEmittedRef.current) {
-            authFailureEmittedRef.current = true;
-            emitAuthFailure(error);
-          }
+          authFailureEmittedRef.current = true;
         }
         setState((prev) => ({
           // Preserve last-known-good data so dashboards/forms don’t clear during an outage.
