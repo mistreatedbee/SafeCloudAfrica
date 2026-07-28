@@ -2,8 +2,8 @@
 // Only called from real backend/database operations (see _observability.ts
 // and health/insforge-db.ts) — never on an artificial timer.
 const BASE_URL = 'https://mookyonwpovxscsbqwwl.supabase.co/functions/v1';
-const SDK_TOKEN = process.env.PAAQ_SDK_TOKEN ?? process.env.VITE_PAAQ_SDK_TOKEN ?? 'sdk_live_aa2vjr8nhh14hfqeax0ywx4euz7vg3b2';
-const PROJECT_KEY = process.env.PAAQ_PROJECT_KEY ?? process.env.VITE_PAAQ_PROJECT_KEY ?? 'proj_6u2h0ixg';
+const SDK_TOKEN = process.env.PAAQ_SDK_TOKEN ?? process.env.VITE_PAAQ_SDK_TOKEN;
+const PROJECT_KEY = process.env.PAAQ_PROJECT_KEY ?? process.env.VITE_PAAQ_PROJECT_KEY;
 
 export type PaaqLayer = 'nodejs' | 'database';
 
@@ -46,6 +46,7 @@ async function ensureSession(layer: PaaqLayer): Promise<string | null> {
 
 /** Fire-and-forget: records a real backend/database event in PAAQ. Never throws. */
 export function trackPaaqEvent(layer: PaaqLayer, eventName: string, properties: Record<string, unknown> = {}): void {
+  if (!SDK_TOKEN || !PROJECT_KEY) return; // PAAQ not configured for this deployment — no-op
   void ensureSession(layer).then((sessionId) => {
     void fetch(`${BASE_URL}/events`, {
       method: 'POST',

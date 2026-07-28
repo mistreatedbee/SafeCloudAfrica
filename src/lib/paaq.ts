@@ -5,6 +5,7 @@ type EventPayload = {
   event_name: string
   session_id: string | null
   user_id: string | null
+  screen_name: string | null
   properties: Record<string, unknown>
   timestamp: string
 }
@@ -101,11 +102,14 @@ async function identify(externalUserId: string, email?: string): Promise<Identif
   }
 }
 
-function track(eventName: string, properties: Record<string, unknown> = {}) {
+// screen_name defaults to the current path so every event (not just page_view)
+// is attributable to a real screen for journey/feature-health analysis.
+function track(eventName: string, properties: Record<string, unknown> = {}, screenName?: string) {
   _queue.push({
     event_name: eventName,
     session_id: _sessionId,
     user_id: _userId,
+    screen_name: screenName ?? window.location.pathname,
     properties,
     timestamp: new Date().toISOString(),
   })
