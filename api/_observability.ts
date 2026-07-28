@@ -1,4 +1,5 @@
 import { getServiceInsforge } from './_insforge.js';
+import { trackPaaqEvent } from './_paaq.js';
 
 export type LogLevel = 'info' | 'warn' | 'error';
 
@@ -44,19 +45,28 @@ export type RecordOperationalEventInput = {
 /** Best-effort insert; requires INSFORGE_SERVICE_ROLE_KEY. Never throws. */
 export function recordOperationalEvent(input: RecordOperationalEventInput): void {
   const client = getServiceInsforge();
-  if (!client) return;
-  void client.database
-    .from('platform_operational_events')
-    .insert({
-      event_type: input.event_type,
-      status: input.status,
-      module: input.module,
-      message: input.message,
-      user_id: input.user_id ?? null,
-      organization_id: input.organization_id ?? null,
-      details: input.details ?? null
-    })
-    .then(() => undefined, () => undefined);
+  if (client) {
+    void client.database
+      .from('platform_operational_events')
+      .insert({
+        event_type: input.event_type,
+        status: input.status,
+        module: input.module,
+        message: input.message,
+        user_id: input.user_id ?? null,
+        organization_id: input.organization_id ?? null,
+        details: input.details ?? null
+      })
+      .then(() => undefined, () => undefined);
+  }
+
+  // Every real operational event is genuine backend activity — report it to
+  // PAAQ so the Backend SDK layer reflects actual server-side traffic.
+  trackPaaqEvent('nodejs', input.event_type, {
+    status: input.status,
+    module: input.module,
+    message: input.message,
+  });
 }
 
 const WEBHOOK_TIMEOUT_MS = 5000;

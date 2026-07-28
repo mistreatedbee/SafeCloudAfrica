@@ -1,6 +1,7 @@
 import { applyNoStoreHeaders } from '../_response.js';
 import { logStructuredLine, recordOperationalEvent } from '../_observability.js';
 import { resolveInsforgeOrigin } from '../_insforge-origin.js';
+import { trackPaaqEvent } from '../_paaq.js';
 
 const MODULE = 'api.health.insforge-db';
 
@@ -88,6 +89,8 @@ export default async function handler(req: any, res: any) {
       message: 'Upstream OK',
       details: { elapsedMs }
     });
+    // Report to PAAQ only on a real, successful round-trip to the database.
+    trackPaaqEvent('database', 'db_health_check', { elapsedMs });
     return res.status(200).json({ ok: true, elapsedMs });
   } catch (err: any) {
     const elapsedMs = Date.now() - startedAt;
