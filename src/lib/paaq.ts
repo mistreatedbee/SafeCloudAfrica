@@ -4,6 +4,7 @@ const SDK_VERSION = '1.0.0'
 type EventPayload = {
   event_name: string
   session_id: string | null
+  user_id: string | null
   properties: Record<string, unknown>
   timestamp: string
 }
@@ -21,9 +22,16 @@ type InitResult = {
   error?: string
 }
 
+type IdentifyResult = {
+  ok: boolean
+  userId?: string
+  error?: string
+}
+
 let _sdkToken = ''
 let _projectKey = ''
 let _sessionId: string | null = null
+let _userId: string | null = null
 let _queue: EventPayload[] = []
 let _config: PaaqConfig = { batchSize: 50, syncIntervalSeconds: 30 }
 let _flushTimer: ReturnType<typeof setInterval> | null = null
@@ -71,10 +79,33 @@ async function init(sdkToken: string, projectKey: string): Promise<InitResult> {
   }
 }
 
+// Resolves a real users.id for this external identity so events/sessions can
+// be linked to an actual user record instead of just an anonymous device.
+async function identify(externalUserId: string, email?: string): Promise<IdentifyResult> {
+  if (!_sdkToken) return { ok: false, error: 'paaq.init() has not completed yet' }
+  try {
+    const res = await fetch(`${BASE_URL}/users`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ external_user_id: externalUserId, email }),
+    })
+    const data: IdentifyResult & { user_id?: string } = await res.json()
+    if (data.ok && data.user_id) {
+      _userId = data.user_id
+      return { ok: true, userId: data.user_id }
+    }
+    return { ok: false, error: data.error ?? 'Unknown error' }
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'Network error'
+    return { ok: false, error }
+  }
+}
+
 function track(eventName: string, properties: Record<string, unknown> = {}) {
   _queue.push({
     event_name: eventName,
     session_id: _sessionId,
+    user_id: _userId,
     properties,
     timestamp: new Date().toISOString(),
   })
@@ -100,4 +131,4 @@ function scheduleFlush() {
   _flushTimer = setInterval(() => void flush(), _config.syncIntervalSeconds * 1000)
 }
 
-export const paaq = { init, track, flush }
+export const paaq = { init, identify, track, flush }

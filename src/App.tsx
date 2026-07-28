@@ -138,6 +138,7 @@ import { DraftManagerProvider } from './session/DraftManagerProvider';
 import { DraftExperience } from './session/DraftExperience';
 import { IdentityProvider } from './hooks/useIdentity';
 import { FloatingSupportChat } from './components/support/FloatingSupportChat';
+import { PaaqActivityTracker } from './components/analytics/PaaqActivityTracker';
 export function App() {
   return (
     <BrowserRouter>
@@ -145,6 +146,7 @@ export function App() {
         <IdentityProvider>
           <DraftManagerProvider>
               <AuthSessionListener />
+              <PaaqActivityTracker />
               <DraftExperience />
               <Routes>
           {/* Public */}
