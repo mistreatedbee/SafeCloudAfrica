@@ -1,0 +1,21 @@
+name: Notify PAAQ on deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping PAAQ deployment webhook
+        run: |
+          curl -s -X POST \
+            "https://mookyonwpovxscsbqwwl.supabase.co/functions/v1/deployment-webhook?projectKey=806931df-93f9-4c1f-a02a-d50400166209" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "version": "${{ github.sha }}",
+              "environment": "production",
+              "status": "success",
+              "deployed_by": "${{ github.actor }}",
+              "message": "${{ github.event.head_commit.message }}"
+            }'
