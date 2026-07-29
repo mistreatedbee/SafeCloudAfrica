@@ -7,15 +7,28 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping PAAQ deployment webhook
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        id: build
+        run: npm run build 2>&1 | tee /tmp/build-log.txt; exit ${PIPESTATUS[0]}
+
+      - name: Notify PAAQ
+        if: always()
         run: |
+          STATUS=$([[ "${{ steps.build.outcome }}" == "success" ]] && echo "success" || echo "failed")
+          BUILD_LOG=$(tail -200 /tmp/build-log.txt | jq -Rs '.')
           curl -s -X POST \
             "https://mookyonwpovxscsbqwwl.supabase.co/functions/v1/deployment-webhook?projectKey=proj_6u2h0ixg" \
             -H "Content-Type: application/json" \
-            -d '{
-              "version": "${{ github.sha }}",
-              "environment": "production",
-              "status": "success",
-              "deployed_by": "${{ github.actor }}",
-              "message": "${{ github.event.head_commit.message }}"
-            }'
+            -d "{\"version\":\"${{ github.sha }}\",\"environment\":\"production\",\"status\":\"$STATUS\",\"deployed_by\":\"${{ github.actor }}\",\"message\":\"${{ github.event.head_commit.message }}\",\"build_log\":$BUILD_LOG}"
