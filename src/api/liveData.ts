@@ -58,6 +58,44 @@ export type AuthenticatedFetchHandlers = {
   setAccessToken: (token: string | null) => void;
 };
 
+export type PerformanceMetrics = {
+  url: string;
+  method: string;
+  responseTimeMs: number;
+  status: number | null;
+  memoryUsedBytes: number | null;
+  at: number;
+};
+
+const PERFORMANCE_METRICS_EVENT = 'sca:performance-metrics';
+
+export function emitPerformanceMetrics(metrics: PerformanceMetrics): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent<PerformanceMetrics>(PERFORMANCE_METRICS_EVENT, { detail: metrics })
+  );
+}
+
+export function subscribeToPerformanceMetrics(listener: (metrics: PerformanceMetrics) => void): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+  const handler = (event: Event) => {
+    const ev = event as CustomEvent<PerformanceMetrics>;
+    if (!ev?.detail) return;
+    listener(ev.detail);
+  };
+  window.addEventListener(PERFORMANCE_METRICS_EVENT, handler as EventListener);
+  return () => window.removeEventListener(PERFORMANCE_METRICS_EVENT, handler as EventListener);
+}
+
+function collectMemoryUsage(): number | null {
+  try {
+    const mem = (performance as any).memory;
+    return mem ? mem.usedJSHeapSize : null;
+  } catch {
+    return null;
+  }
+}
+
 export function emitLiveDataMutation(detail: Omit<LiveDataMutationDetail, 'at' | 'release'>): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(
@@ -120,6 +158,7 @@ export function createFreshFetch(baseFetch: typeof fetch, auth?: AuthenticatedFe
     };
 
     let response: Response;
+    const fetchStart = performance.now();
     try {
       response = request
         ? await baseFetch(new Request(request, nextInit))
@@ -131,8 +170,24 @@ export function createFreshFetch(baseFetch: typeof fetch, auth?: AuthenticatedFe
         status: null,
         url
       });
+      emitPerformanceMetrics({
+        url,
+        method,
+        responseTimeMs: performance.now() - fetchStart,
+        status: null,
+        memoryUsedBytes: collectMemoryUsage(),
+        at: Date.now()
+      });
       throw err;
     }
+    emitPerformanceMetrics({
+      url: request?.url ?? String(input),
+      method,
+      responseTimeMs: performance.now() - fetchStart,
+      status: response.status,
+      memoryUsedBytes: collectMemoryUsage(),
+      at: Date.now()
+    });
 
     if (response.status === 502 || response.status === 503 || response.status === 504) {
       const url = request?.url ?? String(input);
