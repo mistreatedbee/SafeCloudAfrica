@@ -10,7 +10,7 @@ jobs:
       - name: Ping PAAQ deployment webhook
         run: |
           curl -s -X POST \
-            "https://mookyonwpovxscsbqwwl.supabase.co/functions/v1/deployment-webhook?projectKey=806931df-93f9-4c1f-a02a-d50400166209" \
+            "https://mookyonwpovxscsbqwwl.supabase.co/functions/v1/deployment-webhook?projectKey=proj_6u2h0ixg" \
             -H "Content-Type: application/json" \
             -d '{
               "version": "${{ github.sha }}",
