@@ -9,7 +9,8 @@ export type SellableFeatureKey =
   | 'emergencyPreparedness'
   | 'templateLibrary'
   | 'assetManagement'
-  | 'hazardousChemicals';
+  | 'hazardousChemicals'
+  | 'unknown';
 
 export type SellableFeatureState = {
   enabled: boolean;
@@ -24,7 +25,8 @@ export const SELLABLE_FEATURES_ORDER: SellableFeatureKey[] = [
   'emergencyPreparedness',
   'templateLibrary',
   'assetManagement',
-  'hazardousChemicals'
+  'hazardousChemicals',
+  'unknown'
 ];
 
 export const SELLABLE_FEATURE_LABELS: Record<SellableFeatureKey, string> = {
@@ -33,7 +35,8 @@ export const SELLABLE_FEATURE_LABELS: Record<SellableFeatureKey, string> = {
   emergencyPreparedness: 'Emergency Preparedness',
   templateLibrary: 'Template Library',
   assetManagement: 'Asset Management',
-  hazardousChemicals: 'Hazardous Chemical Management'
+  hazardousChemicals: 'Hazardous Chemical Management',
+  unknown: 'Unknown Feature'
 };
 
 export const SELLABLE_FEATURE_ROUTE_PATHS: Record<SellableFeatureKey, string> = {
@@ -42,7 +45,8 @@ export const SELLABLE_FEATURE_ROUTE_PATHS: Record<SellableFeatureKey, string> = 
   emergencyPreparedness: '/dashboard/sellable/emergency-preparedness',
   templateLibrary: '/dashboard/sellable/template-library',
   assetManagement: '/dashboard/sellable/asset-management',
-  hazardousChemicals: '/dashboard/sellable/hazardous-chemicals'
+  hazardousChemicals: '/dashboard/sellable/hazardous-chemicals',
+  unknown: '/dashboard/sellable/unknown'
 };
 
 export const SELLABLE_FEATURE_PREVIEW_BULLETS: Record<SellableFeatureKey, string[]> = {
@@ -75,6 +79,11 @@ export const SELLABLE_FEATURE_PREVIEW_BULLETS: Record<SellableFeatureKey, string
     'Maintain chemical registers and storage records.',
     'Track SDS availability and compliance checkpoints.',
     'Improve hazardous-chemical risk visibility and control.'
+  ],
+  unknown: [
+    'Feature identity under investigation.',
+    'Monitoring active with health tracking enabled.',
+    'Pending feature mapping and identification.'
   ]
 };
 
@@ -86,7 +95,8 @@ export const DEFAULT_SELLABLE_FEATURES_CONFIG: SellableFeaturesConfig = {
   emergencyPreparedness: { ...DEFAULT_FEATURE_STATE },
   templateLibrary: { ...DEFAULT_FEATURE_STATE },
   assetManagement: { ...DEFAULT_FEATURE_STATE },
-  hazardousChemicals: { ...DEFAULT_FEATURE_STATE }
+  hazardousChemicals: { ...DEFAULT_FEATURE_STATE },
+  unknown: { ...DEFAULT_FEATURE_STATE }
 };
 
 type CompanyLike = {
@@ -113,7 +123,8 @@ export function getSellableFeaturesConfig(company: CompanyLike | null): Sellable
     emergencyPreparedness: normalizeFeatureState(obj.emergencyPreparedness),
     templateLibrary: normalizeFeatureState(obj.templateLibrary),
     assetManagement: normalizeFeatureState(obj.assetManagement),
-    hazardousChemicals: normalizeFeatureState(obj.hazardousChemicals)
+    hazardousChemicals: normalizeFeatureState(obj.hazardousChemicals),
+    unknown: normalizeFeatureState(obj.unknown)
   };
 }
 
