@@ -73,8 +73,13 @@ async function markNotificationEvent(id: UUID | undefined, status: 'sent' | 'fai
   }
 }
 
-async function getRecipientEmail(userId: UUID): Promise<string | null> {
-  const { data } = await insforge.database.from('user_profiles').select('email').eq('user_id', userId).maybeSingle();
+async function getRecipientEmail(companyId: UUID, userId: UUID): Promise<string | null> {
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('email')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle();
   const email = String((data as any)?.email ?? '').trim();
   return email || null;
 }
@@ -140,7 +145,7 @@ export async function notifyRelevantUsers(input: {
         if (channel === 'in_app') {
           await createNotification(input.companyId, recipientUserId, 'info', input.title, input.message, input.metadata);
         } else {
-          const email = await getRecipientEmail(recipientUserId);
+          const email = await getRecipientEmail(input.companyId, recipientUserId);
           if (!email) {
             await markNotificationEvent(event.id, 'skipped', 'Recipient email not found.');
             return;

@@ -362,8 +362,8 @@ async function sendBillingEmail(input: {
       actionUrl: input.actionUrl,
       meta: { companyId: input.companyId, ...(input.meta ?? {}) }
     });
-  } catch {
-    // Billing emails are best-effort and should not block billing updates.
+  } catch (err) {
+    console.warn('[licensing] notification failed', err);
   }
 }
 

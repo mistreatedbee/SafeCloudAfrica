@@ -5,6 +5,7 @@ import type { HrActionSignoffRequest, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
 import { createNotification } from './notificationsService';
 import { updateHrRecord } from './hrService';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 export async function createSignoffRequest(input: {
   companyId: UUID;
@@ -63,6 +64,31 @@ export async function createSignoffRequest(input: {
           signoffRequestId: created.id
         }
       ).catch(() => {});
+
+      try {
+        const { data: profile } = await insforge.database
+          .from('user_profiles')
+          .select('email')
+          .eq('company_id', input.companyId)
+          .eq('user_id', input.requestedForUserId)
+          .maybeSingle();
+        const email = String((profile as any)?.email ?? '').trim();
+        if (email) {
+          await sendTemplatedNotificationEmail({
+            to: email,
+            templateKey: 'hr_updates',
+            variables: {
+              title: input.notificationTitle ?? 'Sign-off Requested',
+              status: 'Pending',
+              employee: input.requestedForUserId
+            },
+            actionUrl: '/dashboard/hr/wellness',
+            meta: { companyId: input.companyId, signoffRequestId: created.id, entityId: input.entityId }
+          });
+        }
+      } catch (err) {
+        console.warn('[hr-signoff] email notification failed', err);
+      }
     }
 
     return created;

@@ -1,6 +1,7 @@
 import { insforge } from './insforge/client';
 import { getErrorMessage } from './insforge/errors';
 import type { ImprovementAction, ImprovementStatus, ModuleKey, UUID } from '../models/entities';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 export async function listImprovementActions(input: {
   companyId: UUID;
@@ -50,6 +51,35 @@ export async function createImprovementAction(input: {
     .select('*')
     .single();
   if (error) throw new Error(getErrorMessage(error));
+
+  if (input.ownerUserId && input.ownerUserId !== input.createdByUserId) {
+    try {
+      const { data: profile } = await insforge.database
+        .from('user_profiles')
+        .select('email')
+        .eq('company_id', input.companyId)
+        .eq('user_id', input.ownerUserId)
+        .maybeSingle();
+      const email = String((profile as any)?.email ?? '').trim();
+      if (email) {
+        await sendTemplatedNotificationEmail({
+          to: email,
+          templateKey: 'improvements',
+          variables: {
+            title: input.title,
+            status: input.status ?? 'Planned',
+            owner: input.ownerUserId,
+            dueDate: input.targetDate ?? undefined
+          },
+          actionUrl: '/dashboard/management/improvements',
+          meta: { companyId: input.companyId, improvementActionId: (data as any).id }
+        });
+      }
+    } catch (err) {
+      console.warn('[improvement-actions] assignment notification failed', err);
+    }
+  }
+
   return data as ImprovementAction;
 }
 

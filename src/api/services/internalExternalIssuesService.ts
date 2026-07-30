@@ -180,8 +180,8 @@ async function notifyHighSeriousIssue(input: {
         }
       });
     }
-  } catch {
-    // Notification should not block core write path.
+  } catch (err) {
+    console.warn('[issues] notification failed', err);
   }
 }
 

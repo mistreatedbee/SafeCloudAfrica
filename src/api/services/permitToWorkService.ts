@@ -3,6 +3,7 @@ import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 export type PermitToWork = {
   id: UUID;
@@ -111,7 +112,37 @@ export async function updatePermitToWork(input: {
       metadata: input.patch as any
     });
 
-    return data as PermitToWork;
+    const permit = data as PermitToWork;
+    if (input.patch.status === 'APPROVED' && permit.requested_by_user_id) {
+      try {
+        const { data: profile } = await insforge.database
+          .from('user_profiles')
+          .select('email')
+          .eq('company_id', input.companyId)
+          .eq('user_id', permit.requested_by_user_id)
+          .maybeSingle();
+        const email = String((profile as any)?.email ?? '').trim();
+        if (email) {
+          await sendTemplatedNotificationEmail({
+            to: email,
+            templateKey: 'permit_to_work',
+            variables: {
+              reference: permit.permit_number ?? input.permitId,
+              title: permit.work_description,
+              status: 'Approved',
+              location: permit.location ?? undefined,
+              dueDate: permit.valid_to ?? undefined
+            },
+            actionUrl: '/dashboard/safety/permits',
+            meta: { companyId: input.companyId, permitId: input.permitId }
+          });
+        }
+      } catch (err) {
+        console.warn('[permits] approval notification failed', err);
+      }
+    }
+
+    return permit;
   });
 }
 

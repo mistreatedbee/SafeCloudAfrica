@@ -81,8 +81,8 @@ export async function createApproval(input: {
         }
       });
     }
-  } catch {
-    // Email delivery should not block approval creation.
+  } catch (err) {
+    console.warn('[approvals] notification failed', (data as any).id, err);
   }
 
   return data as Approval;

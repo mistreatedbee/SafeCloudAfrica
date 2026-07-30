@@ -501,7 +501,7 @@ export async function createHrLeaveRequest(input: Omit<HrLeaveRequest, 'id' | 'c
       emailVariables: { title: 'Leave request submitted', status: 'Pending' },
       actionUrl: `/dashboard/hr/leave?highlight=${row.id}`,
       metadata: { itemType: 'hr_leave_request', itemId: row.id }
-    }).catch(() => undefined);
+    }).catch((err) => console.warn('[hr] leave-submit notification failed', err));
   }
   return row;
 }
@@ -554,7 +554,7 @@ export async function applyHrLeaveApproval(input: {
       emailVariables: { title: approved ? 'Leave Approved' : 'Leave Declined', status: approved ? 'Approved' : 'Declined' },
       actionUrl: `/dashboard/hr/leave?highlight=${input.leaveRequestId}`,
       metadata: { itemType: 'hr_leave_request', itemId: input.leaveRequestId }
-    }).catch(() => undefined);
+    }).catch((err) => console.warn('[hr] leave-decision notification failed', err));
   }
   return row;
   });
@@ -1678,7 +1678,7 @@ export async function createHrAcknowledgementDocument(input: {
         emailVariables: { title: input.title, status: 'Pending' },
         actionUrl: '/dashboard/hr/documents',
         metadata: { itemType: 'hr_ack_document', itemId: (data as { id: string }).id }
-      }).catch(() => undefined);
+      }).catch((err) => console.warn('[hr] ack-document notification failed', err));
     }
   }
 

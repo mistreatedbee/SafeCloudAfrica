@@ -109,8 +109,8 @@ export async function createKPIFinding(input: CreateKPIFindingInput): Promise<KP
         }
       });
     }
-  } catch {
-    // Email notifications should not block KPI finding creation.
+  } catch (err) {
+    console.warn('[kpi-finding] notification failed', err);
   }
 
   return finding;

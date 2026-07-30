@@ -193,8 +193,8 @@ export async function createAudit(input: {
         meta: { companyId: input.companyId, auditId: audit.id }
       });
     }
-  } catch {
-    // Email notifications should not block audit creation.
+  } catch (err) {
+    console.warn('[audits] notification failed', err);
   }
 
   return audit;

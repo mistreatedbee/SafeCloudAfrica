@@ -242,8 +242,8 @@ async function sendHealthEmail(input: {
       actionUrl: input.actionUrl,
       meta: { companyId: input.companyId, ...(input.meta ?? {}) }
     });
-  } catch {
-    // Email notifications should not block health workflows.
+  } catch (err) {
+    console.warn('[health] notification failed', err);
   }
 }
 

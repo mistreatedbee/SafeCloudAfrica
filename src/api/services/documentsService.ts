@@ -60,8 +60,8 @@ async function notifyDocumentOwner(input: {
       actionUrl: input.templateKey === 'document_reviews' ? '/dashboard/management/document-reviews' : '/dashboard/documents',
       meta: { companyId: input.companyId, documentId: input.document.id }
     });
-  } catch {
-    // Email notifications should not block document changes.
+  } catch (err) {
+    console.warn('[documents] notification failed', err);
   }
 }
 

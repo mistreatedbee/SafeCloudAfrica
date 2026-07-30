@@ -386,8 +386,8 @@ export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIss
         meta: { companyId: input.companyId, ppeIssueId: issue.id }
       });
     }
-  } catch {
-    // Email notifications should not block PPE issue capture.
+  } catch (err) {
+    console.warn('[ppe] notification failed', err);
   }
 
   return issue;

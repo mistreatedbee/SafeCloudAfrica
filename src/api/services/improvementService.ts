@@ -244,8 +244,8 @@ async function sendImprovementEmail(input: {
       actionUrl: '/dashboard/management/improvements',
       meta: { companyId: input.companyId, improvementId: input.record.id }
     });
-  } catch {
-    // Email notifications should not block improvement workflow changes.
+  } catch (err) {
+    console.warn('[improvements] notification failed', err);
   }
 }
 

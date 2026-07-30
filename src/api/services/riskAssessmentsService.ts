@@ -3,7 +3,19 @@ import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { CompanyRole, UUID } from '../models/core';
 import { createActivityLog } from './activityLogService';
+import { sendTemplatedNotificationEmail } from './emailService';
 import { mapTypeToLegacyAssessmentType } from '../../utils/riskAssessmentLegacy';
+
+async function getProfileEmail(companyId: UUID, userId: UUID): Promise<string | null> {
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('email')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  const email = String((data as any)?.email ?? '').trim();
+  return email || null;
+}
 
 export type RiskAssessmentType = 'baseline' | 'task' | 'critical' | 'prework';
 export type RiskAssessmentStatus = 'draft' | 'submitted' | 'closed';
@@ -469,7 +481,31 @@ export async function updateRiskAssessment(input: {
     entityId: input.assessmentId
   });
 
-  return mapAssessment(data);
+  const updated = mapAssessment(data);
+
+  if (input.patch.status === 'submitted' && updated.created_by_user_id !== input.actorUserId) {
+    try {
+      const email = await getProfileEmail(input.companyId, updated.created_by_user_id);
+      if (email) {
+        await sendTemplatedNotificationEmail({
+          to: email,
+          templateKey: 'risk_assessment',
+          variables: {
+            title: updated.title,
+            reference: updated.reference ?? input.assessmentId,
+            status: 'Submitted for Review',
+            dueDate: updated.next_review_date ?? undefined
+          },
+          actionUrl: '/dashboard/safety/risk-assessments',
+          meta: { companyId: input.companyId, assessmentId: input.assessmentId }
+        });
+      }
+    } catch (err) {
+      console.warn('[risk-assessments] submitted notification failed', err);
+    }
+  }
+
+  return updated;
 }
 
 export async function deleteRiskAssessment(input: {
@@ -727,6 +763,14 @@ export async function supervisorSignoffRiskAssessment(input: {
   signoffId?: UUID;
   actorUserId: UUID;
 }): Promise<void> {
+  const assessment = await getRiskAssessment({
+    companyId: input.companyId,
+    assessmentId: input.assessmentId,
+    actorUserId: input.actorUserId,
+    actorRole: 'supervisor',
+    logView: false
+  });
+
   if (input.signoffId) {
     const { error } = await insforge.database
       .from('risk_assessment_signoffs')
@@ -751,6 +795,28 @@ export async function supervisorSignoffRiskAssessment(input: {
     entityType: 'risk_assessment',
     entityId: input.assessmentId
   });
+
+  if (assessment.created_by_user_id !== input.actorUserId) {
+    try {
+      const email = await getProfileEmail(input.companyId, assessment.created_by_user_id);
+      if (email) {
+        await sendTemplatedNotificationEmail({
+          to: email,
+          templateKey: 'risk_assessment',
+          variables: {
+            title: assessment.title,
+            reference: assessment.reference ?? input.assessmentId,
+            status: 'Supervisor Approved & Closed',
+            dueDate: assessment.next_review_date ?? undefined
+          },
+          actionUrl: '/dashboard/safety/risk-assessments',
+          meta: { companyId: input.companyId, assessmentId: input.assessmentId }
+        });
+      }
+    } catch (err) {
+      console.warn('[risk-assessments] supervisor signoff notification failed', err);
+    }
+  }
 }
 
 export async function listRiskAssessmentTemplates(input: {

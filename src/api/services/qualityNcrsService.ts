@@ -7,6 +7,18 @@ import { createActivityLog } from './activityLogService';
 import { listEvidence } from './evidenceService';
 import { getPublicUrl } from './storageService';
 import { evaluateNcrTrigger } from './riskAssessmentTriggersService';
+import { sendTemplatedNotificationEmail } from './emailService';
+
+async function getNcrProfileEmails(companyId: UUID, userIds: Array<UUID | null | undefined>): Promise<string[]> {
+  const ids = [...new Set(userIds.filter(Boolean).map(String))];
+  if (ids.length === 0) return [];
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('user_id, email')
+    .eq('company_id', companyId)
+    .in('user_id', ids);
+  return [...new Set((data ?? []).map((row: any) => String(row.email ?? '').trim()).filter(Boolean))];
+}
 
 // Auto-generate NCR number
 function generateNCRNumber(): string {
@@ -231,6 +243,31 @@ export async function createQualityNcr(input: {
     await syncIncidentClosureFromLinks(input.source_entity_id).catch((syncError) => {
       void syncError;
     });
+  }
+
+  try {
+    const recipients = await getNcrProfileEmails(input.companyId, [
+      input.corrective_action_owner_user_id,
+      input.auditor_user_id,
+      input.auditee_user_id
+    ]);
+    if (recipients.length > 0) {
+      await sendTemplatedNotificationEmail({
+        to: recipients,
+        templateKey: 'quality_ncr',
+        variables: {
+          reference: nc_number,
+          title: input.title,
+          severity: input.severity,
+          status: 'Open',
+          dueDate: input.corrective_action_due_date
+        },
+        actionUrl: '/dashboard/quality/ncrs',
+        meta: { companyId: input.companyId, ncrId: ncr.id }
+      });
+    }
+  } catch (err) {
+    console.warn('[quality-ncrs] create notification failed', err);
   }
 
   return ncr;
@@ -471,6 +508,21 @@ export async function managerSignOffQualityNcr(input: {
       input.managerUserId
     );
     if (!fallback) throw new Error('Failed to sign off NCR.');
+    try {
+      const ncrRow = await getQualityNcr(input.ncrId, input.companyId);
+      const emails = await getNcrProfileEmails(input.companyId, [ncrRow?.raised_by_user_id]);
+      if (emails.length > 0 && ncrRow) {
+        await sendTemplatedNotificationEmail({
+          to: emails,
+          templateKey: 'quality_ncr',
+          variables: { reference: ncrRow.nc_number ?? input.ncrId, title: ncrRow.title, status: 'Manager Signed Off', severity: ncrRow.severity },
+          actionUrl: '/dashboard/quality/ncrs',
+          meta: { companyId: input.companyId, ncrId: input.ncrId }
+        });
+      }
+    } catch (err) {
+      console.warn('[quality-ncrs] manager-signoff notification failed', err);
+    }
     return fallback;
   }
 }

@@ -14,6 +14,7 @@ import { createNotification } from './notificationsService';
 import { createQualityNcr } from './qualityNcrsService';
 import { createEvidence } from './evidenceService';
 import { getMyProfile } from './profilesService';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 const ALLOWED_MODULE_TAGS: CalibrationModuleTag[] = ['Quality', 'Health', 'Safety', 'Environment', 'General'];
 const WRITE_ROLES: CompanyRole[] = ['admin', 'manager', 'supervisor'];
@@ -632,6 +633,17 @@ async function listRoleUserIds(companyId: UUID, roles: CompanyRole[]): Promise<U
   return [...new Set((data ?? []).map((row: { user_id: UUID }) => row.user_id).filter(Boolean))];
 }
 
+async function getEmailsForUserIds(companyId: UUID, userIds: UUID[]): Promise<string[]> {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('email')
+    .eq('company_id', companyId)
+    .in('user_id', ids);
+  return [...new Set((data ?? []).map((row: any) => String(row.email ?? '').trim()).filter(Boolean))];
+}
+
 async function notifyUsers(input: {
   companyId: UUID;
   userIds: UUID[];
@@ -639,6 +651,7 @@ async function notifyUsers(input: {
   title: string;
   message: string;
   metadata?: Record<string, unknown>;
+  emailTemplateVariables?: Record<string, string | undefined>;
 }): Promise<void> {
   const unique = [...new Set(input.userIds)];
   await Promise.all(
@@ -646,6 +659,26 @@ async function notifyUsers(input: {
       createNotification(input.companyId, userId, input.type, input.title, input.message, input.metadata).catch(() => undefined)
     )
   );
+  try {
+    const emails = await getEmailsForUserIds(input.companyId, unique);
+    if (emails.length > 0) {
+      await sendTemplatedNotificationEmail({
+        to: emails,
+        templateKey: 'calibration',
+        variables: {
+          title: input.emailTemplateVariables?.title ?? input.title,
+          reference: input.emailTemplateVariables?.reference,
+          status: input.emailTemplateVariables?.status ?? input.title,
+          dueDate: input.emailTemplateVariables?.dueDate,
+          owner: input.emailTemplateVariables?.owner
+        },
+        actionUrl: '/dashboard/operations/calibration',
+        meta: input.metadata
+      });
+    }
+  } catch (err) {
+    console.warn('[calibration] email notification failed', err);
+  }
 }
 
 function daysUntil(dateText: string): number {
@@ -698,7 +731,14 @@ export async function runCalibrationReminderSweep(companyId: UUID): Promise<{
           type: dueInDays === 30 ? 'info' : dueInDays === 7 ? 'warning' : 'error',
           title: dueInDays === 0 ? 'Calibration Due Today' : `Calibration Due in ${dueInDays} Day(s)`,
           message: `${row.equipment_name} (${row.equipment_id}) calibration is due on ${row.next_calibration_date}.`,
-          metadata: { calibrationRecordId: row.id, daysRemaining: dueInDays }
+          metadata: { calibrationRecordId: row.id, daysRemaining: dueInDays },
+          emailTemplateVariables: {
+            title: row.equipment_name,
+            reference: row.equipment_id,
+            status: dueInDays === 0 ? 'Due Today' : `Due in ${dueInDays} day(s)`,
+            dueDate: row.next_calibration_date,
+            owner: row.responsible_user_id ?? undefined
+          }
         });
         remindersSent += 1;
       }
@@ -719,7 +759,14 @@ export async function runCalibrationReminderSweep(companyId: UUID): Promise<{
           type: 'warning',
           title: 'Calibration Overdue Escalation',
           message: `${row.equipment_name} (${row.equipment_id}) has been overdue for ${Math.abs(dueInDays)} days.`,
-          metadata: { calibrationRecordId: row.id, overdueDays: Math.abs(dueInDays) }
+          metadata: { calibrationRecordId: row.id, overdueDays: Math.abs(dueInDays) },
+          emailTemplateVariables: {
+            title: row.equipment_name,
+            reference: row.equipment_id,
+            status: `Overdue by ${Math.abs(dueInDays)} day(s)`,
+            dueDate: row.next_calibration_date,
+            owner: row.responsible_user_id ?? undefined
+          }
         });
         escalationsSent += 1;
       }
@@ -745,6 +792,13 @@ export async function runCalibrationReminderSweep(companyId: UUID): Promise<{
             calibrationRecordId: row.id,
             dashboardHighlight: true,
             criticality: row.criticality
+          },
+          emailTemplateVariables: {
+            title: row.equipment_name,
+            reference: row.equipment_id,
+            status: 'HIGH CRITICALITY — Overdue',
+            dueDate: row.next_calibration_date,
+            owner: row.responsible_user_id ?? undefined
           }
         });
         highCriticalEscalations += 1;

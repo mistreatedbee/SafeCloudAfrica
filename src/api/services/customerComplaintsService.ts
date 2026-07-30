@@ -168,8 +168,8 @@ async function notifyEscalation(input: {
         }
       });
     }
-  } catch {
-    // Non-blocking notification path.
+  } catch (err) {
+    console.warn('[customer-complaints] notification failed', err);
   }
 }
 

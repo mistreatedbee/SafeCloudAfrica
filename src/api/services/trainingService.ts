@@ -12,6 +12,7 @@ import type {
 } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
+import { sendTemplatedNotificationEmail } from './emailService';
 
 // ---------------------------------------------------------------------------
 // Training courses
@@ -257,6 +258,40 @@ export async function createTrainingRecord(input: {
     entityType: 'training_record',
     entityId: (data as { id: UUID }).id
   });
+
+  if (input.userId && input.userId !== input.createdByUserId && (status === 'REQUIRED' || status === 'SCHEDULED' || status === 'ARRANGED')) {
+    try {
+      const { data: profile } = await insforge.database
+        .from('user_profiles')
+        .select('email')
+        .eq('company_id', input.companyId)
+        .eq('user_id', input.userId)
+        .maybeSingle();
+      const email = String((profile as any)?.email ?? '').trim();
+      if (email) {
+        const { data: course } = await insforge.database
+          .from('training_courses')
+          .select('name')
+          .eq('company_id', input.companyId)
+          .eq('id', input.courseId)
+          .maybeSingle();
+        await sendTemplatedNotificationEmail({
+          to: email,
+          templateKey: 'training_assigned',
+          variables: {
+            title: (course as any)?.name ?? 'Training',
+            status,
+            dueDate: input.arrangedAt ?? undefined,
+            findings: input.expiresAt ?? undefined
+          },
+          actionUrl: '/dashboard/hr/training',
+          meta: { companyId: input.companyId, trainingRecordId: (data as { id: UUID }).id }
+        });
+      }
+    } catch (err) {
+      console.warn('[training] assignment notification failed', err);
+    }
+  }
 
   return data as TrainingRecord;
 }

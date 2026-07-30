@@ -5,6 +5,17 @@ import type { ModuleKey } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { listEvidence } from './evidenceService';
+import { sendTemplatedNotificationEmail } from './emailService';
+
+async function getProfileEmail(companyId: UUID, userId: UUID): Promise<string | null> {
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('email')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  return String((data as any)?.email ?? '').trim() || null;
+}
 
 export interface CorrectiveAction {
   id: UUID;
@@ -91,7 +102,30 @@ export async function createCorrectiveAction(input: CreateCorrectiveActionInput)
     entityId: (data as any).id as UUID,
     details: { source: input.sourceType, actionNumber }
   });
-  
+
+  if (input.assignedToUserId) {
+    try {
+      const email = await getProfileEmail(input.companyId, input.assignedToUserId);
+      if (email) {
+        await sendTemplatedNotificationEmail({
+          to: email,
+          templateKey: 'corrective_actions',
+          variables: {
+            reference: actionNumber,
+            title: input.title,
+            status: 'Assigned',
+            severity: input.priority,
+            dueDate: input.dueDate
+          },
+          actionUrl: '/dashboard/management/corrective-actions',
+          meta: { companyId: input.companyId, correctiveActionId: (data as any).id }
+        });
+      }
+    } catch (err) {
+      console.warn('[corrective-actions] assignment notification failed', err);
+    }
+  }
+
   return data as CorrectiveAction;
 }
 

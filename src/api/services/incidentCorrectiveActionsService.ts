@@ -1,6 +1,17 @@
 import { insforge } from '../insforge/client';
 import type { IncidentCorrectiveAction, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
+import { sendTemplatedNotificationEmail } from './emailService';
+
+async function getProfileEmail(companyId: UUID, userId: UUID): Promise<string | null> {
+  const { data } = await insforge.database
+    .from('user_profiles')
+    .select('email')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  return String((data as any)?.email ?? '').trim() || null;
+}
 
 export type CreateIncidentCorrectiveActionInput = {
   incidentId: UUID;
@@ -85,6 +96,28 @@ export async function createIncidentCorrectiveAction(
   await syncIncidentClosureFromLinks((data as any).incident_id as UUID).catch((syncError) => {
     console.warn('[incidents.correctiveAction] sync error', syncError);
   });
+
+  if (input.ownerUserId) {
+    try {
+      const email = await getProfileEmail(input.companyId, input.ownerUserId);
+      if (email) {
+        await sendTemplatedNotificationEmail({
+          to: email,
+          templateKey: 'corrective_actions',
+          variables: {
+            reference: input.incidentId,
+            title: input.actionTitle,
+            status: 'Assigned',
+            dueDate: input.dueDate
+          },
+          actionUrl: `/dashboard/safety/incidents`,
+          meta: { companyId: input.companyId, incidentId: input.incidentId, actionId: (data as any).id }
+        });
+      }
+    } catch (err) {
+      console.warn('[incident-corrective-actions] assignment notification failed', err);
+    }
+  }
 
   return data as IncidentCorrectiveAction;
 }

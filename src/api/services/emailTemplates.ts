@@ -19,7 +19,13 @@ export const EMAIL_TEMPLATE_KEYS = [
   'improvements',
   'approvals',
   'billing_pricing',
-  'software_license_expiry'
+  'software_license_expiry',
+  'corrective_actions',
+  'quality_ncr',
+  'training_assigned',
+  'permit_to_work',
+  'calibration',
+  'risk_assessment'
 ] as const;
 
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
@@ -319,6 +325,89 @@ const TEMPLATE_DEFINITIONS: Record<EmailTemplateKey, EmailTemplateDefinition> = 
       { label: 'Status', variable: 'status' },
       { label: 'Expiry date', variable: 'dueDate' },
       { label: 'Days remaining', variable: 'daysRemaining' }
+    ]
+  },
+  corrective_actions: {
+    moduleLabel: 'Corrective & Preventive Actions',
+    subject: 'Action assigned: {{reference}}',
+    summary: 'A corrective or preventive action has been assigned to you and requires attention.',
+    defaultActionLabel: 'Open action',
+    defaultRoute: '/dashboard/management/corrective-actions',
+    detailLabels: [
+      { label: 'Reference', variable: 'reference' },
+      { label: 'Title', variable: 'title' },
+      { label: 'Priority', variable: 'severity' },
+      { label: 'Due date', variable: 'dueDate' },
+      { label: 'Status', variable: 'status' }
+    ]
+  },
+  quality_ncr: {
+    moduleLabel: 'Non-Conformance Report',
+    subject: 'NCR {{status}}: {{reference}}',
+    summary: 'A non-conformance report requires your attention.',
+    defaultActionLabel: 'Open NCR',
+    defaultRoute: '/dashboard/quality/ncrs',
+    detailLabels: [
+      { label: 'NCR Number', variable: 'reference' },
+      { label: 'Title', variable: 'title' },
+      { label: 'Severity', variable: 'severity' },
+      { label: 'Status', variable: 'status' },
+      { label: 'Due date', variable: 'dueDate' }
+    ]
+  },
+  training_assigned: {
+    moduleLabel: 'Training',
+    subject: 'Training assigned: {{title}}',
+    summary: 'A training course has been assigned to you.',
+    defaultActionLabel: 'Open training',
+    defaultRoute: '/dashboard/hr/training',
+    detailLabels: [
+      { label: 'Course', variable: 'title' },
+      { label: 'Status', variable: 'status' },
+      { label: 'Scheduled date', variable: 'dueDate' },
+      { label: 'Expiry date', variable: 'findings' }
+    ]
+  },
+  permit_to_work: {
+    moduleLabel: 'Permit to Work',
+    subject: 'Permit to Work {{status}}: {{reference}}',
+    summary: 'A permit to work has been updated and requires your attention.',
+    defaultActionLabel: 'Open permit',
+    defaultRoute: '/dashboard/safety/permits',
+    detailLabels: [
+      { label: 'Permit Number', variable: 'reference' },
+      { label: 'Work description', variable: 'title' },
+      { label: 'Status', variable: 'status' },
+      { label: 'Location', variable: 'location' },
+      { label: 'Valid until', variable: 'dueDate' }
+    ]
+  },
+  calibration: {
+    moduleLabel: 'Calibration',
+    subject: 'Calibration {{status}}: {{title}}',
+    summary: 'A calibration record requires attention.',
+    defaultActionLabel: 'Open calibration',
+    defaultRoute: '/dashboard/operations/calibration',
+    detailLabels: [
+      { label: 'Equipment', variable: 'title' },
+      { label: 'Equipment ID', variable: 'reference' },
+      { label: 'Status', variable: 'status' },
+      { label: 'Due date', variable: 'dueDate' },
+      { label: 'Responsible person', variable: 'owner' }
+    ]
+  },
+  risk_assessment: {
+    moduleLabel: 'Risk Assessment',
+    subject: 'Risk Assessment {{status}}: {{title}}',
+    summary: 'A risk assessment requires your review or sign-off.',
+    defaultActionLabel: 'Open risk assessment',
+    defaultRoute: '/dashboard/safety/risk-assessments',
+    detailLabels: [
+      { label: 'Assessment', variable: 'title' },
+      { label: 'Status', variable: 'status' },
+      { label: 'Risk rating', variable: 'severity' },
+      { label: 'Location', variable: 'location' },
+      { label: 'Responsible person', variable: 'owner' }
     ]
   }
 };

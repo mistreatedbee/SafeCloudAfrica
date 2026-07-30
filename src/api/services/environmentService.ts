@@ -545,8 +545,8 @@ async function sendEnvironmentTemplate(input: {
       actionUrl: input.actionUrl,
       meta: { companyId: input.companyId, ...(input.meta ?? {}) }
     });
-  } catch {
-    // Email notifications should not block environmental records.
+  } catch (err) {
+    console.warn('[environment] notification failed', err);
   }
 }
 
