@@ -28,8 +28,14 @@ jobs:
         if: always()
         run: |
           STATUS=$([[ "${{ steps.build.outcome }}" == "success" ]] && echo "success" || echo "failed")
-          BUILD_LOG=$(tail -200 /tmp/build-log.txt | jq -Rs '.')
+          PAYLOAD=$(jq -n \
+            --arg v "${{ github.sha }}" \
+            --arg env "production" \
+            --arg st "$STATUS" \
+            --arg by "${{ github.actor }}" \
+            --arg msg "${{ github.event.head_commit.message }}" \
+            '{version:$v,environment:$env,status:$st,deployed_by:$by,message:$msg}')
           curl -s -X POST \
             "https://mookyonwpovxscsbqwwl.supabase.co/functions/v1/deployment-webhook?projectKey=proj_6u2h0ixg" \
             -H "Content-Type: application/json" \
-            -d "{\"version\":\"${{ github.sha }}\",\"environment\":\"production\",\"status\":\"$STATUS\",\"deployed_by\":\"${{ github.actor }}\",\"message\":\"${{ github.event.head_commit.message }}\",\"build_log\":$BUILD_LOG}"
+            -d "$PAYLOAD"
