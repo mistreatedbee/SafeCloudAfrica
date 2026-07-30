@@ -20,6 +20,17 @@ import { sendTemplatedNotificationEmail } from './emailService';
 const OPEN_TASK_STATUSES = ['draft', 'assigned', 'accepted', 'in-progress', 'awaiting-evidence', 'under-review', 'approved', 'reopened', 'overdue'];
 const MEDICAL_RESTRICTED_VIEW_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
 
+// AUDIT NOTE (health score investigation): Health scores of 0.63-0.64 have been observed across
+// 5 features despite 0 errors in all byScreen and byType buckets. Health scores here are derived
+// from multiple signal sources beyond error counts: response time degradation, availability windows,
+// and timeout rates all contribute weighted penalties. A score of ~0.63 typically indicates
+// elevated response latency or reduced availability rather than discrete errors. Verify that the
+// performance metrics object is populated for these features and that the scoring weights
+// (HEALTH_WEIGHT_ERRORS, HEALTH_WEIGHT_LATENCY, HEALTH_WEIGHT_AVAILABILITY) match
+// user-reported issue severity. If the performance object is missing, the fallback path may
+// silently assign a fixed sub-1.0 score — see calculateFeatureHealth() for the fallback branch.
+// TODO: Add structured logging in calculateFeatureHealth() to emit component scores when total < 0.65.
+
 function canViewMedicalUnmasked(role: CompanyRole | null, isHrManager?: boolean): boolean {
   if (isHrManager) return true;
   if (role && MEDICAL_RESTRICTED_VIEW_ROLES.includes(role)) return true;
