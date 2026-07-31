@@ -42,6 +42,7 @@ export async function createPermitToWork(input: {
   location?: string | null;
   siteId?: UUID | null;
   requestedByUserId?: UUID | null;
+  approvedByUserId?: UUID | null;
   validFrom?: string | null;
   validTo?: string | null;
   hazards?: string[];
@@ -58,6 +59,7 @@ export async function createPermitToWork(input: {
         location: input.location ?? null,
         site_id: input.siteId ?? null,
         requested_by_user_id: input.requestedByUserId ?? null,
+        approved_by_user_id: input.approvedByUserId ?? null,
         valid_from: input.validFrom ?? null,
         valid_to: input.validTo ?? null,
         hazards: input.hazards ?? [],
@@ -77,7 +79,32 @@ export async function createPermitToWork(input: {
       entityId: (data as any).id as UUID
     });
 
-    return data as PermitToWork;
+    const permit = data as PermitToWork;
+    if (permit.approved_by_user_id) {
+      const { notifyRelevantUsers } = await import('./notificationEventsService');
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `permit-created:${permit.id}`,
+        eventType: 'permit_to_work_created',
+        title: 'Permit to work awaiting approval',
+        message: `A permit to work "${permit.work_description}" is awaiting your approval.`,
+        recipientUserIds: [permit.approved_by_user_id],
+        emailTemplateKey: 'permit_to_work',
+        emailVariables: {
+          reference: permit.permit_number ?? permit.id,
+          title: permit.work_description,
+          status: 'Pending',
+          location: permit.location ?? undefined,
+          dueDate: permit.valid_to ?? undefined
+        },
+        actionUrl: '/dashboard/safety/permits',
+        metadata: { itemType: 'permit_to_work', itemId: permit.id }
+      }).catch((err) => {
+        console.warn('[permits] creation notification failed', permit.id, err);
+      });
+    }
+
+    return permit;
   });
 }
 

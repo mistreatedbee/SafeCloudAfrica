@@ -608,29 +608,68 @@ export async function upsertEnvWaterMonitoring(input: any): Promise<any> {
   const data = await executeEnvMutationWithOptionalEmployeeFallback('env_water_monitoring', input.companyId, input.id, payload, input.actorUserId);
   if (!data) throw new Error('Failed to save water monitoring record.');
   const saved = data as any;
+  const isUpdate = !!input.id;
+
+  if (!isUpdate) {
+    const { notifyRelevantUsers, listRelevantNotificationRecipientIds } = await import('./notificationEventsService');
+    const recipientUserIds = await listRelevantNotificationRecipientIds({
+      companyId: input.companyId,
+      userIds: [input.reviewedByUserId, input.approvedByUserId]
+    }).catch(() => [] as UUID[]);
+    if (recipientUserIds.length) {
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `water-monitoring-created:${saved.id}`,
+        eventType: 'water_monitoring_created',
+        title: 'New water monitoring record created',
+        message: `A new water monitoring record "${saved.reference_number}" was created and is awaiting your review.`,
+        recipientUserIds,
+        emailTemplateKey: 'environment_water_monitoring',
+        emailVariables: {
+          reference: saved.reference_number,
+          status: overall,
+          location: saved.gps_location_or_sampling_point_id || saved.site_facility_name
+        },
+        actionUrl: '/dashboard/environment/water',
+        metadata: { itemType: 'env_water_monitoring', itemId: saved.id, action: 'create' }
+      }).catch(() => undefined);
+    }
+  }
 
   if (overall === 'Fail' && !saved.system_generated_capa_id) {
     const failed = parameters.filter((p) => p.complianceStatus === 'Fail').map((p) => `${p.parameterName} ${p.resultValue} > ${p.complianceLimit}`).join('; ');
     const ncrId = await createNcrFromEnv({ companyId: input.companyId, actorUserId: input.actorUserId, source: 'env_water_monitoring', referenceId: saved.id, summary: `Water monitoring ${saved.reference_number} failed: ${failed}`, riskLevel: input.assessedEnvironmentalRisk, legalReference: input.legalReferenceSnapshot || input.breachedLegislationOrPermitReference });
     await insforge.database.from('env_water_monitoring').update({ system_generated_capa_id: ncrId, updated_at: new Date().toISOString() }).eq('company_id', input.companyId).eq('id', saved.id);
     saved.system_generated_capa_id = ncrId;
-    await sendEnvironmentTemplate({
+
+    const { notifyRelevantUsers, listRelevantNotificationRecipientIds } = await import('./notificationEventsService');
+    const recipientUserIds = await listRelevantNotificationRecipientIds({
       companyId: input.companyId,
-      userIds: [input.reviewedByUserId, input.approvedByUserId],
-      includeOwners: true,
-      templateKey: 'environment_water_monitoring',
-      variables: {
-        reference: saved.reference_number,
-        status: 'Failed',
-        location: saved.gps_location_or_sampling_point_id || saved.site_facility_name,
-        findings: failed
-      },
-      actionUrl: '/dashboard/environment/water',
-      meta: { waterMonitoringId: saved.id, ncrId }
-    });
+      roles: ['owner', 'admin'],
+      userIds: [input.reviewedByUserId, input.approvedByUserId]
+    }).catch(() => [] as UUID[]);
+    if (recipientUserIds.length) {
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `water-monitoring-noncompliant:${saved.id}`,
+        eventType: 'water_monitoring_noncompliant',
+        title: 'Water monitoring non-compliance detected',
+        message: `Water monitoring record "${saved.reference_number}" failed compliance checks: ${failed}`,
+        recipientUserIds,
+        emailTemplateKey: 'environment_water_monitoring',
+        emailVariables: {
+          reference: saved.reference_number,
+          status: 'Failed',
+          location: saved.gps_location_or_sampling_point_id || saved.site_facility_name,
+          findings: failed
+        },
+        actionUrl: '/dashboard/environment/water',
+        metadata: { itemType: 'env_water_monitoring', itemId: saved.id, ncrId }
+      }).catch(() => undefined);
+    }
   }
 
-  await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: input.id ? 'environment.water.update' : 'environment.water.create', entityType: 'env_water_monitoring', entityId: saved.id });
+  await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: isUpdate ? 'environment.water.update' : 'environment.water.create', entityType: 'env_water_monitoring', entityId: saved.id });
   return saved;
 }
 
@@ -705,29 +744,68 @@ export async function upsertEnvAirQuality(input: any): Promise<any> {
   const data = await executeEnvMutationWithOptionalEmployeeFallback('env_air_quality', input.companyId, input.id, payload, input.actorUserId);
   if (!data) throw new Error('Failed to save air quality record.');
   const saved = data as any;
+  const isUpdate = !!input.id;
+
+  if (!isUpdate) {
+    const { notifyRelevantUsers, listRelevantNotificationRecipientIds } = await import('./notificationEventsService');
+    const recipientUserIds = await listRelevantNotificationRecipientIds({
+      companyId: input.companyId,
+      userIds: [input.reviewedByUserId, input.approvedByUserId]
+    }).catch(() => [] as UUID[]);
+    if (recipientUserIds.length) {
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `air-quality-created:${saved.id}`,
+        eventType: 'air_quality_created',
+        title: 'New air quality record created',
+        message: `A new air quality monitoring record "${saved.reference_number}" was created and is awaiting your review.`,
+        recipientUserIds,
+        emailTemplateKey: 'environment_air_quality',
+        emailVariables: {
+          reference: saved.reference_number,
+          status: overall,
+          location: saved.monitoring_location
+        },
+        actionUrl: '/dashboard/environment/air',
+        metadata: { itemType: 'env_air_quality', itemId: saved.id, action: 'create' }
+      }).catch(() => undefined);
+    }
+  }
 
   if (overall === 'Fail' && !saved.system_generated_capa_id) {
     const failed = results.filter((r) => r.status === 'Fail').map((r) => `${r.parameter} ${r.resultValue} > ${r.limitValue}`).join('; ');
     const ncrId = await createNcrFromEnv({ companyId: input.companyId, actorUserId: input.actorUserId, source: 'env_air_quality', referenceId: saved.id, summary: `Air quality ${saved.reference_number} exceedances: ${failed}`, riskLevel: 'high', legalReference: (input.legalReferencesSnapshot ?? []).join('; ') });
     await insforge.database.from('env_air_quality').update({ system_generated_capa_id: ncrId, updated_at: new Date().toISOString() }).eq('company_id', input.companyId).eq('id', saved.id);
     saved.system_generated_capa_id = ncrId;
-    await sendEnvironmentTemplate({
+
+    const { notifyRelevantUsers, listRelevantNotificationRecipientIds } = await import('./notificationEventsService');
+    const recipientUserIds = await listRelevantNotificationRecipientIds({
       companyId: input.companyId,
-      userIds: [input.reviewedByUserId, input.approvedByUserId],
-      includeOwners: true,
-      templateKey: 'environment_air_quality',
-      variables: {
-        reference: saved.reference_number,
-        status: 'Failed',
-        location: saved.monitoring_location,
-        findings: failed
-      },
-      actionUrl: '/dashboard/environment/air',
-      meta: { airQualityId: saved.id, ncrId }
-    });
+      roles: ['owner', 'admin'],
+      userIds: [input.reviewedByUserId, input.approvedByUserId]
+    }).catch(() => [] as UUID[]);
+    if (recipientUserIds.length) {
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `air-quality-noncompliant:${saved.id}`,
+        eventType: 'air_quality_noncompliant',
+        title: 'Air quality non-compliance detected',
+        message: `Air quality record "${saved.reference_number}" recorded exceedances: ${failed}`,
+        recipientUserIds,
+        emailTemplateKey: 'environment_air_quality',
+        emailVariables: {
+          reference: saved.reference_number,
+          status: 'Failed',
+          location: saved.monitoring_location,
+          findings: failed
+        },
+        actionUrl: '/dashboard/environment/air',
+        metadata: { itemType: 'env_air_quality', itemId: saved.id, ncrId }
+      }).catch(() => undefined);
+    }
   }
 
-  await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: input.id ? 'environment.air.update' : 'environment.air.create', entityType: 'env_air_quality', entityId: saved.id });
+  await createActivityLog({ companyId: input.companyId, actorUserId: input.actorUserId, action: isUpdate ? 'environment.air.update' : 'environment.air.create', entityType: 'env_air_quality', entityId: saved.id });
   return saved;
 }
 

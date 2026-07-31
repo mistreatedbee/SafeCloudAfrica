@@ -639,6 +639,27 @@ export async function approveHrTimesheet(input: {
     metadata: { decision: input.decision }
   }).catch(() => undefined);
   await recalculateHrMonthlyHours(row.company_id, row.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.actorUserId).catch(() => {});
+
+  const employee = await getHrEmployeeById(input.companyId, row.employee_id).catch(() => null);
+  if (employee?.user_id && employee.user_id !== input.actorUserId) {
+    const approved = input.decision === 'APPROVED';
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `timesheet-decision:${input.timesheetId}:${input.decision}`,
+      eventType: approved ? 'timesheet_approved' : 'timesheet_declined',
+      title: approved ? 'Timesheet Approved' : 'Timesheet Declined',
+      message: approved
+        ? `Your timesheet for ${row.date} has been approved.`
+        : `Your timesheet for ${row.date} was declined.${input.declineReason ? ` Reason: ${input.declineReason}` : ''}`,
+      recipientUserIds: [employee.user_id],
+      emailTemplateKey: 'hr_updates',
+      emailVariables: { title: approved ? 'Timesheet Approved' : 'Timesheet Declined', status: approved ? 'Approved' : 'Declined' },
+      actionUrl: `/dashboard/hr/timesheets?highlight=${input.timesheetId}`,
+      metadata: { itemType: 'hr_timesheet', itemId: input.timesheetId }
+    }).catch((err) => console.warn('[hr] timesheet-decision notification failed', err));
+  }
+
   return row;
   });
 }
@@ -1785,6 +1806,34 @@ export async function submitHrAcknowledgement(input: {
     entityType: 'hr_ack_receipt',
     entityId: (data as { id: string }).id as UUID
   });
+
+  const { data: ackDoc } = await insforge.database
+    .from('hr_ack_documents')
+    .select('title,created_by_user_id')
+    .eq('company_id', input.companyId)
+    .eq('id', input.ackDocumentId)
+    .maybeSingle();
+  const createdByUserId = (ackDoc as { created_by_user_id?: string } | null)?.created_by_user_id as UUID | undefined;
+  if (createdByUserId && createdByUserId !== input.actorUserId) {
+    const docTitle = (ackDoc as { title?: string } | null)?.title ?? 'HR document';
+    const declined = input.action === 'decline';
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `ack-document-response:${(data as { id: string }).id}:${nextStatus}`,
+      eventType: declined ? 'hr_document_declined' : 'hr_document_acknowledged',
+      title: declined ? 'Document acknowledgement declined' : 'Document acknowledged',
+      message: declined
+        ? `"${docTitle}" was declined by an employee.${input.declineReason ? ` Reason: ${input.declineReason}` : ''}`
+        : `"${docTitle}" was ${input.action === 'sign' ? 'signed' : 'acknowledged'} by an employee.`,
+      recipientUserIds: [createdByUserId],
+      emailTemplateKey: 'hr_updates',
+      emailVariables: { title: docTitle, status: declined ? 'Declined' : input.action === 'sign' ? 'Signed' : 'Acknowledged' },
+      actionUrl: '/dashboard/hr/documents',
+      metadata: { itemType: 'hr_ack_receipt', itemId: (data as { id: string }).id, ackDocumentId: input.ackDocumentId }
+    }).catch((err) => console.warn('[hr] ack-response notification failed', err));
+  }
+
   return data as HrAckReceiptRow;
   });
 }

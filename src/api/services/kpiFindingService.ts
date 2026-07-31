@@ -3,19 +3,6 @@ import type { KPIFinding, KPIFindingProofUpload, KpiFindingStatus, UUID } from '
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { createTask } from './tasksService';
-import { createNotification } from './notificationsService';
-import { sendTemplatedNotificationEmail } from './emailService';
-
-async function getKpiRecipientEmail(companyId: UUID, userId: UUID): Promise<string | null> {
-  const { data } = await insforge.database
-    .from('user_profiles')
-    .select('email')
-    .eq('company_id', companyId)
-    .eq('user_id', userId)
-    .maybeSingle();
-  const email = String((data as any)?.email ?? '').trim();
-  return email || null;
-}
 
 export type CreateKPIFindingInput = {
   organizationId: UUID;
@@ -80,38 +67,26 @@ export async function createKPIFinding(input: CreateKPIFindingInput): Promise<KP
     createdByUserId: input.assignedLineManagerId
   }).catch(() => undefined);
 
-  await createNotification(
-    input.organizationId,
-    input.assignedLineManagerId,
-    'warning',
-    'KPI review pending',
-    'A KPI Questionnaire was marked Not Achieved and needs manager follow-up.',
-    { assessmentId: input.assessmentId, findingId: finding.finding_id }
-  ).catch(() => undefined);
-
-  try {
-    const email = await getKpiRecipientEmail(input.organizationId, input.assignedLineManagerId);
-    if (email) {
-      await sendTemplatedNotificationEmail({
-        to: email,
-        templateKey: 'kpi_updates',
-        variables: {
-          title: input.description.slice(0, 120),
-          status: 'Manager follow-up required',
-          owner: input.assignedLineManagerId,
-          dueDate: input.dueDate
-        },
-        actionUrl: '/dashboard/kpi/findings',
-        meta: {
-          companyId: input.organizationId,
-          assessmentId: input.assessmentId,
-          findingId: finding.finding_id
-        }
-      });
-    }
-  } catch (err) {
+  const { notifyRelevantUsers } = await import('./notificationEventsService');
+  await notifyRelevantUsers({
+    companyId: input.organizationId,
+    eventKey: `kpi-finding-created:${finding.finding_id}`,
+    eventType: 'kpi_finding_created',
+    title: 'KPI review pending',
+    message: 'A KPI Questionnaire was marked Not Achieved and needs manager follow-up.',
+    recipientUserIds: [input.assignedLineManagerId],
+    emailTemplateKey: 'kpi_updates',
+    emailVariables: {
+      title: input.description.slice(0, 120),
+      status: 'Manager follow-up required',
+      owner: input.assignedLineManagerId,
+      dueDate: input.dueDate
+    },
+    actionUrl: '/dashboard/kpi/findings',
+    metadata: { itemType: 'kpi_finding', itemId: finding.finding_id, assessmentId: input.assessmentId }
+  }).catch((err) => {
     console.warn('[kpi-finding] notification failed', err);
-  }
+  });
 
   return finding;
 }
@@ -187,7 +162,25 @@ export async function updateKPIFindingStatus(
     entityId: findingId
   });
 
-  return data as KPIFinding;
+  const updated = data as KPIFinding;
+
+  if (updated.assigned_line_manager_id && updated.assigned_line_manager_id !== actorUserId) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: organizationId,
+      eventKey: `kpi-finding-status:${findingId}:${status}`,
+      eventType: 'kpi_finding_status_updated',
+      title: 'KPI finding status updated',
+      message: `KPI finding status changed to ${status}.`,
+      recipientUserIds: [updated.assigned_line_manager_id],
+      emailTemplateKey: 'kpi_updates',
+      emailVariables: { title: updated.description?.slice(0, 120) ?? 'KPI finding', status },
+      actionUrl: '/dashboard/kpi/findings',
+      metadata: { itemType: 'kpi_finding', itemId: findingId }
+    }).catch(() => undefined);
+  }
+
+  return updated;
 }
 
 export async function attachProofToFinding(
@@ -245,7 +238,25 @@ export async function closeKPIFindingWithSignOff(input: ManagerSignOffInput): Pr
 
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to close finding.');
-  return data as KPIFinding;
+  const closed = data as KPIFinding;
+
+  if (closed.assigned_line_manager_id && closed.assigned_line_manager_id !== input.managerUserId) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.organizationId,
+      eventKey: `kpi-finding-closed:${input.findingId}`,
+      eventType: 'kpi_finding_closed',
+      title: 'KPI finding closed',
+      message: 'A KPI finding has been closed with manager sign-off.',
+      recipientUserIds: [closed.assigned_line_manager_id],
+      emailTemplateKey: 'kpi_updates',
+      emailVariables: { title: closed.description?.slice(0, 120) ?? 'KPI finding', status: 'Closed' },
+      actionUrl: '/dashboard/kpi/findings',
+      metadata: { itemType: 'kpi_finding', itemId: input.findingId }
+    }).catch(() => undefined);
+  }
+
+  return closed;
 }
 
 export async function deleteKPIFinding(input: {

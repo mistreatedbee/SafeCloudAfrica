@@ -835,6 +835,7 @@ export type QualityNcr = {
   project_client?: string | null;
   auditor_user_id?: UUID | null;
   auditee_user_id?: UUID | null;
+  raised_by_user_id?: UUID | null;
   department_manager_user_id?: UUID | null;
   title: string;
   description: string | null;

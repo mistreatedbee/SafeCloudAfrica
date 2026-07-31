@@ -1,7 +1,6 @@
-import { insforge } from './insforge/client';
-import { getErrorMessage } from './insforge/errors';
+import { insforge } from '../insforge/client';
+import { getErrorMessage } from '../insforge/errors';
 import type { ImprovementAction, ImprovementStatus, ModuleKey, UUID } from '../models/entities';
-import { sendTemplatedNotificationEmail } from './emailService';
 
 export async function listImprovementActions(input: {
   companyId: UUID;
@@ -53,31 +52,26 @@ export async function createImprovementAction(input: {
   if (error) throw new Error(getErrorMessage(error));
 
   if (input.ownerUserId && input.ownerUserId !== input.createdByUserId) {
-    try {
-      const { data: profile } = await insforge.database
-        .from('user_profiles')
-        .select('email')
-        .eq('company_id', input.companyId)
-        .eq('user_id', input.ownerUserId)
-        .maybeSingle();
-      const email = String((profile as any)?.email ?? '').trim();
-      if (email) {
-        await sendTemplatedNotificationEmail({
-          to: email,
-          templateKey: 'improvements',
-          variables: {
-            title: input.title,
-            status: input.status ?? 'Planned',
-            owner: input.ownerUserId,
-            dueDate: input.targetDate ?? undefined
-          },
-          actionUrl: '/dashboard/management/improvements',
-          meta: { companyId: input.companyId, improvementActionId: (data as any).id }
-        });
-      }
-    } catch (err) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `improvement-action-created:${(data as any).id}`,
+      eventType: 'improvement_action_created',
+      title: 'Improvement action assigned',
+      message: `You have been assigned an improvement action: "${input.title}".`,
+      recipientUserIds: [input.ownerUserId],
+      emailTemplateKey: 'improvements',
+      emailVariables: {
+        title: input.title,
+        status: input.status ?? 'Planned',
+        owner: input.ownerUserId,
+        dueDate: input.targetDate ?? undefined
+      },
+      actionUrl: '/dashboard/management/improvements',
+      metadata: { itemType: 'improvement_action', itemId: (data as any).id }
+    }).catch((err) => {
       console.warn('[improvement-actions] assignment notification failed', err);
-    }
+    });
   }
 
   return data as ImprovementAction;
@@ -97,6 +91,24 @@ export async function updateImprovementActionStatus(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Improvement action not found.');
-  return data as ImprovementAction;
+  const updated = data as ImprovementAction;
+
+  if (updated.owner_user_id) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `improvement-action-status:${input.actionId}:${input.status}`,
+      eventType: 'improvement_action_status_updated',
+      title: 'Improvement action status updated',
+      message: `Improvement action "${updated.title}" status changed to ${input.status}.`,
+      recipientUserIds: [updated.owner_user_id],
+      emailTemplateKey: 'improvements',
+      emailVariables: { title: updated.title, status: input.status },
+      actionUrl: '/dashboard/management/improvements',
+      metadata: { itemType: 'improvement_action', itemId: input.actionId }
+    }).catch(() => undefined);
+  }
+
+  return updated;
 }
 

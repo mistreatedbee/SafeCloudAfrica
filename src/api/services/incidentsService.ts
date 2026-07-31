@@ -289,23 +289,6 @@ async function updateIncidentWithSchemaFallback(companyId: UUID, incidentId: UUI
   throw new Error(getErrorMessage(error));
 }
 
-async function getIncidentNotificationEmails(companyId: UUID, userIds: Array<UUID | null | undefined>, extraEmails?: string[] | null): Promise<string[]> {
-  const emails = new Set<string>((extraEmails ?? []).map((email) => String(email).trim()).filter(Boolean));
-  const ids = Array.from(new Set(userIds.filter(Boolean).map(String)));
-  if (ids.length > 0) {
-    const { data } = await insforge.database
-      .from('user_profiles')
-      .select('user_id, email')
-      .eq('company_id', companyId)
-      .in('user_id', ids);
-    for (const row of data ?? []) {
-      const email = String((row as any).email ?? '').trim();
-      if (email) emails.add(email);
-    }
-  }
-  return Array.from(emails);
-}
-
 function validateRiskField(value: number | null | undefined, fieldName: string): void {
   if (value == null) return;
   if (!Number.isInteger(value) || value < 1 || value > 5) {
@@ -411,11 +394,37 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
     });
   }
 
-  try {
-    const emails = await getIncidentNotificationEmails(input.companyId, [input.assigneeUserId], input.copyToEmails);
-    if (emails.length > 0) {
+  const incidentId = (data as any).id as UUID;
+  const recipientIds = Array.from(new Set([input.assigneeUserId, input.createdByUserId].filter(Boolean))) as UUID[];
+
+  {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `incident-created:${incidentId}`,
+      eventType: 'incident_created',
+      title: 'Incident reported',
+      message: `A new "${input.title}" incident has been reported.`,
+      recipientUserIds: recipientIds,
+      emailTemplateKey: 'incident_reporting',
+      emailVariables: {
+        title: input.title,
+        severity: input.severity,
+        category: input.category,
+        location: input.location,
+        status: 'Open'
+      },
+      actionUrl: '/dashboard/safety/incidents',
+      metadata: { itemType: 'incident', itemId: incidentId }
+    }).catch((err) => {
+      console.warn('[incidents] notification failed', incidentId, err);
+    });
+  }
+
+  if (input.copyToEmails?.length) {
+    try {
       await sendTemplatedNotificationEmail({
-        to: emails,
+        to: input.copyToEmails,
         templateKey: 'incident_reporting',
         variables: {
           title: input.title,
@@ -425,14 +434,11 @@ export async function createIncident(input: CreateIncidentInput): Promise<Incide
           status: 'Open'
         },
         actionUrl: '/dashboard/safety/incidents',
-        meta: {
-          companyId: input.companyId,
-          incidentId: (data as any).id
-        }
+        meta: { companyId: input.companyId, incidentId }
       });
+    } catch (err) {
+      console.warn('[incidents] copy-to-email notification failed', incidentId, err);
     }
-  } catch (err) {
-    console.warn('[incidents] notification failed', (data as any).id, err);
   }
 
   return data as Incident;
@@ -494,7 +500,7 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
 
   const { data: current, error: currentError } = await insforge.database
     .from('incidents')
-    .select('id,company_id')
+    .select('id,company_id,title,created_by_user_id,assignee_user_id,status')
     .eq('id', incidentId)
     .maybeSingle();
   if (currentError) throw new Error(getErrorMessage(currentError));
@@ -573,12 +579,40 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
   }
 
   const data = await updateIncidentWithSchemaFallback((current as any).company_id as UUID, incidentId, updateData);
+
+  if (patch.status === 'closed' && (current as any).status !== 'closed') {
+    const companyId = (current as any).company_id as UUID;
+    const recipientIds = Array.from(
+      new Set([(current as any).created_by_user_id, (current as any).assignee_user_id].filter(Boolean))
+    ) as UUID[];
+    if (recipientIds.length > 0) {
+      const { notifyRelevantUsers } = await import('./notificationEventsService');
+      await notifyRelevantUsers({
+        companyId,
+        eventKey: `incident-closed:${incidentId}`,
+        eventType: 'incident_closed',
+        title: 'Incident closed',
+        message: `Incident "${(current as any).title}" has been closed.`,
+        recipientUserIds: recipientIds,
+        emailTemplateKey: 'incident_reporting',
+        emailVariables: {
+          title: (current as any).title,
+          status: 'Closed'
+        },
+        actionUrl: '/dashboard/safety/incidents',
+        metadata: { itemType: 'incident', itemId: incidentId }
+      }).catch((err) => {
+        console.warn('[incidents] closure notification failed', incidentId, err);
+      });
+    }
+  }
+
   return data;
 }
 
 export async function syncIncidentClosureFromLinks(incidentId: UUID): Promise<void> {
   const [{ data: incidentRow, error: incidentError }, { count: openNcrCount, error: openNcrError }, { count: openActionCount, error: openActionError }] = await Promise.all([
-    insforge.database.from('incidents').select('id,company_id,status').eq('id', incidentId).maybeSingle(),
+    insforge.database.from('incidents').select('id,company_id,status,title,created_by_user_id,assignee_user_id').eq('id', incidentId).maybeSingle(),
     insforge.database
       .from('quality_ncrs')
       .select('*', { count: 'planned', head: true })

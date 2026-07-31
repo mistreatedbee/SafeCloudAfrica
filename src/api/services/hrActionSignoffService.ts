@@ -3,9 +3,7 @@ import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { HrActionSignoffRequest, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
-import { createNotification } from './notificationsService';
 import { updateHrRecord } from './hrService';
-import { sendTemplatedNotificationEmail } from './emailService';
 
 export async function createSignoffRequest(input: {
   companyId: UUID;
@@ -50,45 +48,31 @@ export async function createSignoffRequest(input: {
     }).catch(() => {});
 
     if (input.requestedForUserId) {
-      await createNotification(
-        input.companyId,
-        input.requestedForUserId,
-        'info',
-        input.notificationTitle ?? 'Sign-off requested',
-        input.notificationMessage ?? 'A sign-off has been requested from you on an HR action item.',
-        {
+      const { notifyRelevantUsers } = await import('./notificationEventsService');
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `hr-signoff-requested:${created.id}`,
+        eventType: 'hr_action_signoff_requested',
+        title: input.notificationTitle ?? 'Sign-off requested',
+        message: input.notificationMessage ?? 'A sign-off has been requested from you on an HR action item.',
+        recipientUserIds: [input.requestedForUserId],
+        emailTemplateKey: 'hr_updates',
+        emailVariables: {
+          title: input.notificationTitle ?? 'Sign-off Requested',
+          status: 'Pending',
+          employee: input.requestedForUserId
+        },
+        actionUrl: '/dashboard/hr/wellness',
+        metadata: {
+          itemType: 'hr_action_signoff',
+          itemId: created.id,
           module: 'hr',
-          route: '/dashboard/hr/wellness',
           assessmentId: input.assessmentId,
-          actionId: input.entityId,
-          signoffRequestId: created.id
+          actionId: input.entityId
         }
-      ).catch(() => {});
-
-      try {
-        const { data: profile } = await insforge.database
-          .from('user_profiles')
-          .select('email')
-          .eq('company_id', input.companyId)
-          .eq('user_id', input.requestedForUserId)
-          .maybeSingle();
-        const email = String((profile as any)?.email ?? '').trim();
-        if (email) {
-          await sendTemplatedNotificationEmail({
-            to: email,
-            templateKey: 'hr_updates',
-            variables: {
-              title: input.notificationTitle ?? 'Sign-off Requested',
-              status: 'Pending',
-              employee: input.requestedForUserId
-            },
-            actionUrl: '/dashboard/hr/wellness',
-            meta: { companyId: input.companyId, signoffRequestId: created.id, entityId: input.entityId }
-          });
-        }
-      } catch (err) {
-        console.warn('[hr-signoff] email notification failed', err);
-      }
+      }).catch((err) => {
+        console.warn('[hr-signoff] notification failed', err);
+      });
     }
 
     return created;
@@ -137,11 +121,13 @@ export async function signOffWellnessAction(input: {
 }): Promise<void> {
   return withInsforgeSession('hr-signoff:sign-off', async () => {
     const nowIso = new Date().toISOString();
-    const { error } = await insforge.database
+    const { data, error } = await insforge.database
       .from('hr_action_signoff_requests')
       .update({ status: 'signed_off', signed_off_at: nowIso, updated_at: nowIso })
       .eq('id', input.requestId)
-      .eq('company_id', input.companyId);
+      .eq('company_id', input.companyId)
+      .select('requested_by_user_id')
+      .maybeSingle();
     if (error) throw new Error(getErrorMessage(error));
 
     await updateHrRecord('hr_employee_wellness_actions', {
@@ -158,5 +144,22 @@ export async function signOffWellnessAction(input: {
       entityType: 'hr_employee_wellness_action',
       entityId: input.actionId
     }).catch(() => {});
+
+    const requestedByUserId = (data as any)?.requested_by_user_id as UUID | undefined;
+    if (requestedByUserId && requestedByUserId !== input.actorUserId) {
+      const { notifyRelevantUsers } = await import('./notificationEventsService');
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `hr-signoff-complete:${input.requestId}`,
+        eventType: 'hr_action_signed_off',
+        title: 'Sign-off completed',
+        message: 'An HR action item you requested a sign-off on has been signed off.',
+        recipientUserIds: [requestedByUserId],
+        emailTemplateKey: 'hr_updates',
+        emailVariables: { title: 'HR Action Sign-off', status: 'Completed' },
+        actionUrl: '/dashboard/hr/wellness',
+        metadata: { itemType: 'hr_action_signoff', itemId: input.requestId, actionId: input.actionId }
+      }).catch(() => undefined);
+    }
   });
 }

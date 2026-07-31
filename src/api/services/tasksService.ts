@@ -405,6 +405,37 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   return created;
 }
 
+async function notifyTaskTransition(input: {
+  companyId: UUID;
+  task: Task;
+  actorUserId: UUID;
+  eventType: string;
+  title: string;
+  message: string;
+  status: string;
+}): Promise<void> {
+  const recipientUserIds = new Set<UUID>();
+  if (input.task.assignee_user_id) recipientUserIds.add(input.task.assignee_user_id as UUID);
+  if (input.task.task_owner_user_id) recipientUserIds.add(input.task.task_owner_user_id as UUID);
+  if (input.task.created_by_user_id) recipientUserIds.add(input.task.created_by_user_id as UUID);
+  recipientUserIds.delete(input.actorUserId);
+  if (recipientUserIds.size === 0) return;
+
+  const { notifyRelevantUsers } = await import('./notificationEventsService');
+  await notifyRelevantUsers({
+    companyId: input.companyId,
+    eventKey: `${input.eventType}:${input.task.id}`,
+    eventType: input.eventType,
+    title: input.title,
+    message: input.message,
+    recipientUserIds: Array.from(recipientUserIds),
+    emailTemplateKey: 'task_assigned',
+    emailVariables: { title: input.task.title, status: input.status, dueDate: input.task.due_at ?? '' },
+    actionUrl: `/dashboard/management/tasks/${input.task.id}`,
+    metadata: { itemType: 'task', itemId: input.task.id }
+  }).catch(() => undefined);
+}
+
 async function updateTaskStatusInternal(input: {
   companyId: UUID;
   taskId: UUID;
@@ -451,6 +482,15 @@ export async function updateTaskStatus(input: {
     entityId: input.taskId,
     metadata: { status: input.status }
   });
+  await notifyTaskTransition({
+    companyId: input.companyId,
+    task: updated,
+    actorUserId: input.actorUserId,
+    eventType: 'task_status_updated',
+    title: 'Task status updated',
+    message: `Task "${updated.title}" status changed to ${input.status}.`,
+    status: input.status
+  });
   return updated;
 }
 
@@ -475,6 +515,15 @@ export async function acceptTask(input: {
     action: 'tasks.accept',
     entityType: 'task',
     entityId: input.taskId
+  });
+  await notifyTaskTransition({
+    companyId: input.companyId,
+    task: updated,
+    actorUserId: input.actorUserId,
+    eventType: 'task_accepted',
+    title: 'Task accepted',
+    message: `Task "${updated.title}" was accepted by the assignee.`,
+    status: 'Accepted'
   });
   return updated;
 }
@@ -504,6 +553,15 @@ export async function startTask(input: {
     entityType: 'task',
     entityId: input.taskId
   });
+  await notifyTaskTransition({
+    companyId: input.companyId,
+    task: updated,
+    actorUserId: input.actorUserId,
+    eventType: 'task_started',
+    title: 'Task started',
+    message: `Work has started on task "${updated.title}".`,
+    status: 'In Progress'
+  });
   return updated;
 }
 
@@ -527,6 +585,15 @@ export async function markAwaitingEvidence(input: {
     action: 'tasks.awaiting_evidence',
     entityType: 'task',
     entityId: input.taskId
+  });
+  await notifyTaskTransition({
+    companyId: input.companyId,
+    task: updated,
+    actorUserId: input.actorUserId,
+    eventType: 'task_awaiting_evidence',
+    title: 'Task awaiting evidence',
+    message: `Task "${updated.title}" is now awaiting evidence.`,
+    status: 'Awaiting Evidence'
   });
   return updated;
 }
@@ -552,6 +619,15 @@ export async function submitForReview(input: {
     entityType: 'task',
     entityId: input.taskId
   });
+  await notifyTaskTransition({
+    companyId: input.companyId,
+    task: updated,
+    actorUserId: input.actorUserId,
+    eventType: 'task_submitted_for_review',
+    title: 'Task submitted for review',
+    message: `Task "${updated.title}" has been submitted for review.`,
+    status: 'Under Review'
+  });
   return updated;
 }
 
@@ -575,6 +651,15 @@ export async function approveTask(input: {
     action: 'tasks.approve',
     entityType: 'task',
     entityId: input.taskId
+  });
+  await notifyTaskTransition({
+    companyId: input.companyId,
+    task: updated,
+    actorUserId: input.actorUserId,
+    eventType: 'task_approved',
+    title: 'Task approved',
+    message: `Task "${updated.title}" has been approved.`,
+    status: 'Approved'
   });
   return updated;
 }
@@ -643,6 +728,15 @@ export async function closeTask(input: {
     entityType: 'task',
     entityId: input.taskId
   });
+  await notifyTaskTransition({
+    companyId: input.companyId,
+    task: updated,
+    actorUserId: input.actorUserId,
+    eventType: 'task_closed',
+    title: 'Task closed',
+    message: `Task "${updated.title}" has been closed.`,
+    status: 'Closed'
+  });
   return updated;
 }
 
@@ -668,6 +762,17 @@ export async function reopenTask(input: {
     entityType: 'task',
     entityId: input.taskId,
     metadata: { reason: input.reason }
+  });
+  await notifyTaskTransition({
+    companyId: input.companyId,
+    task: updated,
+    actorUserId: input.actorUserId,
+    eventType: 'task_reopened',
+    title: 'Task reopened',
+    message: input.reason
+      ? `Task "${updated.title}" was reopened: ${input.reason}`
+      : `Task "${updated.title}" was reopened.`,
+    status: 'Reopened'
   });
   return updated;
 }

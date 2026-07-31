@@ -241,6 +241,42 @@ export async function updateCorrectiveAction(input: UpdateCorrectiveActionInput)
   return data as CorrectiveAction;
 }
 
+async function notifyCorrectiveActionTransition(input: {
+  companyId: UUID;
+  action: CorrectiveAction;
+  actorUserId: UUID;
+  eventType: string;
+  title: string;
+  message: string;
+  status: string;
+}): Promise<void> {
+  const recipientUserIds = new Set<UUID>();
+  if (input.action.assigned_to_user_id) recipientUserIds.add(input.action.assigned_to_user_id);
+  if (input.action.created_by_user_id) recipientUserIds.add(input.action.created_by_user_id);
+  recipientUserIds.delete(input.actorUserId);
+  if (recipientUserIds.size === 0) return;
+
+  const { notifyRelevantUsers } = await import('./notificationEventsService');
+  await notifyRelevantUsers({
+    companyId: input.companyId,
+    eventKey: `${input.eventType}:${input.action.id}`,
+    eventType: input.eventType,
+    title: input.title,
+    message: input.message,
+    recipientUserIds: Array.from(recipientUserIds),
+    emailTemplateKey: 'corrective_actions',
+    emailVariables: {
+      reference: input.action.action_number,
+      title: input.action.title,
+      status: input.status,
+      severity: input.action.priority,
+      dueDate: input.action.due_date
+    },
+    actionUrl: '/dashboard/management/corrective-actions',
+    metadata: { itemType: 'corrective_action', itemId: input.action.id }
+  }).catch(() => undefined);
+}
+
 export async function completeCorrectiveAction(
   actionId: UUID,
   companyId: UUID,
@@ -248,7 +284,7 @@ export async function completeCorrectiveAction(
   completedByUserId: UUID
 ): Promise<CorrectiveAction> {
   const today = new Date().toISOString().split('T')[0];
-  
+
   const { data, error } = await insforge.database
     .from('corrective_actions')
     .update({
@@ -261,10 +297,10 @@ export async function completeCorrectiveAction(
     .eq('company_id', companyId)
     .select('*')
     .single();
-  
+
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to complete corrective action');
-  
+
   await createActivityLog({
     companyId: companyId,
     actorUserId: completedByUserId,
@@ -272,8 +308,19 @@ export async function completeCorrectiveAction(
     entityType: 'corrective_action',
     entityId: actionId
   });
-  
-  return data as CorrectiveAction;
+
+  const completed = data as CorrectiveAction;
+  await notifyCorrectiveActionTransition({
+    companyId,
+    action: completed,
+    actorUserId: completedByUserId,
+    eventType: 'corrective_action_completed',
+    title: 'Corrective action completed',
+    message: `Corrective action "${completed.title}" (${completed.action_number}) has been marked completed.`,
+    status: 'Completed'
+  });
+
+  return completed;
 }
 
 export async function verifyCorrectiveAction(
@@ -282,7 +329,7 @@ export async function verifyCorrectiveAction(
   verifiedByUserId: UUID
 ): Promise<CorrectiveAction> {
   const today = new Date().toISOString().split('T')[0];
-  
+
   const { data, error } = await insforge.database
     .from('corrective_actions')
     .update({
@@ -295,10 +342,10 @@ export async function verifyCorrectiveAction(
     .eq('company_id', companyId)
     .select('*')
     .single();
-  
+
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to verify corrective action');
-  
+
   await createActivityLog({
     companyId: companyId,
     actorUserId: verifiedByUserId,
@@ -306,8 +353,19 @@ export async function verifyCorrectiveAction(
     entityType: 'corrective_action',
     entityId: actionId
   });
-  
-  return data as CorrectiveAction;
+
+  const verified = data as CorrectiveAction;
+  await notifyCorrectiveActionTransition({
+    companyId,
+    action: verified,
+    actorUserId: verifiedByUserId,
+    eventType: 'corrective_action_verified',
+    title: 'Corrective action verified',
+    message: `Corrective action "${verified.title}" (${verified.action_number}) has been verified.`,
+    status: 'Verified'
+  });
+
+  return verified;
 }
 
 async function syncLinkedSourceOnClose(input: {

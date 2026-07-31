@@ -486,6 +486,45 @@ export async function updateCalibrationRecord(input: {
     }
   });
 
+  const resultChanged = existing.result !== updated.result;
+  const statusChanged = existing.equipment_status !== updated.equipment_status;
+  const isOverdue = updated.next_calibration_date < todayDateOnly();
+  if ((resultChanged || statusChanged) && updated.responsible_user_id) {
+    const recipientUserIds = new Set<UUID>([updated.responsible_user_id as UUID]);
+    recipientUserIds.delete(input.actorUserId);
+    if (recipientUserIds.size > 0) {
+      const statusLabel =
+        updated.result === 'FAIL'
+          ? 'Failed'
+          : updated.equipment_status === 'OUT_OF_SERVICE'
+            ? 'Out of Service'
+            : updated.equipment_status === 'REQUIRES_ADJUSTMENT_REPAIR'
+              ? 'Requires Adjustment / Repair'
+              : isOverdue
+                ? 'Overdue'
+                : CALIBRATION_RESULT_LABELS[updated.result];
+
+      const { notifyRelevantUsers } = await import('./notificationEventsService');
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `calibration_record_updated:${updated.id}:${updated.result}:${updated.equipment_status}`,
+        eventType: 'calibration_record_updated',
+        title: 'Calibration record updated',
+        message: `${updated.equipment_name} (${updated.equipment_id}) calibration status is now ${statusLabel}.`,
+        recipientUserIds: Array.from(recipientUserIds),
+        emailTemplateKey: 'calibration',
+        emailVariables: {
+          title: updated.equipment_name,
+          reference: updated.equipment_id,
+          status: statusLabel,
+          dueDate: updated.next_calibration_date
+        },
+        actionUrl: '/dashboard/operations/calibration',
+        metadata: { itemType: 'calibration_record', itemId: updated.id }
+      }).catch(() => undefined);
+    }
+  }
+
   return updated;
   }); // end withInsforgeSession
 }

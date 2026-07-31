@@ -15,7 +15,8 @@ vi.mock('../insforge/client', () => ({
 }));
 
 vi.mock('../insforge/ensureSession', () => ({
-  withInsforgeSession: (_reason: string, fn: () => Promise<unknown>) => fn()
+  withInsforgeSession: (_reason: string, fn: () => Promise<unknown>) => fn(),
+  ensureInsforgeSession: vi.fn(async () => ({ accessToken: 'token', userId: 'requester-1' }))
 }));
 
 vi.mock('./emailService', async () => {
@@ -32,6 +33,14 @@ function insertBuilder(data: unknown) {
       select: vi.fn(() => ({
         single: vi.fn(async () => ({ data, error: null }))
       }))
+    }))
+  };
+}
+
+function updateBuilder() {
+  return {
+    update: vi.fn(() => ({
+      eq: vi.fn(async () => ({ data: null, error: null }))
     }))
   };
 }
@@ -64,6 +73,8 @@ describe('notification service email wiring', () => {
     mocks.from.mockImplementation((table: string) => {
       if (table === 'approvals') return insertBuilder(approval);
       if (table === 'activity_logs') return insertBuilder({ id: 'log-1' });
+      if (table === 'notification_events') return { ...insertBuilder({ id: 'event-1' }), ...updateBuilder() };
+      if (table === 'notifications') return insertBuilder({ id: 'notification-1' });
       if (table === 'user_profiles') return selectEmailBuilder('approver@example.com');
       throw new Error(`Unexpected table ${table}`);
     });
@@ -82,7 +93,7 @@ describe('notification service email wiring', () => {
         to: 'approver@example.com',
         templateKey: 'approvals',
         actionUrl: '/dashboard/management/approvals',
-        meta: expect.objectContaining({ approvalId: 'approval-1' })
+        meta: expect.objectContaining({ itemId: 'approval-1' })
       })
     );
   });

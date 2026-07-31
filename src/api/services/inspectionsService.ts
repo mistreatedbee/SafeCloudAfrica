@@ -581,7 +581,30 @@ export async function updateInspectionRunItem(
     .select('*')
     .single();
   if (error) throw new Error(getErrorMessage(error));
-  return data as unknown as InspectionRunItem;
+  const updatedItem = data as unknown as InspectionRunItem;
+
+  // Notify the newly assigned responsible person when a finding is assigned to them.
+  if ('responsible_person_id' in patch && patch.responsible_person_id) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId,
+      eventKey: `inspection_finding_assigned:${updatedItem.id}`,
+      eventType: 'inspection_finding_assigned',
+      title: 'Inspection finding assigned',
+      message: `You have been assigned to address a finding: "${updatedItem.question}".`,
+      recipientUserIds: [patch.responsible_person_id as UUID],
+      emailTemplateKey: 'inspections',
+      emailVariables: {
+        title: updatedItem.question,
+        status: 'Assigned',
+        dueDate: (updatedItem.due_date as string | null | undefined) ?? ''
+      },
+      actionUrl: '/dashboard/operations/inspections',
+      metadata: { itemType: 'inspection_run_item', itemId: updatedItem.id }
+    }).catch(() => undefined);
+  }
+
+  return updatedItem;
 }
 
 export async function completeInspectionRun(input: {
@@ -848,7 +871,29 @@ export async function submitAuditeeSelfAssessment(input: {
     entityType: 'inspection_run',
     entityId: input.runId
   });
-  return data as InspectionRun;
+  const updated = data as InspectionRun;
+
+  const recipientUserIds = new Set<UUID>();
+  if (updated.auditor_user_id) recipientUserIds.add(updated.auditor_user_id as UUID);
+  if (updated.inspector_user_id) recipientUserIds.add(updated.inspector_user_id as UUID);
+  recipientUserIds.delete(input.actorUserId);
+  if (recipientUserIds.size > 0) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `inspection_self_assessment_submitted:${input.runId}`,
+      eventType: 'inspection_self_assessment_submitted',
+      title: 'Self-assessment submitted',
+      message: 'The auditee has submitted their self-assessment for this inspection run.',
+      recipientUserIds: Array.from(recipientUserIds),
+      emailTemplateKey: 'inspections',
+      emailVariables: { title: 'Inspection self-assessment', status: 'Submitted' },
+      actionUrl: '/dashboard/operations/inspections',
+      metadata: { itemType: 'inspection_run', itemId: input.runId }
+    }).catch(() => undefined);
+  }
+
+  return updated;
 }
 
 export async function syncInspectionItemsFromNcrStatus(companyId: UUID, runId: UUID): Promise<void> {

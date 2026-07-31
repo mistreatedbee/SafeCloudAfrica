@@ -3,18 +3,6 @@ import { withInsforgeSession } from '../insforge/ensureSession';
 import type { Approval, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
-import { sendTemplatedNotificationEmail } from './emailService';
-
-async function getProfileEmail(companyId: UUID, userId: UUID): Promise<string | null> {
-  const { data } = await insforge.database
-    .from('user_profiles')
-    .select('email')
-    .eq('company_id', companyId)
-    .eq('user_id', userId)
-    .maybeSingle();
-  const email = String((data as any)?.email ?? '').trim();
-  return email || null;
-}
 
 export async function listApprovals(companyId: UUID): Promise<Approval[]> {
   return withInsforgeSession('approvals:list', async () => {
@@ -60,30 +48,31 @@ export async function createApproval(input: {
     entityId: (data as any).id as UUID
   });
 
-  try {
-    const email = await getProfileEmail(input.companyId, input.approverUserId);
-    if (email) {
-      await sendTemplatedNotificationEmail({
-        to: email,
-        templateKey: 'approvals',
-        variables: {
-          title: input.entityType,
-          itemType: input.entityType,
-          requester: input.requestedByUserId,
-          status: 'Pending'
-        },
-        actionUrl: '/dashboard/management/approvals',
-        meta: {
-          companyId: input.companyId,
-          approvalId: (data as any).id,
-          entityType: input.entityType,
-          entityId: input.entityId
-        }
-      });
+  const { notifyRelevantUsers } = await import('./notificationEventsService');
+  await notifyRelevantUsers({
+    companyId: input.companyId,
+    eventKey: `approval-created:${(data as any).id}`,
+    eventType: 'approval_created',
+    title: 'Approval requested',
+    message: `A "${input.entityType}" submission is awaiting your approval.`,
+    recipientUserIds: [input.approverUserId],
+    emailTemplateKey: 'approvals',
+    emailVariables: {
+      title: input.entityType,
+      itemType: input.entityType,
+      requester: input.requestedByUserId,
+      status: 'Pending'
+    },
+    actionUrl: '/dashboard/management/approvals',
+    metadata: {
+      itemType: 'approval',
+      itemId: (data as any).id,
+      entityType: input.entityType,
+      entityId: input.entityId
     }
-  } catch (err) {
+  }).catch((err) => {
     console.warn('[approvals] notification failed', (data as any).id, err);
-  }
+  });
 
   return data as Approval;
   });
@@ -120,19 +109,22 @@ export async function decideApproval(input: {
       entityId: input.approvalId
     });
 
-    if (input.decision === 'rejected' && approval.requested_by_user_id) {
+    if (approval.requested_by_user_id && (input.decision === 'rejected' || input.decision === 'approved')) {
       const { notifyRelevantUsers } = await import('./notificationEventsService');
+      const isRejected = input.decision === 'rejected';
       await notifyRelevantUsers({
         companyId: input.companyId,
-        eventKey: `approval-rejected:${approval.id}`,
-        eventType: 'approval_rejected',
-        title: 'Approval rejected',
-        message: input.signatureNote
-          ? `Your "${approval.entity_type}" submission was rejected: ${input.signatureNote}`
-          : `Your "${approval.entity_type}" submission was rejected.`,
+        eventKey: `approval-${input.decision}:${approval.id}`,
+        eventType: isRejected ? 'approval_rejected' : 'approval_approved',
+        title: isRejected ? 'Approval rejected' : 'Approval granted',
+        message: isRejected
+          ? (input.signatureNote
+            ? `Your "${approval.entity_type}" submission was rejected: ${input.signatureNote}`
+            : `Your "${approval.entity_type}" submission was rejected.`)
+          : `Your "${approval.entity_type}" submission was approved.`,
         recipientUserIds: [approval.requested_by_user_id as UUID],
         emailTemplateKey: 'approvals',
-        emailVariables: { title: approval.entity_type, status: 'Rejected' },
+        emailVariables: { title: approval.entity_type, status: isRejected ? 'Rejected' : 'Approved' },
         actionUrl: '/dashboard/management/approvals',
         metadata: { itemType: 'approval', itemId: approval.id, entityType: approval.entity_type, entityId: approval.entity_id }
       }).catch(() => undefined);

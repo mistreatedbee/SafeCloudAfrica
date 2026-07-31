@@ -296,6 +296,54 @@ export async function createTrainingRecord(input: {
   return data as TrainingRecord;
 }
 
+async function notifyTrainingStatusChange(input: {
+  companyId: UUID;
+  recordId: UUID;
+  courseId: UUID;
+  traineeUserId: UUID | null;
+  actorUserId?: UUID | null;
+  status: TrainingRecordStatus;
+}): Promise<void> {
+  if (!input.traineeUserId) return;
+  if (input.actorUserId && input.traineeUserId === input.actorUserId) return;
+
+  const statusLabel =
+    input.status === 'COMPLETED'
+      ? 'Completed'
+      : input.status === 'CANCELLED'
+        ? 'Cancelled'
+        : input.status === 'EXPIRED'
+          ? 'Expired'
+          : input.status === 'OVERDUE'
+            ? 'Overdue'
+            : input.status;
+
+  const { data: course } = await insforge.database
+    .from('training_courses')
+    .select('name')
+    .eq('company_id', input.companyId)
+    .eq('id', input.courseId)
+    .maybeSingle();
+  const courseName = (course as { name?: string } | null)?.name ?? 'Training';
+
+  const { notifyRelevantUsers } = await import('./notificationEventsService');
+  await notifyRelevantUsers({
+    companyId: input.companyId,
+    eventKey: `training-status:${input.recordId}:${input.status}`,
+    eventType: 'training_status_changed',
+    title: `Training ${statusLabel}`,
+    message:
+      input.status === 'CANCELLED'
+        ? `Your training "${courseName}" has been cancelled.`
+        : `Your training "${courseName}" is now ${statusLabel.toLowerCase()}.`,
+    recipientUserIds: [input.traineeUserId],
+    emailTemplateKey: 'training_assigned',
+    emailVariables: { title: courseName, status: statusLabel },
+    actionUrl: '/dashboard/hr/training',
+    metadata: { itemType: 'training_record', itemId: input.recordId }
+  }).catch((err) => console.warn('[training] status-change notification failed', err));
+}
+
 export async function updateTrainingRecord(input: {
   companyId: UUID;
   recordId: UUID;
@@ -309,6 +357,7 @@ export async function updateTrainingRecord(input: {
   certificateBucket?: string | null;
   certificateKey?: string | null;
   cost?: number | null;
+  actorUserId?: UUID | null;
 }): Promise<TrainingRecord> {
   const existing = await getTrainingRecord(input.companyId, input.recordId);
   if (!existing) throw new Error('Training record not found.');
@@ -343,18 +392,33 @@ export async function updateTrainingRecord(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update training record.');
-  return data as TrainingRecord;
+  const row = data as TrainingRecord;
+
+  if (status !== existing.status && (status === 'COMPLETED' || status === 'CANCELLED' || status === 'EXPIRED')) {
+    await notifyTrainingStatusChange({
+      companyId: input.companyId,
+      recordId: row.id,
+      courseId: row.course_id,
+      traineeUserId: row.user_id,
+      actorUserId: input.actorUserId,
+      status
+    });
+  }
+
+  return row;
 }
 
 export async function cancelTrainingRecord(input: {
   companyId: UUID;
   recordId: UUID;
+  actorUserId?: UUID | null;
 }): Promise<TrainingRecord> {
   // Soft-delete style: mark as CANCELLED while retaining history
   return updateTrainingRecord({
     companyId: input.companyId,
     recordId: input.recordId,
-    status: 'CANCELLED'
+    status: 'CANCELLED',
+    actorUserId: input.actorUserId
   });
 }
 

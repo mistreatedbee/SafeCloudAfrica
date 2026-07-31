@@ -346,6 +346,27 @@ export async function createCustomerComplaint(input: {
     });
   }
 
+  if (created.person_handling_user_id && String(created.person_handling_user_id) !== String(input.actorUserId)) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `complaint-created:${created.id}`,
+      eventType: 'quality_customer_complaint_created',
+      title: `Customer complaint assigned: ${created.complaint_ref_no}`,
+      message: `You have been assigned to handle customer complaint ${created.complaint_ref_no} from ${created.customer_name}.`,
+      recipientUserIds: [created.person_handling_user_id],
+      emailTemplateKey: 'quality_customer_complaints',
+      emailVariables: {
+        reference: created.complaint_ref_no,
+        customer: created.customer_name,
+        status: CUSTOMER_COMPLAINT_STATUS_LABELS[created.status] ?? created.status,
+        owner: created.person_handling_name_snapshot
+      },
+      actionUrl: '/dashboard/quality/complaints',
+      metadata: { itemType: 'quality_customer_complaint', itemId: created.id }
+    }).catch(() => undefined);
+  }
+
   return created;
   });
 }

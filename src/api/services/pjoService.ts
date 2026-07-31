@@ -386,7 +386,25 @@ export async function updatePjoResponse(input: {
     entityId: input.responseId
   });
 
-  return data as PjoResponse;
+  const response = data as PjoResponse;
+
+  if (input.patch.manager_signoff_user_id && input.patch.manager_signoff_user_id !== input.actorUserId) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `pjo-response-signoff-assigned:${response.id}`,
+      eventType: 'pjo_response_signoff_assigned',
+      title: 'PJO sign-off required',
+      message: 'You have been assigned to review and sign off a PJO checklist item.',
+      recipientUserIds: [input.patch.manager_signoff_user_id],
+      emailTemplateKey: 'task_assigned',
+      emailVariables: { title: 'PJO Checklist Sign-off', status: 'Pending sign-off' },
+      actionUrl: `/dashboard/operations/pjo/${response.pjo_id}`,
+      metadata: { itemType: 'pjo_response', itemId: response.id, pjoId: response.pjo_id }
+    }).catch(() => undefined);
+  }
+
+  return response;
 }
 
 export type PjoSummary = {

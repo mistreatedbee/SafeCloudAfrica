@@ -201,6 +201,42 @@ export async function createAudit(input: {
   }); // end withInsforgeSession
 }
 
+async function notifyAuditTransition(input: {
+  companyId: UUID;
+  audit: Audit;
+  actorUserId: UUID;
+  eventType: string;
+  title: string;
+  message: string;
+  status: string;
+}): Promise<void> {
+  const recipientUserIds = new Set<UUID>();
+  if (input.audit.lead_auditor_user_id) recipientUserIds.add(input.audit.lead_auditor_user_id as UUID);
+  for (const id of input.audit.auditor_user_ids ?? []) {
+    if (id) recipientUserIds.add(id as UUID);
+  }
+  if (input.audit.created_by_user_id) recipientUserIds.add(input.audit.created_by_user_id as UUID);
+  recipientUserIds.delete(input.actorUserId);
+  if (recipientUserIds.size === 0) return;
+
+  const { notifyRelevantUsers } = await import('./notificationEventsService');
+  await notifyRelevantUsers({
+    companyId: input.companyId,
+    eventKey: `${input.eventType}:${input.audit.id}`,
+    eventType: input.eventType,
+    title: input.title,
+    message: input.message,
+    recipientUserIds: Array.from(recipientUserIds),
+    emailTemplateKey: 'audits',
+    emailVariables: {
+      title: input.audit.title ?? input.audit.objectives,
+      status: input.status
+    },
+    actionUrl: '/dashboard/operations/audits',
+    metadata: { itemType: 'audit', itemId: input.audit.id }
+  }).catch(() => undefined);
+}
+
 export async function updateAudit(
   auditId: UUID,
   companyId: UUID,
@@ -269,7 +305,7 @@ export async function completeAudit(
   reportDocumentUrl: string | null,
   actorUserId: UUID
 ): Promise<Audit> {
-  return updateAudit(
+  const updated = await updateAudit(
     auditId,
     companyId,
     {
@@ -279,6 +315,16 @@ export async function completeAudit(
     },
     actorUserId
   );
+  await notifyAuditTransition({
+    companyId,
+    audit: updated,
+    actorUserId,
+    eventType: 'audit_completed',
+    title: 'Audit completed',
+    message: `Audit "${updated.title ?? updated.audit_number}" has been completed.`,
+    status: 'Completed'
+  });
+  return updated;
 }
 
 export async function submitAuditReport(
@@ -287,7 +333,7 @@ export async function submitAuditReport(
   reportDocumentUrl: string,
   actorUserId: UUID
 ): Promise<Audit> {
-  return updateAudit(
+  const updated = await updateAudit(
     auditId,
     companyId,
     {
@@ -297,6 +343,16 @@ export async function submitAuditReport(
     },
     actorUserId
   );
+  await notifyAuditTransition({
+    companyId,
+    audit: updated,
+    actorUserId,
+    eventType: 'audit_report_submitted',
+    title: 'Audit report submitted',
+    message: `The audit report for "${updated.title ?? updated.audit_number}" has been submitted.`,
+    status: 'Submitted'
+  });
+  return updated;
 }
 
 export async function createAuditInvitationTokens(input: {
@@ -601,8 +657,8 @@ export async function approveAuditDate(
   selectedDate: string,
   actorUserId: UUID
 ): Promise<Audit> {
-  return withInsforgeSession('audits:approve_date', async () =>
-    updateAudit(
+  return withInsforgeSession('audits:approve_date', async () => {
+    const updated = await updateAudit(
       auditId,
       companyId,
       {
@@ -612,8 +668,18 @@ export async function approveAuditDate(
         date_decline_reason: null
       },
       actorUserId
-    )
-  );
+    );
+    await notifyAuditTransition({
+      companyId,
+      audit: updated,
+      actorUserId,
+      eventType: 'audit_date_approved',
+      title: 'Audit date approved',
+      message: `The proposed date for audit "${updated.title ?? updated.audit_number}" was approved: ${selectedDate}.`,
+      status: 'Date Approved'
+    });
+    return updated;
+  });
 }
 
 export async function declineAuditDate(
@@ -622,8 +688,8 @@ export async function declineAuditDate(
   declineReason: string,
   actorUserId: UUID
 ): Promise<Audit> {
-  return withInsforgeSession('audits:decline_date', async () =>
-    updateAudit(
+  return withInsforgeSession('audits:decline_date', async () => {
+    const updated = await updateAudit(
       auditId,
       companyId,
       {
@@ -631,6 +697,18 @@ export async function declineAuditDate(
         date_decline_reason: declineReason || null
       },
       actorUserId
-    )
-  );
+    );
+    await notifyAuditTransition({
+      companyId,
+      audit: updated,
+      actorUserId,
+      eventType: 'audit_date_declined',
+      title: 'Audit date declined',
+      message: declineReason
+        ? `The proposed date for audit "${updated.title ?? updated.audit_number}" was declined: ${declineReason}`
+        : `The proposed date for audit "${updated.title ?? updated.audit_number}" was declined.`,
+      status: 'Date Declined'
+    });
+    return updated;
+  });
 }

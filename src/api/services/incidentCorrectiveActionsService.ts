@@ -193,7 +193,29 @@ export async function updateIncidentCorrectiveAction(
     console.warn('[incidents.correctiveAction] sync error', syncError);
   });
 
-  return data as IncidentCorrectiveAction;
+  const updated = data as IncidentCorrectiveAction;
+  if (patch.status !== undefined && updated.owner_user_id) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId,
+      eventKey: `incident-corrective-action-${patch.status}:${actionId}`,
+      eventType: 'incident_corrective_action_status_updated',
+      title: 'Corrective action updated',
+      message: `Corrective action "${updated.action_title}" status changed to ${patch.status}.`,
+      recipientUserIds: [updated.owner_user_id as UUID],
+      emailTemplateKey: 'corrective_actions',
+      emailVariables: {
+        reference: updated.incident_id,
+        title: updated.action_title,
+        status: patch.status,
+        dueDate: updated.due_date ?? ''
+      },
+      actionUrl: '/dashboard/safety/incidents',
+      metadata: { itemType: 'incident_corrective_action', itemId: actionId, incidentId: updated.incident_id }
+    }).catch(() => undefined);
+  }
+
+  return updated;
 }
 
 export async function listIncidentCorrectiveActions(companyId: UUID, incidentId: UUID): Promise<IncidentCorrectiveAction[]> {

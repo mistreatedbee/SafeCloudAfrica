@@ -13,7 +13,6 @@ import type {
 } from '../models/entities';
 import type { CompanyRole } from '../models/core';
 import { createActivityLog } from './activityLogService';
-import { sendTemplatedNotificationEmail } from './emailService';
 
 const FINAL_STATUSES: ImprovementWorkflowStatus[] = ['closed', 'monitoring_required', 'escalated'];
 const MANAGEMENT_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
@@ -212,41 +211,35 @@ async function createInAppNotification(input: {
   });
 }
 
-async function getImprovementEmails(companyId: UUID, userIds: Array<UUID | null | undefined>): Promise<string[]> {
-  const ids = Array.from(new Set(userIds.filter(Boolean).map(String)));
-  if (ids.length === 0) return [];
-  const { data } = await insforge.database
-    .from('user_profiles')
-    .select('user_id, email')
-    .eq('company_id', companyId)
-    .in('user_id', ids);
-  return Array.from(new Set((data ?? []).map((row: any) => String(row.email ?? '').trim()).filter(Boolean)));
-}
-
-async function sendImprovementEmail(input: {
+async function notifyImprovementTransition(input: {
   companyId: UUID;
   userIds: Array<UUID | null | undefined>;
   record: ImprovementRecord;
+  eventType: string;
+  title: string;
+  message: string;
   statusLabel?: string;
 }): Promise<void> {
-  try {
-    const emails = await getImprovementEmails(input.companyId, input.userIds);
-    if (emails.length === 0) return;
-    await sendTemplatedNotificationEmail({
-      to: emails,
-      templateKey: 'improvements',
-      variables: {
-        reference: input.record.reference_number,
-        status: input.statusLabel ?? IMPROVEMENT_STATUS_LABELS[input.record.status],
-        severity: input.record.risk_level,
-        owner: input.record.responsible_user_id ?? ''
-      },
-      actionUrl: '/dashboard/management/improvements',
-      meta: { companyId: input.companyId, improvementId: input.record.id }
-    });
-  } catch (err) {
-    console.warn('[improvements] notification failed', err);
-  }
+  const recipientUserIds = Array.from(new Set(input.userIds.filter(Boolean).map(String))) as UUID[];
+  if (recipientUserIds.length === 0) return;
+  const { notifyRelevantUsers } = await import('./notificationEventsService');
+  await notifyRelevantUsers({
+    companyId: input.companyId,
+    eventKey: `${input.eventType}:${input.record.id}`,
+    eventType: input.eventType,
+    title: input.title,
+    message: input.message,
+    recipientUserIds,
+    emailTemplateKey: 'improvements',
+    emailVariables: {
+      reference: input.record.reference_number,
+      status: input.statusLabel ?? IMPROVEMENT_STATUS_LABELS[input.record.status],
+      severity: input.record.risk_level,
+      owner: input.record.responsible_user_id ?? ''
+    },
+    actionUrl: '/dashboard/management/improvements',
+    metadata: { itemType: 'improvement', itemId: input.record.id }
+  }).catch(() => undefined);
 }
 
 export async function listImprovements(input: ImprovementListFilters): Promise<ImprovementRecord[]> {
@@ -402,17 +395,13 @@ export async function createImprovement(input: {
   });
 
   if (created.responsible_user_id) {
-    await createInAppNotification({
-      companyId: input.companyId,
-      userId: created.responsible_user_id,
-      title: 'Improvement Assigned',
-      message: `You were assigned improvement ${created.reference_number}.`,
-      severity: created.risk_level
-    }).catch(() => undefined);
-    await sendImprovementEmail({
+    await notifyImprovementTransition({
       companyId: input.companyId,
       userIds: [created.responsible_user_id],
       record: created,
+      eventType: 'improvement_assigned',
+      title: 'Improvement Assigned',
+      message: `You were assigned improvement ${created.reference_number}.`,
       statusLabel: 'Assigned'
     });
   }
@@ -489,17 +478,13 @@ export async function updateImprovement(input: {
 
   if (existing.status !== updated.status) {
     if (updated.status === 'awaiting_verification' && updated.verified_by_user_id) {
-      await createInAppNotification({
-        companyId: input.companyId,
-        userId: updated.verified_by_user_id,
-        title: 'Verification Requested',
-        message: `Verification requested for ${updated.reference_number}.`,
-        severity: updated.risk_level
-      }).catch(() => undefined);
-      await sendImprovementEmail({
+      await notifyImprovementTransition({
         companyId: input.companyId,
         userIds: [updated.verified_by_user_id],
         record: updated,
+        eventType: 'improvement_verification_requested',
+        title: 'Verification Requested',
+        message: `Verification requested for ${updated.reference_number}.`,
         statusLabel: 'Verification requested'
       });
     }
@@ -510,36 +495,24 @@ export async function updateImprovement(input: {
         .eq('company_id', input.companyId)
         .in('role', ['owner', 'admin', 'manager']);
       const ids = (admins ?? []).map((x: any) => x.user_id as UUID);
-      await Promise.all(
-        ids.map((userId) =>
-          createInAppNotification({
-            companyId: input.companyId,
-            userId,
-            title: 'Improvement Escalated',
-            message: `Improvement ${updated.reference_number} was escalated.`,
-            severity: 'high'
-          }).catch(() => undefined)
-        )
-      );
-      await sendImprovementEmail({
+      await notifyImprovementTransition({
         companyId: input.companyId,
         userIds: ids,
         record: updated,
+        eventType: 'improvement_escalated',
+        title: 'Improvement Escalated',
+        message: `Improvement ${updated.reference_number} was escalated.`,
         statusLabel: 'Escalated'
       });
     }
     if (updated.status === 'closed' && updated.raised_by_user_id) {
-      await createInAppNotification({
-        companyId: input.companyId,
-        userId: updated.raised_by_user_id,
-        title: 'Improvement Closed',
-        message: `Improvement ${updated.reference_number} has been closed.`,
-        severity: 'low'
-      }).catch(() => undefined);
-      await sendImprovementEmail({
+      await notifyImprovementTransition({
         companyId: input.companyId,
         userIds: [updated.raised_by_user_id],
         record: updated,
+        eventType: 'improvement_closed',
+        title: 'Improvement Closed',
+        message: `Improvement ${updated.reference_number} has been closed.`,
         statusLabel: 'Closed'
       });
     }

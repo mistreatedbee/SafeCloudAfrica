@@ -1155,11 +1155,12 @@ create policy platform_admins_select_self
 on public.platform_admins for select
 using (user_id = public.request_user_id());
 
--- Memberships: user can read own; admins can manage all in company
+-- Memberships: any active company member can read (needed for notification
+-- recipient resolution); write access remains admin/manager-gated below.
 drop policy if exists memberships_select_member on public.company_memberships;
 create policy memberships_select_member
 on public.company_memberships for select
-using (user_id = public.request_user_id() or public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+using (public.is_company_member(company_id) or public.is_platform_admin());
 
 drop policy if exists memberships_insert_admin on public.company_memberships;
 create policy memberships_insert_admin
@@ -1466,17 +1467,25 @@ on public.medical_certificates for all
 using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
 with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
 
--- Notifications (user can read own; system/management can write)
+-- Notifications (user can read own; any active company member can create
+-- one for a peer; only the recipient can update/mark their own read)
 drop policy if exists notifications_select_self on public.notifications;
 create policy notifications_select_self
 on public.notifications for select
 using (user_id = public.request_user_id() or public.is_platform_admin());
 
 drop policy if exists notifications_write_management on public.notifications;
-create policy notifications_write_management
-on public.notifications for all
-using (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin())
-with check (public.is_company_consultant_or_admin(company_id) or public.is_platform_admin());
+
+drop policy if exists notifications_insert_member on public.notifications;
+create policy notifications_insert_member
+on public.notifications for insert
+with check (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists notifications_update_self on public.notifications;
+create policy notifications_update_self
+on public.notifications for update
+using (user_id = public.request_user_id() or public.is_platform_admin())
+with check (user_id = public.request_user_id() or public.is_platform_admin());
 
 -- Module targets/objectives
 drop policy if exists module_targets_select_member on public.module_targets;
@@ -1714,11 +1723,11 @@ create table if not exists public.user_profiles (
 alter table public.user_profiles enable row level security;
 
 drop policy if exists profiles_select_role on public.user_profiles;
-create policy profiles_select_role
+drop policy if exists profiles_select_company_member on public.user_profiles;
+create policy profiles_select_company_member
 on public.user_profiles for select
 using (
-  public.is_company_manager(company_id)
-  or user_id = public.request_user_id()
+  public.is_company_member(company_id)
   or public.is_platform_admin()
 );
 

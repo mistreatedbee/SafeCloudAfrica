@@ -264,7 +264,17 @@ export async function upgradeLicense(
     throw error;
   }
 
-  return data as Company;
+  const company = data as Company;
+
+  await sendBillingEmail({
+    companyId,
+    templateKey: 'billing_pricing',
+    variables: { title: 'License upgraded', status: newLicenseType },
+    actionUrl: '/dashboard/settings/billing',
+    meta: { licenseType: newLicenseType }
+  });
+
+  return company;
 }
 
 /**

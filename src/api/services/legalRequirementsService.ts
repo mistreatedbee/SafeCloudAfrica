@@ -844,7 +844,20 @@ export async function closeLegalUpdate(input: {
     entityId: input.updateId
   });
 
-  return data as LegalUpdate;
+  const closed = data as LegalUpdate;
+
+  if (closed.responsible_user_id && closed.responsible_user_id !== input.actorUserId) {
+    await notifyAssignedUser({
+      companyId: input.companyId,
+      userId: closed.responsible_user_id,
+      title: 'Legal Update Closed',
+      message: 'A legal update assigned to you has been closed.',
+      emailSubject: 'Legal Update Closed',
+      emailBody: 'A legal update assigned to you has been closed in Safe Cloud Africa.'
+    }).catch(() => undefined);
+  }
+
+  return closed;
 }
 
 export async function deleteLegalUpdate(input: {

@@ -462,6 +462,26 @@ export async function approveInternalExternalIssueRegister(input: {
     entityId: approved.id,
     metadata: { issueNo: approved.issue_no, revisionNumber: approved.revision_number }
   });
+
+  if (approved.assessment_done_by_user_id && approved.assessment_done_by_user_id !== input.actorUserId) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `ie-register-approved:${approved.id}:${approved.revision_number}`,
+      eventType: 'quality_ie_register_approved',
+      title: 'Internal/external issues register approved',
+      message: `Issue register #${approved.issue_no ?? ''} has been approved.`,
+      recipientUserIds: [approved.assessment_done_by_user_id],
+      emailTemplateKey: 'quality_internal_external_issues',
+      emailVariables: {
+        reference: `Register #${approved.issue_no ?? ''}`,
+        status: 'Approved'
+      },
+      actionUrl: '/dashboard/quality/issues',
+      metadata: { itemType: 'quality_internal_external_issues_register', itemId: approved.id }
+    }).catch(() => undefined);
+  }
+
   return approved;
 }
 

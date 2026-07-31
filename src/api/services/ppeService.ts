@@ -927,7 +927,36 @@ export async function updatePpeReorderRequestStatus(input: {
     metadata: { status: input.status }
   });
 
-  return data as PpeReorderRequest;
+  const reorderRequest = data as PpeReorderRequest;
+  const requesterId = (existingRow as any).requested_by_user_id as UUID | null;
+  if (
+    requesterId &&
+    requesterId !== input.actorUserId &&
+    ['approved', 'rejected', 'received'].includes(input.status)
+  ) {
+    const statusLabel =
+      input.status === 'approved' ? 'Approved' : input.status === 'rejected' ? 'Rejected' : 'Fulfilled';
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `ppe-reorder-${input.status}:${input.reorderRequestId}`,
+      eventType: `ppe_reorder_${input.status}`,
+      title: `PPE reorder request ${statusLabel.toLowerCase()}`,
+      message: `Your PPE reorder request has been ${statusLabel.toLowerCase()}.`,
+      recipientUserIds: [requesterId],
+      emailTemplateKey: 'ppe_management',
+      emailVariables: {
+        title: 'PPE reorder request',
+        status: statusLabel
+      },
+      actionUrl: '/dashboard/safety/ppe',
+      metadata: { itemType: 'ppe_reorder_request', itemId: input.reorderRequestId }
+    }).catch((err) => {
+      console.warn('[ppe] reorder status notification failed', input.reorderRequestId, err);
+    });
+  }
+
+  return reorderRequest;
 }
 
 // ---------------------------

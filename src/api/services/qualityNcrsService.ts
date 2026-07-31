@@ -278,8 +278,10 @@ export async function updateQualityNcr(
   ncrId: UUID,
   companyId: UUID,
   updates: Partial<QualityNcr>,
-  actorUserId: UUID
+  actorUserId: UUID,
+  options?: { notify?: boolean }
 ): Promise<QualityNcr | null> {
+  const notify = options?.notify ?? true;
   return withInsforgeSession('quality-ncrs:update', async () => {
   const { data, error } = await insforge.database
     .from('quality_ncrs')
@@ -305,6 +307,39 @@ export async function updateQualityNcr(
     entityId: ncrId,
     metadata: { status: ncr.status }
   });
+
+  if (notify) {
+    try {
+      const recipientIds = [...new Set(
+        [ncr.corrective_action_owner_user_id, ncr.auditor_user_id, ncr.auditee_user_id, ncr.raised_by_user_id]
+          .filter(Boolean)
+          .map(String)
+          .filter((id) => id !== String(actorUserId))
+      )] as UUID[];
+      if (recipientIds.length > 0) {
+        const { notifyRelevantUsers } = await import('./notificationEventsService');
+        await notifyRelevantUsers({
+          companyId,
+          eventKey: `ncr-updated:${ncrId}:${ncr.updated_at ?? new Date().toISOString()}`,
+          eventType: 'quality_ncr_updated',
+          title: `NCR ${ncr.nc_number ?? ''} updated`,
+          message: `Non-conformance report ${ncr.nc_number ?? ''} has been updated. Status: ${ncr.status}.`,
+          recipientUserIds: recipientIds,
+          emailTemplateKey: 'quality_ncr',
+          emailVariables: {
+            reference: ncr.nc_number ?? ncrId,
+            title: ncr.title,
+            severity: ncr.severity,
+            status: ncr.status
+          },
+          actionUrl: '/dashboard/quality/ncrs',
+          metadata: { itemType: 'quality_ncr', itemId: ncrId }
+        }).catch(() => undefined);
+      }
+    } catch {
+      // Best-effort notification; never block the update.
+    }
+  }
 
   return ncr;
   }); // end withInsforgeSession
@@ -374,7 +409,8 @@ export async function closeQualityNcr(
       closed_at: closedAt,
       date_closed: closedAt
     },
-    actorUserId
+    actorUserId,
+    { notify: false }
   );
 
   await createActivityLog({
@@ -387,6 +423,37 @@ export async function closeQualityNcr(
   });
 
   await syncLinkedEntitiesOnNcrClosed(companyId, ncrId, current);
+
+  try {
+    const recipientIds = [...new Set(
+      [current.corrective_action_owner_user_id, current.auditor_user_id, current.auditee_user_id, current.raised_by_user_id]
+        .filter(Boolean)
+        .map(String)
+        .filter((id) => id !== String(actorUserId))
+    )] as UUID[];
+    if (recipientIds.length > 0) {
+      const { notifyRelevantUsers } = await import('./notificationEventsService');
+      await notifyRelevantUsers({
+        companyId,
+        eventKey: `ncr-closed:${ncrId}`,
+        eventType: 'quality_ncr_closed',
+        title: `NCR ${current.nc_number ?? ''} closed`,
+        message: `Non-conformance report ${current.nc_number ?? ''} has been closed.`,
+        recipientUserIds: recipientIds,
+        emailTemplateKey: 'quality_ncr',
+        emailVariables: {
+          reference: current.nc_number ?? ncrId,
+          title: current.title,
+          severity: current.severity,
+          status: 'Closed'
+        },
+        actionUrl: '/dashboard/quality/ncrs',
+        metadata: { itemType: 'quality_ncr', itemId: ncrId }
+      }).catch(() => undefined);
+    }
+  } catch {
+    // Best-effort notification; never block closure.
+  }
 
   return updated;
 }
@@ -489,7 +556,8 @@ export async function managerSignOffQualityNcr(input: {
         manager_signoff_comment: input.comment ?? null,
         manager_signature_method: input.signatureMethod ?? 'digital'
       } as Partial<QualityNcr>,
-      input.managerUserId
+      input.managerUserId,
+      { notify: false }
     );
     if (!updated) throw new Error('Failed to sign off NCR.');
     return updated;
@@ -505,7 +573,8 @@ export async function managerSignOffQualityNcr(input: {
         manager_signoff_comment: input.comment ?? null,
         manager_signature_method: input.signatureMethod ?? 'digital'
       } as Partial<QualityNcr>,
-      input.managerUserId
+      input.managerUserId,
+      { notify: false }
     );
     if (!fallback) throw new Error('Failed to sign off NCR.');
     try {
@@ -535,6 +604,7 @@ export async function auditorVerifyQualityNcr(input: {
   comment?: string | null;
 }): Promise<QualityNcr> {
   const nowIso = new Date().toISOString();
+  let verified: QualityNcr;
   try {
     const updated = await updateQualityNcr(
       input.ncrId,
@@ -547,10 +617,11 @@ export async function auditorVerifyQualityNcr(input: {
         auditor_comment: input.comment ?? null,
         effectiveness_check_date: nowIso
       } as Partial<QualityNcr>,
-      input.auditorUserId
+      input.auditorUserId,
+      { notify: false }
     );
     if (!updated) throw new Error('Failed to verify NCR.');
-    return updated;
+    verified = updated;
   } catch (verifyError: unknown) {
     if (!String((verifyError instanceof Error ? verifyError.message : '') ?? '').toLowerCase().includes('status')) throw verifyError;
     const fallback = await updateQualityNcr(
@@ -564,11 +635,45 @@ export async function auditorVerifyQualityNcr(input: {
         auditor_comment: input.comment ?? null,
         effectiveness_check_date: nowIso
       } as Partial<QualityNcr>,
-      input.auditorUserId
+      input.auditorUserId,
+      { notify: false }
     );
     if (!fallback) throw new Error('Failed to verify NCR.');
-    return fallback;
+    verified = fallback;
   }
+
+  try {
+    const recipientIds = [...new Set(
+      [verified.corrective_action_owner_user_id, verified.auditee_user_id, verified.raised_by_user_id]
+        .filter(Boolean)
+        .map(String)
+        .filter((id) => id !== String(input.auditorUserId))
+    )] as UUID[];
+    if (recipientIds.length > 0) {
+      const { notifyRelevantUsers } = await import('./notificationEventsService');
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `ncr-auditor-verified:${input.ncrId}`,
+        eventType: 'quality_ncr_auditor_verified',
+        title: `NCR ${verified.nc_number ?? ''} verified by auditor`,
+        message: `Non-conformance report ${verified.nc_number ?? ''} has been verified by the auditor.`,
+        recipientUserIds: recipientIds,
+        emailTemplateKey: 'quality_ncr',
+        emailVariables: {
+          reference: verified.nc_number ?? input.ncrId,
+          title: verified.title,
+          severity: verified.severity,
+          status: 'Verified'
+        },
+        actionUrl: '/dashboard/quality/ncrs',
+        metadata: { itemType: 'quality_ncr', itemId: input.ncrId }
+      }).catch(() => undefined);
+    }
+  } catch {
+    // Best-effort notification; never block verification.
+  }
+
+  return verified;
 }
 
 function normalizeNcrSourceType(source: string | null | undefined): string | null {
