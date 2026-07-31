@@ -22,7 +22,11 @@ export type ListIncidentsWithFiltersInput = ListIncidentsInput & {
 
 export async function listIncidents(input: ListIncidentsInput): Promise<Incident[]> {
   return withInsforgeSession('incidents:list', async () => {
-  const q = insforge.database.from('incidents').select('*').eq('company_id', input.companyId).order('occurred_at', { ascending: false });
+  // Sort by created_at (insert time), not occurred_at (a user-editable business
+  // date that is often backdated for incidents reported after the fact) — a
+  // backdated occurred_at ranking below the limit cutoff was why newly saved
+  // incidents could silently disappear from this list.
+  const q = insforge.database.from('incidents').select('*').eq('company_id', input.companyId).order('created_at', { ascending: false });
 
   const trimmed = input.search?.trim();
   const limit = input.limit ?? 50;
@@ -44,7 +48,7 @@ export async function listIncidentsWithFilters(input: ListIncidentsWithFiltersIn
     .from('incidents')
     .select('*')
     .eq('company_id', input.companyId)
-    .order('occurred_at', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(input.limit ?? 200);
 
   if (input.status) q = q.eq('status', input.status);

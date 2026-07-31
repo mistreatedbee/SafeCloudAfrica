@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { XIcon, ChevronDownIcon, SearchIcon } from 'lucide-react';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listUserProfiles } from '../../api/services/profilesService';
@@ -35,6 +36,50 @@ export function UserMultiSelect({
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [externalEmailInput, setExternalEmailInput] = useState('');
+
+  // The options panel is rendered through a portal at a fixed screen position
+  // (computed from the trigger's own bounding box) instead of being absolutely
+  // positioned inside this component's own DOM subtree. Every row of a
+  // repeating list (e.g. one dropdown per corrective action) sits inside the
+  // same scrollable modal body; an absolutely-positioned descendant does not
+  // expand that ancestor's scrollable height, so a panel opened on a row far
+  // enough down the form gets silently clipped by the modal's scroll boundary
+  // with no way to scroll it into view — it looks exactly like "no data
+  // loaded" even though the same options are present for every row. Portaling
+  // to document.body and positioning with fixed coordinates makes every
+  // instance behave identically regardless of how many rows exist or where
+  // a given row sits in the scrolled form.
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const [panelRect, setPanelRect] = useState<{ top: number; left: number; width: number; openUpward: boolean } | null>(null);
+
+  const updatePanelPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const panelHeight = 264; // matches max-h-64 (256px) + a little breathing room
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUpward = spaceBelow < panelHeight && rect.top > spaceBelow;
+    setPanelRect({
+      top: openUpward ? rect.top : rect.bottom,
+      left: rect.left,
+      width: rect.width,
+      openUpward
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setPanelRect(null);
+      return;
+    }
+    updatePanelPosition();
+    window.addEventListener('scroll', updatePanelPosition, true);
+    window.addEventListener('resize', updatePanelPosition);
+    return () => {
+      window.removeEventListener('scroll', updatePanelPosition, true);
+      window.removeEventListener('resize', updatePanelPosition);
+    };
+  }, [isOpen, updatePanelPosition]);
 
   const { data: profiles } = useAsync<UserProfile[]>(
     async () => {
@@ -119,6 +164,7 @@ export function UserMultiSelect({
   return (
     <div className="relative">
       <div
+        ref={triggerRef}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         className={`flex items-center gap-2 min-h-[42px] px-4 py-2 bg-white border border-surface-300 rounded-lg text-sm cursor-pointer ${
           disabled ? 'opacity-60 cursor-not-allowed' : 'hover:border-teal'
@@ -175,9 +221,21 @@ export function UserMultiSelect({
         <ChevronDownIcon className={`w-4 h-4 text-charcoal-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
-      {isOpen && !disabled && (
+      {isOpen && !disabled && panelRect && createPortal(
         <>
-          <div className="absolute z-50 w-full mt-1 bg-white border border-surface-300 rounded-lg shadow-lg max-h-64 overflow-hidden flex flex-col">
+          <div
+            className="fixed z-40 inset-0"
+            onClick={() => setIsOpen(false)}
+          />
+          <div
+            className="fixed z-50 bg-white border border-surface-300 rounded-lg shadow-lg max-h-64 overflow-hidden flex flex-col"
+            style={{
+              top: panelRect.openUpward ? undefined : panelRect.top + 4,
+              bottom: panelRect.openUpward ? window.innerHeight - panelRect.top + 4 : undefined,
+              left: panelRect.left,
+              width: panelRect.width
+            }}
+          >
             <div className="p-2 border-b border-surface-200">
               <div className="relative">
                 <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
@@ -242,11 +300,8 @@ export function UserMultiSelect({
               </div>
             )}
           </div>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

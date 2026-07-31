@@ -1280,6 +1280,33 @@ export function IncidentCreateModal(props: {
     }, 1100);
   }
 
+  // Whether the user has actually entered investigation content, independent of
+  // the investigationRequired toggle. The toggle can end up false at submit time
+  // even after content was filled in (e.g. a restored draft saved before this
+  // field existed defaults it to false) — gating persistence on the toggle
+  // alone silently discards real investigation data the user can see on screen.
+  // Persisting whenever there's real content is a defense-in-depth check on
+  // top of the toggle, not a replacement for it.
+  function hasInvestigationContent(): boolean {
+    return Boolean(
+      actualOutcome.trim() ||
+      riskProfile.trim() ||
+      potentialConsequence.trim() ||
+      additionalImmediateCauseDetails.trim() ||
+      contributingFactors.trim() ||
+      lessonsLearned.trim() ||
+      conclusion.trim() ||
+      preparedBy.trim() ||
+      investigationTeam.trim() ||
+      distributionList.trim() ||
+      incidentTimelineEvents.length > 0 ||
+      Object.keys(rootCauseHuman).length > 0 ||
+      Object.keys(rootCauseWorkplace).length > 0 ||
+      Object.keys(systemFailures).length > 0 ||
+      correctiveActionDrafts.some((d) => d.actionRequired.trim() || d.responsibleUserId || d.dueDate)
+    );
+  }
+
   function handleRequestClose() {
     if (loading) return;
     if (saveSuccess) {
@@ -1390,7 +1417,7 @@ export function IncidentCreateModal(props: {
         await uploadEvidenceForIncident(updated.id, evidenceUploads, 'incident');
         await uploadEvidenceForIncident(updated.id, investigationUploads, 'incident_investigation');
         await createCorrectiveActionRecords(updated.id);
-        if (investigationRequired) {
+        if (investigationRequired || hasInvestigationContent()) {
           await upsertIncidentInvestigation({
             companyId: props.companyId,
             incidentId: updated.id,
@@ -1485,7 +1512,7 @@ export function IncidentCreateModal(props: {
         await uploadEvidenceForIncident(incident.id, evidenceUploads, 'incident');
         await uploadEvidenceForIncident(incident.id, investigationUploads, 'incident_investigation');
         await createCorrectiveActionRecords(incident.id);
-        if (investigationRequired) {
+        if (investigationRequired || hasInvestigationContent()) {
           await upsertIncidentInvestigation({
             companyId: props.companyId,
             incidentId: incident.id,
