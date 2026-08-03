@@ -98,7 +98,7 @@ export async function listQualityNcrs(input: {
 export async function countOpenQualityNcrs(companyId: UUID): Promise<number> {
   const { count, error } = await insforge.database
     .from('quality_ncrs')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .neq('status', 'closed');
   if (error) throw new Error(getErrorMessage(error));

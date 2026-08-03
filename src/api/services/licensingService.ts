@@ -147,7 +147,7 @@ export async function getLicenseInfo(companyId: UUID): Promise<LicenseInfo> {
   // Count members
   const { count: memberCount, error: countError } = await insforge.database
     .from('company_memberships')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId);
 
   if (countError) {
@@ -530,12 +530,12 @@ export async function captureBillingUsageSnapshot(companyId: UUID, snapshotMonth
   const [usersResult, sitesResult, companyResult, externalResult] = await Promise.all([
     insforge.database
       .from('company_memberships')
-      .select('id', { count: 'planned', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('company_id', companyId)
       .eq('status', 'ACTIVE'),
     insforge.database
       .from('sites')
-      .select('id', { count: 'planned', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('company_id', companyId)
       .eq('is_active', true),
     insforge.database
@@ -545,7 +545,7 @@ export async function captureBillingUsageSnapshot(companyId: UUID, snapshotMonth
       .single(),
     insforge.database
       .from('external_access_grants')
-      .select('id', { count: 'planned', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('company_id', companyId)
       .eq('status', 'active')
   ]);

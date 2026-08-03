@@ -502,7 +502,7 @@ export async function countOpenCorrectiveActions(companyId: UUID, input?: { modu
   return withInsforgeSession('corrective-actions:count-open', async () => {
   const base = insforge.database
     .from('corrective_actions')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .neq('status', 'closed');
   const q = input?.module ? base.eq('module', input.module) : base;
@@ -516,7 +516,7 @@ export async function countOverdueCorrectiveActions(companyId: UUID, input?: { m
   return withInsforgeSession('corrective-actions:count-overdue', async () => {
   const base = insforge.database
     .from('corrective_actions')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .neq('status', 'closed')
     .lt('due_date', new Date().toISOString());

@@ -16,6 +16,7 @@ import {
 import { insforge } from '../../api/insforge/client';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/services/documentsStorageService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { useToast } from '../ui/ToastProvider';
 
 const EVIDENCE_BUCKET = 'sca-evidence';
 
@@ -46,6 +47,7 @@ export default function NCRDetailModal({
   onDeleteNCR,
   onNcrUpdated
 }: NCRDetailModalProps) {
+  const { showSuccess, showError } = useToast();
   const [error, setError] = useState<string | null>(null);
   const [uploadingKind, setUploadingKind] = useState<EvidenceKind | null>(null);
   const [filesBefore, setFilesBefore] = useState<File[]>([]);
@@ -215,8 +217,11 @@ export default function NCRDetailModal({
       setLoadedAfter((synced.evidence_after ?? []) as NcrEvidenceReference[]);
       if (kind === 'BEFORE') setFilesBefore([]);
       if (kind === 'AFTER') setFilesAfter([]);
+      showSuccess(`Evidence uploaded and saved to ${ncr.nc_number}.`);
     } catch (err: any) {
-      setError(formatAuthError(err));
+      const message = formatAuthError(err);
+      setError(message);
+      showError(message);
     } finally {
       setUploadingKind(null);
     }
@@ -238,8 +243,12 @@ export default function NCRDetailModal({
         }
       }
       await onCloseNCR(ncr.id);
+      showSuccess(`${ncr.nc_number} closed successfully.`);
+      onClose();
     } catch (err: any) {
-      setError(formatAuthError(err));
+      const message = formatAuthError(err);
+      setError(message);
+      showError(message);
     } finally {
       setClosing(false);
     }
@@ -256,8 +265,11 @@ export default function NCRDetailModal({
     setDeleting(true);
     try {
       await onDeleteNCR(ncr.id);
+      showSuccess(`${ncr.nc_number} deleted.`);
     } catch (err: any) {
-      setError(formatAuthError(err));
+      const message = formatAuthError(err);
+      setError(message);
+      showError(message);
     } finally {
       setDeleting(false);
     }
@@ -276,9 +288,14 @@ export default function NCRDetailModal({
         } as any,
         actorUserId
       );
-      if (updated) onNcrUpdated(updated);
+      if (updated) {
+        onNcrUpdated(updated);
+        showSuccess('NCR details saved.');
+      }
     } catch (err: any) {
-      setError(formatAuthError(err));
+      const message = formatAuthError(err);
+      setError(message);
+      showError(message);
     } finally {
       setSavingDetails(false);
     }
@@ -445,7 +462,7 @@ export default function NCRDetailModal({
             onUpload={() => void uploadForKind('AFTER')}
           />
 
-          <div className="border-t pt-4 flex gap-3">
+          <div className="sticky bottom-0 -mx-6 -mb-6 mt-2 rounded-b-lg border-t border-gray-200 bg-white px-6 py-4 flex flex-wrap gap-3 z-10">
             {canDeleteNcr && (
               <button
                 onClick={() => void handleDeleteClick()}
@@ -467,8 +484,12 @@ export default function NCRDetailModal({
                       managerUserId: actorUserId
                     });
                     onNcrUpdated(updated);
+                    showSuccess(`${ncr.nc_number} signed off. Awaiting auditor verification.`);
+                    onClose();
                   } catch (err: any) {
-                    setError(formatAuthError(err));
+                    const message = formatAuthError(err);
+                    setError(message);
+                    showError(message);
                   } finally {
                     setWorkflowSaving(null);
                   }
@@ -491,8 +512,12 @@ export default function NCRDetailModal({
                       auditorUserId: actorUserId
                     });
                     onNcrUpdated(updated);
+                    showSuccess(`${ncr.nc_number} verified by auditor.`);
+                    onClose();
                   } catch (err: any) {
-                    setError(formatAuthError(err));
+                    const message = formatAuthError(err);
+                    setError(message);
+                    showError(message);
                   } finally {
                     setWorkflowSaving(null);
                   }

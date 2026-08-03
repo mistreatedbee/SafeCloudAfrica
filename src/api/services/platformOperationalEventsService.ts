@@ -15,7 +15,7 @@ export async function countOperationalFailuresLast24h(): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { count, error } = await insforge.database
     .from('platform_operational_events')
-    .select('id', { count: 'planned', head: true })
+    .select('id', { count: 'exact', head: true })
     .eq('status', 'failure')
     .gte('created_at', since);
   if (error) throw error;
@@ -40,7 +40,7 @@ export async function trackJourneyEvent(sessionId: string, journeyStep: string, 
 export async function countCompletedJourneys(): Promise<number> {
   const { count, error } = await insforge.database
     .from('journey_events')
-    .select('id', { count: 'planned', head: true })
+    .select('id', { count: 'exact', head: true })
     .eq('journey_step', 'completed')
     .eq('enabled', true);
   if (error) throw error;
@@ -52,7 +52,7 @@ export async function getJourneyCompletionMetrics(): Promise<{ completedJourneys
   const completedJourneys = await countCompletedJourneys();
   const { count: sessionCount, error } = await insforge.database
     .from('sessions')
-    .select('id', { count: 'planned', head: true });
+    .select('id', { count: 'exact', head: true });
   if (error) throw error;
   const totalSessions = sessionCount ?? 0;
   const completionRate = totalSessions > 0 ? (completedJourneys / totalSessions) * 100 : 0;

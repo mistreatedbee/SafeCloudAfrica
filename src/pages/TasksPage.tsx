@@ -133,7 +133,7 @@ export function TasksPage() {
       if (hasFilters || taskScope === 'team') {
         return await listTasksWithFilters({
           companyId: activeCompanyId,
-          assigneeUserId: taskScope === 'my' && user?.id ? user.id : undefined,
+          myUserId: taskScope === 'my' && user?.id ? user.id : undefined,
           departmentId: taskScope === 'team' && activeRole === 'supervisor' && (myProfile as any)?.department_id ? (myProfile as any).department_id : undefined,
           status: statusFilter !== 'all' ? (statusFilter as Task['status']) : undefined,
           priority: priorityFilter !== 'all' ? (priorityFilter as Task['priority']) : undefined,
@@ -145,7 +145,7 @@ export function TasksPage() {
       }
       return await listTasks({
         companyId: activeCompanyId,
-        assigneeUserId: taskScope === 'my' ? user?.id : undefined,
+        myUserId: taskScope === 'my' ? user?.id : undefined,
         limit: 300
       });
     },

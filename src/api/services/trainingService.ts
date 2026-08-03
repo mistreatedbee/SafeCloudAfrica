@@ -108,7 +108,7 @@ export async function deleteTrainingCourse(input: {
 }): Promise<void> {
   const { count: linkedRecords, error: recordsError } = await insforge.database
     .from('training_records')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', input.companyId)
     .eq('course_id', input.courseId);
   if (recordsError) throw new Error(getErrorMessage(recordsError));
@@ -118,7 +118,7 @@ export async function deleteTrainingCourse(input: {
 
   const { count: linkedRequirements, error: reqError } = await insforge.database
     .from('job_training_requirements')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', input.companyId)
     .eq('course_id', input.courseId);
   if (reqError) throw new Error(getErrorMessage(reqError));
@@ -128,7 +128,7 @@ export async function deleteTrainingCourse(input: {
 
   const { count: linkedPrices, error: pricesError } = await insforge.database
     .from('course_provider_prices')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', input.companyId)
     .eq('course_id', input.courseId);
   if (pricesError) throw new Error(getErrorMessage(pricesError));
@@ -450,7 +450,7 @@ export async function countExpiringTraining(companyId: UUID, withinDays = 30): P
   cutoff.setDate(cutoff.getDate() + withinDays);
   const { count, error } = await insforge.database
     .from('training_records')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .not('expires_at', 'is', null)
     .gte('expires_at', nowIso)
@@ -467,7 +467,7 @@ export async function countExpiringTrainingForUser(companyId: UUID, userId: UUID
   cutoff.setDate(cutoff.getDate() + withinDays);
   const { count, error } = await insforge.database
     .from('training_records')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('user_id', userId)
     .not('expires_at', 'is', null)
@@ -658,7 +658,7 @@ export async function deleteTrainingProvider(input: {
 }): Promise<void> {
   const { count: linkedRecords, error: recordsError } = await insforge.database
     .from('training_records')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', input.companyId)
     .eq('provider_id', input.providerId);
   if (recordsError) throw new Error(getErrorMessage(recordsError));
@@ -668,7 +668,7 @@ export async function deleteTrainingProvider(input: {
 
   const { count: linkedPrices, error: pricesError } = await insforge.database
     .from('course_provider_prices')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', input.companyId)
     .eq('provider_id', input.providerId);
   if (pricesError) throw new Error(getErrorMessage(pricesError));

@@ -10,6 +10,7 @@ import type { QualityNcr, UUID } from '../api/models/entities';
 import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
 import NCRDetailModal from '../components/ncrs/NCRDetailModal';
 import { Layout } from '../components/layout/Layout';
+import { useDraftManager } from '../session/DraftManagerProvider';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -42,6 +43,28 @@ export default function NCRsPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const { restoreLatestDraftByPrefix } = useDraftManager();
+
+  // Resume an in-progress "New NCR" draft automatically when this page loads.
+  // NcrCreateModal only unmounts (rather than merely hiding) when isCreateModalOpen
+  // is false, so its own restoreDraft() effect never runs until the modal is
+  // reopened -- without this, a saved draft sat in localStorage with no
+  // affordance to continue it; clicking back into the NCR module did nothing.
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    if (isCreateModalOpen || isDetailModalOpen) return;
+
+    const draftKeyPrefix = `ncr-create:${activeCompanyId}:${user.id}:`;
+    const latest = restoreLatestDraftByPrefix<unknown>(draftKeyPrefix);
+    if (!latest) return;
+    // Only auto-resume drafts started directly from this page (not ones
+    // linked from an audit/incident/inspection, which carry their own
+    // linkedSource context this page doesn't have).
+    if (!latest.key.endsWith(':new')) return;
+
+    setIsCreateModalOpen(true);
+  }, [activeCompanyId, isCreateModalOpen, isDetailModalOpen, restoreLatestDraftByPrefix, user?.id]);
 
   const canCreateNcr = activeRole !== 'employee';
   const canCloseNcr = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'supervisor';

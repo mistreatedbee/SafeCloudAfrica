@@ -12,7 +12,8 @@ import {
   MessageSquareTextIcon,
   XIcon,
   ShieldCheckIcon,
-  ActivityIcon
+  ActivityIcon,
+  SparklesIcon
 } from 'lucide-react';
 
 const superAdminNav: { name: string; path: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -21,6 +22,7 @@ const superAdminNav: { name: string; path: string; icon: React.ComponentType<{ c
   { name: 'Licenses & Subscriptions', path: '/super-admin/licenses', icon: CreditCardIcon },
   { name: 'Module Controls', path: '/super-admin/module-control', icon: ToggleLeftIcon },
   { name: 'Sellable Features', path: '/super-admin/sellable-features', icon: LockIcon },
+  { name: 'AI Governance', path: '/super-admin/ai-governance', icon: SparklesIcon },
   { name: 'Chatbot Logs', path: '/super-admin/chatbot-logs', icon: MessageSquareTextIcon },
   { name: 'Support Tickets', path: '/super-admin/support-tickets', icon: HeadphonesIcon },
   { name: 'License Requests', path: '/super-admin/license-requests', icon: CreditCardIcon },

@@ -77,7 +77,7 @@ export async function getUnreadCount(companyId: UUID, userId: UUID): Promise<num
   return withInsforgeSession('notifications:get-unread-count', async () => {
   const { count, error } = await insforge.database
     .from('notifications')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('user_id', userId)
     .is('read_at', null);

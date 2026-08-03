@@ -396,7 +396,7 @@ export async function countPendingInvites(companyId: UUID): Promise<number> {
   return withInsforgeSession('tenant-service:count-pending-invites', async () => {
   const { count, error } = await insforge.database
     .from('company_invites')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .in('status', ['PENDING', 'SENT']);
   if (error) throw new Error(getErrorMessage(error));

@@ -36,7 +36,8 @@ import {
   PackageIcon,
   FlaskConicalIcon,
   BriefcaseIcon,
-  HeadphonesIcon
+  HeadphonesIcon,
+  SparklesIcon
 } from 'lucide-react';
 import { useTenant } from '../../tenant/TenantContext';
 import type { CompanyRole, ModuleKey } from '../../api/models/core';
@@ -94,6 +95,16 @@ const modules: NavItem[] = [
 ];
 
 const managementGroups: NavGroup[] = [
+  {
+    id: 'ai-assistant',
+    name: 'AI Safety Assistant',
+    icon: SparklesIcon,
+    items: [
+      { name: 'Daily briefing', path: '/dashboard/ai/briefing', icon: SparklesIcon },
+      { name: 'Generate a document', path: '/dashboard/ai/assistant', icon: SparklesIcon },
+      { name: 'Predictive risk', path: '/dashboard/ai/predictions', icon: SparklesIcon }
+    ]
+  },
   {
     id: 'incidents',
     name: 'Incidents',

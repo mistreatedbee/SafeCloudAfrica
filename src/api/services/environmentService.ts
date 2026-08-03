@@ -219,7 +219,7 @@ export async function listEnvironmentAspects(companyId: UUID): Promise<Environme
   return (data ?? []) as EnvironmentAspect[];
 }
 export async function countActiveEnvironmentAspects(companyId: UUID): Promise<number> {
-  const { count, error } = await insforge.database.from('environment_aspects').select('*', { count: 'planned', head: true }).eq('company_id', companyId).eq('status', 'active');
+  const { count, error } = await insforge.database.from('environment_aspects').select('*', { count: 'exact', head: true }).eq('company_id', companyId).eq('status', 'active');
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
 }
@@ -835,11 +835,11 @@ export async function getEnvironmentDashboardStats(companyId: UUID): Promise<Env
   const monthStart = new Date(); monthStart.setDate(1);
   const trendFrom = new Date(new Date().getFullYear(), new Date().getMonth() - 11, 1).toISOString().slice(0, 10);
   const [ncr, overdue, waterLatest, airLatest, wasteMonth, waterTrend, airTrend, wasteTrend] = await Promise.all([
-    insforge.database.from('quality_ncrs').select('*', { count: 'planned', head: true }).eq('company_id', companyId).in('source_entity_type', ['env_water_monitoring', 'env_air_quality']).neq('status', 'closed'),
-    insforge.database.from('tasks').select('*', { count: 'planned', head: true }).eq('company_id', companyId).eq('category', 'capa').eq('status', 'overdue'),
+    insforge.database.from('quality_ncrs').select('*', { count: 'exact', head: true }).eq('company_id', companyId).in('source_entity_type', ['env_water_monitoring', 'env_air_quality']).neq('status', 'closed'),
+    insforge.database.from('tasks').select('*', { count: 'exact', head: true }).eq('company_id', companyId).eq('category', 'capa').eq('status', 'overdue'),
     insforge.database.from('env_water_monitoring').select('overall_compliance_status, sampling_date').eq('company_id', companyId).order('sampling_date', { ascending: false }).limit(1),
     insforge.database.from('env_air_quality').select('overall_status, monitoring_date').eq('company_id', companyId).order('monitoring_date', { ascending: false }).limit(1),
-    insforge.database.from('env_waste_disposal').select('*', { count: 'planned', head: true }).eq('company_id', companyId).gte('date', monthStart.toISOString().slice(0, 10)),
+    insforge.database.from('env_waste_disposal').select('*', { count: 'exact', head: true }).eq('company_id', companyId).gte('date', monthStart.toISOString().slice(0, 10)),
     insforge.database.from('env_water_monitoring').select('sampling_date, overall_compliance_status').eq('company_id', companyId).gte('sampling_date', trendFrom).limit(5000),
     insforge.database.from('env_air_quality').select('monitoring_date, overall_status').eq('company_id', companyId).gte('monitoring_date', trendFrom).limit(5000),
     insforge.database.from('env_waste_disposal').select('date, waste_category, quantity_value').eq('company_id', companyId).gte('date', trendFrom).limit(5000)

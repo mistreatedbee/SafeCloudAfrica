@@ -998,18 +998,18 @@ export async function getHealthDashboardStats(companyId: UUID) {
 
   const { count: openHygieneNonCompliances } = await insforge.database
     .from('health_hygiene_records')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('compliance_status', 'NON_COMPLIANT');
   const { count: openHealthActionPlans } = await insforge.database
     .from('tasks')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('source_entity_type', 'health_hygiene_record')
     .in('status', OPEN_TASK_STATUSES);
   const { count: vaccinationsDueSoon } = await insforge.database
     .from('health_vaccinations')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .gte('next_due_date', nowDate)
     .lte('next_due_date', plus30);
@@ -1065,7 +1065,7 @@ export async function listMedicalCertificates(companyId: UUID, input?: { userId?
 export async function countExpiringMedical(companyId: UUID, withinDays = 30): Promise<number> {
   const { count, error } = await insforge.database
     .from('health_medicals')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .gte('expiry_date', todayIsoDate())
     .lte('expiry_date', addDaysIsoDate(withinDays));

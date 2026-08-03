@@ -2738,5 +2738,126 @@ export type PlatformOperationalEventRow = {
   created_at: string;
 };
 
+// ---------------------------------------------------------------------------
+// AI platform foundation (see docs/migrations/ai_platform_foundation_2026_08_03.sql)
+// ---------------------------------------------------------------------------
+
+export type AiDocType =
+  | 'hira'
+  | 'jsa'
+  | 'sop'
+  | 'swp'
+  | 'toolbox_talk'
+  | 'permit'
+  | 'emergency_plan'
+  | 'policy'
+  | 'method_statement'
+  | 'environmental_plan'
+  | 'checklist'
+  | 'inspection_form';
+
+export type AiDocumentStatus = 'draft' | 'approved' | 'published' | 'discarded';
+
+export type AiCitedSource = {
+  entityType: string;
+  entityId: UUID;
+  label: string;
+  similarity?: number;
+};
+
+export type AiGeneratedDocument = {
+  id: UUID;
+  company_id: UUID;
+  doc_type: AiDocType;
+  title: string;
+  prompt: string;
+  content: Record<string, unknown>;
+  entity_type: string | null;
+  entity_id: UUID | null;
+  model: string;
+  confidence: number | null;
+  cited_sources: AiCitedSource[] | null;
+  status: AiDocumentStatus;
+  version: number;
+  created_by_user_id: UUID;
+  approved_by_user_id: UUID | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DocumentEmbeddingMatch = {
+  id: UUID;
+  entity_type: string;
+  entity_id: UUID;
+  chunk_text: string;
+  metadata: Record<string, unknown> | null;
+  similarity: number;
+};
+
+export type AiConversation = {
+  id: UUID;
+  company_id: UUID;
+  user_id: UUID;
+  agent_key: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AiMessageRole = 'user' | 'assistant';
+
+export type AiMessage = {
+  id: UUID;
+  conversation_id: UUID;
+  company_id: UUID;
+  role: AiMessageRole;
+  content: string;
+  cited_sources: AiCitedSource[] | null;
+  model: string | null;
+  created_at: string;
+};
+
+export type AiActionStatus = 'proposed' | 'approved' | 'rejected' | 'executed' | 'failed';
+
+export type AiAction = {
+  id: UUID;
+  company_id: UUID;
+  action_type: string;
+  entity_type: string | null;
+  entity_id: UUID | null;
+  payload: Record<string, unknown>;
+  reasoning: string | null;
+  confidence: number | null;
+  requires_approval: boolean;
+  status: AiActionStatus;
+  proposed_by: string;
+  approved_by_user_id: UUID | null;
+  approved_at: string | null;
+  executed_at: string | null;
+  result: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AiPredictionScope = 'company' | 'site' | 'department';
+
+export type AiPrediction = {
+  id: UUID;
+  company_id: UUID;
+  scope: AiPredictionScope;
+  scope_id: UUID | null;
+  prediction_type: string;
+  probability: number | null;
+  confidence: number | null;
+  reasoning: string;
+  contributing_factors: Record<string, unknown> | null;
+  recommended_actions: Record<string, unknown> | null;
+  model: string;
+  valid_from: string;
+  valid_until: string | null;
+  created_at: string;
+};
+
 /** Re-export for consumers that import identifiers alongside entity types. */
 export type { ModuleKey, UUID } from './core';

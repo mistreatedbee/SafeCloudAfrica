@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { XIcon, SaveIcon, ExternalLinkIcon, FileTextIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
+import { XIcon, SaveIcon, ExternalLinkIcon, FileTextIcon, ChevronDownIcon, ChevronRightIcon, SparklesIcon, Loader2Icon } from 'lucide-react';
 import type { EvidenceAttachment, Incident, IncidentCorrectiveAction, IncidentInvestigation, UUID } from '../../api/models/entities';
 import { listEvidence, updateEvidence } from '../../api/services/evidenceService';
 import { getPublicUrl } from '../../api/services/storageService';
 import { formatAuthError } from '../../auth/authMessages';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { useToast } from '../ui/ToastProvider';
 import { getIncidentInvestigation, upsertIncidentInvestigation } from '../../api/services/incidentInvestigationsService';
+import { generateIncidentInvestigationDraft } from '../../api/services/aiIncidentInvestigatorService';
 import { exportIncidentPDF, downloadFile } from '../../api/services/exportService';
 import { useIdentity } from '../../hooks/useIdentity';
 import { useAsync } from '../../api/hooks/useAsync';
@@ -81,8 +83,10 @@ export function IncidentDetailModal(props: {
   canEditInvestigation: boolean;
 }) {
   const incident = props.incident;
+  const { showSuccess, showError } = useToast();
   const [tab, setTab] = useState<'details' | 'investigation'>('details');
   const [loading, setLoading] = useState(false);
+  const [aiInvestigating, setAiInvestigating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<EvidenceAttachment[]>([]);
   const [investigationEvidence, setInvestigationEvidence] = useState<EvidenceAttachment[]>([]);
@@ -407,6 +411,40 @@ export function IncidentDetailModal(props: {
       setError(toUserFacingError(e, formatAuthError(e)));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function generateInvestigationWithAi() {
+    if (!incident || !props.canEditInvestigation) return;
+    setAiInvestigating(true);
+    try {
+      const { draft, citedSources } = await generateIncidentInvestigationDraft({
+        companyId: props.companyId,
+        incident,
+        actorUserId: props.actorUserId
+      });
+      setEventTimeline(draft.event_timeline);
+      setContributingFactors(draft.contributing_factors);
+      setLessonsLearnt(draft.lessons_learnt);
+      setConclusion(draft.conclusion);
+      setPotentialConsequence(draft.potential_consequence);
+      setNotes((prev) => {
+        const aiNote = `AI-drafted root cause analysis:\n${draft.root_causes_summary}`;
+        return prev.trim() ? `${prev.trim()}\n\n${aiNote}` : aiNote;
+      });
+      setInvestigationSection('immediateCauses', true);
+      setInvestigationSection('contributingFactors', true);
+      setInvestigationSection('correctiveActions', true);
+      setInvestigationSection('lessonsLearnt', true);
+      showSuccess(
+        citedSources.length > 0
+          ? `Investigation draft generated from ${citedSources.length} similar past incident(s). Review before saving.`
+          : 'Investigation draft generated. Review before saving.'
+      );
+    } catch (e) {
+      showError(toUserFacingError(e, 'Could not generate an investigation draft.'));
+    } finally {
+      setAiInvestigating(false);
     }
   }
 
@@ -756,15 +794,26 @@ export function IncidentDetailModal(props: {
                     </p>
                   </div>
                   {props.canEditInvestigation && (
-                    <button
-                      type="button"
-                      onClick={() => void saveInvestigation()}
-                      disabled={loading}
-                      className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 w-full sm:w-auto shrink-0"
-                    >
-                      {loading ? <LoadingSpinner size={16} /> : <SaveIcon className="w-4 h-4" />}
-                      {loading ? 'Saving...' : 'Save'}
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => void generateInvestigationWithAi()}
+                        disabled={aiInvestigating || loading}
+                        className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg border border-teal text-teal text-sm font-semibold hover:bg-teal/5 disabled:opacity-60 w-full sm:w-auto shrink-0"
+                      >
+                        {aiInvestigating ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <SparklesIcon className="w-4 h-4" />}
+                        {aiInvestigating ? 'Investigating...' : 'Generate with AI'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void saveInvestigation()}
+                        disabled={loading}
+                        className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 w-full sm:w-auto shrink-0"
+                      >
+                        {loading ? <LoadingSpinner size={16} /> : <SaveIcon className="w-4 h-4" />}
+                        {loading ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
                   )}
                 </div>
 

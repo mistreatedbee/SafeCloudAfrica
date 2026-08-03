@@ -102,6 +102,14 @@ function applyTimeStatusIndicator(task: Task): Task {
 export type ListTasksInput = {
   companyId: UUID;
   assigneeUserId?: UUID;
+  /**
+   * "Tasks relevant to me": matches tasks assigned to this user OR created by
+   * this user. A task created and left unassigned (the modal's default) has
+   * assignee_user_id = null, so filtering "My Tasks" by assignee alone hides
+   * every task the user just created until someone else assigns it to them.
+   * Takes precedence over assigneeUserId when both are supplied.
+   */
+  myUserId?: UUID;
   limit?: number;
 };
 
@@ -113,6 +121,8 @@ export type ListTasksWithFiltersInput = {
   riskLevel?: Task['risk_level'];
   taskOwnerUserId?: UUID;
   assigneeUserId?: UUID;
+  /** See ListTasksInput.myUserId. */
+  myUserId?: UUID;
   sourceEntityType?: string;
   dueFrom?: string;
   dueTo?: string;
@@ -124,8 +134,12 @@ export type ListTasksWithFiltersInput = {
 
 export async function listTasks(input: ListTasksInput): Promise<Task[]> {
   return withInsforgeSession('tasks:list', async () => {
-  const base = insforge.database.from('tasks').select('*').eq('company_id', input.companyId);
-  const q = input.assigneeUserId ? base.eq('assignee_user_id', input.assigneeUserId) : base;
+  let q = insforge.database.from('tasks').select('*').eq('company_id', input.companyId);
+  if (input.myUserId) {
+    q = q.or(`assignee_user_id.eq.${input.myUserId},created_by_user_id.eq.${input.myUserId}`);
+  } else if (input.assigneeUserId) {
+    q = q.eq('assignee_user_id', input.assigneeUserId);
+  }
 
   const { data, error } = await q.order('due_at', { ascending: true }).limit(input.limit ?? 50);
   if (error) throw new Error(getErrorMessage(error));
@@ -143,7 +157,11 @@ export async function listTasksWithFilters(input: ListTasksWithFiltersInput): Pr
   if (input.priority) q = q.eq('priority', input.priority);
   if (input.riskLevel) q = q.eq('risk_level', input.riskLevel);
   if (input.taskOwnerUserId) q = q.eq('task_owner_user_id', input.taskOwnerUserId);
-  if (input.assigneeUserId) q = q.eq('assignee_user_id', input.assigneeUserId);
+  if (input.myUserId) {
+    q = q.or(`assignee_user_id.eq.${input.myUserId},created_by_user_id.eq.${input.myUserId}`);
+  } else if (input.assigneeUserId) {
+    q = q.eq('assignee_user_id', input.assigneeUserId);
+  }
   if (input.sourceEntityType) q = q.eq('source_entity_type', input.sourceEntityType);
   if (input.departmentId) q = q.eq('department_id', input.departmentId);
   if (input.siteId) q = q.eq('site_id', input.siteId);
@@ -181,7 +199,7 @@ export async function countTasksByAssignee(companyId: UUID, assigneeUserId: UUID
   return withInsforgeSession('tasks:count-by-assignee', async () => {
   let q = insforge.database
     .from('tasks')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('assignee_user_id', assigneeUserId);
   if (openOnly) q = q.in('status', OPEN_STATUSES);
@@ -195,7 +213,7 @@ export async function countTasksByDepartment(companyId: UUID, departmentId: UUID
   return withInsforgeSession('tasks:count-by-department', async () => {
   let q = insforge.database
     .from('tasks')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('department_id', departmentId);
   if (openOnly) q = q.in('status', OPEN_STATUSES);
@@ -213,7 +231,7 @@ export async function countTasksByRiskLevel(
   return withInsforgeSession('tasks:count-by-risk-level', async () => {
   let q = insforge.database
     .from('tasks')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('risk_level', riskLevel);
   if (openOnly) q = q.in('status', OPEN_STATUSES);
@@ -227,7 +245,7 @@ export async function countMyPendingTasks(companyId: UUID, userId: UUID): Promis
   return withInsforgeSession('tasks:count-my-pending', async () => {
   const { count, error } = await insforge.database
     .from('tasks')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('assignee_user_id', userId)
     .in('status', OPEN_STATUSES);
@@ -240,7 +258,7 @@ export async function countCompanyPendingTasks(companyId: UUID): Promise<number>
   return withInsforgeSession('tasks:count-company-pending', async () => {
   const { count, error } = await insforge.database
     .from('tasks')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .in('status', OPEN_STATUSES);
   if (error) throw new Error(getErrorMessage(error));
@@ -252,7 +270,7 @@ export async function countOverdueTasks(companyId: UUID): Promise<number> {
   return withInsforgeSession('tasks:count-overdue', async () => {
   const { count, error } = await insforge.database
     .from('tasks')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('status', 'overdue');
   if (error) throw new Error(getErrorMessage(error));
@@ -264,7 +282,7 @@ export async function countPendingTasksByModule(companyId: UUID, module: ModuleK
   return withInsforgeSession('tasks:count-pending-by-module', async () => {
   const { count, error } = await insforge.database
     .from('tasks')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('module', module)
     .in('status', OPEN_STATUSES);
@@ -275,7 +293,7 @@ export async function countPendingTasksByModule(companyId: UUID, module: ModuleK
 
 export async function countTasksByStatus(companyId: UUID, input: { module?: ModuleKey; status?: Task['status'] }): Promise<number> {
   return withInsforgeSession('tasks:count-by-status', async () => {
-  const base = insforge.database.from('tasks').select('*', { count: 'planned', head: true }).eq('company_id', companyId);
+  const base = insforge.database.from('tasks').select('*', { count: 'exact', head: true }).eq('company_id', companyId);
   const q1 = input.module ? base.eq('module', input.module) : base;
   const q2 = input.status ? q1.eq('status', input.status) : q1;
   const { count, error } = await q2;

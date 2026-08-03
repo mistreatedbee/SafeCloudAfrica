@@ -18,6 +18,10 @@ import { columnsForType, defaultHeaderForType, typeLabel } from './riskTemplates
 import { RiskAssessmentRowsEditor } from '../../components/risks/RiskAssessmentRowsEditor';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { useToast } from '../../components/ui/ToastProvider';
+import { toUserFacingError } from '../../utils/userFacingMessage';
+import { generateRiskAssessmentRows } from '../../api/services/aiRiskAssessmentService';
+import { SparklesIcon, Loader2Icon } from 'lucide-react';
 
 type DraftRow = {
   localId: string;
@@ -99,6 +103,9 @@ export function RiskAssessmentCreatePage() {
   const [baselineFile, setBaselineFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const { showSuccess, showError } = useToast();
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `risk-assessment-create:${user?.id ?? 'anon'}:${type}`;
   const serverDraftAssessmentIdStorageKey = `sca_server_risk_assessment_draft_id:${draftKey}`;
@@ -288,6 +295,43 @@ export function RiskAssessmentCreatePage() {
 
   function updateRow(rowId: string, patch: Partial<DraftRow>) {
     setRows((prev) => prev.map((r) => (r.localId !== rowId ? r : recalc({ ...r, ...patch }))));
+  }
+
+  async function handleGenerateRowsWithAi() {
+    if (!activeCompanyId || !aiPrompt.trim()) return;
+    setAiGenerating(true);
+    try {
+      const { rows: generated } = await generateRiskAssessmentRows({
+        companyId: activeCompanyId as UUID,
+        type,
+        typeLabel: typeLabel(type),
+        columns,
+        workDescription: aiPrompt.trim()
+      });
+      if (generated.length === 0) {
+        showError('The AI did not return any rows. Try describing the work in more detail.');
+        return;
+      }
+      const draftRows = generated.map((row) =>
+        recalc({
+          ...emptyRow(type),
+          localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          json_data: row.json_data,
+          severity: row.severity,
+          likelihood: row.likelihood
+        })
+      );
+      setRows((prev) => {
+        const prevIsBlankPlaceholder = prev.length === 1 && Object.keys(prev[0].json_data ?? {}).length === 0;
+        return prevIsBlankPlaceholder ? draftRows : [...prev, ...draftRows];
+      });
+      showSuccess(`${draftRows.length} row${draftRows.length === 1 ? '' : 's'} added. Review and edit before saving.`);
+      setAiPrompt('');
+    } catch (err) {
+      showError(toUserFacingError(err, 'Could not generate risk assessment rows.'));
+    } finally {
+      setAiGenerating(false);
+    }
   }
 
   function insertRowAt(index: number, base?: DraftRow) {
@@ -546,6 +590,34 @@ export function RiskAssessmentCreatePage() {
               <input type="file" accept=".xlsx,.xls" onChange={(e) => setBaselineFile(e.target.files?.[0] ?? null)} className="text-sm" />
             </label>
           )}
+        </div>
+
+        <div className="bg-white border border-surface-300 rounded-xl p-4 shadow-card space-y-2">
+          <div className="flex items-center gap-2">
+            <SparklesIcon className="w-4 h-4 text-teal" />
+            <h2 className="text-sm font-semibold text-charcoal">AI Risk Assessment Builder</h2>
+          </div>
+          <p className="text-xs text-charcoal-500">Describe the work and the assistant will draft rows below — review, edit, and rate before saving.</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder="e.g. Installing underground fibre cables next to a live road"
+              className="flex-1 px-3 py-2 border border-surface-300 rounded-lg text-sm"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !aiGenerating) void handleGenerateRowsWithAi();
+              }}
+            />
+            <button
+              type="button"
+              disabled={aiGenerating || !aiPrompt.trim()}
+              onClick={() => void handleGenerateRowsWithAi()}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
+            >
+              {aiGenerating ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <SparklesIcon className="w-4 h-4" />}
+              {aiGenerating ? 'Drafting...' : 'Generate rows'}
+            </button>
+          </div>
         </div>
 
         <RiskAssessmentRowsEditor

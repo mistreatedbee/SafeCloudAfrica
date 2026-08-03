@@ -8,6 +8,7 @@ import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/
 import { insforge } from '../../api/insforge/client';
 import { useAsync } from '../../api/hooks/useAsync';
 import { ListEmptyState } from '../ui/ListEmptyState';
+import { useToast } from '../ui/ToastProvider';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -25,6 +26,7 @@ export function EvidenceModal(props: {
   title?: string;
   onUploaded?: (items: EvidenceAttachment[]) => void;
 }) {
+  const { showSuccess, showError } = useToast();
   const [files, setFiles] = useState<File[]>([]);
   const [uploadTitle, setUploadTitle] = useState('');
   const [loading, setLoading] = useState(false);
@@ -74,8 +76,11 @@ export function EvidenceModal(props: {
       setUploadTitle('');
       setRefreshKey((k) => k + 1);
       props.onUploaded?.(createdItems);
+      showSuccess(`${createdItems.length} file${createdItems.length === 1 ? '' : 's'} uploaded successfully.`);
     } catch (err: any) {
-      setError(formatAuthError(err));
+      const message = formatAuthError(err);
+      setError(message);
+      showError(message);
     } finally {
       setLoading(false);
     }
@@ -94,8 +99,11 @@ export function EvidenceModal(props: {
         entityType: props.entityType
       });
       setRefreshKey((k) => k + 1);
+      showSuccess('Evidence file removed.');
     } catch (err: any) {
-      setError(formatAuthError(err));
+      const message = formatAuthError(err);
+      setError(message);
+      showError(message);
     } finally {
       setRemovingId(null);
     }

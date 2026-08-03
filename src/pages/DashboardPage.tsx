@@ -29,6 +29,8 @@ import { countOverdueCorrectiveActions } from '../api/services/correctiveActions
 import { countExpiringTraining, countExpiringTrainingForUser } from '../api/services/trainingService';
 import { listInspections } from '../api/services/inspectionsService';
 import { useIdentity } from '../hooks/useIdentity';
+import { AiBriefingCard } from '../components/ai/AiBriefingCard';
+import type { UUID } from '../api/models/entities';
 const containerVariants = {
   hidden: {
     opacity: 0
@@ -268,6 +270,12 @@ export function DashboardPage() {
             </div>
           </div>
         </motion.div>
+
+        {activeCompanyId && (
+          <motion.div variants={itemVariants}>
+            <AiBriefingCard companyId={activeCompanyId as UUID} />
+          </motion.div>
+        )}
 
         {error && (
           <motion.div variants={itemVariants} className="bg-white rounded-xl border border-critical/30 p-4 shadow-card">

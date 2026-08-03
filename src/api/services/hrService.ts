@@ -236,7 +236,7 @@ function withHrSession<T>(reason: string, fn: () => Promise<T>): Promise<T> {
 
 async function getCount(table: string, companyId: UUID, eq?: Record<string, string | number | boolean>): Promise<number> {
   return withHrSession(`count:${table}`, async () => {
-  let q = insforge.database.from(table).select('*', { count: 'planned', head: true }).eq('company_id', companyId);
+  let q = insforge.database.from(table).select('*', { count: 'exact', head: true }).eq('company_id', companyId);
   if (eq) {
     for (const [key, value] of Object.entries(eq)) q = q.eq(key, value);
   }
@@ -1164,14 +1164,14 @@ export async function getHrDashboardStats(companyId: UUID, selectedFromDate?: st
 
   const { count: approvedUpcomingLeave } = await insforge.database
     .from('hr_leave_requests')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('status', 'APPROVED')
     .gte('start_date', now.toISOString().slice(0, 10));
 
   const { count: overdueLeaveApprovals } = await insforge.database
     .from('hr_leave_requests')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('status', 'SUBMITTED')
     .lte('created_at', new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString());
@@ -1179,7 +1179,7 @@ export async function getHrDashboardStats(companyId: UUID, selectedFromDate?: st
   const queryContractsCount = async (dateStr: string) => {
     const { count } = await insforge.database
       .from('hr_employment_contracts')
-      .select('*', { count: 'planned', head: true })
+      .select('*', { count: 'exact', head: true })
       .eq('company_id', companyId)
       .eq('status', 'ACTIVE')
       .lte('end_date', dateStr);
@@ -1197,29 +1197,29 @@ export async function getHrDashboardStats(companyId: UUID, selectedFromDate?: st
 
   const { count: hrDocsExpiringSoon } = await insforge.database
     .from('hr_employee_documents')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .gte('expiry_date', now.toISOString().slice(0, 10))
     .lte('expiry_date', date30.toISOString().slice(0, 10));
 
   const { count: hrDocsExpired } = await insforge.database
     .from('hr_employee_documents')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .or(`status.eq.EXPIRED,expiry_date.lt.${now.toISOString().slice(0, 10)}`);
 
   const { count: ackTotal } = await insforge.database
     .from('hr_ack_receipts')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId);
   const { count: ackDone } = await insforge.database
     .from('hr_ack_receipts')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .in('status', ['ACKNOWLEDGED', 'SIGNED']);
 
-  const { count: trainingCompleted } = await insforge.database.from('training_records').select('*', { count: 'planned', head: true }).eq('company_id', companyId).eq('status', 'COMPLETED');
-  const { count: trainingTotal } = await insforge.database.from('training_records').select('*', { count: 'planned', head: true }).eq('company_id', companyId);
+  const { count: trainingCompleted } = await insforge.database.from('training_records').select('*', { count: 'exact', head: true }).eq('company_id', companyId).eq('status', 'COMPLETED');
+  const { count: trainingTotal } = await insforge.database.from('training_records').select('*', { count: 'exact', head: true }).eq('company_id', companyId);
 
   return {
     totalEmployees: onboardingEmployees + activeEmployees + terminatedEmployees,

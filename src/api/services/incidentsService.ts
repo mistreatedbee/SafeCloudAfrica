@@ -60,7 +60,7 @@ export async function listIncidentsPage(input: ListIncidentsPageInput): Promise<
     const offset = Math.max(0, input.offset ?? 0);
     let q = insforge.database
       .from('incidents')
-      .select('*', { count: 'planned' })
+      .select('*', { count: 'exact' })
       .eq('company_id', input.companyId)
       .order('created_at', { ascending: false });
     q = applyIncidentFilters(q as any, input);
@@ -92,7 +92,7 @@ export async function getIncidentListStats(
     async function countWith(extra: (q: any) => any): Promise<number> {
       let q = insforge.database
         .from('incidents')
-        .select('*', { count: 'planned', head: true })
+        .select('*', { count: 'exact', head: true })
         .eq('company_id', input.companyId);
       q = applyIncidentFilters(q as any, input);
       q = extra(q);
@@ -163,7 +163,7 @@ export async function countIncidentsByStatus(companyId: UUID, status: IncidentSt
   return withInsforgeSession('incidents:count-by-status', async () => {
   const { count, error } = await insforge.database
     .from('incidents')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('status', status);
   if (error) throw new Error(getErrorMessage(error));
@@ -175,7 +175,7 @@ export async function countIncidentsByStatusForModule(companyId: UUID, module: M
   return withInsforgeSession('incidents:count-by-status-for-module', async () => {
   const { count, error } = await insforge.database
     .from('incidents')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('module', module)
     .eq('status', status);
@@ -192,7 +192,7 @@ export async function countNearMissesThisMonth(companyId: UUID): Promise<number>
 
   const { count, error } = await insforge.database
     .from('incidents')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('category', 'Near Miss')
     .gte('occurred_at', start.toISOString());
@@ -206,7 +206,7 @@ export async function countMyIncidents(companyId: UUID, userId: UUID): Promise<n
   return withInsforgeSession('incidents:count-my-incidents', async () => {
   const { count, error } = await insforge.database
     .from('incidents')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('created_by_user_id', userId);
   if (error) throw new Error(getErrorMessage(error));
@@ -654,13 +654,13 @@ export async function updateIncident(incidentId: UUID, patch: UpdateIncidentPatc
     const [{ count: openNcrCount, error: openNcrError }, { count: openActionCount, error: openActionError }] = await Promise.all([
       insforge.database
         .from('quality_ncrs')
-        .select('*', { count: 'planned', head: true })
+        .select('*', { count: 'exact', head: true })
         .eq('source_entity_type', 'incident')
         .eq('source_entity_id', incidentId)
         .neq('status', 'closed'),
       insforge.database
         .from('incident_corrective_actions')
-        .select('*', { count: 'planned', head: true })
+        .select('*', { count: 'exact', head: true })
         .eq('incident_id', incidentId)
         .neq('status', 'Closed')
     ]);
@@ -711,13 +711,13 @@ export async function syncIncidentClosureFromLinks(incidentId: UUID): Promise<vo
     insforge.database.from('incidents').select('id,company_id,status,title,created_by_user_id,assignee_user_id').eq('id', incidentId).maybeSingle(),
     insforge.database
       .from('quality_ncrs')
-      .select('*', { count: 'planned', head: true })
+      .select('*', { count: 'exact', head: true })
       .eq('source_entity_type', 'incident')
       .eq('source_entity_id', incidentId)
       .neq('status', 'closed'),
     insforge.database
       .from('incident_corrective_actions')
-      .select('*', { count: 'planned', head: true })
+      .select('*', { count: 'exact', head: true })
       .eq('incident_id', incidentId)
       .neq('status', 'Closed')
   ]);

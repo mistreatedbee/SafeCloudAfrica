@@ -61,7 +61,7 @@ export async function countInspections(
   return withInsforgeSession('inspections:count', async () => {
   const base = insforge.database
     .from('inspections')
-    .select('*', { count: 'planned', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId);
   const q1 = input?.module ? base.eq('module', input.module) : base;
   const q2 = input?.status ? q1.eq('status', input.status) : q1;

@@ -36,6 +36,9 @@ import { ProfilePage } from './pages/ProfilePage';
 import { HelpSupportPage } from './pages/HelpSupportPage';
 import { SupportTicketDetailPage } from './pages/SupportTicketDetailPage';
 import NCRsPage from './pages/NCRsPage';
+import { AiSafetyAssistantPage } from './pages/ai/AiSafetyAssistantPage';
+import { AiBriefingPage } from './pages/ai/AiBriefingPage';
+import { AiPredictionsPage } from './pages/ai/AiPredictionsPage';
 import QualityCustomerComplaintsPage from './pages/QualityCustomerComplaintsPage';
 import QualityInternalExternalIssuesPage from './pages/QualityInternalExternalIssuesPage';
 import CalibrationPage from './pages/CalibrationPage';
@@ -121,6 +124,7 @@ import { SuperAdminAuditLogsPage } from './pages/admin/superadmin/SuperAdminAudi
 import { SuperAdminSupportModePage } from './pages/admin/superadmin/SuperAdminSupportModePage';
 import { SuperAdminSupportTicketsPage } from './pages/admin/superadmin/SuperAdminSupportTicketsPage';
 import { SuperAdminChatbotLogsPage } from './pages/admin/superadmin/SuperAdminChatbotLogsPage';
+import { SuperAdminAiGovernancePage } from './pages/admin/superadmin/SuperAdminAiGovernancePage';
 import { SuperAdminChatbotConversationDetailPage } from './pages/admin/superadmin/SuperAdminChatbotConversationDetailPage';
 import { SuperAdminLicenseRequestsPage, SuperAdminModuleRequestsPage } from './pages/admin/superadmin/SuperAdminCategoryRequestsPage';
 import { OwnerDashboardPage } from './pages/owner/OwnerDashboardPage';
@@ -139,12 +143,14 @@ import { DraftExperience } from './session/DraftExperience';
 import { IdentityProvider } from './hooks/useIdentity';
 import { FloatingSupportChat } from './components/support/FloatingSupportChat';
 import { PaaqActivityTracker } from './components/analytics/PaaqActivityTracker';
+import { ToastProvider } from './components/ui/ToastProvider';
 export function App() {
   return (
     <BrowserRouter>
       <TenantProvider>
         <IdentityProvider>
           <DraftManagerProvider>
+            <ToastProvider>
               <AuthSessionListener />
               <PaaqActivityTracker />
               <DraftExperience />
@@ -228,6 +234,7 @@ export function App() {
             <Route path="sellable-features" element={<SuperAdminSellableFeaturesPage />} />
             <Route path="audit-logs" element={<SuperAdminAuditLogsPage />} />
             <Route path="chatbot-logs" element={<SuperAdminChatbotLogsPage />} />
+            <Route path="ai-governance" element={<SuperAdminAiGovernancePage />} />
             <Route path="chatbot-logs/:conversationId" element={<SuperAdminChatbotConversationDetailPage />} />
             <Route path="license-requests" element={<SuperAdminLicenseRequestsPage />} />
             <Route path="module-requests" element={<SuperAdminModuleRequestsPage />} />
@@ -1526,6 +1533,36 @@ export function App() {
             }
           />
           <Route
+            path="/dashboard/ai/assistant"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <AiSafetyAssistantPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/ai/briefing"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <AiBriefingPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/dashboard/ai/predictions"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <AiPredictionsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
             path="/dashboard/management/approvals"
             element={
               <RequireSignedIn>
@@ -1914,6 +1951,7 @@ export function App() {
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+            </ToastProvider>
           </DraftManagerProvider>
         </IdentityProvider>
       </TenantProvider>

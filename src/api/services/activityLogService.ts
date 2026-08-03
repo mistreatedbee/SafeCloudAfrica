@@ -11,23 +11,39 @@ export type ActivityLogCreate = {
   metadata?: Record<string, unknown>;
 };
 
-export async function createActivityLog(input: ActivityLogCreate): Promise<ActivityLog> {
-  const { data, error } = await insforge.database
-    .from('activity_logs')
-    .insert({
-      company_id: input.companyId,
-      actor_user_id: input.actorUserId,
-      action: input.action,
-      entity_type: input.entityType ?? null,
-      entity_id: input.entityId ?? null,
-      metadata: input.metadata ?? null
-    })
-    .select('*')
-    .single();
+// This is a fire-and-forget audit trail: every one of its ~220 call sites
+// awaits it inline, immediately after the real record (incident, NCR, task,
+// etc.) was already committed, without a surrounding try/catch. If this
+// insert ever threw (RLS denial, transient network error, schema drift),
+// the exception propagated up through the caller's await chain and made an
+// otherwise-successful create/update look like it had failed entirely --
+// the record existed in the database, but the UI reported an error and
+// skipped its post-save steps (closing the modal, clearing the draft,
+// refreshing the list). No caller reads the return value, so audit-log
+// failures are swallowed here instead of ever being allowed to fail the
+// operation they're merely recording.
+export async function createActivityLog(input: ActivityLogCreate): Promise<ActivityLog | null> {
+  try {
+    const { data, error } = await insforge.database
+      .from('activity_logs')
+      .insert({
+        company_id: input.companyId,
+        actor_user_id: input.actorUserId,
+        action: input.action,
+        entity_type: input.entityType ?? null,
+        entity_id: input.entityId ?? null,
+        metadata: input.metadata ?? null
+      })
+      .select('*')
+      .single();
 
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to create activity log.');
-  return data as ActivityLog;
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to create activity log.');
+    return data as ActivityLog;
+  } catch (err) {
+    console.warn('[activity-log] failed to record activity (non-fatal)', input.action, err);
+    return null;
+  }
 }
 
 export async function listActivityLogs(input: {

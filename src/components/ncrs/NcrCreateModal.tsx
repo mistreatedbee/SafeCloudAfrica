@@ -8,6 +8,7 @@ import { createEvidence } from '../../api/services/evidenceService';
 import { insforge } from '../../api/insforge/client';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { useToast } from '../ui/ToastProvider';
 
 type NcrSource = 'audit' | 'audit_finding' | 'incident' | 'complaint' | 'risk' | 'inspection' | 'pjo';
 type LinkedRequirementType = 'STANDARD' | 'POLICY' | 'PROCEDURE';
@@ -25,6 +26,7 @@ export function NcrCreateModal(props: {
   onCreated?: () => void;
 }) {
   const { restoreDraft, clearDraft } = useDraftManager();
+  const { showSuccess, showError } = useToast();
   const draftKey = `ncr-create:${props.companyId}:${props.createdByUserId}:${props.linkedSource?.id ?? 'new'}`;
   const [ncrNumber, setNcrNumber] = useState('');
   const [ncrDate, setNcrDate] = useState(new Date().toISOString().slice(0, 10));
@@ -56,19 +58,19 @@ export function NcrCreateModal(props: {
     return `NCR-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
   }, [ncrNumber]);
 
-  const canSubmit = useMemo(() => {
-    return (
-      title.trim().length > 2 &&
-      location.trim().length > 0 &&
-      department.trim().length > 0 &&
-      activity.trim().length > 0 &&
-      responsibleRole.trim().length > 0 &&
-      linkedRequirement.trim().length > 0 &&
-      rootCause.trim().length > 0 &&
-      correctiveActions.trim().length > 0 &&
-      responsiblePerson.trim().length > 0 &&
-      evidenceBeforeFiles.length > 0
-    );
+  const missingFields = useMemo(() => {
+    const missing: string[] = [];
+    if (title.trim().length <= 2) missing.push('Title (at least 3 characters)');
+    if (location.trim().length === 0) missing.push('Location');
+    if (department.trim().length === 0) missing.push('Department / Process');
+    if (activity.trim().length === 0) missing.push('Activity Involved');
+    if (responsibleRole.trim().length === 0) missing.push('Responsible Role');
+    if (linkedRequirement.trim().length === 0) missing.push('Linked Requirement');
+    if (rootCause.trim().length === 0) missing.push('Root Cause Analysis');
+    if (correctiveActions.trim().length === 0) missing.push('Corrective Actions');
+    if (responsiblePerson.trim().length === 0) missing.push('Responsible Person');
+    if (evidenceBeforeFiles.length === 0) missing.push('Evidence of Non-Conformance (at least one file)');
+    return missing;
   }, [
     title,
     location,
@@ -76,11 +78,13 @@ export function NcrCreateModal(props: {
     activity,
     responsibleRole,
     linkedRequirement,
-      rootCause,
+    rootCause,
     correctiveActions,
     responsiblePerson,
     evidenceBeforeFiles.length
-    ]);
+  ]);
+
+  const canSubmit = missingFields.length === 0;
 
   const ROOT_CAUSE_OPTIONS = [
     'Lack of training',
@@ -330,12 +334,15 @@ export function NcrCreateModal(props: {
       }
       await syncNcrEvidenceFromAttachments(props.companyId, created.id);
 
+      showSuccess(`NCR ${finalNcrNumber} created successfully.`);
       props.onCreated?.();
       clearDraft(draftKey);
       props.onClose();
       resetForm();
     } catch (err: any) {
-      setError(formatAuthError(err));
+      const message = formatAuthError(err);
+      setError(message);
+      showError(message);
     } finally {
       setLoading(false);
     }
@@ -735,22 +742,30 @@ export function NcrCreateModal(props: {
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-surface-200">
-            <button
-              type="button"
-              onClick={props.onClose}
-              className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!canSubmit || loading}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-critical text-white text-sm font-semibold hover:bg-critical-600 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {loading && <LoadingSpinner size={16} />}
-              Create NCR
-            </button>
+          <div className="sticky bottom-0 -mx-5 -mb-5 mt-2 rounded-b-2xl bg-white border-t border-surface-200 px-5 py-4 space-y-2 z-10">
+            {missingFields.length > 0 && (
+              <p className="text-xs text-warning">
+                Complete these required fields to create the NCR: {missingFields.join(', ')}.
+              </p>
+            )}
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={props.onClose}
+                className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!canSubmit || loading}
+                title={missingFields.length > 0 ? `Missing: ${missingFields.join(', ')}` : undefined}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-critical text-white text-sm font-semibold hover:bg-critical-600 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading && <LoadingSpinner size={16} />}
+                {loading ? 'Creating...' : 'Create NCR'}
+              </button>
+            </div>
           </div>
         </form>
       </div>
