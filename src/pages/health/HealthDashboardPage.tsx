@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { StatCard } from '../../components/ui/StatCard';
@@ -13,13 +13,111 @@ const quickLinks = [
   { to: '/dashboard/health/wellness', label: 'Wellness Programme' }
 ];
 
+function logDiagnostic(event: string, detail: Record<string, unknown> = {}) {
+  try {
+    const entry = {
+      page: '/dashboard/health',
+      event,
+      ts: new Date().toISOString(),
+      ...detail,
+    };
+    // eslint-disable-next-line no-console
+    console.info('[HealthDashboard]', entry);
+    // Forward to any global telemetry sink if available
+    if (typeof (window as any).__paaqTelemetry?.track === 'function') {
+      (window as any).__paaqTelemetry.track(entry);
+    }
+  } catch {
+    // Never let diagnostics break the page
+  }
+}
+
 export function HealthDashboardPage() {
   const { activeCompanyId } = useTenant();
+  const mountedAt = useRef<number>(Date.now());
+  const dataReceivedAt = useRef<number | null>(null);
+
   const { data, loading, error } = useAsync(async () => {
-    if (!activeCompanyId) return null;
-    await runHealthReminderSweep(activeCompanyId).catch(() => undefined);
-    return await getHealthDashboardStats(activeCompanyId);
+    if (!activeCompanyId) {
+      logDiagnostic('no_active_company', { activeCompanyId });
+      return null;
+    }
+    const fetchStart = Date.now();
+    logDiagnostic('fetch_start', { activeCompanyId });
+
+    try {
+      await runHealthReminderSweep(activeCompanyId).catch((sweepErr) => {
+        logDiagnostic('reminder_sweep_failed', {
+          error: sweepErr?.message ?? String(sweepErr),
+        });
+      });
+    } catch (sweepErr: any) {
+      logDiagnostic('reminder_sweep_threw', { error: sweepErr?.message ?? String(sweepErr) });
+    }
+
+    let stats;
+    try {
+      stats = await getHealthDashboardStats(activeCompanyId);
+      const fetchDuration = Date.now() - fetchStart;
+      logDiagnostic('fetch_success', { fetchDuration, hasData: stats != null });
+    } catch (fetchErr: any) {
+      const fetchDuration = Date.now() - fetchStart;
+      logDiagnostic('fetch_error', {
+        fetchDuration,
+        error: fetchErr?.message ?? String(fetchErr),
+        status: fetchErr?.status ?? fetchErr?.response?.status ?? null,
+      });
+      throw fetchErr;
+    }
+
+    return stats;
   }, [activeCompanyId]);
+
+  // Track when data finally renders
+  useEffect(() => {
+    if (data && dataReceivedAt.current === null) {
+      dataReceivedAt.current = Date.now();
+      logDiagnostic('data_rendered', {
+        timeToRender: dataReceivedAt.current - mountedAt.current,
+      });
+    }
+  }, [data]);
+
+  // Track error state surfacing
+  useEffect(() => {
+    if (error) {
+      logDiagnostic('error_displayed', {
+        error: (error as any)?.message ?? String(error),
+        timeToError: Date.now() - mountedAt.current,
+      });
+    }
+  }, [error]);
+
+  // Track prolonged loading (potential latency / hang)
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => {
+      logDiagnostic('loading_slow', {
+        elapsedMs: Date.now() - mountedAt.current,
+        stillLoading: true,
+      });
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [loading]);
+
+  // Track unmount before data arrives (drop-off signal)
+  useEffect(() => {
+    return () => {
+      if (dataReceivedAt.current === null) {
+        logDiagnostic('unmounted_before_data', {
+          elapsedMs: Date.now() - mountedAt.current,
+          hadError: !!error,
+          wasLoading: loading,
+        });
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <Layout title="Health Dashboard">
@@ -75,4 +173,3 @@ export function HealthDashboardPage() {
     </Layout>
   );
 }
-
