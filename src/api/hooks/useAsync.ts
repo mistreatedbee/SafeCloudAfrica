@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { subscribeToLiveDataMutations } from '../liveData';
+import { emitAuthNeedsAttention, subscribeToAuthRecovered, subscribeToLiveDataMutations } from '../liveData';
 
 export type AsyncState<T> = {
   data: T | null;
@@ -114,7 +114,10 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
         if (unavailable) backendUnavailableUntilRef.current = Date.now() + 15_000;
         if (authFailure) {
           authFailureRef.current = true;
-          authFailureEmittedRef.current = true;
+          if (!authFailureEmittedRef.current) {
+            authFailureEmittedRef.current = true;
+            emitAuthNeedsAttention({ source: 'reactive-fetch' });
+          }
         }
         setState((prev) => ({
           // Preserve last-known-good data so dashboards/forms don’t clear during an outage.
@@ -180,6 +183,18 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
       retry();
     });
   }, [refreshOnMutation, retry]);
+
+  // When the user (or a proactive refresh) successfully reconnects a dead
+  // session, un-stick every already-mounted consumer instead of leaving it
+  // showing the old failed state until its own next natural refetch trigger.
+  useEffect(() => {
+    return subscribeToAuthRecovered(() => {
+      if (!authFailureRef.current) return;
+      authFailureRef.current = false;
+      authFailureEmittedRef.current = false;
+      retry();
+    });
+  }, [retry]);
 
   useEffect(() => {
     if (!refreshIntervalMs || refreshIntervalMs <= 0) return;

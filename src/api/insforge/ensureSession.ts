@@ -5,6 +5,7 @@ import {
   readStoredAccessToken,
   refreshSessionThroughProxy
 } from './sessionState';
+import { emitAuthNeedsAttention } from '../liveData';
 
 const AUTH_BOOTSTRAP_DEBUG = (import.meta as any)?.env?.VITE_AUTH_BOOTSTRAP_DEBUG === '1';
 
@@ -199,14 +200,25 @@ export async function withInsforgeSession<T>(reason: string, fn: () => Promise<T
 const PROACTIVE_REFRESH_LEAD_MS = 5 * 60 * 1000;
 const PROACTIVE_REFRESH_MIN_DELAY_MS = 5_000;
 const PROACTIVE_REFRESH_RETRY_DELAY_MS = 60_000;
+// One bounded retry for invalid_session/refresh_unavailable before giving up
+// permanently -- distinct from the unlimited transient_failure retry loop
+// above. Guards against a single blip (e.g. a momentary CSRF-cookie race)
+// being mistaken for a genuinely dead session.
+const PROACTIVE_REFRESH_INVALID_SESSION_RETRY_DELAY_MS = 20_000;
 
 let proactiveRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
+let proactiveInvalidSessionRetried = false;
 
 export function stopProactiveSessionRefresh(): void {
   if (proactiveRefreshTimeout) {
     clearTimeout(proactiveRefreshTimeout);
     proactiveRefreshTimeout = null;
   }
+  // Deliberately does NOT reset proactiveInvalidSessionRetried here:
+  // scheduleProactiveRefresh() calls this on every reschedule, including
+  // when it schedules the bounded invalid-session retry itself -- resetting
+  // the flag here would let that single retry re-arm forever instead of
+  // giving up after one attempt.
 }
 
 function scheduleProactiveRefresh(delayMs: number): void {
@@ -220,6 +232,7 @@ async function runProactiveRefresh(): Promise<void> {
   const outcome = await tryProxyRefresh('proactive-refresh');
   if (outcome.ok) {
     debugAuthBootstrap('proactive-refresh:success', {});
+    proactiveInvalidSessionRetried = false;
     const expMs = decodeJwtSession(outcome.accessToken).expMs;
     if (expMs) scheduleProactiveRefresh(expMs - Date.now() - PROACTIVE_REFRESH_LEAD_MS);
     return;
@@ -229,10 +242,22 @@ async function runProactiveRefresh(): Promise<void> {
     scheduleProactiveRefresh(PROACTIVE_REFRESH_RETRY_DELAY_MS);
     return;
   }
-  // invalid_session / refresh_unavailable — genuinely nothing to refresh.
-  // The reactive path in ensureInsforgeSession will surface the real logout
-  // the next time the app makes an authenticated call; don't reschedule.
+  // invalid_session / refresh_unavailable: give it one bounded retry in case
+  // this was a one-off blip (e.g. a momentary CSRF-cookie race) rather than
+  // a genuinely dead session, before giving up for good.
+  if (!proactiveInvalidSessionRetried) {
+    proactiveInvalidSessionRetried = true;
+    debugAuthBootstrap('proactive-refresh:invalid-session-retry', { reason: outcome.reason });
+    scheduleProactiveRefresh(PROACTIVE_REFRESH_INVALID_SESSION_RETRY_DELAY_MS);
+    return;
+  }
+  // Second consecutive invalid_session/refresh_unavailable — genuinely
+  // nothing to refresh. Surface this to the user immediately instead of
+  // waiting for them to stumble into a stale reactive fetch; the reactive
+  // path in ensureInsforgeSession will also throw the next time the app
+  // makes an authenticated call, but nothing forces a logout here.
   debugAuthBootstrap('proactive-refresh:stopped', { reason: outcome.reason });
+  emitAuthNeedsAttention({ source: 'proactive-refresh' });
 }
 
 /**
@@ -241,6 +266,7 @@ async function runProactiveRefresh(): Promise<void> {
  * previously scheduled timer rather than stacking them.
  */
 export function startProactiveSessionRefresh(): void {
+  proactiveInvalidSessionRetried = false;
   void (async () => {
     try {
       const { accessToken } = await ensureInsforgeSession({ reason: 'proactive-refresh:init' });
@@ -249,8 +275,15 @@ export function startProactiveSessionRefresh(): void {
     } catch (err) {
       if (err instanceof InsforgeTransientSessionError) {
         scheduleProactiveRefresh(PROACTIVE_REFRESH_RETRY_DELAY_MS);
+        return;
       }
-      // AUTH_SESSION_MISSING or anything else: no valid session to schedule around.
+      if (err instanceof InsforgeAuthBootstrapError) {
+        // Already dead by the time the listener mounted (e.g. tab was
+        // asleep past expiry) -- surface the reconnect banner right away
+        // instead of waiting for the user to hit a stale fetch.
+        emitAuthNeedsAttention({ source: 'proactive-refresh' });
+      }
+      // Anything else: no valid session to schedule around.
     }
   })();
 }

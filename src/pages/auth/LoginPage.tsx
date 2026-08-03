@@ -244,6 +244,10 @@ export function LoginPage() {
   const verified = searchParams.get('verified') === '1' || insforgeVerified;
   const registered = searchParams.get('registered') === '1';
   const isInviteContinuation = searchParams.get('redirect')?.includes('/invite/');
+  // Reached only after the user explicitly clicked "Reconnect" on the
+  // session-attention banner (AuthSessionListener) and that attempt failed --
+  // never shown as a result of an automatic/background redirect.
+  const reconnectFailed = searchParams.get('reason') === 'reconnect_failed';
 
   const handleSignInError = (error: unknown) => {
     setRedirecting(false);
@@ -296,6 +300,11 @@ export function LoginPage() {
       subtitle="Enter your email and password below to access your company workspace."
       sideTitle="Safe Cloud Africa"
     >
+      {reconnectFailed && (
+        <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+          We could not reconnect your previous session. Please sign in again.
+        </div>
+      )}
       {activated && (
         <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
           License activated. Please log in to continue.
