@@ -958,6 +958,75 @@ create index if not exists idx_incidents_company on public.incidents(company_id,
 create index if not exists idx_incidents_assignee on public.incidents(company_id, assignee_user_id);
 create index if not exists idx_incidents_creator on public.incidents(company_id, created_by_user_id);
 
+-- NOTE: the flattened investigation_* columns above (risk, incident_timeline,
+-- unsafe_acts, root_cause_human, etc.) are a legacy design the running app no
+-- longer writes to. Investigation data now lives in a separate normalized
+-- incident_investigations table (added by
+-- docs/migrations/incident_investigations_table_2026_07_31.sql), included
+-- here so a fresh bootstrap from this baseline file has it too. See that
+-- migration for why it was needed: the table had never been created by any
+-- prior migration despite application code depending on it.
+create table if not exists public.incident_investigations (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  incident_id uuid not null references public.incidents(id) on delete cascade,
+  notes text null,
+  instruction_breakdown text null,
+  task_sequence text null,
+  risk text null,
+  risk_profile text null,
+  potential_consequence text null,
+  event_timeline text null,
+  immediate_causes jsonb null,
+  root_causes_human jsonb null,
+  root_causes_workplace jsonb null,
+  system_failures jsonb null,
+  contributing_factors text null,
+  lessons_learnt text null,
+  investigation_team jsonb null,
+  conclusion text null,
+  prepared_by text null,
+  distributions jsonb null,
+  created_by_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (company_id, incident_id)
+);
+
+create index if not exists idx_incident_investigations_company_incident
+  on public.incident_investigations(company_id, incident_id);
+
+alter table public.incident_investigations enable row level security;
+
+drop policy if exists incident_investigations_select on public.incident_investigations;
+create policy incident_investigations_select
+on public.incident_investigations for select
+using (
+  public.is_platform_admin()
+  or exists (
+    select 1 from public.incidents i
+    where i.id = incident_investigations.incident_id
+      and i.company_id = incident_investigations.company_id
+      and (
+        public.is_company_consultant_or_admin(i.company_id)
+        or public.is_company_auditor(i.company_id)
+        or i.created_by_user_id = public.request_user_id()
+        or i.assignee_user_id = public.request_user_id()
+      )
+  )
+);
+
+drop policy if exists incident_investigations_insert on public.incident_investigations;
+create policy incident_investigations_insert
+on public.incident_investigations for insert
+with check (public.is_company_member(company_id) or public.is_platform_admin());
+
+drop policy if exists incident_investigations_update on public.incident_investigations;
+create policy incident_investigations_update
+on public.incident_investigations for update
+using (public.is_company_member(company_id) or public.is_platform_admin())
+with check (public.is_company_member(company_id) or public.is_platform_admin());
+
 -- ---------------------------------------------------------------------------
 -- Tasks (Phase 2 shared system)
 -- ---------------------------------------------------------------------------

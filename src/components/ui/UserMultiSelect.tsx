@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useRef, useLayoutEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useMemo } from 'react';
 import { XIcon, ChevronDownIcon, SearchIcon } from 'lucide-react';
 import { useAsync } from '../../api/hooks/useAsync';
+import { useFloatingPanel, FloatingPanel, FloatingOutsideClickOverlay } from '../../hooks/useFloatingPanel';
 import { listUserProfiles } from '../../api/services/profilesService';
 import { listCompanyMemberships } from '../../api/services/tenantService';
 import type { UUID } from '../../api/models/core';
@@ -37,49 +37,9 @@ export function UserMultiSelect({
   const [searchQuery, setSearchQuery] = useState('');
   const [externalEmailInput, setExternalEmailInput] = useState('');
 
-  // The options panel is rendered through a portal at a fixed screen position
-  // (computed from the trigger's own bounding box) instead of being absolutely
-  // positioned inside this component's own DOM subtree. Every row of a
-  // repeating list (e.g. one dropdown per corrective action) sits inside the
-  // same scrollable modal body; an absolutely-positioned descendant does not
-  // expand that ancestor's scrollable height, so a panel opened on a row far
-  // enough down the form gets silently clipped by the modal's scroll boundary
-  // with no way to scroll it into view — it looks exactly like "no data
-  // loaded" even though the same options are present for every row. Portaling
-  // to document.body and positioning with fixed coordinates makes every
-  // instance behave identically regardless of how many rows exist or where
-  // a given row sits in the scrolled form.
-  const triggerRef = useRef<HTMLDivElement>(null);
-  const [panelRect, setPanelRect] = useState<{ top: number; left: number; width: number; openUpward: boolean } | null>(null);
-
-  const updatePanelPosition = useCallback(() => {
-    const trigger = triggerRef.current;
-    if (!trigger) return;
-    const rect = trigger.getBoundingClientRect();
-    const panelHeight = 264; // matches max-h-64 (256px) + a little breathing room
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const openUpward = spaceBelow < panelHeight && rect.top > spaceBelow;
-    setPanelRect({
-      top: openUpward ? rect.top : rect.bottom,
-      left: rect.left,
-      width: rect.width,
-      openUpward
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!isOpen) {
-      setPanelRect(null);
-      return;
-    }
-    updatePanelPosition();
-    window.addEventListener('scroll', updatePanelPosition, true);
-    window.addEventListener('resize', updatePanelPosition);
-    return () => {
-      window.removeEventListener('scroll', updatePanelPosition, true);
-      window.removeEventListener('resize', updatePanelPosition);
-    };
-  }, [isOpen, updatePanelPosition]);
+  // See useFloatingPanel for why the options panel is positioned this way
+  // instead of `position: absolute` inside this component's own DOM subtree.
+  const { triggerRef, position: panelPosition } = useFloatingPanel(isOpen && !disabled);
 
   const { data: profiles } = useAsync<UserProfile[]>(
     async () => {
@@ -221,88 +181,77 @@ export function UserMultiSelect({
         <ChevronDownIcon className={`w-4 h-4 text-charcoal-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
-      {isOpen && !disabled && panelRect && createPortal(
-        <>
-          <div
-            className="fixed z-40 inset-0"
-            onClick={() => setIsOpen(false)}
-          />
-          <div
-            className="fixed z-50 bg-white border border-surface-300 rounded-lg shadow-lg max-h-64 overflow-hidden flex flex-col"
-            style={{
-              top: panelRect.openUpward ? undefined : panelRect.top + 4,
-              bottom: panelRect.openUpward ? window.innerHeight - panelRect.top + 4 : undefined,
-              left: panelRect.left,
-              width: panelRect.width
-            }}
-          >
-            <div className="p-2 border-b border-surface-200">
-              <div className="relative">
-                <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search users..."
-                  className="w-full pl-8 pr-3 py-1.5 text-sm border border-surface-300 rounded focus:outline-none focus:ring-2 focus:ring-teal"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </div>
-            </div>
-            <div className="overflow-y-auto flex-1">
-              {filteredUsers.length === 0 ? (
-                <div className="p-3 text-sm text-charcoal-500 text-center">No users found</div>
-              ) : (
-                filteredUsers.map(user => (
-                  <div
-                    key={user.userId}
-                    onClick={() => handleToggleUser(user.userId)}
-                    className={`px-3 py-2 text-sm cursor-pointer hover:bg-surface-50 ${
-                      selectedUserIds.includes(user.userId) ? 'bg-teal/5' : ''
-                    }`}
-                  >
-                    <div className="font-medium">
-                      {user.name}
-                      {user.employeeNumber ? <span className="ml-2 text-xs text-charcoal-400">({user.employeeNumber})</span> : null}
-                    </div>
-                    <div className="text-xs text-charcoal-500">
-                      {user.email ? user.email : user.employeeNumber ? '—' : ''}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            {allowExternalEmails && (
-              <div className="p-2 border-t border-surface-200">
-                <div className="flex gap-2">
-                  <input
-                    type="email"
-                    value={externalEmailInput}
-                    onChange={(e) => setExternalEmailInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddExternalEmail();
-                      }
-                    }}
-                    placeholder="Add external email..."
-                    className="flex-1 px-2 py-1 text-sm border border-surface-300 rounded focus:outline-none focus:ring-2 focus:ring-teal"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddExternalEmail}
-                    className="px-3 py-1 text-sm bg-teal text-white rounded hover:bg-teal-600"
-                  >
-                    Add
-                  </button>
+      {isOpen && !disabled && panelPosition && (
+        <FloatingOutsideClickOverlay onClick={() => setIsOpen(false)} />
+      )}
+      <FloatingPanel
+        position={panelPosition}
+        className="bg-white border border-surface-300 rounded-lg shadow-lg max-h-64 overflow-hidden flex flex-col"
+      >
+        <div className="p-2 border-b border-surface-200">
+          <div className="relative">
+            <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search users..."
+              className="w-full pl-8 pr-3 py-1.5 text-sm border border-surface-300 rounded focus:outline-none focus:ring-2 focus:ring-teal"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+        <div className="overflow-y-auto flex-1">
+          {filteredUsers.length === 0 ? (
+            <div className="p-3 text-sm text-charcoal-500 text-center">No users found</div>
+          ) : (
+            filteredUsers.map(user => (
+              <div
+                key={user.userId}
+                onClick={() => handleToggleUser(user.userId)}
+                className={`px-3 py-2 text-sm cursor-pointer hover:bg-surface-50 ${
+                  selectedUserIds.includes(user.userId) ? 'bg-teal/5' : ''
+                }`}
+              >
+                <div className="font-medium">
+                  {user.name}
+                  {user.employeeNumber ? <span className="ml-2 text-xs text-charcoal-400">({user.employeeNumber})</span> : null}
+                </div>
+                <div className="text-xs text-charcoal-500">
+                  {user.email ? user.email : user.employeeNumber ? '—' : ''}
                 </div>
               </div>
-            )}
+            ))
+          )}
+        </div>
+        {allowExternalEmails && (
+          <div className="p-2 border-t border-surface-200">
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={externalEmailInput}
+                onChange={(e) => setExternalEmailInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddExternalEmail();
+                  }
+                }}
+                placeholder="Add external email..."
+                className="flex-1 px-2 py-1 text-sm border border-surface-300 rounded focus:outline-none focus:ring-2 focus:ring-teal"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <button
+                type="button"
+                onClick={handleAddExternalEmail}
+                className="px-3 py-1 text-sm bg-teal text-white rounded hover:bg-teal-600"
+              >
+                Add
+              </button>
+            </div>
           </div>
-        </>,
-        document.body
-      )}
+        )}
+      </FloatingPanel>
     </div>
   );
 }

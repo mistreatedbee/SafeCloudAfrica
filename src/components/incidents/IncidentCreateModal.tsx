@@ -1280,33 +1280,6 @@ export function IncidentCreateModal(props: {
     }, 1100);
   }
 
-  // Whether the user has actually entered investigation content, independent of
-  // the investigationRequired toggle. The toggle can end up false at submit time
-  // even after content was filled in (e.g. a restored draft saved before this
-  // field existed defaults it to false) — gating persistence on the toggle
-  // alone silently discards real investigation data the user can see on screen.
-  // Persisting whenever there's real content is a defense-in-depth check on
-  // top of the toggle, not a replacement for it.
-  function hasInvestigationContent(): boolean {
-    return Boolean(
-      actualOutcome.trim() ||
-      riskProfile.trim() ||
-      potentialConsequence.trim() ||
-      additionalImmediateCauseDetails.trim() ||
-      contributingFactors.trim() ||
-      lessonsLearned.trim() ||
-      conclusion.trim() ||
-      preparedBy.trim() ||
-      investigationTeam.trim() ||
-      distributionList.trim() ||
-      incidentTimelineEvents.length > 0 ||
-      Object.keys(rootCauseHuman).length > 0 ||
-      Object.keys(rootCauseWorkplace).length > 0 ||
-      Object.keys(systemFailures).length > 0 ||
-      correctiveActionDrafts.some((d) => d.actionRequired.trim() || d.responsibleUserId || d.dueDate)
-    );
-  }
-
   function handleRequestClose() {
     if (loading) return;
     if (saveSuccess) {
@@ -1417,38 +1390,42 @@ export function IncidentCreateModal(props: {
         await uploadEvidenceForIncident(updated.id, evidenceUploads, 'incident');
         await uploadEvidenceForIncident(updated.id, investigationUploads, 'incident_investigation');
         await createCorrectiveActionRecords(updated.id);
-        if (investigationRequired || hasInvestigationContent()) {
-          await upsertIncidentInvestigation({
-            companyId: props.companyId,
-            incidentId: updated.id,
-            actorUserId: props.createdByUserId,
-            patch: {
-              notes: actualOutcome.trim() ? `Actual outcome: ${actualOutcome.trim()}` : null,
-              event_timeline: incidentTimelineEvents
-                .map((event) => `${event.timestamp} - ${event.notes}`.trim())
-                .join('\n') || null,
-              risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
-              risk_profile: riskProfile.trim() || null,
-              potential_consequence: potentialConsequence.trim() || null,
-              immediate_causes: buildImmediateCausesPayload(),
-              root_causes_human: Object.values(rootCauseHuman),
-              root_causes_workplace: Object.values(rootCauseWorkplace),
-              system_failures: Object.values(systemFailures),
-              contributing_factors: contributingFactors.trim() || null,
-              lessons_learnt: lessonsLearned.trim() || null,
-              conclusion: conclusion.trim() || null,
-              prepared_by: preparedBy.trim() || null,
-              investigation_team: investigationTeam
-                .split(',')
-                .map((entry) => entry.trim())
-                .filter(Boolean),
-              distributions: distributionList
-                .split(',')
-                .map((entry) => entry.trim())
-                .filter(Boolean)
-            } as any
-          });
-        }
+        // Always persist the investigation record, independent of the
+        // investigationRequired toggle. investigation_required (stored on the
+        // incident itself, above) is purely a workflow flag; whether
+        // investigation *data* exists is a separate fact that must not depend
+        // on that flag's value at submit time -- see incident_investigations
+        // migration notes for why this was previously a silent data-loss bug.
+        await upsertIncidentInvestigation({
+          companyId: props.companyId,
+          incidentId: updated.id,
+          actorUserId: props.createdByUserId,
+          patch: {
+            notes: actualOutcome.trim() ? `Actual outcome: ${actualOutcome.trim()}` : null,
+            event_timeline: incidentTimelineEvents
+              .map((event) => `${event.timestamp} - ${event.notes}`.trim())
+              .join('\n') || null,
+            risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
+            risk_profile: riskProfile.trim() || null,
+            potential_consequence: potentialConsequence.trim() || null,
+            immediate_causes: buildImmediateCausesPayload(),
+            root_causes_human: Object.values(rootCauseHuman),
+            root_causes_workplace: Object.values(rootCauseWorkplace),
+            system_failures: Object.values(systemFailures),
+            contributing_factors: contributingFactors.trim() || null,
+            lessons_learnt: lessonsLearned.trim() || null,
+            conclusion: conclusion.trim() || null,
+            prepared_by: preparedBy.trim() || null,
+            investigation_team: investigationTeam
+              .split(',')
+              .map((entry) => entry.trim())
+              .filter(Boolean),
+            distributions: distributionList
+              .split(',')
+              .map((entry) => entry.trim())
+              .filter(Boolean)
+          } as any
+        });
         props.onUpdated?.(updated);
         clearDraft(draftKey);
       } else {
@@ -1512,38 +1489,39 @@ export function IncidentCreateModal(props: {
         await uploadEvidenceForIncident(incident.id, evidenceUploads, 'incident');
         await uploadEvidenceForIncident(incident.id, investigationUploads, 'incident_investigation');
         await createCorrectiveActionRecords(incident.id);
-        if (investigationRequired || hasInvestigationContent()) {
-          await upsertIncidentInvestigation({
-            companyId: props.companyId,
-            incidentId: incident.id,
-            actorUserId: props.createdByUserId,
-            patch: {
-              notes: actualOutcome.trim() ? `Actual outcome: ${actualOutcome.trim()}` : null,
-              event_timeline: incidentTimelineEvents
-                .map((event) => `${event.timestamp} - ${event.notes}`.trim())
-                .join('\n') || null,
-              risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
-              risk_profile: riskProfile.trim() || null,
-              potential_consequence: potentialConsequence.trim() || null,
-              immediate_causes: buildImmediateCausesPayload(),
-              root_causes_human: Object.values(rootCauseHuman),
-              root_causes_workplace: Object.values(rootCauseWorkplace),
-              system_failures: Object.values(systemFailures),
-              contributing_factors: contributingFactors.trim() || null,
-              lessons_learnt: lessonsLearned.trim() || null,
-              conclusion: conclusion.trim() || null,
-              prepared_by: preparedBy.trim() || null,
-              investigation_team: investigationTeam
-                .split(',')
-                .map((entry) => entry.trim())
-                .filter(Boolean),
-              distributions: distributionList
-                .split(',')
-                .map((entry) => entry.trim())
-                .filter(Boolean)
-            } as any
-          });
-        }
+        // Always persist the investigation record -- see the matching
+        // comment in the edit branch above for why this must not be gated
+        // on the investigationRequired toggle.
+        await upsertIncidentInvestigation({
+          companyId: props.companyId,
+          incidentId: incident.id,
+          actorUserId: props.createdByUserId,
+          patch: {
+            notes: actualOutcome.trim() ? `Actual outcome: ${actualOutcome.trim()}` : null,
+            event_timeline: incidentTimelineEvents
+              .map((event) => `${event.timestamp} - ${event.notes}`.trim())
+              .join('\n') || null,
+            risk: `${riskLikelihood} x ${riskSeverity} = ${calculatedRisk}`.trim(),
+            risk_profile: riskProfile.trim() || null,
+            potential_consequence: potentialConsequence.trim() || null,
+            immediate_causes: buildImmediateCausesPayload(),
+            root_causes_human: Object.values(rootCauseHuman),
+            root_causes_workplace: Object.values(rootCauseWorkplace),
+            system_failures: Object.values(systemFailures),
+            contributing_factors: contributingFactors.trim() || null,
+            lessons_learnt: lessonsLearned.trim() || null,
+            conclusion: conclusion.trim() || null,
+            prepared_by: preparedBy.trim() || null,
+            investigation_team: investigationTeam
+              .split(',')
+              .map((entry) => entry.trim())
+              .filter(Boolean),
+            distributions: distributionList
+              .split(',')
+              .map((entry) => entry.trim())
+              .filter(Boolean)
+          } as any
+        });
         props.onCreated?.();
         clearDraft(draftKey);
       }

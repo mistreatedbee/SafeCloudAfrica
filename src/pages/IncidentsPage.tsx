@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, lazy, Suspense } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -13,7 +13,8 @@ import { Layout } from '../components/layout/Layout';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { listIncidents, deleteIncident } from '../api/services/incidentsService';
+import { listIncidentsPage, getIncidentListStats, deleteIncident } from '../api/services/incidentsService';
+import type { IncidentsPage as IncidentsPageResult, IncidentListStats } from '../api/services/incidentsService';
 import type { Incident } from '../api/models/entities';
 import { useUser } from '@insforge/react';
 import { toUserFacingError } from '../utils/userFacingMessage';
@@ -65,11 +66,21 @@ const itemVariants = {
 };
 type DateFilter = 'all' | '1month' | '2months';
 
+const PAGE_SIZE = 25;
+
+function dateFilterToRange(filter: DateFilter): { from?: string } {
+  if (filter === 'all') return {};
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - (filter === '1month' ? 1 : 2));
+  return { from: cutoff.toISOString() };
+}
+
 export function IncidentsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [page, setPage] = useState(0);
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
   const isNew = location.pathname.endsWith('/new');
@@ -80,12 +91,21 @@ export function IncidentsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const canEditInvestigation = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
 
+  // Employee-role scoping now happens server-side (createdByUserId filter)
+  // instead of fetching everything and filtering client-side.
+  const employeeScopeUserId = activeRole === 'employee' ? user?.id : undefined;
+
+  // Any filter change invalidates the current page position.
+  useEffect(() => {
+    setPage(0);
+  }, [searchQuery, dateFilter]);
+
   async function handleDeleteIncident(incident: Incident) {
     if (!window.confirm('Delete this incident? This cannot be undone.')) return;
     if (!activeCompanyId || !user?.id) return;
     try {
       await deleteIncident({ companyId: activeCompanyId, incidentId: incident.id, actorUserId: user.id });
-      void retry();
+      void refetchAll();
     } catch (err) {
       setDeleteError(toUserFacingError(err, 'An error occurred. Please try again.'));
     }
@@ -104,40 +124,54 @@ export function IncidentsPage() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const { data: incidents, loading, error, retry, isBackendUnavailable } = useAsync<Incident[]>(
+  const { data: incidentsPage, loading, error, retry, isBackendUnavailable } = useAsync<IncidentsPageResult>(
     async () => {
-      if (!activeCompanyId) return [];
-      return await listIncidents({ companyId: activeCompanyId, search: searchQuery, limit: 100 });
+      if (!activeCompanyId) return { items: [], total: 0 };
+      return await listIncidentsPage({
+        companyId: activeCompanyId,
+        search: searchQuery,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+        createdByUserId: employeeScopeUserId,
+        ...dateFilterToRange(dateFilter)
+      });
     },
-    [activeCompanyId, searchQuery]
+    [activeCompanyId, searchQuery, page, dateFilter, employeeScopeUserId]
   );
 
-  const allIncidents = incidents ?? [];
-  const scopedIncidents = useMemo(() => {
-    if (activeRole === 'employee' && user?.id) {
-      return allIncidents.filter((incident) => String((incident as any).created_by_user_id) === String(user.id));
+  // If the current page becomes empty but matching rows still exist elsewhere
+  // (e.g. deleting the last item on the last page), step back instead of
+  // showing a blank page.
+  useEffect(() => {
+    if (!incidentsPage) return;
+    if (incidentsPage.items.length === 0 && incidentsPage.total > 0 && page > 0) {
+      setPage((p) => Math.max(0, p - 1));
     }
-    return allIncidents;
-  }, [activeRole, user?.id, allIncidents]);
-  
-  // Apply date filter
-  const list = useMemo(() => {
-    if (dateFilter === 'all') return scopedIncidents;
-    const now = new Date();
-    const cutoffDate = new Date();
-    if (dateFilter === '1month') {
-      cutoffDate.setMonth(now.getMonth() - 1);
-    } else if (dateFilter === '2months') {
-      cutoffDate.setMonth(now.getMonth() - 2);
-    }
-    return scopedIncidents.filter(incident => {
-      const incidentDate = new Date(incident.occurred_at);
-      return incidentDate >= cutoffDate;
-    });
-  }, [scopedIncidents, dateFilter]);
-  const openCount = list.filter((i) => i.status === 'open').length;
-  const investigatingCount = list.filter((i) => i.status === 'investigating').length;
-  const nearMissCount = list.filter((i) => i.category === 'Near Miss').length;
+  }, [incidentsPage, page]);
+
+  const { data: stats, retry: retryStats } = useAsync<IncidentListStats>(
+    async () => {
+      if (!activeCompanyId) return { total: 0, open: 0, investigating: 0, nearMiss: 0 };
+      return await getIncidentListStats({
+        companyId: activeCompanyId,
+        search: searchQuery,
+        createdByUserId: employeeScopeUserId,
+        ...dateFilterToRange(dateFilter)
+      });
+    },
+    [activeCompanyId, searchQuery, dateFilter, employeeScopeUserId]
+  );
+
+  async function refetchAll() {
+    await Promise.all([retry(), retryStats()]);
+  }
+
+  const list = incidentsPage?.items ?? [];
+  const total = incidentsPage?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const openCount = stats?.open ?? 0;
+  const investigatingCount = stats?.investigating ?? 0;
+  const nearMissCount = stats?.nearMiss ?? 0;
   return (
     <Layout title="Incidents & Near Misses">
       {activeCompanyId && user?.id && (
@@ -154,12 +188,13 @@ export function IncidentsPage() {
             incident={editingIncident}
             defaultModule="safety"
             onCreated={() => {
-              void retry();
+              setPage(0);
+              void refetchAll();
               navigate('/dashboard/incidents/management', { replace: true });
             }}
             onUpdated={() => {
               setEditingIncident(null);
-              void retry();
+              void refetchAll();
             }}
           />
           <IncidentDetailModal
@@ -193,7 +228,7 @@ export function IncidentsPage() {
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">This Month</p>
-            <p className="text-2xl font-bold text-charcoal mt-1">{list.length}</p>
+            <p className="text-2xl font-bold text-charcoal mt-1">{stats?.total ?? total}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Near Misses</p>
@@ -318,7 +353,11 @@ export function IncidentsPage() {
           {!loading && list.length === 0 && activeCompanyId && (
             <div className="bg-white rounded-xl border border-surface-300 p-8 shadow-card flex flex-col items-center gap-2 text-center">
               <AlertTriangleIcon className="w-10 h-10 text-charcoal-300" />
-              <p className="text-sm font-medium text-charcoal-600">No incidents recorded yet. Report your first incident.</p>
+              <p className="text-sm font-medium text-charcoal-600">
+                {total === 0
+                  ? 'No incidents recorded yet. Report your first incident.'
+                  : 'No incidents on this page.'}
+              </p>
             </div>
           )}
 
@@ -397,6 +436,35 @@ export function IncidentsPage() {
             </div>
           ))}
         </motion.div>
+
+        {!loading && total > 0 && (
+          <motion.div variants={itemVariants} className="flex items-center justify-between gap-4 pt-2">
+            <p className="text-sm text-charcoal-500">
+              Showing {Math.min(page * PAGE_SIZE + 1, total)}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page <= 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-white border border-surface-300 text-charcoal hover:bg-surface-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-charcoal-500">
+                Page {page + 1} of {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={page + 1 >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-white border border-surface-300 text-charcoal hover:bg-surface-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </motion.div>
+        )}
       </motion.div>
     </Layout>
   );

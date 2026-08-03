@@ -139,6 +139,37 @@ function isStatusRiskyForNavigation(status: DraftLifecycleStatus): boolean {
   return status === 'pending' || status === 'saving-local' || status === 'syncing-server' || status === 'retrying' || status === 'error';
 }
 
+function metadataEqual(a?: DraftSnapshotMetadata, b?: DraftSnapshotMetadata): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((k) => (a as Record<string, unknown>)[k] === (b as Record<string, unknown>)[k]);
+}
+
+// Callers routinely pass fresh `metadata` objects and `isDirty` closures on
+// every render (they aren't memoized). Without this check, updateDraftState
+// always writes a referentially-new state object, which re-renders every
+// useDraftManager() consumer -- including the very form components that just
+// called it -- creating an unbounded render/effect/setState loop that pegs
+// the main thread. Comparing field-by-field lets identical patches bail out.
+function draftStateEqual(a: DraftState, b: DraftState): boolean {
+  return (
+    a.label === b.label &&
+    a.status === b.status &&
+    a.updatedAt === b.updatedAt &&
+    a.lastSavedAt === b.lastSavedAt &&
+    a.lastError === b.lastError &&
+    a.route === b.route &&
+    a.isDirty === b.isDirty &&
+    a.isRegistered === b.isRegistered &&
+    a.hasPendingUploads === b.hasPendingUploads &&
+    a.pendingUploadsMessage === b.pendingUploadsMessage &&
+    metadataEqual(a.metadata, b.metadata)
+  );
+}
+
 export function DraftManagerProvider({ children }: { children: React.ReactNode }) {
   const registrationsRef = useRef<Map<string, DraftRegistration>>(new Map());
   const recoveryDecisionsRef = useRef<Map<string, 'restore' | 'discard'>>(new Map());
@@ -154,14 +185,16 @@ export function DraftManagerProvider({ children }: { children: React.ReactNode }
       const normalizedPatch = Object.fromEntries(
         Object.entries(patch).filter(([, value]) => value !== undefined)
       ) as Partial<DraftState>;
+      const next: DraftState = {
+        ...current,
+        ...normalizedPatch,
+        key,
+        label: normalizedPatch.label ?? current.label ?? humanizeDraftKey(key)
+      };
+      if (draftStateEqual(current, next)) return prev;
       return {
         ...prev,
-        [key]: {
-          ...current,
-          ...normalizedPatch,
-          key,
-          label: normalizedPatch.label ?? current.label ?? humanizeDraftKey(key)
-        }
+        [key]: next
       };
     });
   }, []);

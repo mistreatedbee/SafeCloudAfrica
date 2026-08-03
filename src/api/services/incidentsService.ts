@@ -20,6 +20,98 @@ export type ListIncidentsWithFiltersInput = ListIncidentsInput & {
   to?: string;
 };
 
+export type ListIncidentsPageInput = ListIncidentsWithFiltersInput & {
+  /** Zero-based row offset for pagination. */
+  offset?: number;
+  /** Restrict to incidents created by this user (server-side employee scoping). */
+  createdByUserId?: UUID;
+};
+
+export type IncidentsPage = {
+  items: Incident[];
+  /** Total rows matching the filters, independent of the current page's limit/offset. */
+  total: number;
+};
+
+function applyIncidentFilters(q: any, input: ListIncidentsPageInput): any {
+  let next = q;
+  if (input.status) next = next.eq('status', input.status);
+  if (input.severity) next = next.eq('severity', input.severity);
+  if (input.category) next = next.eq('category', input.category);
+  if (input.createdByUserId) next = next.eq('created_by_user_id', input.createdByUserId);
+  if (input.from) next = next.gte('occurred_at', input.from);
+  if (input.to) next = next.lte('occurred_at', input.to);
+  if (input.search?.trim()) {
+    const term = input.search.trim();
+    next = next.or(`title.ilike.%${term}%,category.ilike.%${term}%,subcategory.ilike.%${term}%`);
+  }
+  return next;
+}
+
+/**
+ * Real, server-side offset pagination for the incidents list, with an exact
+ * total count independent of the page size. Replaces the previous pattern of
+ * fetching a single hard-capped page (`.limit(100)`, no way to reach older
+ * records) used by IncidentsPage.
+ */
+export async function listIncidentsPage(input: ListIncidentsPageInput): Promise<IncidentsPage> {
+  return withInsforgeSession('incidents:list-page', async () => {
+    const limit = input.limit ?? 25;
+    const offset = Math.max(0, input.offset ?? 0);
+    let q = insforge.database
+      .from('incidents')
+      .select('*', { count: 'planned' })
+      .eq('company_id', input.companyId)
+      .order('created_at', { ascending: false });
+    q = applyIncidentFilters(q as any, input);
+    q = (q as any).range(offset, offset + limit - 1);
+
+    const { data, error, count } = await q;
+    if (error) throw new Error(getErrorMessage(error));
+    return { items: (data ?? []) as Incident[], total: count ?? 0 };
+  });
+}
+
+export type IncidentListStats = {
+  /** Total rows matching the filters (before status/category narrowing below). */
+  total: number;
+  open: number;
+  investigating: number;
+  nearMiss: number;
+};
+
+/**
+ * Lightweight aggregate counts for the incidents list's summary badges,
+ * computed with head-only count queries instead of loading every matching
+ * row into memory just to count it client-side.
+ */
+export async function getIncidentListStats(
+  input: Omit<ListIncidentsPageInput, 'limit' | 'offset'>
+): Promise<IncidentListStats> {
+  return withInsforgeSession('incidents:list-stats', async () => {
+    async function countWith(extra: (q: any) => any): Promise<number> {
+      let q = insforge.database
+        .from('incidents')
+        .select('*', { count: 'planned', head: true })
+        .eq('company_id', input.companyId);
+      q = applyIncidentFilters(q as any, input);
+      q = extra(q);
+      const { count, error } = await q;
+      if (error) throw new Error(getErrorMessage(error));
+      return count ?? 0;
+    }
+
+    const [total, open, investigating, nearMiss] = await Promise.all([
+      countWith((q) => q),
+      countWith((q) => q.eq('status', 'open')),
+      countWith((q) => q.eq('status', 'investigating')),
+      countWith((q) => q.eq('category', 'Near Miss'))
+    ]);
+
+    return { total, open, investigating, nearMiss };
+  });
+}
+
 export async function listIncidents(input: ListIncidentsInput): Promise<Incident[]> {
   return withInsforgeSession('incidents:list', async () => {
   // Sort by created_at (insert time), not occurred_at (a user-editable business
