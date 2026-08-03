@@ -1,6 +1,7 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangleIcon, RefreshCwIcon } from 'lucide-react';
 import { reportClientError } from '../utils/reportClientError';
+import { paaq } from '../lib/paaq';
 
 interface Props {
   children: ReactNode;
@@ -25,6 +26,10 @@ export class ErrorBoundary extends Component<Props, State> {
       module: 'ErrorBoundary',
       error,
       componentStack: errorInfo.componentStack
+    });
+    paaq.trackError(error, {
+      severity: 'fatal',
+      context: errorInfo.componentStack ? { componentStack: errorInfo.componentStack } : undefined
     });
   }
 

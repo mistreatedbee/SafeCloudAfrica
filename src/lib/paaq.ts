@@ -10,6 +10,16 @@ type EventPayload = {
   timestamp: string
 }
 
+type ErrorPayload = {
+  error_type: string
+  message: string
+  stack_trace?: string | null
+  screen?: string | null
+  severity?: 'fatal' | 'error' | 'warning' | 'info'
+  context?: Record<string, unknown> | null
+  session_id?: string | null
+}
+
 type PaaqConfig = {
   batchSize: number
   syncIntervalSeconds: number
@@ -72,6 +82,7 @@ async function init(sdkToken: string, projectKey: string): Promise<InitResult> {
       _sessionId = data.sessionId
       if (data.config) _config = data.config
       scheduleFlush()
+      installGlobalHandlers()
     }
     return data
   } catch (err) {
@@ -135,4 +146,55 @@ function scheduleFlush() {
   _flushTimer = setInterval(() => void flush(), _config.syncIntervalSeconds * 1000)
 }
 
-export const paaq = { init, identify, track, flush }
+async function sendError(payload: ErrorPayload): Promise<void> {
+  if (!_sdkToken) return
+  try {
+    await fetch(`${BASE_URL}/errors`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ ...payload, session_id: payload.session_id ?? _sessionId }),
+    })
+  } catch {
+    // fire-and-forget
+  }
+}
+
+function trackError(
+  error: unknown,
+  options: { severity?: ErrorPayload['severity']; screen?: string; context?: Record<string, unknown> } = {},
+): void {
+  const err = error instanceof Error ? error : new Error(String(error))
+  void sendError({
+    error_type: err.name || 'Error',
+    message: err.message,
+    stack_trace: err.stack ?? null,
+    screen: options.screen ?? window.location.pathname,
+    severity: options.severity ?? 'error',
+    context: options.context ?? null,
+  })
+}
+
+function installGlobalHandlers(): void {
+  window.addEventListener('error', (event) => {
+    void sendError({
+      error_type: event.error?.name ?? 'UncaughtError',
+      message: event.message || String(event.error),
+      stack_trace: event.error?.stack ?? null,
+      screen: window.location.pathname,
+      severity: 'error',
+    })
+  })
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason
+    const err = reason instanceof Error ? reason : new Error(String(reason))
+    void sendError({
+      error_type: err.name || 'UnhandledRejection',
+      message: err.message,
+      stack_trace: err.stack ?? null,
+      screen: window.location.pathname,
+      severity: 'error',
+    })
+  })
+}
+
+export const paaq = { init, identify, track, flush, trackError }
