@@ -143,6 +143,8 @@ import { DraftExperience } from './session/DraftExperience';
 import { IdentityProvider } from './hooks/useIdentity';
 import { FloatingSupportChat } from './components/support/FloatingSupportChat';
 import { PaaqActivityTracker } from './components/analytics/PaaqActivityTracker';
+// PAAQ-INVESTIGATE: Step 1 — add CheckoutFunnelTracker to instrument page-load, form-display, and card-entry phases on /checkout
+// PAAQ-INVESTIGATE: Step 3 — review platform-conditional logic below (web vs Android routing split) once checkout route is located
 import { ToastProvider } from './components/ui/ToastProvider';
 export function App() {
   return (
@@ -153,6 +155,7 @@ export function App() {
             <ToastProvider>
               <AuthSessionListener />
               <PaaqActivityTracker />
+              {/* PAAQ-INVESTIGATE Step 1: Instrument /checkout funnel phases (page-load → form-display → card-entry) here or in CheckoutPage to distinguish abandonment stage */}
               <DraftExperience />
               <Routes>
           {/* Public */}
@@ -214,6 +217,7 @@ export function App() {
           <Route path="/invite/accept" element={<InviteAcceptPage />} />
           <Route path="/invite/:inviteId" element={<InviteAcceptPage />} />
           <Route path="/accept-invite" element={<InviteAcceptPage />} />
+          {/* PAAQ-INVESTIGATE Step 2: RequireSignedIn and RequireActiveSubscription redirect logic may fire mid-session on web but not Android — audit both guards for race conditions or premature redirects */}
 
           {/* Super Admin (platform-wide) */}
           <Route
