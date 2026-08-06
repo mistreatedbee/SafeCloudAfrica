@@ -11,17 +11,29 @@ import { paaq } from '../../lib/paaq';
 // from here) — this component now only handles identifying the signed-in
 // user, which the SDK still has no way to know on its own.
 export function PaaqActivityTracker() {
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
   const identifiedUserId = useRef<string | null>(null);
+  const loggedMount = useRef(false);
+
+  // Real, verbose diagnostic logging — temporary, to answer definitively
+  // whether this component ever sees a signed-in user at all, instead of
+  // guessing from PAAQ's own database (which can only ever show that
+  // identify() was or wasn't called, never why).
+  if (!loggedMount.current) {
+    loggedMount.current = true;
+    console.log('[paaq-tracker] mounted');
+  }
 
   useEffect(() => {
+    console.log('[paaq-tracker] auth state', { isLoaded, hasUser: !!user, userId: user?.id, email: user?.email });
     const externalUserId = user?.id as string | undefined;
     const email = user?.email as string | undefined;
     if (externalUserId && identifiedUserId.current !== externalUserId) {
       identifiedUserId.current = externalUserId;
+      console.log('[paaq-tracker] calling paaq.identify()', externalUserId);
       void paaq.identify(externalUserId, email ? { email } : {});
     }
-  }, [user?.id, user?.email]);
+  }, [user, user?.id, user?.email, isLoaded]);
 
   return null;
 }
