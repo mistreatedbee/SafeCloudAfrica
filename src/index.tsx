@@ -5,6 +5,7 @@ import { App } from './App';
 import { insforge, insforgeReady } from './api/insforge/client';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { paaq } from './lib/paaq';
+import { SDK_VERSION_STRING } from '@paaq/web-sdk';
 
 const PAAQ_SDK_TOKEN = import.meta.env.VITE_PAAQ_SDK_TOKEN;
 const PAAQ_PROJECT_KEY = import.meta.env.VITE_PAAQ_PROJECT_KEY;
@@ -12,7 +13,10 @@ const PAAQ_PROJECT_KEY = import.meta.env.VITE_PAAQ_PROJECT_KEY;
 if (PAAQ_SDK_TOKEN && PAAQ_PROJECT_KEY) {
   paaq.init(PAAQ_SDK_TOKEN, PAAQ_PROJECT_KEY).then((result) => {
     if (result.ok) {
-      paaq.track('sdk_connected', { source: 'safe_cloud_africa', sdkVersion: '1.1.0' });
+      // Was hardcoded '1.1.0' and never updated across every SDK bump since —
+      // made "is this session actually running the new build" impossible to
+      // verify from PAAQ's own dashboard. Now the real installed version.
+      paaq.track('sdk_connected', { source: 'safe_cloud_africa', sdkVersion: SDK_VERSION_STRING });
       console.log('[PAAQ] Connected — session:', result.sessionId);
     } else {
       console.warn('[PAAQ] Init failed:', result.error);
