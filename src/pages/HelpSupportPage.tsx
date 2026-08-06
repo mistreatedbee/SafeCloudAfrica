@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { HelpCircleIcon, MessageSquareIcon, RefreshCwIcon } from 'lucide-react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../components/layout/Layout';
+import { paaq } from '../lib/paaq';
 import { useTenant } from '../tenant/TenantContext';
 import {
   canViewOrganisationSupportTickets,
@@ -39,6 +40,11 @@ export function HelpSupportPage() {
         : await listMySupportTickets(activeCompanyId, user.id, 100);
       setTickets(rows);
     } catch (err) {
+      // This is caught and shown as an inline message, not thrown or
+      // console.error'd — invisible to automatic error capture entirely.
+      // Report it explicitly so a real failure here shows up with session
+      // replay, same as an uncaught exception would.
+      paaq.trackError(err, { screen: '/support', context: { scope, activeCompanyId } });
       setError((err as Error)?.message ?? 'Failed to load support tickets.');
     } finally {
       setLoading(false);

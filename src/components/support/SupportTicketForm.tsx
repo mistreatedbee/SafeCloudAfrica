@@ -9,6 +9,7 @@ import {
   type SupportTicketPriority
 } from '../../api/services/supportService';
 import type { UUID } from '../../api/models/entities';
+import { paaq } from '../../lib/paaq';
 import { SupportAttachmentUploader } from './SupportAttachmentUploader';
 
 type Props = {
@@ -68,6 +69,10 @@ export function SupportTicketForm({
       setCategory('technical_issue');
       onCreated?.(ticket);
     } catch (err) {
+      // Caught and shown inline only, never thrown or console.error'd —
+      // invisible to automatic error capture. Report it explicitly so a
+      // real submission failure shows up with session replay.
+      paaq.trackError(err, { screen: '/support', context: { category, companyId } });
       setError((err as Error)?.message ?? 'Failed to create support ticket.');
     } finally {
       setSubmitting(false);
