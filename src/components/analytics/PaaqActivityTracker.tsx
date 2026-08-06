@@ -1,29 +1,25 @@
 import { useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
 import { useUser } from '@insforge/react';
 import { paaq } from '../../lib/paaq';
 
-// Fires a real page_view event on every route change, and identifies the
-// signed-in user (once) so subsequent events link to a real user record
-// instead of just an anonymous session.
+// @paaq/web-sdk already auto-tracks every route change itself (it patches
+// history.pushState/replaceState and listens for popstate — see
+// installAutoPageTracking in the SDK), so this component no longer needs to
+// fire page_view manually. Keeping a manual call here as well as before
+// would double-count every navigation as two separate page views on the
+// dashboard's page-by-page breakdown ($page_view from the SDK + page_view
+// from here) — this component now only handles identifying the signed-in
+// user, which the SDK still has no way to know on its own.
 export function PaaqActivityTracker() {
-  const location = useLocation();
   const { user } = useUser();
   const identifiedUserId = useRef<string | null>(null);
-
-  useEffect(() => {
-    paaq.track('page_view', {
-      path: location.pathname,
-      search: location.search || undefined,
-    });
-  }, [location.pathname, location.search]);
 
   useEffect(() => {
     const externalUserId = user?.id as string | undefined;
     const email = user?.email as string | undefined;
     if (externalUserId && identifiedUserId.current !== externalUserId) {
       identifiedUserId.current = externalUserId;
-      void paaq.identify(externalUserId, email);
+      void paaq.identify(externalUserId, email ? { email } : {});
     }
   }, [user?.id, user?.email]);
 

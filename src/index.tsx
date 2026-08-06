@@ -12,7 +12,7 @@ const PAAQ_PROJECT_KEY = import.meta.env.VITE_PAAQ_PROJECT_KEY;
 if (PAAQ_SDK_TOKEN && PAAQ_PROJECT_KEY) {
   paaq.init(PAAQ_SDK_TOKEN, PAAQ_PROJECT_KEY).then((result) => {
     if (result.ok) {
-      paaq.track('sdk_connected', { source: 'safe_cloud_africa', sdkVersion: '1.0.0' });
+      paaq.track('sdk_connected', { source: 'safe_cloud_africa', sdkVersion: '1.1.0' });
       console.log('[PAAQ] Connected — session:', result.sessionId);
     } else {
       console.warn('[PAAQ] Init failed:', result.error);
