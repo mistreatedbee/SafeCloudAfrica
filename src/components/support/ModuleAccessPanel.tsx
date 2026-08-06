@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ToggleLeftIcon } from 'lucide-react';
 import { processModuleAccessFromTicket, type SupportTicket } from '../../api/services/supportService';
+import { paaq } from '../../lib/paaq';
 import { ALL_MODULE_KEYS } from '../../api/services/orgModulesService';
 import { SELLABLE_FEATURE_LABELS, SELLABLE_FEATURES_ORDER } from '../../api/services/sellableFeaturesService';
 import type { UUID } from '../../api/models/entities';
@@ -39,6 +40,7 @@ export function ModuleAccessPanel({ ticket, actorUserId, actorName, onProcessed 
       });
       onProcessed();
     } catch (err) {
+      paaq.trackError(err);
       setError((err as Error)?.message ?? 'Failed to process module request.');
     } finally {
       setSaving(false);

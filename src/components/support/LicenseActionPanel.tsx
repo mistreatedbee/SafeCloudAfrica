@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CreditCardIcon } from 'lucide-react';
 import { processLicenseRenewalFromTicket, type SupportTicket } from '../../api/services/supportService';
+import { paaq } from '../../lib/paaq';
 import type { UUID } from '../../api/models/entities';
 
 type Props = {
@@ -38,6 +39,7 @@ export function LicenseActionPanel({ ticket, actorUserId, actorName, onProcessed
       });
       onProcessed();
     } catch (err) {
+      paaq.trackError(err);
       setError((err as Error)?.message ?? 'Failed to process license.');
     } finally {
       setSaving(false);

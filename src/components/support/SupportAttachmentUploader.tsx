@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PaperclipIcon, UploadIcon } from 'lucide-react';
 import { uploadSupportAttachment, type SupportTicketAttachment } from '../../api/services/supportService';
+import { paaq } from '../../lib/paaq';
 import type { UUID } from '../../api/models/entities';
 
 type Props = {
@@ -31,6 +32,7 @@ export function SupportAttachmentUploader({ ticketId, companyId, messageId, user
       setFile(null);
       onUploaded?.(attachment);
     } catch (err) {
+      paaq.trackError(err);
       setError((err as Error)?.message ?? 'Upload failed.');
     } finally {
       setUploading(false);

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { BotIcon, CheckCircleIcon, MessageSquareIcon, SendIcon } from 'lucide-react';
+import { paaq } from '../../lib/paaq';
 import {
   createSupportTicketFromAssistant,
   type SupportTicket,
@@ -110,6 +111,7 @@ export function SupportAssistant({ companyId, companyName, userId, userName, use
       setCreatedTicket(ticket);
       onCreated?.(ticket);
     } catch (err) {
+      paaq.trackError(err);
       setError((err as Error)?.message ?? 'Failed to create support ticket.');
     } finally {
       setSubmitting(false);

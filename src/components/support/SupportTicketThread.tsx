@@ -9,6 +9,7 @@ import {
   type SupportTicketWithThread
 } from '../../api/services/supportService';
 import type { UUID } from '../../api/models/entities';
+import { paaq } from '../../lib/paaq';
 import { SupportAttachmentUploader } from './SupportAttachmentUploader';
 
 type Props = {
@@ -46,6 +47,7 @@ export function SupportTicketThread({ thread, currentUser, canAddInternalNote = 
       setReply('');
       onChanged();
     } catch (err) {
+      paaq.trackError(err);
       setError((err as Error)?.message ?? 'Failed to send reply.');
     } finally {
       setSubmitting(false);
@@ -69,6 +71,7 @@ export function SupportTicketThread({ thread, currentUser, canAddInternalNote = 
       setNote('');
       onChanged();
     } catch (err) {
+      paaq.trackError(err);
       setError((err as Error)?.message ?? 'Failed to add note.');
     } finally {
       setSubmitting(false);
