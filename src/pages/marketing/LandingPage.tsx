@@ -20,8 +20,7 @@ import {
   ChevronDownIcon,
   AwardIcon,
   ServerIcon,
-  MessageCircleIcon,
-  CreditCardIcon
+  MessageCircleIcon
 } from 'lucide-react';
 import { MarketingFooter } from '../../components/marketing/MarketingFooter';
 
@@ -668,14 +667,12 @@ export function LandingPage() {
         className="bg-white border-t border-surface-200"
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14">
-          <h2 className="text-2xl font-bold text-navy">Simple, transparent licensing</h2>
+          <h2 className="text-2xl font-bold text-navy">Pricing</h2>
           <p className="text-sm text-charcoal-500 mt-2 max-w-3xl">
-            Choose a plan that fits your team size. All prices in South African Rands (R) per month. 
-            <span className="block mt-1 font-medium text-teal">HR Module included free in all plans!</span>
+            Simple, transparent licensing for South African businesses. All prices in South African Rands (R) per month.
           </p>
 
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Base */}
+          <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -685,75 +682,42 @@ export function LandingPage() {
               className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
             >
               <div className="flex items-center justify-between">
-                <p className="text-lg font-bold text-charcoal">Base</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">1–5 users</span>
+                <p className="text-lg font-bold text-charcoal">Starter</p>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">1–15 employees</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R4,000<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
-              <p className="mt-1 text-xs text-charcoal-500">Ideal for small businesses or teams just getting started.</p>
+              <p className="mt-2 text-3xl font-bold text-navy">R650<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-1 text-xs text-charcoal-500">Ideal for small businesses and growing teams.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Up to 5 users</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />All core modules</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />HR Module included free</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Core platform access</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Document and task workflows</li>
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Email support</li>
               </ul>
               <Link
                 to="/register"
                 className="mt-4 inline-block text-sm font-medium text-teal hover:underline underline-offset-2"
               >
-                Choose Base plan
+                Choose Starter plan
               </Link>
             </motion.div>
 
-            {/* Growth */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: 0.2 }}
               whileHover={{ y: -5 }}
-              className="bg-surface-50 rounded-2xl border-2 border-teal shadow-card p-6 relative"
-            >
-              <div className="absolute top-0 right-0 bg-teal text-white px-3 py-1 rounded-bl-lg rounded-tr-lg text-xs font-semibold">Most popular</div>
-              <div className="flex items-center justify-between">
-                <p className="text-lg font-bold text-charcoal">Growth</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">6–20 users</span>
-              </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R6,500<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
-              <p className="mt-1 text-xs text-charcoal-500">For companies scaling up their operations and team.</p>
-              <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Up to 20 users</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />All core modules</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />HR Module included free</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Priority support</li>
-              </ul>
-              <Link
-                to="/register"
-                className="mt-4 inline-block text-sm font-medium text-teal hover:underline underline-offset-2"
-              >
-                Choose Growth plan
-              </Link>
-            </motion.div>
-
-            {/* Professional */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.3 }}
-              whileHover={{ y: -5 }}
               className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
             >
               <div className="flex items-center justify-between">
                 <p className="text-lg font-bold text-charcoal">Professional</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">21–50 users</span>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">16–40 employees</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R7,500<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
-              <p className="mt-1 text-xs text-charcoal-500">Designed for medium-sized enterprises with multiple departments.</p>
+              <p className="mt-2 text-3xl font-bold text-navy">R950<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-1 text-xs text-charcoal-500">Built for medium-sized operations with multiple departments.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Up to 50 users</li>
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />All core modules</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />HR Module included free</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Advanced analytics</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Advanced reporting</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Priority support</li>
               </ul>
               <Link
                 to="/register"
@@ -763,7 +727,34 @@ export function LandingPage() {
               </Link>
             </motion.div>
 
-            {/* Enterprise */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.3 }}
+              whileHover={{ y: -5 }}
+              className="bg-surface-50 rounded-2xl border-2 border-teal shadow-card p-6 relative"
+            >
+              <div className="absolute top-0 right-0 bg-teal text-white px-3 py-1 rounded-bl-lg rounded-tr-lg text-xs font-semibold">Most popular</div>
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-bold text-charcoal">Business</p>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">41–100 employees</span>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-navy">R1,799<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-1 text-xs text-charcoal-500">Designed for scaling organisations with broader oversight needs.</p>
+              <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Expanded operational controls</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Cross-team compliance visibility</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Enhanced support</li>
+              </ul>
+              <Link
+                to="/register"
+                className="mt-4 inline-block text-sm font-medium text-teal hover:underline underline-offset-2"
+              >
+                Choose Business plan
+              </Link>
+            </motion.div>
+
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -774,26 +765,78 @@ export function LandingPage() {
             >
               <div className="flex items-center justify-between">
                 <p className="text-lg font-bold text-charcoal">Enterprise</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">50+ users</span>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">101–250 employees</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">Custom</p>
-              <p className="mt-1 text-xs text-charcoal-500">Custom configuration for large organisations with complex needs.</p>
+              <p className="mt-2 text-3xl font-bold text-navy">R3,200<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-1 text-xs text-charcoal-500">For large organisations that need deeper safety oversight and support.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Unlimited users</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />All modules + custom</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Dedicated support</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Onboarding & training</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Full platform access</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Dedicated support coverage</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Free SHEQ Support</li>
+              </ul>
+              <Link
+                to="/register"
+                className="mt-4 inline-block text-sm font-medium text-teal hover:underline underline-offset-2"
+              >
+                Choose Enterprise plan
+              </Link>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.5 }}
+              whileHover={{ y: -5 }}
+              className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-bold text-charcoal">Cooperate</p>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">251+ employees</span>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-navy">R4,200+<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-1 text-xs text-charcoal-500">For enterprise and multi-site organisations with complex requirements.</p>
+              <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Enterprise-grade controls</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Multi-site oversight</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Free SHEQ Support</li>
               </ul>
               <a
-                href="mailto:support@safecloud.africa?subject=Enterprise%20sales%20inquiry"
+                href="mailto:support@safecloud.africa?subject=Cooperate%20plan%20inquiry"
                 className="mt-4 inline-flex text-sm font-medium text-teal hover:underline underline-offset-2"
               >
                 Contact sales
               </a>
             </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.6 }}
+              whileHover={{ y: -5 }}
+              className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-bold text-charcoal">Custom</p>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">Any size</span>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-navy">Request a quote</p>
+              <p className="mt-1 text-xs text-charcoal-500">Bespoke configuration for organisations with unique requirements.</p>
+              <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Tailored modules</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Custom onboarding</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Dedicated support</li>
+              </ul>
+              <a
+                href="mailto:support@safecloud.africa?subject=Custom%20quote%20request"
+                className="mt-4 inline-flex text-sm font-medium text-teal hover:underline underline-offset-2"
+              >
+                Request a quote
+              </a>
+            </motion.div>
           </div>
 
-          {/* HR Module standalone */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -802,31 +845,30 @@ export function LandingPage() {
           >
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h3 className="font-bold text-charcoal">Need only HR Module?</h3>
-                <p className="text-sm text-charcoal-500">Employee management standalone – for 1–5 users</p>
+                <h3 className="font-bold text-charcoal">SHEQ Support (consulting)</h3>
+                <p className="text-sm text-charcoal-500">Risk assessment, investigations, audits, mentorship and more.</p>
               </div>
               <div className="flex flex-wrap items-center gap-4">
-                <span className="text-2xl font-bold text-navy">R3,000<span className="text-sm font-normal text-charcoal-500">/mo</span></span>
-                <Link
-                  to="/register?plan=hr"
+                <span className="text-2xl font-bold text-navy">R350<span className="text-sm font-normal text-charcoal-500">/hr</span></span>
+                <a
+                  href="mailto:support@safecloud.africa?subject=SHEQ%20Support%20inquiry"
                   className="text-sm font-medium text-teal hover:underline underline-offset-2"
                 >
-                  Select HR-only plan
-                </Link>
+                  Request SHEQ Support
+                </a>
               </div>
             </div>
           </motion.div>
 
-          {/* Payment plans note */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="mt-6 flex items-center gap-3 text-sm text-charcoal-500"
-          >
-            <CreditCardIcon className="w-5 h-5 text-teal" />
-            <p>Flexible payment plans available: 3, 6, 9, or 12 months. Save with longer commitments.</p>
-          </motion.div>
+          <div className="mt-6 text-center">
+            <button
+              type="button"
+              onClick={() => window.alert('More pricing details available on request. Please contact sales for the full package breakdown.')}
+              className="inline-flex items-center justify-center rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-charcoal hover:border-teal hover:text-teal transition-colors"
+            >
+              Show more
+            </button>
+          </div>
 
           {/* CTA */}
           <motion.div
