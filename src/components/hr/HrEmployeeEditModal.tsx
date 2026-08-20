@@ -8,6 +8,8 @@ import { replaceHrEmployeeDependents, upsertHrEmployee, upsertHrEmployeeSensitiv
 import { useAsync } from '../../api/hooks/useAsync';
 import { listDepartments } from '../../api/services/departmentsService';
 import { listSites } from '../../api/services/sitesService';
+import { listJobDescriptions, syncTrainingRequirementsForEmployee } from '../../api/services/trainingService';
+import type { JobDescription } from '../../api/models/entities';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
@@ -61,6 +63,7 @@ export function HrEmployeeEditModal(props: Props) {
   const [email, setEmail] = useState(employee.email ?? '');
   const [phone, setPhone] = useState(employee.phone ?? '');
   const [jobTitle, setJobTitle] = useState(employee.job_title ?? '');
+  const [jobDescriptionId, setJobDescriptionId] = useState<string>(String(employee.job_description_id ?? ''));
   const [employmentStatus, setEmploymentStatus] = useState(employee.employment_status);
   const [employmentType, setEmploymentType] = useState(employee.employment_type ?? '');
   const [startDate, setStartDate] = useState(employee.start_date ?? '');
@@ -112,6 +115,7 @@ export function HrEmployeeEditModal(props: Props) {
 
   const { data: departments } = useAsync<Department[]>(async () => listDepartments(props.companyId), [props.companyId]);
   const { data: sites } = useAsync<Site[]>(async () => listSites(props.companyId), [props.companyId]);
+  const { data: jobDescriptions } = useAsync<JobDescription[]>(async () => listJobDescriptions(props.companyId), [props.companyId]);
 
   const canSubmit = useMemo(() => {
     return (
@@ -353,6 +357,7 @@ export function HrEmployeeEditModal(props: Props) {
         email: email.trim(),
         phone: phone.trim() || null,
         job_title: jobTitle.trim() || null,
+        job_description_id: jobDescriptionId ? (jobDescriptionId as any) : null,
         employment_status: employmentStatus,
         employment_type: employmentType.trim() || employee.employment_type,
         start_date: startDate.trim(),
@@ -367,6 +372,21 @@ export function HrEmployeeEditModal(props: Props) {
         emergency_contact_name: props.canViewRestrictedFields ? (emergencyContactName.trim() || null) : employee.emergency_contact_name,
         emergency_contact_phone: props.canViewRestrictedFields ? (emergencyContactPhone.trim() || null) : employee.emergency_contact_phone
       });
+
+      // Auto-assign any Training Matrix requirements for the newly-set job description.
+      // Safe to call even when unchanged -- it only creates records for courses that
+      // aren't already required/scheduled/completed for this employee.
+      if (jobDescriptionId && jobDescriptionId !== String(employee.job_description_id ?? '')) {
+        try {
+          await syncTrainingRequirementsForEmployee({
+            employeeId: employee.id,
+            companyId: props.companyId,
+            createdByUserId: props.actorUserId
+          });
+        } catch {
+          // best-effort; don't block the employee save on training sync failures
+        }
+      }
 
       if (props.canAccessSensitiveFields) {
         await upsertHrEmployeeSensitiveDetails({
@@ -523,6 +543,22 @@ export function HrEmployeeEditModal(props: Props) {
                 onChange={(e) => setJobTitle(e.target.value)}
                 className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Job description (Training Matrix)</label>
+              <select
+                value={jobDescriptionId}
+                onChange={(e) => setJobDescriptionId(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              >
+                <option value="">Not linked</option>
+                {(jobDescriptions ?? []).map((jd) => (
+                  <option key={jd.id} value={jd.id}>
+                    {jd.title}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-charcoal-400 mt-1">Links this employee to the Training Matrix so required courses are auto-assigned.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Employment type</label>

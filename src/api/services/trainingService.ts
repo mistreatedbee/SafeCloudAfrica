@@ -825,6 +825,58 @@ export async function syncTrainingRequirementsForUser(userId: UUID, companyId: U
   return created;
 }
 
+/**
+ * Employee-level equivalent of syncTrainingRequirementsForUser(), for HR employees
+ * without a platform login (user_profiles.job_description_id doesn't apply to them).
+ * Reads hr_employees.job_description_id instead and creates training_records linked
+ * via employee_id. Call this after saving an employee's job description assignment.
+ */
+export async function syncTrainingRequirementsForEmployee(input: {
+  employeeId: UUID;
+  companyId: UUID;
+  createdByUserId: UUID;
+}): Promise<number> {
+  const { data: employee } = await insforge.database
+    .from('hr_employees')
+    .select('job_description_id')
+    .eq('company_id', input.companyId)
+    .eq('id', input.employeeId)
+    .maybeSingle();
+  const jobDescriptionId = (employee as { job_description_id: UUID | null } | null)?.job_description_id ?? null;
+  if (!jobDescriptionId) return 0;
+
+  const { data: requirements } = await insforge.database
+    .from('job_training_requirements')
+    .select('course_id')
+    .eq('company_id', input.companyId)
+    .eq('job_description_id', jobDescriptionId);
+  if (!requirements?.length) return 0;
+
+  const { data: existing } = await insforge.database
+    .from('training_records')
+    .select('course_id')
+    .eq('company_id', input.companyId)
+    .eq('employee_id', input.employeeId)
+    .in('status', ['REQUIRED', 'SCHEDULED', 'COMPLETED']);
+  const existingCourseIds = new Set((existing ?? []).map((r: { course_id: UUID }) => r.course_id));
+
+  let created = 0;
+  for (const r of requirements as { course_id: UUID }[]) {
+    if (existingCourseIds.has(r.course_id)) continue;
+    await insforge.database.from('training_records').insert({
+      company_id: input.companyId,
+      employee_id: input.employeeId,
+      course_id: r.course_id,
+      job_description_id: jobDescriptionId,
+      status: 'REQUIRED',
+      created_by_user_id: input.createdByUserId
+    });
+    created++;
+    existingCourseIds.add(r.course_id);
+  }
+  return created;
+}
+
 // ---------------------------------------------------------------------------
 // Report aggregates (cost, outstanding, expiring)
 // ---------------------------------------------------------------------------

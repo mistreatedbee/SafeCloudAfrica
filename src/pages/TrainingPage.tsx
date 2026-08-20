@@ -165,47 +165,48 @@ export function TrainingPage() {
     });
   }, [all, courseById, employeeById, searchQuery]);
 
+  // Grouped by HR employee job title (falling back to platform-user role for any
+  // legacy record that's only ever been linked via user_id, and "Unassigned" when
+  // neither resolves) rather than purely by company_memberships role, since most real
+  // trainees are HR employees with no platform login/membership row at all.
   const matrix = useMemo(() => {
-    const members = memberships ?? [];
-    const byRole = new Map<string, UUID[]>();
-    for (const m of members) {
-      const key = String(m.role);
-      const arr = byRole.get(key) ?? [];
-      arr.push(m.user_id);
-      byRole.set(key, arr);
-    }
     const nowMs = Date.now();
-    const recordsByUser = new Map<string, TrainingRecord[]>();
+    type GroupAgg = { members: Set<string>; total: number; expired: number; expiring: number };
+    const byGroup = new Map<string, GroupAgg>();
+
+    const groupLabelForRecord = (r: TrainingRecord): string => {
+      const emp = r.employee_id ? employeeById.get(r.employee_id) : null;
+      if (emp) return emp.job_title?.trim() || 'No job title';
+      if (r.user_id) {
+        const role = (memberships ?? []).find((m) => m.user_id === r.user_id)?.role;
+        if (role) return `Role: ${role}`;
+      }
+      return 'Unassigned';
+    };
+
     for (const r of all) {
-      const k = String(r.user_id);
-      const arr = recordsByUser.get(k) ?? [];
-      arr.push(r);
-      recordsByUser.set(k, arr);
-    }
-    const rows = Array.from(byRole.entries()).map(([role, userIds]) => {
-      let expired = 0;
-      let expiring = 0;
-      let total = 0;
-      for (const uid of userIds) {
-        const recs = recordsByUser.get(String(uid)) ?? [];
-        for (const r of recs) {
-          total += 1;
-          if (r.expires_at) {
-            const t = new Date(r.expires_at).getTime();
-            if (Number.isFinite(t)) {
-              if (t < nowMs) expired += 1;
-              else if (t < nowMs + 1000 * 60 * 60 * 24 * 30) expiring += 1;
-            }
-          }
+      const label = groupLabelForRecord(r);
+      const agg = byGroup.get(label) ?? { members: new Set<string>(), total: 0, expired: 0, expiring: 0 };
+      agg.members.add(String(r.employee_id ?? r.user_id ?? r.id));
+      agg.total += 1;
+      if (r.expires_at) {
+        const t = new Date(r.expires_at).getTime();
+        if (Number.isFinite(t)) {
+          if (t < nowMs) agg.expired += 1;
+          else if (t < nowMs + 1000 * 60 * 60 * 24 * 30) agg.expiring += 1;
         }
       }
-      const valid = total - expired;
-      const compliancePct = total === 0 ? 0 : Math.round((valid / total) * 100);
-      return { role, users: userIds.length, total, expired, expiring, compliancePct };
+      byGroup.set(label, agg);
+    }
+
+    const rows = Array.from(byGroup.entries()).map(([role, agg]) => {
+      const valid = agg.total - agg.expired;
+      const compliancePct = agg.total === 0 ? 0 : Math.round((valid / agg.total) * 100);
+      return { role, users: agg.members.size, total: agg.total, expired: agg.expired, expiring: agg.expiring, compliancePct };
     });
     rows.sort((a, b) => b.users - a.users);
     return rows;
-  }, [all, memberships]);
+  }, [all, employeeById, memberships]);
 
   const tabs: { id: TrainingTab; label: string; icon: React.ComponentType<{ className?: string }>; show: boolean }[] = [
     { id: 'matrix', label: 'Matrix Setup', icon: SettingsIcon, show: canManageMatrix },
@@ -293,14 +294,14 @@ export function TrainingPage() {
             <div className="px-5 py-4 border-b border-surface-200 flex items-center justify-between">
               <h3 className="font-semibold text-charcoal flex items-center gap-2">
                 <GraduationCapIcon className="w-5 h-5 text-teal" />
-                Training Matrix by Role
+                Training Compliance by Job Title
               </h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-surface-50">
                   <tr>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Role</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Job Title</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Users</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Records</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Expiring</th>

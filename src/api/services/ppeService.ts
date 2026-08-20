@@ -313,67 +313,58 @@ export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIss
     }
   }
 
-  const { data, error } = await insforge.database
-    .from('ppe_issues')
-    .insert({
-      company_id: input.companyId,
-      ppe_item_id: input.ppeItemId,
-      issued_to_user_id: input.issuedToUserId ?? null,
-      issued_to_employee_id: input.issuedToEmployeeId ?? null,
-      issued_to_name: input.issuedToUserId || input.issuedToEmployeeId ? null : (input.issuedToName ?? null),
-      issued_by_user_id: input.issuedByUserId,
-      issued_at: issuedAt,
-      next_issue_at: input.nextIssueAt ?? null,
-      return_due_at: input.returnDueAt ?? null,
-      notes: input.notes ?? null,
-      site_id: input.siteId ?? null,
-      department_id: input.departmentId ?? null,
-      issue_date: issueDate,
-      issued_to_employee_number: input.issuedToEmployeeNumber ?? null,
-      job_role: input.jobRole ?? null,
-      job_description: input.jobDescription ?? null,
-      ppe_item_name: ppeItemName,
-      ppe_category: ppeCategory,
-      size: input.size ?? null,
-      quantity_issued: quantity,
-      reason_for_issue: input.reasonForIssue ?? null,
-      issued_by_name: issuedByName,
-      issued_by_role: issuedByRole,
-      unit_cost_at_issue: unitCost,
-      total_cost_at_issue: totalCostAtIssue
-    })
-    .select('*')
-    .single();
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to issue PPE.');
-  const issue = data as PPEIssue;
+  const issuePayload = {
+    company_id: input.companyId,
+    ppe_item_id: input.ppeItemId,
+    issued_to_user_id: input.issuedToUserId ?? null,
+    issued_to_employee_id: input.issuedToEmployeeId ?? null,
+    issued_to_name: input.issuedToUserId || input.issuedToEmployeeId ? null : (input.issuedToName ?? null),
+    issued_by_user_id: input.issuedByUserId,
+    issued_at: issuedAt,
+    next_issue_at: input.nextIssueAt ?? null,
+    return_due_at: input.returnDueAt ?? null,
+    notes: input.notes ?? null,
+    site_id: input.siteId ?? null,
+    department_id: input.departmentId ?? null,
+    issue_date: issueDate,
+    issued_to_employee_number: input.issuedToEmployeeNumber ?? null,
+    job_role: input.jobRole ?? null,
+    job_description: input.jobDescription ?? null,
+    ppe_item_name: ppeItemName,
+    ppe_category: ppeCategory,
+    size: input.size ?? null,
+    quantity_issued: quantity,
+    reason_for_issue: input.reasonForIssue ?? null,
+    issued_by_name: issuedByName,
+    issued_by_role: issuedByRole,
+    unit_cost_at_issue: unitCost,
+    total_cost_at_issue: totalCostAtIssue
+  };
 
-  if (input.stockId) {
-    try {
-      await createPpeStockMovement({
-        companyId: input.companyId,
-        stockId: input.stockId,
-        movementType: 'out',
-        quantity,
-        referenceId: issue.id,
-        ppeIssueId: issue.id,
-        actorUserId: input.issuedByUserId,
-        allowNegativeStock: input.adminOverrideInsufficientStock
-      });
-    } catch (movErr) {
-      // The issue row above already exists at this point. InsForge's REST layer has no
-      // multi-statement transaction we can wrap both writes in, so on ANY inventory-write
-      // failure (not just insufficient stock) we compensate by deleting the just-created
-      // issue rather than silently leaving a "successful" issue with no inventory effect
-      // and no movement record explaining the discrepancy (see PPE stock transaction safety).
-      try {
-        await insforge.database.from('ppe_issues').delete().eq('company_id', input.companyId).eq('id', issue.id);
-      } catch {
-        // best-effort compensation; the original error below is still the one that matters
-      }
-      throw movErr;
+  // Inserts the ppe_issues row and (when a stock record is resolved) decrements
+  // ppe_stock + records the movement in one Postgres transaction (see
+  // ppe_issue_and_decrement_stock in
+  // docs/migrations/ppe_issue_atomic_rpc_2026_08_21.sql) -- the issue and its stock
+  // effect can no longer exist independently of each other.
+  const { data: rpcRows, error: rpcError } = await insforge.database.rpc('ppe_issue_and_decrement_stock', {
+    p_issue: issuePayload,
+    p_stock_id: input.stockId ?? null,
+    p_quantity: input.stockId ? quantity : null,
+    p_allow_negative_stock: input.adminOverrideInsufficientStock ?? false
+  });
+  if (rpcError) {
+    const message = getErrorMessage(rpcError);
+    if (/insufficient stock/i.test(message)) {
+      const e = new Error(message) as Error & { insufficientStock?: boolean; allowOverride?: boolean };
+      e.insufficientStock = true;
+      e.allowOverride = true;
+      throw e;
     }
+    throw new Error(message);
   }
+  const issueRow = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+  if (!issueRow) throw new Error('Failed to issue PPE.');
+  const issue = issueRow as PPEIssue;
 
   await createActivityLog({
     companyId: input.companyId,

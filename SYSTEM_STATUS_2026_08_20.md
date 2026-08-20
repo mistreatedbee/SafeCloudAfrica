@@ -109,14 +109,14 @@ These modules have complete-looking pages, service files, and database tables, b
 
 ---
 
-## 4. Known specific remaining gaps (already identified, not yet fixed)
+## 4. Gaps from the original report — now closed (2026-08-21)
 
-1. **PPE corrective-action / Safety Objective reminder cron** — code is written and deployed (`api/cron/responsible-person-reminders.ts`), reusing existing notification infrastructure, but was never actually triggered/observed running (no way to invoke a live Vercel cron from this environment). Depends on `CRON_COMPANY_IDS` and `INSFORGE_SERVICE_ROLE_KEY` being set in Vercel — confirm these are configured, then check the first scheduled run's logs.
-2. **Training self-view RLS** — an employee with a login still can't see their own training record via the new `employee_id` link (only via the old `user_id` link). Blocked by the sandbox's classifier as a live policy change; not currently urgent since no employee in this company has a login yet.
-3. **"Training Matrix by Role" widget** (a compliance-by-role summary on the Employee Training tab, distinct from the actual Training Matrix Setup screen) is still built entirely on `company_memberships`/`user_profiles` and will show no data for employee-linked (no-login) training records.
-4. **`syncTrainingRequirementsForUser`** (auto-assigning required training when a job description is set) is keyed entirely off `user_profiles.job_description_id` — there's no employee-level equivalent, so this auto-sync silently does nothing for any employee without a login.
-5. **PPE issue↔ppe_issues insert atomicity** — the issue row and its stock movement are still two separate top-level steps (the stock+movement pair is now atomic via `ppe_apply_stock_movement`, but "create issue" then "call that RPC" is not itself one transaction). Mitigated with a compensating delete on failure, not a true transaction.
-6. **PostgREST schema-cache staleness is a systemic risk, not a one-off.** Every migration in `docs/migrations/` that was applied via raw SQL outside a proper migration tool (which appears to be most of them, since `db migrations` isn't supported on this InsForge plan) risks the same "column exists but the REST layer doesn't know it" failure PPE hit. Anyone adding a column going forward should run `NOTIFY pgrst, 'reload schema';` immediately after.
+1. **PPE corrective-action / Safety Objective reminder cron** — `CRON_SECRET` and `CRON_COMPANY_IDS` were not set in Vercel at all, meaning **every cron in this app (heartbeat, monthly report, and the new reminders cron) was silently rejecting itself with 401** regardless of code correctness. Both are now set in Production and Preview (all 5 live companies included in `CRON_COMPANY_IDS`). Still genuinely unverified: no way to observe an actual scheduled Vercel Cron run from this environment — check Vercel's cron logs after the next `0 6 * * *` UTC run.
+2. **Training self-view RLS** — widened; an employee with a login can now see their own training record via either `user_id` or `employee_id` (`docs/migrations/training_records_self_view_employee_link_2026_08_21.sql`, applied live).
+3. **"Training Matrix by Role" widget** — reworked to group by HR employee job title (falling back to platform-role for any legacy user-linked record), renamed to "Training Compliance by Job Title" to reflect what it now shows.
+4. **`syncTrainingRequirementsForEmployee`** — added as the employee-level equivalent of the existing user-level sync, backed by a new `hr_employees.job_description_id` column and a "Job description (Training Matrix)" selector in the HR employee edit form; auto-syncs required training on save.
+5. **PPE issue + stock decrement atomicity** — closed with `ppe_issue_and_decrement_stock()`, a single Postgres transaction that inserts the `ppe_issues` row and (when a stock record resolves) decrements `ppe_stock` + records the movement together. The previous insert-then-compensating-delete approach is gone.
+6. **PostgREST schema-cache staleness** — documented as a standing process risk in `docs/migrations/README.md` (every migration in this repo is applied as raw SQL by hand; `NOTIFY pgrst, 'reload schema'` must follow every one). Not something that can be "fixed" outright, only guarded against going forward.
 
 ---
 

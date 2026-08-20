@@ -19,6 +19,8 @@ export type HrEmployee = {
   date_of_birth: string | null;
   address: string | null;
   job_title: string | null;
+  /** Links to a Training Matrix job description (distinct from job_title, which is free text) so required training can be auto-assigned. */
+  job_description_id?: UUID | null;
   department_id: UUID | null;
   site_id: UUID | null;
   supervisor_user_id: UUID | null;
