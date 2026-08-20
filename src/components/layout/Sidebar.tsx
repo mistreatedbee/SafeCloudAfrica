@@ -355,10 +355,10 @@ export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapsed }: Sid
     return settingsItems.filter((item) => isRoleVisible(item.roles, activeRole));
   }, [activeRole]);
 
-  const toggleGroup = (groupId: string) => {
+  const toggleGroup = (groupId: string, currentlyExpanded: boolean) => {
     setExpandedGroups((prev) => ({
       ...prev,
-      [groupId]: !(prev[groupId] ?? true)
+      [groupId]: !currentlyExpanded
     }));
   };
 
@@ -479,7 +479,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapsed }: Sid
               return (
                 <div key={group.id} className="rounded-lg border border-surface-200 bg-surface-50/60">
                   <button
-                    onClick={() => toggleGroup(group.id)}
+                    onClick={() => toggleGroup(group.id, expanded)}
                     className={`w-full flex items-center px-3 py-2 text-sm font-semibold text-charcoal-600 hover:bg-surface-100/80 rounded-lg ${isCollapsed ? 'justify-center' : 'gap-2'}`}
                     title={isCollapsed ? group.name : undefined}
                   >

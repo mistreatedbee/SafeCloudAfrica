@@ -67,6 +67,22 @@ function clearCsrfTokenCookie(): void {
   document.cookie = `${CSRF_TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax${secure}`;
 }
 
+/**
+ * Mirrors the SDK's own setCsrfToken() (see @insforge/sdk token-manager.ts). The CSRF
+ * token is rotated by the backend on every /api/auth/refresh response — if we don't
+ * re-persist it here, the *next* refresh call (proactive or reactive) resends the
+ * stale, already-invalidated token, gets rejected as invalid_session, and the user's
+ * session dies at the next access-token expiry even though the refresh token itself
+ * was still good. This was the root cause of sessions ending after ~15 minutes
+ * (the access token TTL) instead of lasting for the 7-day refresh token's lifetime.
+ */
+function setCsrfTokenCookie(token: string): void {
+  if (typeof document === 'undefined' || !token) return;
+  const maxAge = 7 * 24 * 60 * 60;
+  const secure = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${CSRF_TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Lax${secure}`;
+}
+
 function readCsrfTokenCookie(): string | null {
   if (typeof document === 'undefined') return null;
   const match = document.cookie.split(';').find((cookie) => cookie.trim().startsWith(`${CSRF_TOKEN_COOKIE}=`));
@@ -126,7 +142,7 @@ export function isInvalidSessionError(error: unknown): boolean {
   );
 }
 
-function parseRefreshPayload(payload: unknown): { accessToken: string | null; userId: string | null; user?: unknown } {
+function parseRefreshPayload(payload: unknown): { accessToken: string | null; userId: string | null; user?: unknown; csrfToken: string | null } {
   const accessToken =
     typeof (payload as any)?.accessToken === 'string' && (payload as any).accessToken.trim()
       ? (payload as any).accessToken
@@ -138,7 +154,13 @@ function parseRefreshPayload(payload: unknown): { accessToken: string | null; us
     typeof user?.id === 'string' && user.id.trim()
       ? user.id
       : decodeJwtSession(accessToken).sub;
-  return { accessToken, userId, user };
+  const csrfToken =
+    typeof (payload as any)?.csrfToken === 'string' && (payload as any).csrfToken.trim()
+      ? (payload as any).csrfToken
+      : typeof (payload as any)?.data?.csrfToken === 'string' && (payload as any).data.csrfToken.trim()
+        ? (payload as any).data.csrfToken
+        : null;
+  return { accessToken, userId, user, csrfToken };
 }
 
 export async function refreshSessionThroughProxy(input: {
@@ -175,6 +197,10 @@ export async function refreshSessionThroughProxy(input: {
     return { ok: false, reason: 'transient_failure', status: response.status, error: payload };
   }
   saveStoredSession(parsed.accessToken, parsed.user);
+  // The backend rotates the CSRF token on every refresh; persist the new one so the
+  // *next* refresh (proactive or reactive) doesn't send a stale, already-invalidated
+  // token and get rejected as invalid_session.
+  if (parsed.csrfToken) setCsrfTokenCookie(parsed.csrfToken);
   return { ok: true, accessToken: parsed.accessToken, userId: parsed.userId, user: parsed.user };
 }
 
