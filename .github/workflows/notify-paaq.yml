@@ -26,14 +26,19 @@ jobs:
 
       - name: Notify PAAQ
         if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          COMMIT_SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          STATUS=$([[ "${{ steps.build.outcome }}" == "success" ]] && echo "success" || echo "failed")
+          STATUS=$([[ "$BUILD_OUTCOME" == "success" ]] && echo "success" || echo "failed")
           PAYLOAD=$(jq -n \
-            --arg v "${{ github.sha }}" \
+            --arg v "$COMMIT_SHA" \
             --arg env "production" \
             --arg st "$STATUS" \
-            --arg by "${{ github.actor }}" \
-            --arg msg "${{ github.event.head_commit.message }}" \
+            --arg by "$ACTOR" \
+            --arg msg "$COMMIT_MESSAGE" \
             '{version:$v,environment:$env,status:$st,deployed_by:$by,message:$msg}')
           curl -s -X POST \
             "https://mookyonwpovxscsbqwwl.supabase.co/functions/v1/deployment-webhook?projectKey=proj_6u2h0ixg" \
