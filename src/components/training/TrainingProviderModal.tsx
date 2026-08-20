@@ -16,14 +16,18 @@ export function TrainingProviderModal(props: {
 }) {
   const [name, setName] = useState(props.initial?.name ?? '');
   const [providerType, setProviderType] = useState<'INTERNAL' | 'EXTERNAL'>(props.initial?.provider_type ?? 'EXTERNAL');
-  const [contactInfo, setContactInfo] = useState(props.initial?.contact_info ?? '');
+  const [contact, setContact] = useState(props.initial?.contact ?? '');
+  const [email, setEmail] = useState(props.initial?.email ?? '');
+  const [website, setWebsite] = useState(props.initial?.website ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   type TrainingProviderDraftPayload = {
     name: string;
     providerType: 'INTERNAL' | 'EXTERNAL';
-    contactInfo: string;
+    contact: string;
+    email: string;
+    website: string;
   };
 
   const { restoreDraft, clearDraft } = useDraftManager();
@@ -32,12 +36,14 @@ export function TrainingProviderModal(props: {
   const [baseline, setBaseline] = useState<TrainingProviderDraftPayload>(() => ({
     name: props.initial?.name ?? '',
     providerType: props.initial?.provider_type ?? 'EXTERNAL',
-    contactInfo: props.initial?.contact_info ?? ''
+    contact: props.initial?.contact ?? '',
+    email: props.initial?.email ?? '',
+    website: props.initial?.website ?? ''
   }));
 
   const hasDirtyDraft = useMemo(() => {
-    return JSON.stringify({ name, providerType, contactInfo }) !== JSON.stringify(baseline);
-  }, [baseline, contactInfo, name, providerType]);
+    return JSON.stringify({ name, providerType, contact, email, website }) !== JSON.stringify(baseline);
+  }, [baseline, contact, email, website, name, providerType]);
 
   useDraftRegistration({
     key: draftKey,
@@ -47,7 +53,9 @@ export function TrainingProviderModal(props: {
       ({
         name,
         providerType,
-        contactInfo
+        contact,
+        email,
+        website
       }) satisfies TrainingProviderDraftPayload
   });
 
@@ -58,7 +66,9 @@ export function TrainingProviderModal(props: {
 
     setName(restored.name ?? '');
     setProviderType(restored.providerType ?? 'EXTERNAL');
-    setContactInfo(restored.contactInfo ?? '');
+    setContact(restored.contact ?? '');
+    setEmail(restored.email ?? '');
+    setWebsite(restored.website ?? '');
     setBaseline(restored);
   }, [draftKey, props.open, restoreDraft]);
 
@@ -79,14 +89,18 @@ export function TrainingProviderModal(props: {
           providerId: props.initial.id,
           name: name.trim(),
           providerType,
-          contactInfo: contactInfo.trim() || null
+          contact: contact.trim() || null,
+          email: email.trim() || null,
+          website: website.trim() || null
         });
       } else {
         await createTrainingProvider({
           companyId: props.companyId,
           name: name.trim(),
           providerType,
-          contactInfo: contactInfo.trim() || null
+          contact: contact.trim() || null,
+          email: email.trim() || null,
+          website: website.trim() || null
         });
       }
       props.onSaved?.();
@@ -145,11 +159,30 @@ export function TrainingProviderModal(props: {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Contact info (optional)</label>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Contact (optional)</label>
             <input
-              value={contactInfo}
-              onChange={(e) => setContactInfo(e.target.value)}
-              placeholder="Email, phone, etc."
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
+              placeholder="e.g. 012 345 6789"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Email (optional)</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="info@provider.co.za"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Website (optional)</label>
+            <input
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="www.provider.co.za"
               className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
             />
           </div>

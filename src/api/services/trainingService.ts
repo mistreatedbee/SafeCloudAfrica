@@ -158,6 +158,7 @@ export async function deleteTrainingCourse(input: {
 
 export type ListTrainingRecordsInput = {
   userId?: UUID;
+  employeeId?: UUID;
   status?: TrainingRecordStatus | TrainingRecordStatus[];
   courseId?: UUID;
   jobDescriptionId?: UUID;
@@ -172,6 +173,7 @@ export async function listTrainingRecords(
 ): Promise<TrainingRecord[]> {
   let q = insforge.database.from('training_records').select('*').eq('company_id', companyId);
   if (input?.userId) q = q.eq('user_id', input.userId);
+  if (input?.employeeId) q = q.eq('employee_id', input.employeeId);
   if (input?.courseId) q = q.eq('course_id', input.courseId);
   if (input?.jobDescriptionId) q = q.eq('job_description_id', input.jobDescriptionId);
   if (input?.status) {
@@ -213,7 +215,10 @@ function requireCertForCompleted(
 
 export async function createTrainingRecord(input: {
   companyId: UUID;
-  userId: UUID;
+  /** Platform user, when the employee has a linked login. At least one of userId/employeeId is required. */
+  userId?: UUID | null;
+  /** HR employee -- preferred; works regardless of whether the employee has a login. */
+  employeeId?: UUID | null;
   courseId: UUID;
   jobDescriptionId?: UUID | null;
   providerId?: UUID | null;
@@ -229,10 +234,14 @@ export async function createTrainingRecord(input: {
 }): Promise<TrainingRecord> {
   const status = input.status ?? 'REQUIRED';
   requireCertForCompleted(status, input.completedAt, input.certificateBucket, input.certificateKey);
+  if (!input.userId && !input.employeeId) {
+    throw new Error('An employee must be selected before saving a training record.');
+  }
 
   const row = {
     company_id: input.companyId,
-    user_id: input.userId,
+    user_id: input.userId ?? null,
+    employee_id: input.employeeId ?? null,
     course_id: input.courseId,
     job_description_id: input.jobDescriptionId ?? null,
     provider_id: input.providerId ?? null,
@@ -606,11 +615,37 @@ export async function listTrainingProviders(companyId: UUID): Promise<TrainingPr
   return (data ?? []) as TrainingProvider[];
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeProviderEmail(email: string | null | undefined): string | null {
+  const trimmed = (email ?? '').trim();
+  if (!trimmed) return null;
+  if (!EMAIL_PATTERN.test(trimmed)) throw new Error('Enter a valid email address for the training provider.');
+  return trimmed;
+}
+
+/** Accepts "example.co.za" or "www.example.co.za" and normalizes to "https://example.co.za". */
+function normalizeProviderWebsite(website: string | null | undefined): string | null {
+  const trimmed = (website ?? '').trim();
+  if (!trimmed) return null;
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(withScheme);
+    if (!url.hostname.includes('.')) throw new Error('invalid');
+    return url.toString();
+  } catch {
+    throw new Error('Enter a valid website address for the training provider, e.g. example.co.za.');
+  }
+}
+
 export async function createTrainingProvider(input: {
   companyId: UUID;
   name: string;
   providerType: 'INTERNAL' | 'EXTERNAL';
   contactInfo?: string | null;
+  contact?: string | null;
+  email?: string | null;
+  website?: string | null;
 }): Promise<TrainingProvider> {
   const { data, error } = await insforge.database
     .from('training_providers')
@@ -618,7 +653,10 @@ export async function createTrainingProvider(input: {
       company_id: input.companyId,
       name: input.name,
       provider_type: input.providerType,
-      contact_info: input.contactInfo ?? null
+      contact_info: input.contactInfo ?? null,
+      contact: input.contact ?? null,
+      email: normalizeProviderEmail(input.email),
+      website: normalizeProviderWebsite(input.website)
     })
     .select('*')
     .single();
@@ -633,11 +671,17 @@ export async function updateTrainingProvider(input: {
   name?: string;
   providerType?: 'INTERNAL' | 'EXTERNAL';
   contactInfo?: string | null;
+  contact?: string | null;
+  email?: string | null;
+  website?: string | null;
 }): Promise<TrainingProvider> {
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.name !== undefined) payload.name = input.name;
   if (input.providerType !== undefined) payload.provider_type = input.providerType;
   if (input.contactInfo !== undefined) payload.contact_info = input.contactInfo;
+  if (input.contact !== undefined) payload.contact = input.contact;
+  if (input.email !== undefined) payload.email = normalizeProviderEmail(input.email);
+  if (input.website !== undefined) payload.website = normalizeProviderWebsite(input.website);
 
   const { data, error } = await insforge.database
     .from('training_providers')

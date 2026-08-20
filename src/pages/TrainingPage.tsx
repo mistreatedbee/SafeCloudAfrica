@@ -30,6 +30,7 @@ import { TrainingMatrixSetupTab } from '../components/training/TrainingMatrixSet
 import { TrainingReportsTab } from '../components/training/TrainingReportsTab';
 import { listCompanyMemberships } from '../api/services/tenantService';
 import { listUserProfiles } from '../api/services/profilesService';
+import { listHrEmployees, type HrEmployee } from '../api/services/hrService';
 import type { CompanyMembership } from '../api/models/entities';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../api/services/documentsStorageService';
 
@@ -92,11 +93,12 @@ export function TrainingPage() {
   const { data: records } = useAsync<TrainingRecord[]>(
     async () => {
       if (!activeCompanyId) return [];
-      const userId =
-        activeRole === 'employee' ? (user?.id ?? undefined) : selectedEmployeeId ? selectedEmployeeId : undefined;
+      const userId = activeRole === 'employee' ? (user?.id ?? undefined) : undefined;
+      const employeeId = activeRole === 'employee' ? undefined : selectedEmployeeId ? selectedEmployeeId : undefined;
       const status = statusFilter || undefined;
       return await listTrainingRecords(activeCompanyId, {
         userId,
+        employeeId: employeeId as any,
         status: status ? [status] : undefined,
         limit: 1000
       });
@@ -108,6 +110,12 @@ export function TrainingPage() {
     async () => (activeCompanyId ? listUserProfiles(activeCompanyId) : []),
     [activeCompanyId]
   );
+  const { data: employees } = useAsync<HrEmployee[]>(
+    async () => (activeCompanyId ? listHrEmployees(activeCompanyId) : []),
+    [activeCompanyId]
+  );
+  const employeeById = useMemo(() => new Map((employees ?? []).map((e) => [e.id, e])), [employees]);
+  const employeeName = (e: HrEmployee) => `${e.last_name ?? ''}, ${e.first_name ?? ''}`.replace(/^,\s*|,\s*$/g, '').trim() || e.email || e.employee_no;
   const { data: providers } = useAsync(
     async () => (activeCompanyId && canManage ? listTrainingProviders(activeCompanyId) : []),
     [activeCompanyId, canManage]
@@ -145,8 +153,17 @@ export function TrainingPage() {
       courseName: courseById.get(r.course_id)?.name ?? `Course ${String(r.course_id).slice(0, 8)}`
     }));
     if (!q) return list;
-    return list.filter((r) => r.courseName.toLowerCase().includes(q) || String(r.user_id).includes(q));
-  }, [all, courseById, searchQuery]);
+    return list.filter((r) => {
+      const emp = r.employee_id ? employeeById.get(r.employee_id) : null;
+      const empName = emp ? employeeName(emp).toLowerCase() : '';
+      return (
+        r.courseName.toLowerCase().includes(q) ||
+        empName.includes(q) ||
+        (emp?.employee_no ?? '').toLowerCase().includes(q) ||
+        String(r.user_id ?? '').includes(q)
+      );
+    });
+  }, [all, courseById, employeeById, searchQuery]);
 
   const matrix = useMemo(() => {
     const members = memberships ?? [];
@@ -390,9 +407,9 @@ export function TrainingPage() {
                   className="px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal min-w-[180px]"
                 >
                   <option value="">All employees</option>
-                  {(profiles ?? []).map((p) => (
-                    <option key={p.user_id} value={p.user_id}>
-                      {p.full_name || p.email || String(p.user_id).slice(0, 8)}
+                  {(employees ?? []).map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {employeeName(e)} — {e.employee_no}
                     </option>
                   ))}
                 </select>
@@ -449,7 +466,11 @@ export function TrainingPage() {
                 canManage && (r.status === 'REQUIRED' || r.status === 'SCHEDULED' || r.status === 'OVERDUE');
               const canDelete = canManage;
               const actionIsLoading = actionLoadingRecordId === r.id;
-              const userName = profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email || String(r.user_id).slice(0, 8);
+              const linkedEmployee = r.employee_id ? employeeById.get(r.employee_id) : null;
+              const userName =
+                (linkedEmployee && employeeName(linkedEmployee)) ||
+                (r.user_id && (profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email)) ||
+                (r.user_id ? String(r.user_id).slice(0, 8) : 'Unknown employee');
               const uploaderProfile = profileByUserId.get(r.created_by_user_id);
               const uploaderName =
                 uploaderProfile?.full_name || uploaderProfile?.email || String(r.created_by_user_id).slice(0, 8);

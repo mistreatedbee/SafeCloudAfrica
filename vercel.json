@@ -100,6 +100,10 @@
       "destination": "/api/cron/generate-monthly-report"
     },
     {
+      "source": "/api/cron/responsible-person-reminders",
+      "destination": "/api/cron/responsible-person-reminders"
+    },
+    {
       "source": "/api/health/insforge-db",
       "destination": "/api/health/insforge-db"
     },
@@ -141,6 +145,10 @@
     {
       "path": "/api/cron/generate-monthly-report",
       "schedule": "0 7 1 * *"
+    },
+    {
+      "path": "/api/cron/responsible-person-reminders",
+      "schedule": "0 6 * * *"
     }
   ]
 }

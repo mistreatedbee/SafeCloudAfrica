@@ -27,6 +27,7 @@ export function TrainingAddModal(props: {
   const [newCourseName, setNewCourseName] = useState('');
   const [newCourseValidMonths, setNewCourseValidMonths] = useState<string>('12');
   const [userId, setUserId] = useState(props.defaultUserId ?? '');
+  const [employeeId, setEmployeeId] = useState('');
   const [completedAt, setCompletedAt] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -40,6 +41,7 @@ export function TrainingAddModal(props: {
     newCourseName: string;
     newCourseValidMonths: string;
     userId: string;
+    employeeId: string;
     completedAt: string;
     expiresAt: string;
     employeeNameSnapshot: string;
@@ -49,11 +51,11 @@ export function TrainingAddModal(props: {
   const draftKey = `training-add:${props.companyId}:${props.createdByUserId}`;
 
   const hasDirtyDraft = useMemo(() => {
-    const targetDirty = !props.defaultUserId ? userId.trim().length > 0 : false;
+    const targetDirty = !props.defaultUserId ? userId.trim().length > 0 || employeeId.trim().length > 0 : false;
     const courseDirty = mode === 'existing' ? courseId.trim().length > 0 : newCourseName.trim().length > 2;
     const datesDirty = !!completedAt.trim() || !!expiresAt.trim();
     return targetDirty || courseDirty || datesDirty;
-  }, [completedAt, courseId, expiresAt, mode, newCourseName, props.defaultUserId, userId]);
+  }, [completedAt, courseId, employeeId, expiresAt, mode, newCourseName, props.defaultUserId, userId]);
 
   useDraftRegistration({
     key: draftKey,
@@ -66,6 +68,7 @@ export function TrainingAddModal(props: {
         newCourseName,
         newCourseValidMonths,
         userId,
+        employeeId,
         completedAt,
         expiresAt,
         employeeNameSnapshot
@@ -81,6 +84,7 @@ export function TrainingAddModal(props: {
       setNewCourseName('');
       setNewCourseValidMonths('12');
       setUserId(props.defaultUserId ?? '');
+      setEmployeeId('');
       setCompletedAt('');
       setExpiresAt('');
       setEmployeeNameSnapshot('');
@@ -94,6 +98,7 @@ export function TrainingAddModal(props: {
     setNewCourseName(restored.newCourseName ?? '');
     setNewCourseValidMonths(restored.newCourseValidMonths ?? '12');
     setUserId(restored.userId ?? '');
+    setEmployeeId(restored.employeeId ?? '');
     setCompletedAt(restored.completedAt ?? '');
     setExpiresAt(restored.expiresAt ?? '');
     setEmployeeNameSnapshot(restored.employeeNameSnapshot ?? '');
@@ -108,10 +113,10 @@ export function TrainingAddModal(props: {
   };
 
   const canSubmit = useMemo(() => {
-    if (!userId) return false;
+    if (!userId && !employeeId) return false;
     if (mode === 'existing') return !!courseId;
     return newCourseName.trim().length > 2;
-  }, [courseId, mode, newCourseName, userId]);
+  }, [courseId, employeeId, mode, newCourseName, userId]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -142,7 +147,7 @@ export function TrainingAddModal(props: {
           return;
         }
         certificateBucket = TRAINING_CERT_BUCKET;
-        const key = `${props.companyId}/${userId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
+        const key = `${props.companyId}/${userId || employeeId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
         const { data, error: upErr } = await insforge.storage.from(certificateBucket).upload(key, file);
         if (upErr) throw upErr;
         certificateKey = data?.path ?? key;
@@ -151,7 +156,8 @@ export function TrainingAddModal(props: {
       const hasCompleted = !!(completedAt && certificateBucket && certificateKey);
       await createTrainingRecord({
         companyId: props.companyId,
-        userId: userId as UUID,
+        userId: userId ? (userId as UUID) : null,
+        employeeId: employeeId ? (employeeId as UUID) : null,
         courseId: finalCourseId as UUID,
         status: hasCompleted ? 'COMPLETED' : 'REQUIRED',
         completedAt: completedAt ? new Date(completedAt).toISOString() : null,
@@ -166,6 +172,9 @@ export function TrainingAddModal(props: {
       props.onClose();
       setCourseId('');
       setNewCourseName('');
+      // Deliberately not resetting userId/employeeId/employeeNameSnapshot here (same as
+      // before employee_id existed) -- lets the same employee stay selected for adding
+      // multiple training records in a row.
       setCompletedAt('');
       setExpiresAt('');
       setFile(null);
@@ -221,13 +230,16 @@ export function TrainingAddModal(props: {
             <div>
               <HrEmployeeSelect
                 companyId={props.companyId}
-                value={userId as UUID | ''}
-                onChange={(selectedUserId, meta) => {
-                  setUserId(selectedUserId || '');
+                value={employeeId as UUID | ''}
+                valueField="id"
+                includeUnlinked
+                onChange={(selectedEmployeeId, meta) => {
+                  setEmployeeId(selectedEmployeeId || '');
+                  setUserId(meta.userId ?? '');
                   setEmployeeNameSnapshot(meta.nameSnapshot);
                 }}
                 label="Employee"
-                placeholder="Select employee"
+                placeholder="Search HR employees..."
               />
               {employeeNameSnapshot && (
                 <p className="text-xs text-charcoal-500 mt-1">Recording training for: {employeeNameSnapshot}</p>

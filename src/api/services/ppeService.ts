@@ -668,84 +668,46 @@ export async function createPpeStockMovement(input: {
     throw new Error('Quantity must be a positive number.');
   }
 
-  const { data: stockRow, error: stockError } = await insforge.database
-    .from('ppe_stock')
-    .select('*')
-    .eq('company_id', input.companyId)
-    .eq('id', input.stockId)
-    .single();
+  // Updates ppe_stock.on_hand_qty and inserts the matching ppe_stock_movements row in
+  // one Postgres transaction (see ppe_apply_stock_movement in
+  // docs/migrations/ppe_stock_movement_atomic_rpc_2026_08_20.sql) so the two writes
+  // can never succeed/fail independently of each other.
+  const { data: rpcRows, error: rpcError } = await insforge.database.rpc('ppe_apply_stock_movement', {
+    p_company_id: input.companyId,
+    p_stock_id: input.stockId,
+    p_movement_type: input.movementType,
+    p_quantity: input.quantity,
+    p_actor_user_id: input.actorUserId,
+    p_reason: input.reason ?? null,
+    p_reference_type: input.referenceType ?? null,
+    p_reference_id: input.referenceId ?? null,
+    p_ppe_issue_id: input.ppeIssueId ?? null,
+    p_transaction_date: input.transactionDate ?? null,
+    p_allow_negative_stock: input.allowNegativeStock ?? false
+  });
 
-  if (stockError) throw new Error(getErrorMessage(stockError));
-  if (!stockRow) throw new Error('PPE stock record not found.');
-
-  const stock = stockRow as PpeStock;
-  const currentQty = stock.on_hand_qty ?? 0;
-  let newQty = currentQty;
-
-  if (input.movementType === 'in' || input.movementType === 'return') {
-    newQty = currentQty + input.quantity;
-  } else if (input.movementType === 'out') {
-    newQty = currentQty - input.quantity;
-    if (newQty < 0 && !input.allowNegativeStock) {
-      const e = new Error('Insufficient stock for this movement.') as Error & { insufficientStock?: boolean };
+  if (rpcError) {
+    const message = getErrorMessage(rpcError);
+    if (/insufficient stock/i.test(message)) {
+      const e = new Error(message) as Error & { insufficientStock?: boolean };
       e.insufficientStock = true;
       throw e;
     }
-  } else if (input.movementType === 'adjust') {
-    newQty = input.quantity;
-  } else if (input.movementType === 'ordered') {
-    // ordered: no change to on_hand_qty
-    newQty = currentQty;
-  } else if (input.movementType === 'damage' || input.movementType === 'expired') {
-    newQty = currentQty - input.quantity;
-    if (newQty < 0 && !input.allowNegativeStock) {
-      const e = new Error('Insufficient stock for this write-off.') as Error & { insufficientStock?: boolean };
-      e.insufficientStock = true;
-      throw e;
-    }
+    throw new Error(message);
   }
+  const rpcResult = (Array.isArray(rpcRows) ? rpcRows[0] : rpcRows) as
+    | { stock_id: UUID; new_on_hand_qty: number; movement_id: UUID }
+    | undefined;
+  if (!rpcResult) throw new Error('Failed to apply PPE stock movement.');
 
-  const nowIso = new Date().toISOString();
-
-  const { data: updatedStockRow, error: updateError } = await insforge.database
-    .from('ppe_stock')
-    .update({
-      on_hand_qty: newQty,
-      updated_at: nowIso,
-      updated_by_user_id: input.actorUserId
-    })
-    .eq('company_id', input.companyId)
-    .eq('id', input.stockId)
-    .select('*')
-    .single();
-
+  const [{ data: updatedStockRow, error: updateError }, { data: movementRow, error: movementError }] = await Promise.all([
+    insforge.database.from('ppe_stock').select('*').eq('company_id', input.companyId).eq('id', input.stockId).single(),
+    insforge.database.from('ppe_stock_movements').select('*').eq('company_id', input.companyId).eq('id', rpcResult.movement_id).single()
+  ]);
   if (updateError) throw new Error(getErrorMessage(updateError));
-  if (!updatedStockRow) throw new Error('Failed to update PPE stock quantity.');
-
-  const movementPayload: Record<string, unknown> = {
-    company_id: input.companyId,
-    stock_id: input.stockId,
-    movement_type: input.movementType,
-    quantity: input.quantity,
-    reason: input.reason ?? null,
-    reference_type: input.referenceType ?? null,
-    reference_id: input.referenceId ?? null,
-    ppe_issue_id: input.ppeIssueId ?? null,
-    old_on_hand_qty: currentQty,
-    new_on_hand_qty: newQty,
-    created_by_user_id: input.actorUserId,
-    created_at: nowIso
-  };
-  if (input.transactionDate) movementPayload.transaction_date = input.transactionDate;
-
-  const { data: movementRow, error: movementError } = await insforge.database
-    .from('ppe_stock_movements')
-    .insert(movementPayload)
-    .select('*')
-    .single();
-
+  if (!updatedStockRow) throw new Error('Failed to load updated PPE stock.');
   if (movementError) throw new Error(getErrorMessage(movementError));
-  if (!movementRow) throw new Error('Failed to create PPE stock movement.');
+  if (!movementRow) throw new Error('Failed to load PPE stock movement.');
 
   await createActivityLog({
     companyId: input.companyId,

@@ -1603,7 +1603,10 @@ export type TrainingRecordStatus = 'REQUIRED' | 'SCHEDULED' | 'COMPLETED' | 'EXP
 export type TrainingRecord = {
   id: UUID;
   company_id: UUID;
-  user_id: UUID;
+  /** Platform user this record belongs to, when the employee has a linked login. NULL when only employee_id is set. */
+  user_id: UUID | null;
+  /** HR employee this record belongs to -- preferred over user_id; set regardless of whether the employee has a login. */
+  employee_id: UUID | null;
   course_id: UUID;
   job_description_id: UUID | null;
   provider_id: UUID | null;
@@ -1636,7 +1639,11 @@ export type TrainingProvider = {
   company_id: UUID;
   name: string;
   provider_type: TrainingProviderType;
+  /** Legacy free-text catch-all, superseded by contact/email/website. */
   contact_info: string | null;
+  contact: string | null;
+  email: string | null;
+  website: string | null;
   created_at: string;
   updated_at: string;
 };

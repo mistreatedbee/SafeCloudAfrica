@@ -345,10 +345,40 @@ export function TrainingMatrixSetupTab(props: {
           ) : (
             <ul className="space-y-2">
               {(providers ?? []).map((p) => (
-                <li key={p.id} className="flex items-center justify-between py-2 border-b border-surface-100 last:border-0">
-                  <span className="font-medium text-charcoal">{p.name}</span>
-                  <span className="text-xs text-charcoal-500 bg-surface-100 px-2 py-0.5 rounded">{p.provider_type}</span>
-                  <div className="flex items-center gap-1">
+                <li key={p.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-3 border-b border-surface-100 last:border-0">
+                  {/* Display order: Provider Name -> Contact -> Email -> Website */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                    <span className="font-medium text-charcoal">{p.name}</span>
+                    <span className="text-xs text-charcoal-500 bg-surface-100 px-2 py-0.5 rounded shrink-0">{p.provider_type}</span>
+                    {p.contact && (
+                      <>
+                        <span className="text-charcoal-300 hidden sm:inline">|</span>
+                        <span className="text-sm text-charcoal-600">{p.contact}</span>
+                      </>
+                    )}
+                    {p.email && (
+                      <>
+                        <span className="text-charcoal-300 hidden sm:inline">|</span>
+                        <a href={`mailto:${p.email}`} className="text-sm text-teal hover:underline">
+                          {p.email}
+                        </a>
+                      </>
+                    )}
+                    {p.website && (
+                      <>
+                        <span className="text-charcoal-300 hidden sm:inline">|</span>
+                        <a
+                          href={p.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-teal hover:underline"
+                        >
+                          {p.website.replace(/^https?:\/\//i, '')}
+                        </a>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
                       onClick={() => setEditingProvider(p)}

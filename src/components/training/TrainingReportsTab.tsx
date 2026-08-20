@@ -11,6 +11,7 @@ import {
   listJobDescriptions
 } from '../../api/services/trainingService';
 import { listUserProfiles } from '../../api/services/profilesService';
+import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 
 function toCsvRows(rows: string[][]): string {
@@ -81,9 +82,20 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
     () => (props.companyId ? listUserProfiles(props.companyId) : []),
     [props.companyId]
   );
+  const { data: employees } = useAsync<HrEmployee[]>(
+    () => (props.companyId ? listHrEmployees(props.companyId) : []),
+    [props.companyId]
+  );
 
   const courseById = new Map((courses ?? []).map((c) => [c.id, c.name]));
   const profileByUserId = new Map((profiles ?? []).map((p) => [p.user_id, p]));
+  const employeeById = new Map((employees ?? []).map((e) => [e.id, e]));
+  function traineeName(r: TrainingRecord): string {
+    const emp = r.employee_id ? employeeById.get(r.employee_id) : null;
+    if (emp) return `${emp.last_name ?? ''}, ${emp.first_name ?? ''}`.replace(/^,\s*|,\s*$/g, '').trim() || emp.email || emp.employee_no;
+    if (r.user_id) return profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email || String(r.user_id).slice(0, 8);
+    return 'Unknown';
+  }
 
   function exportCostSummary() {
     if (!summary) return;
@@ -110,10 +122,10 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
       ['Outstanding training', 'User', 'Course', 'Status', 'User ID', 'Record ID'],
       ...(outstanding ?? []).map((r) => [
         courseById.get(r.course_id) ?? '',
-        profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email || r.user_id,
+        traineeName(r),
         courseById.get(r.course_id) ?? '',
         r.status,
-        r.user_id,
+        r.user_id ?? r.employee_id ?? '',
         r.id
       ])
     ];
@@ -124,10 +136,10 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
     const rows = [
       ['Expiring soon (within ' + expiringDays + ' days)', 'User', 'Course', 'Expiry date', 'User ID', 'Record ID'],
       ...(expiringSoon ?? []).map((r) => [
-        profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email || r.user_id,
+        traineeName(r),
         courseById.get(r.course_id) ?? '',
         r.expires_at ?? '',
-        r.user_id,
+        r.user_id ?? r.employee_id ?? '',
         r.id
       ])
     ];
@@ -302,7 +314,7 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
                 {(outstanding ?? []).slice(0, 50).map((r) => (
                   <tr key={r.id}>
                     <td className="px-3 py-2 text-charcoal">
-                      {profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email || String(r.user_id).slice(0, 8)}
+                      {traineeName(r)}
                     </td>
                     <td className="px-3 py-2 text-charcoal">{courseById.get(r.course_id) ?? '—'}</td>
                     <td className="px-3 py-2">
@@ -354,7 +366,7 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
                 {(expiringSoon ?? []).slice(0, 50).map((r) => (
                   <tr key={r.id}>
                     <td className="px-3 py-2 text-charcoal">
-                      {profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email || String(r.user_id).slice(0, 8)}
+                      {traineeName(r)}
                     </td>
                     <td className="px-3 py-2 text-charcoal">{courseById.get(r.course_id) ?? '—'}</td>
                     <td className="px-3 py-2 text-charcoal">{r.expires_at ? new Date(r.expires_at).toLocaleDateString('en-ZA') : '—'}</td>
