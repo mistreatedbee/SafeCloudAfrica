@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { PlusIcon, TrashIcon, GripVerticalIcon } from 'lucide-react';
-import type { FormField } from '../api/services/formsService';
+import type { FormField } from '../../api/services/formsService';
 
 interface FormBuilderProps {
   fields: FormField[];

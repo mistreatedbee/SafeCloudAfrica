@@ -9,6 +9,7 @@ export interface AuditQuestion {
   id: UUID;
   audit_id: UUID;
   question: string;
+  section?: string | null;
   expected_evidence?: string | null;
   allocated_score?: number | null;
   question_order: number;
@@ -21,8 +22,11 @@ export interface AuditResponse {
   audit_question_id: UUID;
   is_compliant: boolean;
   finding: string | null;
+  deviation_type?: 'observation' | 'finding' | 'non_conformance' | 'opportunity_for_improvement' | null;
   evidence_document_url: string | null;
   achieved_score?: number | null;
+  allocated_score?: number | null;
+  evidence_files?: unknown[] | null;
   risk_rating: 'low' | 'medium' | 'high';
   answered_by_user_id: UUID;
   answered_at: string;

@@ -202,6 +202,8 @@ export type HrPersonalDocumentRow = HrSimpleRecord & {
   visible_to_employee: boolean;
   acknowledged_by_employee: boolean | null;
   acknowledged_at: string | null;
+  send_expiry_notification?: boolean | null;
+  expiry_notification_email?: string | null;
 };
 
 export type HrAckDocumentRow = HrSimpleRecord & {
@@ -1546,7 +1548,7 @@ export async function updateHrPersonalDocument(input: {
   companyId: UUID;
   documentId: UUID;
   actorUserId: UUID;
-  patch: Partial<Pick<HrPersonalDocumentRow, 'doc_name' | 'doc_type' | 'issue_date' | 'expiry_date' | 'notes' | 'status' | 'acknowledged_by_employee' | 'acknowledged_at' | 'file_ids'>>;
+  patch: Partial<Pick<HrPersonalDocumentRow, 'doc_name' | 'doc_type' | 'issue_date' | 'expiry_date' | 'notes' | 'status' | 'acknowledged_by_employee' | 'acknowledged_at' | 'file_ids' | 'send_expiry_notification' | 'expiry_notification_email'>>;
 }): Promise<HrPersonalDocumentRow> {
   return withHrSession('personal-documents:update', async () => {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };

@@ -268,7 +268,7 @@ export async function createTrainingRecord(input: {
     entityId: (data as { id: UUID }).id
   });
 
-  if (input.userId && input.userId !== input.createdByUserId && (status === 'REQUIRED' || status === 'SCHEDULED' || status === 'ARRANGED')) {
+  if (input.userId && input.userId !== input.createdByUserId && (status === 'REQUIRED' || status === 'SCHEDULED')) {
     try {
       const { data: profile } = await insforge.database
         .from('user_profiles')

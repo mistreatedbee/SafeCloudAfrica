@@ -37,13 +37,14 @@ export function SafetyManagementPage() {
 
   const canManage = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
 
-  const { data: documents = [], loading, error, refetch } = useAsync<Document[]>(
+  const { data: documentsData, loading, error, refetch } = useAsync<Document[]>(
     async () => {
       if (!activeCompanyId) return [];
       return listDocuments(activeCompanyId);
     },
     [activeCompanyId, refreshKey]
   );
+  const documents = documentsData ?? [];
 
   const filteredDocuments = documents.filter((doc) => {
     const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase());
@@ -178,7 +179,7 @@ export function SafetyManagementPage() {
               filteredDocuments.map(doc => {
                 const categoryLabel = documentCategories.find(c => c.value === doc.category)?.label || doc.category;
                 const reviewDue = doc.review_due_at;
-                const isOverdue = Boolean(reviewDue) && new Date(reviewDue).getTime() < Date.now();
+                const isOverdue = Boolean(reviewDue) && new Date(reviewDue as string).getTime() < Date.now();
                 const uploadedBy = doc.owner_user_id ? `User ${doc.owner_user_id.slice(0, 8)}` : 'System';
                 return (
                   <div key={doc.id} className="p-4 hover:bg-surface-50 transition-colors">

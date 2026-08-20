@@ -56,6 +56,11 @@ export function MarketingFooter() {
               <li>Tasks & Time</li>
               <li>Incidents & CAPA</li>
               <li>Training & Competency</li>
+              <li>
+                <Link to="/nextwave" className="hover:text-teal transition-colors">
+                  About NextWave
+                </Link>
+              </li>
             </ul>
           </div>
 

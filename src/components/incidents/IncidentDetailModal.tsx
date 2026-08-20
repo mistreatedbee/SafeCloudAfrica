@@ -349,9 +349,7 @@ export function IncidentDetailModal(props: {
     const blob = await exportIncidentPDF(incident, {
       companyName: organisationName,
       generatedBy: fullName,
-      includeEvidence: true,
-      evidenceList: evidence,
-      correctiveActions: correctiveActions
+      includeEvidence: true
     });
     downloadFile(blob, `incident-${incident.id.slice(0, 8)}.pdf`);
   }

@@ -66,7 +66,7 @@ export function EvidenceModal(props: {
           originalFilename: file.name,
           fileKind: file.type.startsWith('image/') ? 'image' : 'document',
           storageBucket: EVIDENCE_BUCKET,
-          storageKey: uploaded?.path ?? key,
+          storageKey: uploaded?.key ?? key,
           createdByUserId: props.actorUserId
         });
         createdItems.push(created);

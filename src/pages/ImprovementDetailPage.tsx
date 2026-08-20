@@ -407,7 +407,7 @@ export function ImprovementDetailPage() {
             <input type="date" value={form.dateRaised} onChange={(e) => setField('dateRaised', e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg" />
             <select value={form.raisedByUserId} onChange={(e) => setField('raisedByUserId', e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg">{userOptions.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name || u.email || u.user_id.slice(0, 8)}</option>)}</select>
           </div>
-          <SelectOrType value={form.departmentSite} onChange={(v) => setField('departmentSite', v)} options={deptOptions} label="Department/Site" allowCreate companyId={activeCompanyId} moduleKey="improvement" fieldKey="department_site" createdByUserId={user?.id ?? null} />
+          <SelectOrType value={form.departmentSite} onChange={(v) => setField('departmentSite', v)} options={deptOptions} label="Department/Site" allowCreate companyId={activeCompanyId ?? undefined} moduleKey="improvement" fieldKey="department_site" createdByUserId={user?.id ?? undefined} />
           <select value={form.improvementType} onChange={(e) => setField('improvementType', e.target.value as ImprovementType)} className="px-3 py-2 border border-surface-300 rounded-lg w-full">{(Object.keys(IMPROVEMENT_TYPE_LABELS) as ImprovementType[]).map((t) => <option key={t} value={t}>{IMPROVEMENT_TYPE_LABELS[t]}</option>)}</select>
           {form.improvementType === 'other' && <input value={form.improvementTypeOtherText} onChange={(e) => setField('improvementTypeOtherText', e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg w-full" placeholder="Other type" />}
         </section>

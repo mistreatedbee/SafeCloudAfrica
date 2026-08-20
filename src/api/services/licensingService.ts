@@ -15,9 +15,19 @@ import { insforge } from '../insforge/client';
 import { withInsforgeSession } from '../insforge/ensureSession';
 import { sendTemplatedNotificationEmail } from './emailService';
 
-export type LicenseType = 'starter_6m' | 'professional_12m' | 'enterprise_custom';
+export type LicenseType = 'starter_6m' | 'professional_12m' | 'enterprise_custom' | 'base' | 'growth' | 'professional' | 'hr_only';
 export type LicenseStatus = 'trial' | 'active' | 'expired' | 'suspended';
 export const PAYMENT_DURATION_MONTHS = [3, 6, 9, 12] as const;
+
+export const LICENSE_PRICING: Record<LicenseType, { monthlyPriceZAR: number; minSeats: number; maxSeats: number }> = {
+  starter_6m: { monthlyPriceZAR: 0, minSeats: 1, maxSeats: 5 },
+  professional_12m: { monthlyPriceZAR: 0, minSeats: 1, maxSeats: 10 },
+  enterprise_custom: { monthlyPriceZAR: 0, minSeats: 1, maxSeats: 999 },
+  base: { monthlyPriceZAR: 1250, minSeats: 1, maxSeats: 25 },
+  growth: { monthlyPriceZAR: 2250, minSeats: 26, maxSeats: 75 },
+  professional: { monthlyPriceZAR: 3900, minSeats: 76, maxSeats: 150 },
+  hr_only: { monthlyPriceZAR: 850, minSeats: 1, maxSeats: 50 },
+};
 
 export interface LicenseInfo {
   type: LicenseType;
@@ -30,7 +40,7 @@ export interface LicenseInfo {
   isExpired: boolean;
   isTrialExpired: boolean;
   canAddEmployees: boolean;
-  features: Record<string, boolean>;
+  features: FeatureAccess;
   billingPlanCode?: string | null;
   billingCycleMonths?: number | null;
 }
@@ -48,7 +58,7 @@ export interface FeatureAccess {
   health: boolean;
   planning: boolean;
   legal: boolean;
-  exports: boolean; // PDF/Excel
+  exports: boolean;
   api: boolean;
   customFields: boolean;
   advancedReporting: boolean;
@@ -60,7 +70,7 @@ export interface FeatureAccess {
 /**
  * Feature availability by license tier
  */
-const FEATURE_MAP: Record<LicenseType, Partial<FeatureAccess>> = {
+const FEATURE_MAP: Record<LicenseType, FeatureAccess> = {
   starter_6m: {
     incidents: true,
     risks: true,
@@ -104,7 +114,6 @@ const FEATURE_MAP: Record<LicenseType, Partial<FeatureAccess>> = {
     automation: false,
   },
   enterprise_custom: {
-    // All features enabled
     incidents: true,
     risks: true,
     ncrs: true,
@@ -124,6 +133,91 @@ const FEATURE_MAP: Record<LicenseType, Partial<FeatureAccess>> = {
     isoMapping: true,
     complianceScoring: true,
     automation: true,
+  },
+  // Legacy/alternate tier names retained for backward compatibility with older company records.
+  base: {
+    incidents: true,
+    risks: true,
+    ncrs: false,
+    audits: false,
+    training: true,
+    documents: true,
+    forms: true,
+    ppe: false,
+    environment: false,
+    health: false,
+    planning: false,
+    legal: false,
+    exports: false,
+    api: false,
+    customFields: false,
+    advancedReporting: false,
+    isoMapping: false,
+    complianceScoring: false,
+    automation: false,
+  },
+  growth: {
+    incidents: true,
+    risks: true,
+    ncrs: true,
+    audits: true,
+    training: true,
+    documents: true,
+    forms: true,
+    ppe: true,
+    environment: true,
+    health: true,
+    planning: true,
+    legal: true,
+    exports: true,
+    api: true,
+    customFields: true,
+    advancedReporting: true,
+    isoMapping: false,
+    complianceScoring: false,
+    automation: false,
+  },
+  professional: {
+    incidents: true,
+    risks: true,
+    ncrs: true,
+    audits: true,
+    training: true,
+    documents: true,
+    forms: true,
+    ppe: true,
+    environment: true,
+    health: true,
+    planning: true,
+    legal: true,
+    exports: true,
+    api: true,
+    customFields: true,
+    advancedReporting: true,
+    isoMapping: true,
+    complianceScoring: true,
+    automation: true,
+  },
+  hr_only: {
+    incidents: false,
+    risks: false,
+    ncrs: false,
+    audits: false,
+    training: true,
+    documents: true,
+    forms: false,
+    ppe: false,
+    environment: false,
+    health: false,
+    planning: false,
+    legal: false,
+    exports: false,
+    api: false,
+    customFields: false,
+    advancedReporting: false,
+    isoMapping: false,
+    complianceScoring: false,
+    automation: false,
   },
 };
 
@@ -188,16 +282,25 @@ export async function getLicenseInfo(companyId: UUID): Promise<LicenseInfo> {
  */
 export function getFeatures(licenseType: LicenseType): FeatureAccess {
   return {
-    incidents: true, // All tiers
+    incidents: true,
     risks: true,
-    training: true,
-    documents: true,
-    forms: true,
-    exports: licenseType !== 'starter_6m',
-    api: licenseType !== 'starter_6m',
-    customFields: licenseType !== 'starter_6m',
-    advancedReporting: licenseType !== 'starter_6m',
-    ...FEATURE_MAP[licenseType],
+    ncrs: FEATURE_MAP[licenseType].ncrs,
+    audits: FEATURE_MAP[licenseType].audits,
+    training: FEATURE_MAP[licenseType].training,
+    documents: FEATURE_MAP[licenseType].documents,
+    forms: FEATURE_MAP[licenseType].forms,
+    ppe: FEATURE_MAP[licenseType].ppe,
+    environment: FEATURE_MAP[licenseType].environment,
+    health: FEATURE_MAP[licenseType].health,
+    planning: FEATURE_MAP[licenseType].planning,
+    legal: FEATURE_MAP[licenseType].legal,
+    exports: FEATURE_MAP[licenseType].exports,
+    api: FEATURE_MAP[licenseType].api,
+    customFields: FEATURE_MAP[licenseType].customFields,
+    advancedReporting: FEATURE_MAP[licenseType].advancedReporting,
+    isoMapping: FEATURE_MAP[licenseType].isoMapping,
+    complianceScoring: FEATURE_MAP[licenseType].complianceScoring,
+    automation: FEATURE_MAP[licenseType].automation,
   };
 }
 
@@ -334,6 +437,10 @@ export function formatLicenseType(licenseType: LicenseType): string {
     starter_6m: 'Starter (6 months)',
     professional_12m: 'Professional (12 months)',
     enterprise_custom: 'Enterprise',
+    base: 'Base',
+    growth: 'Growth',
+    professional: 'Professional',
+    hr_only: 'HR Only',
   };
   return labels[licenseType] || licenseType;
 }

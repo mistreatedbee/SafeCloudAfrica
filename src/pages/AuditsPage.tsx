@@ -112,7 +112,7 @@ export function AuditsPage() {
   if (searchQuery) {
     filtered = filtered.filter(a => 
       a.audit_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.objectives.toLowerCase().includes(searchQuery.toLowerCase())
+      (a.objectives ?? '').toLowerCase().includes(searchQuery.toLowerCase())
     );
   }
 

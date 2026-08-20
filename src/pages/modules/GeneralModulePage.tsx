@@ -77,7 +77,7 @@ export function GeneralModulePage() {
     const list = tasks ?? [];
     return {
       total: list.length,
-      pending: list.filter((t) => t.status === 'pending').length,
+      pending: list.filter((t) => t.status === 'draft' || t.status === 'assigned').length,
       inProgress: list.filter((t) => t.status === 'in-progress').length,
       overdue: list.filter((t) => t.status === 'overdue').length
     };

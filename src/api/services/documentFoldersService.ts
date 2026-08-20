@@ -32,18 +32,17 @@ async function findExistingFolder(input: {
   parentId?: UUID | null;
 }): Promise<DocumentFolder | null> {
   const normalizedName = normalizeFolderName(input.name);
-  let query = insforge.database
+  let query: any = insforge.database
     .from('document_folders')
     .select('*')
     .eq('company_id', input.companyId)
     .eq('module', input.module)
     .ilike('name', normalizedName)
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
 
   query = input.parentId ? query.eq('parent_id', input.parentId) : query.is('parent_id', null);
 
-  const { data, error } = await query;
+  const { data, error } = await query.maybeSingle();
   if (error) {
     if (isSchemaMismatchError(error)) throw new Error(DMS_MIGRATION_REQUIRED_MESSAGE);
     throw new Error(getErrorMessage(error));

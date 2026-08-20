@@ -671,6 +671,9 @@ export function LandingPage() {
           <p className="text-sm text-charcoal-500 mt-2 max-w-3xl">
             Simple, transparent licensing for South African businesses. All prices in South African Rands (R) per month.
           </p>
+          <p className="mt-3 text-sm text-charcoal-600">
+            HR module: R30 per employee, but it is included in the major system pricing and therefore free within the selected plan.
+          </p>
 
           <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <motion.div
@@ -683,9 +686,9 @@ export function LandingPage() {
             >
               <div className="flex items-center justify-between">
                 <p className="text-lg font-bold text-charcoal">Starter</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">1–15 employees</span>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">1–35 employees</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R650<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-2 text-3xl font-bold text-navy">R450<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
               <p className="mt-1 text-xs text-charcoal-500">Ideal for small businesses and growing teams.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Core platform access</li>
@@ -710,9 +713,9 @@ export function LandingPage() {
             >
               <div className="flex items-center justify-between">
                 <p className="text-lg font-bold text-charcoal">Professional</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">16–40 employees</span>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">36–100 employees</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R950<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-2 text-3xl font-bold text-navy">R650<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
               <p className="mt-1 text-xs text-charcoal-500">Built for medium-sized operations with multiple departments.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />All core modules</li>
@@ -738,9 +741,9 @@ export function LandingPage() {
               <div className="absolute top-0 right-0 bg-teal text-white px-3 py-1 rounded-bl-lg rounded-tr-lg text-xs font-semibold">Most popular</div>
               <div className="flex items-center justify-between">
                 <p className="text-lg font-bold text-charcoal">Business</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">41–100 employees</span>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">100–200 employees</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R1,799<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-2 text-3xl font-bold text-navy">R899<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
               <p className="mt-1 text-xs text-charcoal-500">Designed for scaling organisations with broader oversight needs.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Expanded operational controls</li>
@@ -765,9 +768,9 @@ export function LandingPage() {
             >
               <div className="flex items-center justify-between">
                 <p className="text-lg font-bold text-charcoal">Enterprise</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">101–250 employees</span>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">250+ employees</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R3,200<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-2 text-3xl font-bold text-navy">R1,599<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
               <p className="mt-1 text-xs text-charcoal-500">For large organisations that need deeper safety oversight and support.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Full platform access</li>
@@ -791,37 +794,10 @@ export function LandingPage() {
               className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
             >
               <div className="flex items-center justify-between">
-                <p className="text-lg font-bold text-charcoal">Cooperate</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">251+ employees</span>
-              </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R4,200+<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
-              <p className="mt-1 text-xs text-charcoal-500">For enterprise and multi-site organisations with complex requirements.</p>
-              <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Enterprise-grade controls</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Multi-site oversight</li>
-                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Free SHEQ Support</li>
-              </ul>
-              <a
-                href="mailto:support@safecloud.africa?subject=Cooperate%20plan%20inquiry"
-                className="mt-4 inline-flex text-sm font-medium text-teal hover:underline underline-offset-2"
-              >
-                Contact sales
-              </a>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.6 }}
-              whileHover={{ y: -5 }}
-              className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
-            >
-              <div className="flex items-center justify-between">
                 <p className="text-lg font-bold text-charcoal">Custom</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">Any size</span>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">Tailored scope</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">Request a quote</p>
+              <p className="mt-2 text-3xl font-bold text-navy">Quote by request</p>
               <p className="mt-1 text-xs text-charcoal-500">Bespoke configuration for organisations with unique requirements.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Tailored modules</li>
@@ -952,6 +928,27 @@ export function LandingPage() {
           ))}
         </div>
       </motion.section>
+
+      {/* NextWave teaser */}
+      <section className="border-t border-surface-200 bg-white">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 bg-surface-50 border border-surface-200 rounded-2xl px-6 py-6">
+            <div>
+              <p className="text-xs font-semibold text-teal uppercase tracking-wide">Built by NextWave Digital Solutions</p>
+              <p className="mt-1 text-sm text-charcoal-500 max-w-xl">
+                Safe Cloud Africa is developed and supported by NextWave Digital Solutions (Pty) Ltd — a South African
+                technology company behind the software, AI, and ongoing platform improvements.
+              </p>
+            </div>
+            <Link
+              to="/nextwave"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold border border-navy text-navy hover:bg-navy hover:text-white transition-colors whitespace-nowrap"
+            >
+              About NextWave <ArrowRightIcon className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
 
       <MarketingFooter />
     </div>

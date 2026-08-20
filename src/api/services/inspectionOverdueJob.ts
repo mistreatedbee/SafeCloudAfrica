@@ -31,7 +31,7 @@ export async function markOverdueInspectionItems(companyId: UUID): Promise<void>
       await createNotification(
         companyId,
         item.responsible_person_id as UUID,
-        'high',
+        'warning',
         'Overdue inspection action',
         `Checklist item "${item.question}" is overdue and requires your attention.`
       );

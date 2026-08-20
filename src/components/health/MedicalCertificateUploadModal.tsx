@@ -112,7 +112,7 @@ export function MedicalCertificateUploadModal(props: {
         key = `${props.companyId}/${userId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
         const { data, error: upErr } = await insforge.storage.from(bucket).upload(key, file);
         if (upErr) throw upErr;
-        key = data?.path ?? key;
+        key = data?.key ?? key;
       }
 
       await createMedicalCertificate({

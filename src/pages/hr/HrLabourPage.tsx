@@ -441,7 +441,7 @@ export function HrLabourPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <p><span className="text-charcoal-500">Employee:</span> {employeeLabel.get(selectedCase.employee_id as UUID) ?? String(selectedCase.employee_id)}</p>
               <p><span className="text-charcoal-500">Offence:</span> {String(selectedCase.offence_type ?? selectedCase.offence_category ?? '')}</p>
-              {selectedCase.repeat_offence_flag && (
+              {Boolean(selectedCase.repeat_offence_flag) && (
                 <div className="md:col-span-2">
                   <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-300 text-xs font-semibold">
                     Repeat offence

@@ -150,7 +150,7 @@ export function TrainingAddModal(props: {
         const key = `${props.companyId}/${userId || employeeId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
         const { data, error: upErr } = await insforge.storage.from(certificateBucket).upload(key, file);
         if (upErr) throw upErr;
-        certificateKey = data?.path ?? key;
+        certificateKey = data?.key ?? key;
       }
 
       const hasCompleted = !!(completedAt && certificateBucket && certificateKey);

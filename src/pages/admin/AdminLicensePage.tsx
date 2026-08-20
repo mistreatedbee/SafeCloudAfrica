@@ -7,8 +7,8 @@ import { insforge } from '../../api/insforge/client';
 
 export function AdminLicensePage() {
   const { activeCompanyId } = useTenant();
-  const { data: licenseInfo, loading, error } = useAsync(
-    () => (activeCompanyId ? getLicenseInfo(activeCompanyId) : null),
+  const { data: licenseInfo, loading, error } = useAsync<Awaited<ReturnType<typeof getLicenseInfo>> | null>(
+    () => (activeCompanyId ? getLicenseInfo(activeCompanyId) : Promise.resolve(null)),
     [activeCompanyId]
   );
   const { data: orgLicense } = useAsync(

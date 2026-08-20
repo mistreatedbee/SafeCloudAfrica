@@ -70,7 +70,7 @@ export function UserMultiSelect({
       users.push({
         userId: m.user_id,
         name: profile?.full_name || `User ${m.user_id.slice(0, 8)}`,
-        email: profile?.email,
+        email: profile?.email ?? undefined,
         employeeNumber: profile?.employee_number ?? null
       });
     });

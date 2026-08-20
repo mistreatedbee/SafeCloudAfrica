@@ -508,7 +508,7 @@ export function EnvironmentWaterPage() {
 
         {activeCompanyId && user?.id && showEvidenceForId && (
           <EvidenceModal
-            isOpen={!!showEvidenceForId}
+            open={!!showEvidenceForId}
             onClose={() => setShowEvidenceForId(null)}
             companyId={activeCompanyId}
             actorUserId={user.id}

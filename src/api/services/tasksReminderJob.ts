@@ -278,7 +278,7 @@ export async function escalateNoProgressTasks(companyId: UUID): Promise<void> {
     const lastUpdate = hasProgress && task.progress_updates![0]?.timestamp
       ? new Date(task.progress_updates![0].timestamp)
       : null;
-    if (lastUpdate && lastUpdate.getTime() > cutoff) continue;
+    if (lastUpdate && lastUpdate.getTime() > new Date(cutoff).getTime()) continue;
 
     const userIds = new Set<UUID>();
     if (task.task_owner_user_id) userIds.add(task.task_owner_user_id);

@@ -260,7 +260,7 @@ export async function createRiskAssessment(input: CreateRiskAssessmentInput): Pr
         .from('risk_assessments')
         .update({ ...patch, updated_at: new Date().toISOString() })
         .eq('id', created.id);
-      Object.assign(created as Record<string, unknown>, patch);
+      Object.assign(created as unknown as Record<string, unknown>, patch);
     } catch {
       // Column might not exist yet on older tenants; keep base record.
     }

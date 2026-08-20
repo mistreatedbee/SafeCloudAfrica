@@ -1,4 +1,4 @@
-import React, { Component } from 'react';
+import React, { type ComponentType } from 'react';
 import {
   TrendingUpIcon,
   TrendingDownIcon,
@@ -23,13 +23,9 @@ type StatCardProps = {
   trendLabel?: string;
   icon?: string;
   iconColor?: string;
-  variant?: 'default' | 'success' | 'warning' | 'critical';
+  variant?: 'default' | 'success' | 'warning' | 'critical' | 'info';
 };
-const iconMap: Record<
-  string,
-  ComponentType<{
-    className?: string;
-  }>> =
+const iconMap: Record<string, ComponentType<any>> =
 {
   Shield: ShieldIcon,
   Award: AwardIcon,
@@ -46,13 +42,15 @@ const variantStyles = {
   default: 'bg-white',
   success: 'bg-success-50 border-success/20',
   warning: 'bg-warning-50 border-warning/20',
-  critical: 'bg-critical-50 border-critical/20'
+  critical: 'bg-critical-50 border-critical/20',
+  info: 'bg-teal-50 border-teal/20'
 };
 const iconBgStyles = {
   default: 'bg-navy-50',
   success: 'bg-success/10',
   warning: 'bg-warning/10',
-  critical: 'bg-critical/10'
+  critical: 'bg-critical/10',
+  info: 'bg-teal/10'
 };
 export function StatCard({
   title,

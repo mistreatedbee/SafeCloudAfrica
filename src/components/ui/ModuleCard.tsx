@@ -18,11 +18,7 @@ type ModuleCardProps = {
   color: string;
   onClick?: () => void;
 };
-const iconMap: Record<
-  string,
-  ComponentType<{
-    className?: string;
-  }>> =
+const iconMap: Record<string, ComponentType<any>> =
 {
   Shield: ShieldIcon,
   Award: AwardIcon,

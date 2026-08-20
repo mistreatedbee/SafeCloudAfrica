@@ -663,7 +663,7 @@ export async function completeInspectionRun(input: {
       const capa = await createCorrectiveAction({
         companyId: input.companyId,
         title: item.question,
-        description: item.comments ?? item.auditor_comments ?? null ?? undefined,
+        description: item.comments ?? item.auditor_comments ?? undefined,
         actionType: 'corrective',
         sourceType: 'ncr',
         sourceId: autoNcrId as UUID,
@@ -808,7 +808,7 @@ export async function completeInspectionRun(input: {
         await createNotification(
           input.companyId,
           userId as unknown as UUID,
-          'high',
+          'warning',
           'High risk inspection finding',
           `One or more checklist items were rated high risk in inspection "${run.inspection_id}".`
         );

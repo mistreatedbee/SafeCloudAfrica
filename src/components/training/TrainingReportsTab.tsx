@@ -51,39 +51,41 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
   const fromIso = `${fromDate}T00:00:00.000Z`;
   const toIso = `${toDate}T23:59:59.999Z`;
 
-  const { data: summary, loading: summaryLoading } = useAsync(
+  const { data: summary, loading: summaryLoading } = useAsync<
+    Awaited<ReturnType<typeof getTrainingSpendSummary>> | { totalCost: number; byCourse: never[]; byProvider: never[]; byJob: never[]; recordCount: number }
+  >(
     () =>
       props.companyId
         ? getTrainingSpendSummary(props.companyId, { fromDate: fromIso, toDate: toIso })
-        : { totalCost: 0, byCourse: [], byProvider: [], byJob: [], recordCount: 0 },
+        : Promise.resolve({ totalCost: 0, byCourse: [], byProvider: [], byJob: [], recordCount: 0 }),
     [props.companyId, fromDate, toDate]
   );
-  const { data: outstanding } = useAsync(
-    () => (props.companyId ? listOutstandingTraining(props.companyId) : []),
+  const { data: outstanding } = useAsync<TrainingRecord[]>(
+    () => (props.companyId ? listOutstandingTraining(props.companyId) : Promise.resolve([])),
     [props.companyId]
   );
-  const { data: expiringSoon } = useAsync(
-    () => (props.companyId ? listExpiringSoonTraining(props.companyId, expiringDays) : []),
+  const { data: expiringSoon } = useAsync<TrainingRecord[]>(
+    () => (props.companyId ? listExpiringSoonTraining(props.companyId, expiringDays) : Promise.resolve([])),
     [props.companyId, expiringDays]
   );
-  const { data: courses } = useAsync(
-    () => (props.companyId ? listTrainingCourses(props.companyId) : []),
+  const { data: courses } = useAsync<Awaited<ReturnType<typeof listTrainingCourses>>>(
+    () => (props.companyId ? listTrainingCourses(props.companyId) : Promise.resolve([])),
     [props.companyId]
   );
-  const { data: providers } = useAsync(
-    () => (props.companyId ? listTrainingProviders(props.companyId) : []),
+  const { data: providers } = useAsync<Awaited<ReturnType<typeof listTrainingProviders>>>(
+    () => (props.companyId ? listTrainingProviders(props.companyId) : Promise.resolve([])),
     [props.companyId]
   );
-  const { data: jobs } = useAsync(
-    () => (props.companyId ? listJobDescriptions(props.companyId) : []),
+  const { data: jobs } = useAsync<Awaited<ReturnType<typeof listJobDescriptions>>>(
+    () => (props.companyId ? listJobDescriptions(props.companyId) : Promise.resolve([])),
     [props.companyId]
   );
-  const { data: profiles } = useAsync(
-    () => (props.companyId ? listUserProfiles(props.companyId) : []),
+  const { data: profiles } = useAsync<Awaited<ReturnType<typeof listUserProfiles>>>(
+    () => (props.companyId ? listUserProfiles(props.companyId) : Promise.resolve([])),
     [props.companyId]
   );
   const { data: employees } = useAsync<HrEmployee[]>(
-    () => (props.companyId ? listHrEmployees(props.companyId) : []),
+    () => (props.companyId ? listHrEmployees(props.companyId) : Promise.resolve([])),
     [props.companyId]
   );
 

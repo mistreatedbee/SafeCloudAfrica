@@ -72,7 +72,7 @@ export function AuthSessionListener() {
   if (!needsAttention) return null;
 
   return (
-    <div className="fixed top-0 inset-x-0 z-[200] flex justify-center px-4 pt-3 pointer-events-none">
+    <div className="fixed bottom-0 inset-x-0 z-[200] flex justify-center px-4 pb-3 pointer-events-none">
       <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-warning/30 bg-white shadow-xl px-4 py-3 max-w-lg w-full">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-charcoal">Your session needs attention</p>

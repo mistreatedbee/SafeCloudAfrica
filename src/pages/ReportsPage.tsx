@@ -117,7 +117,7 @@ export function ReportsPage() {
   const [exportError, setExportError] = useState<string | null>(null);
 
   const { data: canExport } = useAsync(
-    () => (activeCompanyId ? checkCanExport(activeCompanyId) : false),
+    () => (activeCompanyId ? checkCanExport(activeCompanyId) : Promise.resolve(false)),
     [activeCompanyId]
   );
 

@@ -82,7 +82,7 @@ vi.mock('../../api/services/tenantService', () => ({
   acceptInviteByToken: (...args: unknown[]) => serviceMocks.acceptInviteByToken(...args),
   getInviteById: (...args: unknown[]) => serviceMocks.getInviteById(...args),
   validateInvitationToken: (...args: unknown[]) => serviceMocks.validateInvitationToken(...args),
-  toUserInviteMessage: (...args: unknown[]) => serviceMocks.toUserInviteMessage(...args)
+  toUserInviteMessage: (...args: Parameters<typeof serviceMocks.toUserInviteMessage>) => serviceMocks.toUserInviteMessage(...args)
 }));
 
 vi.mock('../../auth/acceptPendingInviteWorkspace', () => ({

@@ -380,7 +380,7 @@ export async function createLegalRequirement(input: {
 
   const requirementWithLinks: LegalRequirement = {
     ...(data as LegalRequirement),
-    links: input.links ?? null
+    links: await listLegalRequirementLinks(input.companyId, requirementId)
   };
 
   return requirementWithLinks;
@@ -543,11 +543,11 @@ export async function updateLegalRequirement(input: {
     metadata: { fields: Object.keys(updateData) }
   });
 
-  const links = typeof input.patch.links !== 'undefined' ? input.patch.links ?? [] : await listLegalRequirementLinks(input.companyId, input.requirementId);
+  const links = await listLegalRequirementLinks(input.companyId, input.requirementId);
 
   const requirementWithLinks: LegalRequirement = {
     ...(data as LegalRequirement),
-    links
+    links: links ?? []
   };
 
   return requirementWithLinks;

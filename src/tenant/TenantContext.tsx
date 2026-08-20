@@ -31,7 +31,7 @@ type TenantContextValue = {
   isPlatformAdmin: boolean;
   /** True after first refreshTenant() has completed for the current user (so isPlatformAdmin is known). */
   isTenantLoaded: boolean;
-  setActiveCompanyId: (companyId: UUID) => void;
+  setActiveCompanyId: (companyId: UUID | null) => void;
   refreshTenant: () => Promise<void>;
 };
 
@@ -210,7 +210,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshTenant, user?.id]);
 
-  const setActiveCompanyId = useCallback((companyId: UUID) => {
+  const setActiveCompanyId = useCallback((companyId: UUID | null) => {
     setActiveCompanyIdState(companyId);
     storeActiveCompanyId(companyId);
   }, []);

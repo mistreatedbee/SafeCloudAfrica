@@ -166,7 +166,7 @@ export function SettingsPage() {
       const nextMeta = {
         ...(meta ?? {}),
         logo_bucket: bucket,
-        logo_key: data?.path ?? key
+        logo_key: data?.key ?? key
       };
       await save({ metadata: nextMeta }, 'Logo updated');
     } finally {

@@ -92,6 +92,7 @@ export default function NCRsPage() {
   }, [activeCompanyId, selectedStatus, selectedSource, selectedRisk, dateFrom, dateTo, departmentIdFilter, assignedUserFilter, assignedToMeOnly, user?.id, activeRole]);
 
   async function loadNCRs() {
+    if (!activeCompanyId) return;
     try {
       setLoading(true);
       setError('');
@@ -116,7 +117,7 @@ export default function NCRsPage() {
   }
 
   async function handleCloseNCR(ncrId: UUID) {
-    if (!user?.id || !canCloseNcr) return;
+    if (!user?.id || !canCloseNcr || !activeCompanyId) return;
     try {
       const updated = await closeQualityNcr(ncrId, activeCompanyId, user.id, user.id);
       if (updated) {
@@ -129,7 +130,7 @@ export default function NCRsPage() {
   }
 
   async function handleDeleteNCR(ncrId: UUID) {
-    if (!user?.id || !canDeleteNcr) return;
+    if (!user?.id || !canDeleteNcr || !activeCompanyId) return;
     const target = ncrs.find((n) => n.id === ncrId);
     const label = target?.nc_number ?? `NCR ${ncrId.slice(0, 8)}`;
     if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
@@ -360,7 +361,7 @@ export default function NCRsPage() {
           <NcrCreateModal
             open={isCreateModalOpen}
             onClose={() => setIsCreateModalOpen(false)}
-            companyId={activeCompanyId}
+            companyId={activeCompanyId || ''}
             createdByUserId={user?.id || ''}
             onCreated={() => {
               setIsCreateModalOpen(false);

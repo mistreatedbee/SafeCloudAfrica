@@ -203,7 +203,7 @@ export default function NCRDetailModal({
           entityType: 'ncr',
           entityId: ncr.id,
           storageBucket: EVIDENCE_BUCKET,
-          storageKey: uploaded?.path ?? key,
+          storageKey: uploaded?.key ?? key,
           createdByUserId: actorUserId,
           originalFilename: file.name,
           displayTitle: file.name,

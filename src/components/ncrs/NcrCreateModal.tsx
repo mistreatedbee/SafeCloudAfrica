@@ -256,7 +256,7 @@ export function NcrCreateModal(props: {
         entityType: 'ncr',
         entityId: ncrId,
         storageBucket: EVIDENCE_BUCKET,
-        storageKey: uploaded?.path ?? key,
+        storageKey: uploaded?.key ?? key,
         createdByUserId: props.createdByUserId,
         originalFilename: file.name,
         displayTitle: file.name,

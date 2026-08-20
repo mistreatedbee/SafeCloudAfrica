@@ -46,7 +46,7 @@ export function RequireWorkspace({ children }: { children: React.ReactElement })
         const session = await ensureInsforgeSession({ reason: 'workspace:accept-pending-invite' });
         const result = await acceptPendingInviteAndActivateWorkspace({
           userId: session.userId,
-          setActiveCompanyId,
+          setActiveCompanyId: (companyId: string | null) => setActiveCompanyId(companyId),
           refreshTenant
         });
         if (cancelled) return;

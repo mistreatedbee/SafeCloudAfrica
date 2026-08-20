@@ -1,24 +1,8 @@
 import React from 'react';
 type StatusBadgeProps = {
-  status:
-  | 'completed'
-  | 'in-progress'
-  | 'pending'
-  | 'overdue'
-  | 'draft'
-  | 'open'
-  | 'closed'
-  | 'investigating'
-  | 'valid'
-  | 'expiring'
-  | 'expired'
-  | 'scheduled'
-  | 'awaiting-documents'
-  | 'ready-for-audit'
-  | 'report-pending'
-  | 'corrective-actions-open'
-  | 'under-closure-review'
-  | 'archived';
+  // Accepts any domain status string (task, audit, document, NCR, etc.) — statusConfig
+  // below covers the known ones and falls back to the "draft" style for anything else.
+  status: string;
   size?: 'sm' | 'md';
 };
 const statusConfig: Record<

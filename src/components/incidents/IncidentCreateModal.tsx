@@ -154,9 +154,9 @@ function makeCauseKey(group: string, item: string): string {
   return `${group}::${item}`;
 }
 
-function riskIndicatorClasses(level: 'Low' | 'Medium' | 'High'): string {
+function riskIndicatorClasses(level: 'Low' | 'Medium' | 'High' | 'Critical'): string {
   if (level === 'Low') return 'border-success/30 bg-success/10 text-success';
-  if (level === 'High') return 'border-critical/30 bg-critical/10 text-critical';
+  if (level === 'High' || level === 'Critical') return 'border-critical/30 bg-critical/10 text-critical';
   return 'border-warning/30 bg-warning/15 text-charcoal';
 }
 

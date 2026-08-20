@@ -1,3 +1,4 @@
+import React from 'react';
 import { insforge } from '../insforge/client';
 import { ensureInsforgeSession } from '../insforge/ensureSession';
 
@@ -22,7 +23,12 @@ export async function subscribeToTable<T = any>(
 ): Promise<() => void> {
   await ensureInsforgeSession();
 
-  const channel = insforge.channel(`realtime:${table}`)
+  const channel = (insforge as any).channel?.(`realtime:${table}`);
+  if (!channel) {
+    return () => undefined;
+  }
+
+  const subscribed = channel
     .on('postgres_changes', {
       event: '*',
       schema: 'public',
@@ -31,9 +37,8 @@ export async function subscribeToTable<T = any>(
     }, callback)
     .subscribe();
 
-  // Return unsubscribe function
   return () => {
-    insforge.removeChannel(channel);
+    (insforge as any).removeChannel?.(subscribed ?? channel);
   };
 }
 

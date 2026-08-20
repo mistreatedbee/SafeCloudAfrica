@@ -40,8 +40,8 @@ export function stableStringify(value: unknown, options?: StableStringifyOptions
     const t = typeof v;
 
     if (t === 'string' || t === 'number' || t === 'boolean') return v;
-    if (t === 'bigint') return v.toString();
-    if (t === 'function') return `[Function:${v.name || 'anonymous'}]`;
+    if (typeof v === 'bigint') return v.toString();
+    if (typeof v === 'function') return `[Function:${v.name || 'anonymous'}]`;
 
     // Date
     if (v instanceof Date) return v.toISOString();

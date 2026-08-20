@@ -10,15 +10,20 @@ export type PaaqLayer = 'nodejs' | 'database';
 type SessionState = { sessionId: string | null; initPromise: Promise<void> | null };
 const sessionsByLayer: Partial<Record<PaaqLayer, SessionState>> = {};
 
-function headersFor(platform: PaaqLayer) {
-  return {
+function headersFor(platform: PaaqLayer): Record<string, string> {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${SDK_TOKEN}`,
-    'X-Project-ID': PROJECT_KEY,
+    Authorization: `Bearer ${SDK_TOKEN ?? ''}`,
     'X-SDK-Version': '1.0.0',
     'X-Platform': platform,
     'X-Environment': process.env.VERCEL_ENV ?? (process.env.NODE_ENV === 'production' ? 'production' : 'development'),
   };
+
+  if (PROJECT_KEY) {
+    headers['X-Project-ID'] = PROJECT_KEY;
+  }
+
+  return headers;
 }
 
 async function ensureSession(layer: PaaqLayer): Promise<string | null> {

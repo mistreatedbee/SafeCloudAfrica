@@ -35,7 +35,7 @@ export function TemplateUploadModal(props: {
         const { data, error: upErr } = await insforge.storage.from(TEMPLATES_BUCKET).upload(key, file);
         if (upErr) throw upErr;
         storageBucket = TEMPLATES_BUCKET;
-        storageKey = data?.path ?? key;
+        storageKey = data?.key ?? key;
       }
 
       await createTemplateLibraryItem({

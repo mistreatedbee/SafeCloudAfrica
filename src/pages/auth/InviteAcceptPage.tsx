@@ -129,10 +129,12 @@ export function InviteAcceptPage() {
   useEffect(() => {
     if (!isLoaded || !user?.id || !invite || success) return;
 
-    const userEmail = String(user.email ?? '').toLowerCase();
-    const inviteEmail = String(invite.email ?? '').toLowerCase();
+    const activeUser = user;
+    const activeInvite = invite;
+    const userEmail = String(activeUser.email ?? '').toLowerCase();
+    const inviteEmail = String(activeInvite.email ?? '').toLowerCase();
     if (!userEmail || !inviteEmail || userEmail !== inviteEmail) return;
-    const attemptKey = `${user.id}:${invite.id}:${token || 'invite-id'}`;
+    const attemptKey = `${activeUser.id}:${activeInvite.id}:${token || 'invite-id'}`;
     if (autoAcceptInFlightRef.current === attemptKey || autoAcceptAttemptedRef.current === attemptKey) return;
 
     let cancelled = false;
@@ -151,8 +153,8 @@ export function InviteAcceptPage() {
           autoAcceptInFlightRef.current = null;
         }, AUTO_ACCEPT_TIMEOUT_MS);
         const membership = token
-          ? await acceptInviteByToken({ token, userId: user.id })
-          : await acceptInvite({ inviteId: invite.id, userId: user.id });
+          ? await acceptInviteByToken({ token, userId: activeUser.id })
+          : await acceptInvite({ inviteId: activeInvite.id, userId: activeUser.id });
         if (cancelled || autoAcceptInFlightRef.current !== attemptKey) return;
         setActiveCompanyId(membership.company_id);
         await refreshTenant();
@@ -165,7 +167,7 @@ export function InviteAcceptPage() {
       } catch (err: any) {
         try {
           const fallback = await acceptPendingInviteAndActivateWorkspace({
-            userId: user.id,
+            userId: activeUser.id,
             setActiveCompanyId,
             refreshTenant
           });

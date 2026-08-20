@@ -329,7 +329,7 @@ export function AuditDetailPage() {
         auditQuestionId: question.id,
         isCompliant: partial.is_compliant ?? existing?.is_compliant ?? true,
         finding: partial.finding ?? existing?.finding ?? '',
-        evidenceDocumentUrl: partial.evidence_document_url ?? existing?.evidence_document_url ?? null,
+        evidenceDocumentUrl: partial.evidence_document_url ?? existing?.evidence_document_url ?? undefined,
         riskRating: partial.risk_rating ?? existing?.risk_rating ?? 'low',
         deviationType: (partial as any).deviation_type ?? existing?.deviation_type ?? null,
         allocatedScore: (partial as any).allocated_score ?? existing?.allocated_score ?? question.allocated_score ?? null,

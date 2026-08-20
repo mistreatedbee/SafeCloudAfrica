@@ -15,6 +15,7 @@ export interface ExportOptions {
   fontSize?: number;
   orientation?: 'portrait' | 'landscape';
   companyName?: string;
+  generatedBy?: string;
 }
 
 export type ExportFormat = 'pdf' | 'csv' | 'xlsx';
@@ -166,7 +167,7 @@ export function exportAuditChecklistCSV(
 
   const csvContent = [
     `Audit Report: ${audit.title}`,
-    `Audit Date: ${new Date(audit.scheduled_date).toLocaleDateString()}`,
+    `Audit Date: ${audit.scheduled_date ? new Date(audit.scheduled_date).toLocaleDateString() : 'Not scheduled'}`,
     `Status: ${audit.status}`,
     '',
     headers.join(','),

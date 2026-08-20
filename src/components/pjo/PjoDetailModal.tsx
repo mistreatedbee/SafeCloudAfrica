@@ -326,6 +326,7 @@ function PjoResponseRow(props: {
   saving: boolean;
   onSave: (patch: Partial<PjoResponse>) => void;
 }) {
+  const navigate = useNavigate();
   const [yesNo, setYesNo] = useState<string>(props.row.yes_no === null ? '' : props.row.yes_no ? 'yes' : 'no');
   const [rating, setRating] = useState<string>(props.row.rating === null ? '' : String(props.row.rating));
   const [deviation, setDeviation] = useState(props.row.deviation ?? '');

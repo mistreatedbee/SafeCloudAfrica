@@ -155,7 +155,7 @@ export function SuperAdminOrganisationsPage() {
     }
   };
 
-  const companyStatus = (c: Company & { status?: string }) => c.status ?? c.subscription_status ?? '—';
+  const companyStatus = (c: Company) => c.status ?? c.subscription_status ?? '—';
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">

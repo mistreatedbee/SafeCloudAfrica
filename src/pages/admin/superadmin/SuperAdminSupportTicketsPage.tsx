@@ -19,11 +19,11 @@ import {
   updateSupportTicketStatus,
   type SupportDashboardStats,
   type SupportTicket,
-  type SupportTicketFilters,
+  type SupportTicketFilters as SupportTicketFiltersState,
   type SupportTicketStatus,
   type SupportTicketWithThread
 } from '../../../api/services/supportService';
-import { SupportTicketFilters } from '../../../components/support/SupportTicketFilters';
+import { SupportTicketFilters as SupportTicketFilterControls } from '../../../components/support/SupportTicketFilters';
 import { SupportTicketList } from '../../../components/support/SupportTicketList';
 import { SupportPriorityBadge, SupportStatusBadge } from '../../../components/support/SupportTicketBadges';
 import { SupportTicketThread } from '../../../components/support/SupportTicketThread';
@@ -43,7 +43,7 @@ export function SuperAdminSupportTicketsPage() {
   const { user } = useUser();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [filters, setFilters] = useState<SupportTicketFilters>({ limit: 300 });
+  const [filters, setFilters] = useState<SupportTicketFiltersState>({ limit: 300 });
   const [stats, setStats] = useState<SupportDashboardStats | null>(null);
   const [selected, setSelected] = useState<SupportTicketWithThread | null>(null);
   const [loading, setLoading] = useState(false);
@@ -167,7 +167,7 @@ export function SuperAdminSupportTicketsPage() {
         </select>
       </div>
 
-      <SupportTicketFilters filters={filters} onChange={setFilters} showOrganisation />
+      <SupportTicketFilterControls filters={filters} onChange={setFilters} showOrganisation />
       {error && <div className="rounded-lg border border-critical/20 bg-critical/10 p-3 text-sm text-critical">{error}</div>}
 
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">

@@ -480,7 +480,13 @@ export function TasksPage() {
           </motion.div>
         )}
 
-        {view === 'tasks' && metrics && !metricsLoading && (metrics.overdueCount > 0 || metrics.highRiskOpenCount > 0) && (
+        {view === 'tasks' && metrics && !metricsLoading && (metrics.overdueCount > 0 || metrics.highRiskOpenCount > 0) && (() => {
+          const statusDistribution = [
+            { name: 'Overdue', value: metrics.overdueCount, color: 'var(--color-critical)' },
+            { name: 'High risk open', value: metrics.highRiskOpenCount, color: 'var(--color-warning)' },
+            { name: 'Backlog other', value: Math.max(0, metrics.taskBacklogCount - metrics.overdueCount - metrics.highRiskOpenCount), color: 'var(--color-surface-300)' }
+          ].filter((d) => d.value > 0);
+          return (
           <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
               <p className="text-sm font-semibold text-charcoal mb-3">Status distribution</p>
@@ -488,11 +494,7 @@ export function TasksPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={[
-                        { name: 'Overdue', value: metrics.overdueCount, color: 'var(--color-critical)' },
-                        { name: 'High risk open', value: metrics.highRiskOpenCount, color: 'var(--color-warning)' },
-                        { name: 'Backlog other', value: Math.max(0, metrics.taskBacklogCount - metrics.overdueCount - metrics.highRiskOpenCount), color: 'var(--color-surface-300)' }
-                      ].filter((d) => d.value > 0)}
+                      data={statusDistribution}
                       cx="50%"
                       cy="50%"
                       innerRadius={40}
@@ -501,7 +503,7 @@ export function TasksPage() {
                       dataKey="value"
                       nameKey="name"
                     >
-                      {(entry: { color: string }) => <Cell fill={entry.color} />}
+                      {statusDistribution.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
                     </Pie>
                     <Tooltip />
                     <Legend />
@@ -522,7 +524,8 @@ export function TasksPage() {
               </div>
             </div>
           </motion.div>
-        )}
+          );
+        })()}
 
         {/* Header */}
         <motion.div

@@ -719,7 +719,7 @@ export async function createPpeStockMovement(input: {
     await createNotification(
       input.companyId,
       input.actorUserId,
-      'high',
+      'warning',
       'PPE stock below reorder level',
       'PPE stock has fallen below the configured reorder level.'
     );
@@ -837,7 +837,7 @@ export async function createPpeReorderRequest(input: {
   await createNotification(
     input.companyId,
     input.requestedByUserId,
-    'medium',
+    'info',
     'PPE reorder request created',
     'Your PPE reorder request has been created.'
   );
@@ -982,7 +982,7 @@ export async function setPpeIssueLinks(input: {
   if (ncrDeleteError) throw new Error(getErrorMessage(ncrDeleteError));
   if (capaDeleteError) throw new Error(getErrorMessage(capaDeleteError));
 
-  const inserts: Promise<unknown>[] = [];
+  const inserts: PromiseLike<unknown>[] = [];
 
   const nowIso = new Date().toISOString();
 

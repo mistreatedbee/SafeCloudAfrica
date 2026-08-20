@@ -55,7 +55,7 @@ export function useDraftRegistration(args: UseDraftRegistrationArgs) {
   const metadataRef = useRef(resolvedMetadata);
   const pendingUploadsRef = useRef(args.hasPendingUploads);
   const pendingUploadsMessageRef = useRef(args.pendingUploadsMessage);
-  const flushRef = useRef(flush ?? (async (snapshot) => saveDraftSnapshotToBackend(snapshot as any)));
+  const flushRef = useRef(flush ?? (async (snapshot: { key: string; updatedAt: number; route?: string; payload: unknown; metadata?: DraftSnapshotMetadata }) => saveDraftSnapshotToBackend(snapshot as any)));
 
   useEffect(() => {
     isDirtyRef.current = isDirty;
@@ -63,7 +63,7 @@ export function useDraftRegistration(args: UseDraftRegistrationArgs) {
     metadataRef.current = resolvedMetadata;
     pendingUploadsRef.current = args.hasPendingUploads;
     pendingUploadsMessageRef.current = args.pendingUploadsMessage;
-    flushRef.current = flush ?? (async (snapshot) => saveDraftSnapshotToBackend(snapshot as any));
+    flushRef.current = flush ?? (async (snapshot: { key: string; updatedAt: number; route?: string; payload: unknown; metadata?: DraftSnapshotMetadata }) => saveDraftSnapshotToBackend(snapshot as any));
   }, [args.hasPendingUploads, args.pendingUploadsMessage, flush, isDirty, resolvedMetadata, serialize]);
 
   const pendingUploads = useMemo(() => normalizePendingUploads(args.hasPendingUploads), [args.hasPendingUploads]);

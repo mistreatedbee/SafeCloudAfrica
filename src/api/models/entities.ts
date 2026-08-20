@@ -2626,6 +2626,7 @@ export type Audit = {
   // Scheduling & approvals
   proposed_dates: string[] | null;
   selected_date: string | null;
+  scheduled_date: string | null;
   approved_by_user_id: UUID | null;
   approved_at: string | null;
 

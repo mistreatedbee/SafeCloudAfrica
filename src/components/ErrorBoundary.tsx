@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
     reportClientError({
       module: 'ErrorBoundary',
       error,
-      componentStack: errorInfo.componentStack
+      componentStack: errorInfo.componentStack ?? undefined
     });
     paaq.trackError(error, {
       severity: 'fatal',

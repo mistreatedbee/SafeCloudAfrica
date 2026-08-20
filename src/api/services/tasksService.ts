@@ -904,7 +904,8 @@ export async function stopTimeEntry(input: {
     .eq('company_id', input.companyId)
     .single();
   if (fetchErr || !log) throw new Error('Time log not found.');
-  const start = (log as TaskTimeLog).started_at ? new Date((log as TaskTimeLog).started_at) : null;
+  const startedAt = (log as TaskTimeLog).started_at;
+  const start = startedAt ? new Date(startedAt) : null;
   const minutes = start ? Math.round((new Date(nowIso).getTime() - start.getTime()) / 60000) : 0;
   const { data, error } = await insforge.database
     .from('task_time_logs')
@@ -1145,9 +1146,9 @@ export async function createTaskFromNcr(
       companyId: ncr.company_id,
       module: (options.module ?? (ncr as { module?: ModuleKey }).module) ?? 'quality',
       title: `CAPA: ${ncr.title}`,
-      description: ncr.description ?? null,
+      description: ncr.description ?? undefined,
       category: 'capa',
-      riskLevel: (ncr.severity === 'critical' || ncr.severity === 'high' ? ncr.severity : ncr.risk_rating === 'high' ? 'high' : 'medium') as Task['risk_level'],
+      riskLevel: (ncr.severity === 'critical' || ncr.severity === 'high' ? ncr.severity : ncr.risk_rating === 'high' ? 'high' : 'medium') as CreateTaskInput['riskLevel'],
       priority,
       dueAt: dueDate,
       assigneeUserId: ncr.corrective_action_owner_user_id ?? undefined,
@@ -1184,9 +1185,9 @@ export async function createTaskFromInspectionItem(
       companyId: item.company_id,
       module: (run.module ?? 'quality') as ModuleKey,
       title: `Inspection NC: ${item.question.slice(0, 80)}${item.question.length > 80 ? '…' : ''}`,
-      description: item.comments ?? null,
+      description: item.comments ?? undefined,
       category: 'inspection',
-      riskLevel: (item.risk_level ?? 'medium') as Task['risk_level'],
+      riskLevel: (item.risk_level ?? 'medium') as CreateTaskInput['riskLevel'],
       priority,
       dueAt: dueDate,
       assigneeUserId: item.responsible_person_id ?? undefined,
@@ -1219,7 +1220,7 @@ export async function createTaskFromPpeIssue(issue: PpeIssueTrackerLike): Promis
       title: `PPE Issue: ${issue.description_of_issue.slice(0, 80)}${issue.description_of_issue.length > 80 ? '…' : ''}`,
       description: issue.description_of_issue,
       category: 'ppe_issue',
-      riskLevel: issue.risk_level as Task['risk_level'],
+      riskLevel: issue.risk_level as CreateTaskInput['riskLevel'],
       priority,
       dueAt: dueDate,
       assigneeUserId: issue.responsible_user_id ?? undefined,
@@ -1253,7 +1254,7 @@ export async function createTaskFromIncident(incident: IncidentLike): Promise<Ta
       companyId: incident.company_id,
       module: incident.module,
       title: `Incident follow-up: ${incident.title}`,
-      description: incident.description ?? null,
+      description: incident.description ?? undefined,
       category: 'safety_action',
       riskLevel: (incident.severity as Task['risk_level']) ?? 'medium',
       priority,
@@ -1288,7 +1289,7 @@ export async function createTaskFromAuditFinding(finding: AuditFindingLike): Pro
       companyId: finding.company_id,
       module: 'quality',
       title: `Audit action: ${finding.title}`,
-      description: finding.required_action ?? null,
+      description: finding.required_action ?? undefined,
       category: 'audit_action',
       riskLevel: (finding.risk_level as Task['risk_level']) ?? 'medium',
       priority,
@@ -1311,7 +1312,7 @@ export async function createTaskFromProgramAuditFinding(finding: AuditFindingLik
       companyId: finding.company_id,
       module: 'quality',
       title: `Audit action: ${finding.title}`,
-      description: finding.required_action ?? null,
+      description: finding.required_action ?? undefined,
       category: 'audit_action',
       riskLevel: (finding.risk_level as Task['risk_level']) ?? 'medium',
       priority,

@@ -18,7 +18,7 @@ export const CUSTOMER_COMPLAINT_STATUS_LABELS: Record<CustomerComplaintStatus, s
 };
 
 const ACTIVE_STATUSES: CustomerComplaintStatus[] = ['MONITORING_REQUIRED', 'ESCALATED_TO_MANAGEMENT'];
-const WRITE_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
+const WRITE_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor', 'consultant'];
 const ESCALATE_CLOSE_ROLES: CompanyRole[] = ['owner', 'admin', 'manager'];
 
 type ComplaintBase = {
@@ -49,7 +49,7 @@ function canEscalateOrClose(role: CompanyRole | null): boolean {
 }
 
 function canViewAll(role: CompanyRole | null): boolean {
-  return !!role && (MANAGEMENT_ROLES.includes(role) || role === 'consultant' || role === 'auditor');
+  return !!role && ((MANAGEMENT_ROLES as readonly CompanyRole[]).includes(role) || role === 'consultant' || role === 'auditor');
 }
 
 function normalizeDateOnly(value: string): string {

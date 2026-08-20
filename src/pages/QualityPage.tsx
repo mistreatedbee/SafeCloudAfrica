@@ -59,7 +59,7 @@ export function QualityPage() {
       countOpenCorrectiveActions(activeCompanyId, { module: 'quality' }),
       countIncidentsByStatusForModule(activeCompanyId, 'quality', 'open'),
       countTasksByStatus(activeCompanyId, { module: 'quality' }),
-      countTasksByStatus(activeCompanyId, { module: 'quality', status: 'completed' }),
+      countTasksByStatus(activeCompanyId, { module: 'quality', status: 'closed' }),
       listQualityNcrs({ companyId: activeCompanyId, limit: 500 }),
       getCustomerComplaintSummary({
         companyId: activeCompanyId,

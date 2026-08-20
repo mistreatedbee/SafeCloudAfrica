@@ -300,7 +300,7 @@ export async function createPpeIssueTracker(
   if (created.risk_level === 'high' || created.risk_level === 'critical') {
     try {
       const { buildEscalationChain } = await import(
-        '../../../scripts/insforge-functions/escalationUtils'
+        '../../../scripts/insforge-functions/escalationUtils.js'
       );
       const primaryUser =
         created.responsible_user_id ||
@@ -321,7 +321,7 @@ export async function createPpeIssueTracker(
             createNotification(
               input.companyId,
               userId,
-              'high',
+              'warning',
               'High risk PPE issue reported',
               `A PPE issue has been reported with ${created.risk_level.toUpperCase()} risk and requires immediate attention.`
             )

@@ -46,7 +46,7 @@ export async function getRoleBasedRedirectPath(userId: UUID): Promise<string> {
       .eq('user_id', userId);
     if (error || !data?.length) return '/app';
     const roles = data.map((r: { role: string }) => r.role);
-    let bestIdx = ROLE_ORDER.length;
+    let bestIdx = Number(ROLE_ORDER.length);
     let bestRole: string | null = null;
     for (const r of roles) {
       const idx = ROLE_ORDER.indexOf(r as (typeof ROLE_ORDER)[number]);
@@ -86,7 +86,7 @@ export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId
       }
     }
 
-    let bestIdx = ROLE_ORDER.length;
+    let bestIdx = Number(ROLE_ORDER.length);
     let bestCompanyId: UUID | null = null;
     let bestRole: string | null = null;
     for (const m of membershipRows) {

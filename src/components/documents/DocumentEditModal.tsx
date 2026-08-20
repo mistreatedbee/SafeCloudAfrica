@@ -22,33 +22,33 @@ export function DocumentEditModal(props: {
   onClose: () => void;
   onSave: (updates: Partial<Document>) => Promise<void>;
 }) {
-  const document = props.document;
+  const activeDocument = props.document;
   const [formData, setFormData] = useState<Partial<Document>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!document || !props.open) return;
+    if (!activeDocument || !props.open) return;
     setFormData({
-      title: document.title,
-      category: document.category,
-      description: document.description ?? '',
-      folder_id: document.folder_id ?? null,
-      effective_date: document.effective_date ?? '',
-      document_owner_name: document.document_owner_name ?? '',
-      approving_officer_name: document.approving_officer_name ?? '',
-      document_number: document.document_number ?? '',
-      revision_number: document.revision_number ?? '',
-      revision_date: document.revision_date ?? '',
-      approved_date: document.approved_date ?? '',
-      expiry_date: document.expiry_date ?? '',
-      is_restricted: Boolean(document.is_restricted)
+      title: activeDocument.title,
+      category: activeDocument.category,
+      description: activeDocument.description ?? '',
+      folder_id: activeDocument.folder_id ?? null,
+      effective_date: activeDocument.effective_date ?? '',
+      document_owner_name: activeDocument.document_owner_name ?? '',
+      approving_officer_name: activeDocument.approving_officer_name ?? '',
+      document_number: activeDocument.document_number ?? '',
+      revision_number: activeDocument.revision_number ?? '',
+      revision_date: activeDocument.revision_date ?? '',
+      approved_date: activeDocument.approved_date ?? '',
+      expiry_date: activeDocument.expiry_date ?? '',
+      is_restricted: Boolean(activeDocument.is_restricted)
     });
     setError(null);
-  }, [document, props.open]);
+  }, [activeDocument, props.open]);
 
   const folderOptions = useMemo(() => {
-    if (!document) return [];
-    const relevant = props.folders.filter((folder) => folder.module === document.module);
+    if (!activeDocument) return [];
+    const relevant = props.folders.filter((folder) => folder.module === activeDocument.module);
     const byId = new Map(relevant.map((folder) => [String(folder.id), folder]));
     return relevant
       .slice()
@@ -65,11 +65,11 @@ export function DocumentEditModal(props: {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') props.onClose();
     };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    window.document.addEventListener('keydown', handler);
+    return () => window.document.removeEventListener('keydown', handler);
   }, [props.open, props.onClose]);
 
-  if (!props.open || !document) return null;
+  if (!props.open || !activeDocument) return null;
 
   const selectedFolder = folderOptions.find((folder) => folder.id === formData.folder_id) ?? null;
 

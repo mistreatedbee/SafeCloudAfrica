@@ -100,7 +100,7 @@ export function OwnerDashboardPage() {
         const key = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
         const entry = byMonth.get(key) ?? { incidents: 0, nearMisses: 0, lti: 0 };
         entry.incidents += 1;
-        if (i.category === 'Near Miss') entry.nearMisses += 1;
+        if (i.is_near_miss) entry.nearMisses += 1;
         if (String(i.severity).toLowerCase() === 'critical') entry.lti += 1;
         byMonth.set(key, entry);
       }
@@ -128,7 +128,7 @@ export function OwnerDashboardPage() {
   );
 
   const { data: licenseInfo } = useAsync(
-    () => (activeCompanyId ? getLicenseInfo(activeCompanyId) : null),
+    () => (activeCompanyId ? getLicenseInfo(activeCompanyId) : Promise.resolve(null)),
     [activeCompanyId, refreshKey]
   );
   const { data: siteCount } = useAsync(

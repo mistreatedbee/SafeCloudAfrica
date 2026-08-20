@@ -124,7 +124,7 @@ export function TrainingCompleteModal(props: {
         const { data: uploadData, error: upErr } = await insforge.storage.from(TRAINING_CERT_BUCKET).upload(key, file);
         if (upErr) throw upErr;
         certificateBucket = TRAINING_CERT_BUCKET;
-        certificateKey = uploadData?.path ?? key;
+        certificateKey = uploadData?.key ?? key;
       }
 
       await updateTrainingRecord({

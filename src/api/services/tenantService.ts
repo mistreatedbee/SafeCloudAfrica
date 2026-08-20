@@ -220,6 +220,7 @@ export type CreateCompanyInput = {
   employeeLimit: number;
   primaryAdminUserId: UUID;
   metadata?: Record<string, unknown> | null;
+  subscriptionDurationMonths?: number;
 };
 
 export async function createCompany(input: CreateCompanyInput): Promise<Company> {
@@ -231,7 +232,8 @@ export async function createCompany(input: CreateCompanyInput): Promise<Company>
       license_type: input.licenseType,
       employee_limit: input.employeeLimit,
       primary_admin_user_id: session.userId,
-      metadata: input.metadata ?? null
+      metadata: input.metadata ?? null,
+      subscription_duration_months: input.subscriptionDurationMonths ?? null
     })
     .select('*')
     .single();
@@ -309,6 +311,7 @@ export async function getCompanyById(companyId: UUID): Promise<Company | null> {
 
 export async function updateCompanyProfile(input: {
   companyId: UUID;
+  actorUserId?: UUID;
   name?: string;
   metadata?: Record<string, unknown> | null;
 }): Promise<Company> {
@@ -325,6 +328,18 @@ export async function updateCompanyProfile(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update company.');
+
+  if (input.actorUserId) {
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.actorUserId,
+      action: 'companies.update_profile',
+      entityType: 'company',
+      entityId: input.companyId,
+      metadata: { fields: Object.keys(patch) }
+    }).catch(() => undefined);
+  }
+
   return data as Company;
 }
 

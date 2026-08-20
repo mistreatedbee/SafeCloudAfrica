@@ -178,7 +178,7 @@ export function ProfilePage() {
         department: formData.department,
         site: formData.site,
         avatar_bucket: AVATAR_BUCKET,
-        avatar_key: data?.path ?? key
+        avatar_key: data?.key ?? key
       });
 
       await applyUpdatedProfile(

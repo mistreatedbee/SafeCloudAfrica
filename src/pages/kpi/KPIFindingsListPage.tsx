@@ -173,7 +173,7 @@ export function KPIFindingsListPage() {
                           Upload proof
                         </button>
                       )}
-                      {canClose(f) && f.status !== 'closed' && (
+                      {canClose(f) && (
                         <>
                           <input
                             type="text"

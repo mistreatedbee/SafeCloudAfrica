@@ -74,20 +74,20 @@ export function TrainingMatrixSetupTab(props: {
 
   const refreshAll = () => setRefresh((r) => r + 1);
 
-  const { data: jobs, loading: jobsLoading } = useAsync(
-    () => (props.companyId ? listJobDescriptions(props.companyId) : []),
+  const { data: jobs, loading: jobsLoading } = useAsync<JobDescription[]>(
+    () => (props.companyId ? listJobDescriptions(props.companyId) : Promise.resolve([])),
     [props.companyId, refresh]
   );
-  const { data: courses, loading: coursesLoading } = useAsync(
-    () => (props.companyId ? listTrainingCourses(props.companyId) : []),
+  const { data: courses, loading: coursesLoading } = useAsync<TrainingCourse[]>(
+    () => (props.companyId ? listTrainingCourses(props.companyId) : Promise.resolve([])),
     [props.companyId, refresh]
   );
-  const { data: providers, loading: providersLoading } = useAsync(
-    () => (props.companyId ? listTrainingProviders(props.companyId) : []),
+  const { data: providers, loading: providersLoading } = useAsync<TrainingProvider[]>(
+    () => (props.companyId ? listTrainingProviders(props.companyId) : Promise.resolve([])),
     [props.companyId, refresh]
   );
-  const { data: requirements } = useAsync(
-    () => (props.companyId ? listJobTrainingRequirements(props.companyId) : []),
+  const { data: requirements } = useAsync<JobTrainingRequirement[]>(
+    () => (props.companyId ? listJobTrainingRequirements(props.companyId) : Promise.resolve([])),
     [props.companyId, refresh]
   );
 

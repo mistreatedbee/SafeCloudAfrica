@@ -9,6 +9,7 @@ export type ActivityLogCreate = {
   entityType?: string;
   entityId?: UUID;
   metadata?: Record<string, unknown>;
+  details?: Record<string, unknown>;
 };
 
 // This is a fire-and-forget audit trail: every one of its ~220 call sites
@@ -24,6 +25,8 @@ export type ActivityLogCreate = {
 // operation they're merely recording.
 export async function createActivityLog(input: ActivityLogCreate): Promise<ActivityLog | null> {
   try {
+    const payloadMetadata = input.metadata ?? input.details ?? null;
+
     const { data, error } = await insforge.database
       .from('activity_logs')
       .insert({
@@ -32,7 +35,7 @@ export async function createActivityLog(input: ActivityLogCreate): Promise<Activ
         action: input.action,
         entity_type: input.entityType ?? null,
         entity_id: input.entityId ?? null,
-        metadata: input.metadata ?? null
+        metadata: payloadMetadata
       })
       .select('*')
       .single();

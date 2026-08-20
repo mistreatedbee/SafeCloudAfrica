@@ -414,7 +414,7 @@ export function HrEmployeeWellnessPage() {
     const nextWellnessRows = WELLNESS_ROWS.map((row) => ({ ...row, answer: null, comments: '' }));
     const nextHealthRows = HEALTH_ROWS.map((row) => ({ ...row, status: '', comments: '' }));
     const nextSupportRows = SUPPORT_ROWS.map((row) => ({ ...row, answer: null, comments: '' }));
-    const nextActivityRows = ACTIVITY_ROWS.map((row) => ({ ...row, participation: '', comments: '' }));
+    const nextActivityRows: ActivityRow[] = ACTIVITY_ROWS.map((row) => ({ ...row, participation: '', comments: '' }));
     const nextActionPlanRows: ActionPlanRow[] = [createBlankActionRow()];
 
     setAssessmentDate(nextAssessmentDate);

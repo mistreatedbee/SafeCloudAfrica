@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,7 +20,7 @@ vi.mock('../tenant/TenantContext', () => ({
 }));
 
 vi.mock('../api/insforge/ensureSession', () => ({
-  withInsforgeSession: (...args: unknown[]) => withInsforgeSessionMock(...args)
+  withInsforgeSession: (...args: Parameters<typeof withInsforgeSessionMock>) => withInsforgeSessionMock(...args)
 }));
 
 vi.mock('../api/insforge/client', () => ({

@@ -112,6 +112,7 @@ import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { LandingPage } from './pages/marketing/LandingPage';
+import { NextWavePage } from './pages/marketing/NextWavePage';
 import { SeedDemoPage } from './pages/admin/SeedDemoPage';
 import { AdminLicensePage } from './pages/admin/AdminLicensePage';
 import { SuperAdminLayout } from './components/layout/SuperAdminLayout';
@@ -160,6 +161,7 @@ export function App() {
               <Routes>
           {/* Public */}
           <Route path="/" element={<><LandingPage /><FloatingSupportChat /></>} />
+          <Route path="/nextwave" element={<NextWavePage />} />
 
           {/* Auth */}
           <Route path="/login" element={<LoginPage />} />

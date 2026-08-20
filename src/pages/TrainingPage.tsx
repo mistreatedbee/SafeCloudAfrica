@@ -208,12 +208,13 @@ export function TrainingPage() {
     return rows;
   }, [all, employeeById, memberships]);
 
-  const tabs: { id: TrainingTab; label: string; icon: React.ComponentType<{ className?: string }>; show: boolean }[] = [
+  const allTabs: { id: TrainingTab; label: string; icon: React.ComponentType<any>; show: boolean }[] = [
     { id: 'matrix', label: 'Matrix Setup', icon: SettingsIcon, show: canManageMatrix },
     { id: 'employees', label: 'Employee Training', icon: UsersIcon, show: canManage },
     { id: 'reports', label: 'Reports & Costs', icon: BarChart3Icon, show: canManageMatrix },
     { id: 'my', label: 'My Training', icon: UserIcon, show: true }
-  ].filter((t) => t.show);
+  ];
+  const tabs = allTabs.filter((t) => t.show);
 
   const effectiveTab = isEmployee ? 'my' : activeTab;
   const setEffectiveTab = (t: TrainingTab) => setActiveTab(t);

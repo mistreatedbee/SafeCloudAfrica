@@ -112,6 +112,10 @@ export class AutosaveEngine<S> {
     }
   }
 
+  private getPending(): PendingSave<S> | null {
+    return this.pending;
+  }
+
   private async savePendingIfNeeded(): Promise<void> {
     if (!this.pending) return;
     if (this.pending.key === this.lastSavedKey) return;
@@ -131,7 +135,11 @@ export class AutosaveEngine<S> {
     }
 
     // If a newer schedule happened while saving, persist it (debounced from the last change).
-    if (this.pending && this.pending.key !== this.lastSavedKey) {
+    // Read via a method (rather than `this.pending` directly) so TS doesn't carry over the
+    // `this.pending = null` narrowing from above the `await` — a schedule() call during the
+    // save could have repopulated it.
+    const pendingAfterSave = this.getPending();
+    if (pendingAfterSave && pendingAfterSave.key !== this.lastSavedKey) {
       const elapsed = Date.now() - this.lastChangeAt;
       const remaining = this.debounceMs - elapsed;
       if (remaining <= 0) {

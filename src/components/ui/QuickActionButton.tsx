@@ -1,4 +1,4 @@
-import React, { Component } from 'react';
+import React, { type ComponentType } from 'react';
 import {
   AlertTriangleIcon,
   UploadIcon,

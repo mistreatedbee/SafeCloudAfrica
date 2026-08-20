@@ -404,7 +404,6 @@ export async function closeQualityNcr(
     companyId,
     {
       status: 'closed',
-      signed_at: closedAt,
       closed_by_user_id: actorUserId,
       closed_at: closedAt,
       date_closed: closedAt

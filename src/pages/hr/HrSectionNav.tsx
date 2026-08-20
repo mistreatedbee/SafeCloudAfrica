@@ -24,7 +24,7 @@ export function HrSectionNav() {
           <NavLink
             key={link.to}
             to={link.to}
-            end={link.end}
+            end={'end' in link ? link.end : undefined}
             className={({ isActive }) =>
               `px-3 py-1.5 rounded-lg text-sm font-medium ${isActive ? 'bg-teal text-white' : 'text-charcoal-600 hover:bg-surface-100'}`
             }
