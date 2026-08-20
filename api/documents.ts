@@ -1,1 +1,1 @@
-export { default } from './documents/[...slug].js';
+export { default } from '../server/documents/documentsHandler.js';

@@ -1,8 +1,8 @@
-import { applyNoStoreHeaders } from '../_response.js';
-import editorConfigStatusHandler from '../../server/documents/editorConfigStatusHandler.js';
-import editorConfigHandler from '../../server/documents/editorConfigHandler.js';
-import fileHandler from '../../server/documents/fileHandler.js';
-import onlyofficeCallbackHandler from '../../server/documents/onlyofficeCallbackHandler.js';
+import { applyNoStoreHeaders } from '../../api/_response.js';
+import editorConfigStatusHandler from './editorConfigStatusHandler.js';
+import editorConfigHandler from './editorConfigHandler.js';
+import fileHandler from './fileHandler.js';
+import onlyofficeCallbackHandler from './onlyofficeCallbackHandler.js';
 
 function parseSlug(req: any): string[] {
   const rawSlug = req.query?.slug;

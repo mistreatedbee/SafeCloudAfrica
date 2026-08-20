@@ -83,22 +83,6 @@ describe('consolidated Vercel API routes', () => {
     ['accept', 'accept'],
     ['accept-pending', 'accept-pending'],
     ['resend', 'resend']
-  ])('routes /api/invites/%s through the invites catch-all', async (action, expected) => {
-    const { default: handler } = await import('../../../api/invites/[...action]');
-    const req = { method: 'POST', query: { action }, headers: {}, body: {} };
-    const res = createRes();
-
-    await handler(req, res);
-
-    expect(res.statusCode).toBe(200);
-    expect(res.jsonBody).toEqual({ routed: expected });
-  });
-
-  it.each([
-    ['create', 'create'],
-    ['accept', 'accept'],
-    ['accept-pending', 'accept-pending'],
-    ['resend', 'resend']
   ])('routes /api/invites/%s through the production invites router', async (action, expected) => {
     const { default: handler } = await import('../../../api/invites-router');
     const req = { method: 'POST', query: { action }, headers: {}, body: {} };
@@ -108,17 +92,6 @@ describe('consolidated Vercel API routes', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.jsonBody).toEqual({ routed: expected });
-  });
-
-  it('routes /api/invites/validate/:token and forwards the path token', async () => {
-    const { default: handler } = await import('../../../api/invites/[...action]');
-    const req = { method: 'GET', query: { action: ['validate', 'token-1'] }, headers: {} };
-    const res = createRes();
-
-    await handler(req, res);
-
-    expect(routeMocks.validateInviteHandler).toHaveBeenCalledWith(req, res, 'token-1');
-    expect(res.jsonBody).toEqual({ routed: 'validate', token: 'token-1' });
   });
 
   it('routes /api/invites/validate?token=... through the production invites router', async () => {
@@ -155,7 +128,7 @@ describe('consolidated Vercel API routes', () => {
   });
 
   it('routes /api/documents/editor-config-status through the documents catch-all', async () => {
-    const { default: handler } = await import('../../../api/documents/[...slug]');
+    const { default: handler } = await import('../../../server/documents/documentsHandler');
     const req = { method: 'GET', query: { slug: ['editor-config-status'] }, headers: {} };
     const res = createRes();
 
@@ -173,7 +146,7 @@ describe('consolidated Vercel API routes', () => {
     ['editor-config', routeMocks.editorConfigHandler, { routed: 'editor-config' }],
     ['onlyoffice/callback', routeMocks.onlyofficeCallbackHandler, { routed: 'onlyoffice-callback' }]
   ])('routes /api/documents/%s through the documents catch-all', async (slug, expectedHandler, expectedBody) => {
-    const { default: handler } = await import('../../../api/documents/[...slug]');
+    const { default: handler } = await import('../../../server/documents/documentsHandler');
     const req = { method: 'GET', query: { slug }, headers: {} };
     const res = createRes();
 
