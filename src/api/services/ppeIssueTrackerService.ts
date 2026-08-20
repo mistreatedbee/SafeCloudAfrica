@@ -145,6 +145,8 @@ export type CreatePpeIssueTrackerInput = {
   departmentNameText?: string | null;
   siteId?: UUID | null;
   siteNameText?: string | null;
+  /** HR employee this report concerns, when selected from HR. NULL for manual/contractor entries. */
+  employeeId?: UUID | null;
   contractorOrEmployeeName?: string | null;
   employeeNumber?: string | null;
   jobRoleOrTask?: string | null;
@@ -211,6 +213,7 @@ export async function createPpeIssueTracker(
       department_name_text: input.departmentNameText ?? null,
       site_id: input.siteId ?? null,
       site_name_text: input.siteNameText ?? null,
+      employee_id: input.employeeId ?? null,
       contractor_or_employee_name: input.contractorOrEmployeeName ?? null,
       employee_number: input.employeeNumber ?? null,
       job_role_or_task: input.jobRoleOrTask ?? null,

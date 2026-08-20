@@ -245,6 +245,8 @@ export type CreatePpeIssueInput = {
   ppeItemId: UUID;
   issuedToUserId?: UUID | null;
   issuedToEmployeeId?: UUID | null;
+  /** Display name for the recipient when they are not HR/user-linked (e.g. a contractor). */
+  issuedToName?: string | null;
   issuedByUserId: UUID;
   issuedByRole?: string | null;
   nextIssueAt?: string | null;
@@ -318,6 +320,7 @@ export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIss
       ppe_item_id: input.ppeItemId,
       issued_to_user_id: input.issuedToUserId ?? null,
       issued_to_employee_id: input.issuedToEmployeeId ?? null,
+      issued_to_name: input.issuedToUserId || input.issuedToEmployeeId ? null : (input.issuedToName ?? null),
       issued_by_user_id: input.issuedByUserId,
       issued_at: issuedAt,
       next_issue_at: input.nextIssueAt ?? null,
@@ -358,7 +361,17 @@ export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIss
         allowNegativeStock: input.adminOverrideInsufficientStock
       });
     } catch (movErr) {
-      if ((movErr as Error & { insufficientStock?: boolean }).insufficientStock) throw movErr;
+      // The issue row above already exists at this point. InsForge's REST layer has no
+      // multi-statement transaction we can wrap both writes in, so on ANY inventory-write
+      // failure (not just insufficient stock) we compensate by deleting the just-created
+      // issue rather than silently leaving a "successful" issue with no inventory effect
+      // and no movement record explaining the discrepancy (see PPE stock transaction safety).
+      try {
+        await insforge.database.from('ppe_issues').delete().eq('company_id', input.companyId).eq('id', issue.id);
+      } catch {
+        // best-effort compensation; the original error below is still the one that matters
+      }
+      throw movErr;
     }
   }
 

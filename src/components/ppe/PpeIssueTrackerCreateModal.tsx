@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { Department, PpeIssueTrackerRiskLevel, Site, UUID } from '../../api/models/entities';
 import { createPpeIssueTracker } from '../../api/services/ppeIssueTrackerService';
@@ -53,9 +54,13 @@ export function PpeIssueTrackerCreateModal(props: {
   const [riskLevel, setRiskLevel] = useState<PpeIssueTrackerRiskLevel>('medium');
   const [siteId, setSiteId] = useState('');
   const [departmentId, setDepartmentId] = useState('');
+  const [employeeMode, setEmployeeMode] = useState<'hr' | 'manual'>('hr');
+  const [employeeId, setEmployeeId] = useState('');
   const [employeeName, setEmployeeName] = useState('');
   const [employeeNumber, setEmployeeNumber] = useState('');
   const [jobRole, setJobRole] = useState('');
+  const [responsibleMode, setResponsibleMode] = useState<'hr' | 'manual'>('hr');
+  const [responsibleUserId, setResponsibleUserId] = useState('');
   const [description, setDescription] = useState('');
   const [immediateWorkStopped, setImmediateWorkStopped] = useState(false);
   const [immediatePpeIssued, setImmediatePpeIssued] = useState(false);
@@ -78,6 +83,8 @@ export function PpeIssueTrackerCreateModal(props: {
     riskLevel: PpeIssueTrackerRiskLevel;
     siteId: string;
     departmentId: string;
+    employeeMode: 'hr' | 'manual';
+    employeeId: string;
     employeeName: string;
     employeeNumber: string;
     jobRole: string;
@@ -90,6 +97,8 @@ export function PpeIssueTrackerCreateModal(props: {
     immediateNotes: string;
     targetCompletionDate: string;
     correctiveRequired: boolean;
+    responsibleMode: 'hr' | 'manual';
+    responsibleUserId: string;
     responsibleName: string;
     notes: string;
   };
@@ -105,6 +114,7 @@ export function PpeIssueTrackerCreateModal(props: {
       riskLevel !== 'medium' ||
       siteId.trim().length > 0 ||
       departmentId.trim().length > 0 ||
+      employeeId.trim().length > 0 ||
       employeeName.trim().length > 0 ||
       employeeNumber.trim().length > 0 ||
       jobRole.trim().length > 0 ||
@@ -117,6 +127,7 @@ export function PpeIssueTrackerCreateModal(props: {
       immediateNotes.trim().length > 0 ||
       targetCompletionDate.trim().length > 0 ||
       correctiveRequired !== true ||
+      responsibleUserId.trim().length > 0 ||
       responsibleName.trim().length > 0 ||
       notes.trim().length > 0
     );
@@ -124,8 +135,10 @@ export function PpeIssueTrackerCreateModal(props: {
     correctiveRequired,
     departmentId,
     description,
+    employeeId,
     employeeName,
     employeeNumber,
+    responsibleUserId,
     immediateEmployeeRemoved,
     immediateNotes,
     immediatePpeIssued,
@@ -155,6 +168,8 @@ export function PpeIssueTrackerCreateModal(props: {
         riskLevel,
         siteId,
         departmentId,
+        employeeMode,
+        employeeId,
         employeeName,
         employeeNumber,
         jobRole,
@@ -167,6 +182,8 @@ export function PpeIssueTrackerCreateModal(props: {
         immediateNotes,
         targetCompletionDate,
         correctiveRequired,
+        responsibleMode,
+        responsibleUserId,
         responsibleName,
         notes
       }) satisfies PpeIssueTrackerCreateDraftPayload
@@ -183,6 +200,8 @@ export function PpeIssueTrackerCreateModal(props: {
     setRiskLevel(restored.riskLevel ?? 'medium');
     setSiteId(restored.siteId ?? '');
     setDepartmentId(restored.departmentId ?? '');
+    setEmployeeMode(restored.employeeMode ?? 'hr');
+    setEmployeeId(restored.employeeId ?? '');
     setEmployeeName(restored.employeeName ?? '');
     setEmployeeNumber(restored.employeeNumber ?? '');
     setJobRole(restored.jobRole ?? '');
@@ -195,6 +214,8 @@ export function PpeIssueTrackerCreateModal(props: {
     setImmediateNotes(restored.immediateNotes ?? '');
     setTargetCompletionDate(restored.targetCompletionDate ?? '');
     setCorrectiveRequired(restored.correctiveRequired ?? true);
+    setResponsibleMode(restored.responsibleMode ?? 'hr');
+    setResponsibleUserId(restored.responsibleUserId ?? '');
     setResponsibleName(restored.responsibleName ?? '');
     setNotes(restored.notes ?? '');
   }, [draftKey, props.open, restoreDraft]);
@@ -222,6 +243,7 @@ export function PpeIssueTrackerCreateModal(props: {
         reportedByName: null,
         siteId: siteId ? (siteId as any) : null,
         departmentId: departmentId ? (departmentId as any) : null,
+        employeeId: employeeMode === 'hr' && employeeId ? (employeeId as any) : null,
         contractorOrEmployeeName: employeeName || null,
         employeeNumber: employeeNumber || null,
         jobRoleOrTask: jobRole || null,
@@ -237,6 +259,7 @@ export function PpeIssueTrackerCreateModal(props: {
         immediateSupervisorNotified,
         immediateActionNotes: immediateNotes || null,
         correctiveActionRequired: correctiveRequired,
+        responsibleUserId: responsibleMode === 'hr' && responsibleUserId ? (responsibleUserId as any) : null,
         responsibleUserName: responsibleName || null,
         targetCompletionDate: targetCompletionDate || null,
         replacementPpeIssued: immediatePpeIssued,
@@ -252,6 +275,8 @@ export function PpeIssueTrackerCreateModal(props: {
       setRiskLevel('medium');
       setSiteId('');
       setDepartmentId('');
+      setEmployeeMode('hr');
+      setEmployeeId('');
       setEmployeeName('');
       setEmployeeNumber('');
       setJobRole('');
@@ -264,6 +289,8 @@ export function PpeIssueTrackerCreateModal(props: {
       setImmediateNotes('');
       setTargetCompletionDate('');
       setCorrectiveRequired(true);
+      setResponsibleMode('hr');
+      setResponsibleUserId('');
       setResponsibleName('');
       setNotes('');
     } catch (err: unknown) {
@@ -401,25 +428,55 @@ export function PpeIssueTrackerCreateModal(props: {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">
-                Employee / Contractor Name
-              </label>
-              <input
-                value={employeeName}
-                onChange={(e) => setEmployeeName(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-charcoal">Employee / Contractor</label>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextMode = employeeMode === 'hr' ? 'manual' : 'hr';
+                  setEmployeeMode(nextMode);
+                  if (nextMode === 'manual') setEmployeeId('');
+                }}
+                className="text-xs font-medium text-teal hover:underline"
+              >
+                {employeeMode === 'hr' ? 'Person not in HR? Add manually' : 'Select from HR instead'}
+              </button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Employee No.</label>
-              <input
-                value={employeeNumber}
-                onChange={(e) => setEmployeeNumber(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            {employeeMode === 'hr' ? (
+              <HrEmployeeSelect
+                companyId={props.companyId}
+                value={employeeId as UUID | ''}
+                valueField="id"
+                includeUnlinked
+                placeholder="Search HR employees..."
+                onChange={(value, meta) => {
+                  setEmployeeId(value);
+                  setEmployeeName(meta.nameSnapshot);
+                  setEmployeeNumber(meta.employeeNumber ?? '');
+                }}
+                onEmployeeChange={(emp) => {
+                  if (emp?.job_title) setJobRole(emp.job_title);
+                  if (emp?.department_id) setDepartmentId(String(emp.department_id));
+                  if (emp?.site_id) setSiteId(String(emp.site_id));
+                }}
               />
-            </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <input
+                  value={employeeName}
+                  onChange={(e) => setEmployeeName(e.target.value)}
+                  placeholder="Employee / contractor name"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+                <input
+                  value={employeeNumber}
+                  onChange={(e) => setEmployeeNumber(e.target.value)}
+                  placeholder="Employee / contractor number (optional)"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+            )}
           </div>
 
           <div>
@@ -520,14 +577,39 @@ export function PpeIssueTrackerCreateModal(props: {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">
-                  Responsible person (name)
-                </label>
-                <input
-                  value={responsibleName}
-                  onChange={(e) => setResponsibleName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-charcoal">Responsible person</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextMode = responsibleMode === 'hr' ? 'manual' : 'hr';
+                      setResponsibleMode(nextMode);
+                      if (nextMode === 'manual') setResponsibleUserId('');
+                    }}
+                    className="text-xs font-medium text-teal hover:underline"
+                  >
+                    {responsibleMode === 'hr' ? 'Type name instead' : 'Select employee instead'}
+                  </button>
+                </div>
+                {responsibleMode === 'hr' ? (
+                  <HrEmployeeSelect
+                    companyId={props.companyId}
+                    value={responsibleUserId as UUID | ''}
+                    valueField="user_id"
+                    placeholder="Search employees with system access..."
+                    onChange={(value, meta) => {
+                      setResponsibleUserId(value);
+                      setResponsibleName(meta.nameSnapshot);
+                    }}
+                  />
+                ) : (
+                  <input
+                    value={responsibleName}
+                    onChange={(e) => setResponsibleName(e.target.value)}
+                    placeholder="Responsible person name"
+                    className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  />
+                )}
               </div>
             </div>
             <div>

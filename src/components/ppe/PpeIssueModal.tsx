@@ -50,6 +50,8 @@ export function PpeIssueModal(props: {
   const [issuedToUserId, setIssuedToUserId] = useState('');
   const [issuedToEmployeeId, setIssuedToEmployeeId] = useState('');
   const [issuedToEmployeeNumber, setIssuedToEmployeeNumber] = useState('');
+  const [issuedToName, setIssuedToName] = useState('');
+  const [employeeMode, setEmployeeMode] = useState<'hr' | 'manual'>('hr');
   const [jobRole, setJobRole] = useState('');
   const [nextIssueDate, setNextIssueDate] = useState('');
   const [siteId, setSiteId] = useState('');
@@ -83,6 +85,8 @@ export function PpeIssueModal(props: {
     issuedToUserId: string;
     issuedToEmployeeId: string;
     issuedToEmployeeNumber: string;
+    issuedToName: string;
+    employeeMode: 'hr' | 'manual';
     jobRole: string;
     nextIssueDate: string;
     siteId: string;
@@ -108,6 +112,7 @@ export function PpeIssueModal(props: {
       issuedToUserId.trim().length > 0 ||
       issuedToEmployeeId.trim().length > 0 ||
       issuedToEmployeeNumber.trim().length > 0 ||
+      issuedToName.trim().length > 0 ||
       jobRole.trim().length > 0 ||
       nextIssueDate.trim().length > 0 ||
       siteId.trim().length > 0 ||
@@ -123,6 +128,7 @@ export function PpeIssueModal(props: {
     departmentId,
     issuedToEmployeeId,
     issuedToEmployeeNumber,
+    issuedToName,
     issuedToUserId,
     jobRole,
     nextIssueDate,
@@ -155,6 +161,8 @@ export function PpeIssueModal(props: {
         issuedToUserId,
         issuedToEmployeeId,
         issuedToEmployeeNumber,
+        issuedToName,
+        employeeMode,
         jobRole,
         nextIssueDate,
         siteId,
@@ -182,6 +190,8 @@ export function PpeIssueModal(props: {
     setIssuedToUserId(restored.issuedToUserId ?? '');
     setIssuedToEmployeeId(restored.issuedToEmployeeId ?? '');
     setIssuedToEmployeeNumber(restored.issuedToEmployeeNumber ?? '');
+    setIssuedToName(restored.issuedToName ?? '');
+    setEmployeeMode(restored.employeeMode ?? 'hr');
     setJobRole(restored.jobRole ?? '');
     setNextIssueDate(restored.nextIssueDate ?? '');
     setSiteId(restored.siteId ?? '');
@@ -331,9 +341,10 @@ export function PpeIssueModal(props: {
         size: size.trim() || sizeOther.trim() || null,
         quantityIssued: Math.max(1, quantityIssued),
         reasonForIssue: reasonForIssue === 'Other' ? (reasonOther.trim() || null) : (reasonForIssue || null),
-        issuedToUserId: issuedToUserId ? (issuedToUserId as UUID) : null,
-        issuedToEmployeeId: issuedToEmployeeId ? (issuedToEmployeeId as UUID) : null,
+        issuedToUserId: employeeMode === 'hr' && issuedToUserId ? (issuedToUserId as UUID) : null,
+        issuedToEmployeeId: employeeMode === 'hr' && issuedToEmployeeId ? (issuedToEmployeeId as UUID) : null,
         issuedToEmployeeNumber: issuedToEmployeeNumber.trim() || null,
+        issuedToName: employeeMode === 'manual' ? issuedToName.trim() || null : null,
         jobRole: jobRole.trim() || null,
         unitCostAtIssue: unitCost ?? null,
         notes: notes.trim() || null,
@@ -375,6 +386,8 @@ export function PpeIssueModal(props: {
     setIssuedToUserId('');
     setIssuedToEmployeeId('');
     setIssuedToEmployeeNumber('');
+    setIssuedToName('');
+    setEmployeeMode('hr');
     setJobRole('');
     setNextIssueDate('');
     setSiteId('');
@@ -526,38 +539,79 @@ export function PpeIssueModal(props: {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Issued to (HR employee)</label>
-              <select
-                value={issuedToEmployeeId}
-                onChange={(e) => {
-                  const employeeId = e.target.value;
-                  setIssuedToEmployeeId(employeeId);
-                  const emp = (employees ?? []).find((x) => String(x.id) === String(employeeId)) ?? null;
-                  setIssuedToUserId(emp?.user_id ? String(emp.user_id) : '');
-                  if (emp?.employee_no) setIssuedToEmployeeNumber(String(emp.employee_no));
-                }}
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              >
-                <option value="">Select employee</option>
-                {(employees ?? []).map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {`${emp.last_name ?? ''}, ${emp.first_name ?? ''}`.trim()} — {emp.employee_no}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Employee number</label>
-              <input
-                value={issuedToEmployeeNumber}
-                onChange={(e) => setIssuedToEmployeeNumber(e.target.value)}
-                placeholder="Optional"
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
-            </div>
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium text-charcoal">Issued to</label>
+            <button
+              type="button"
+              onClick={() => {
+                const nextMode = employeeMode === 'hr' ? 'manual' : 'hr';
+                setEmployeeMode(nextMode);
+                if (nextMode === 'manual') {
+                  setIssuedToEmployeeId('');
+                  setIssuedToUserId('');
+                } else {
+                  setIssuedToName('');
+                }
+              }}
+              className="text-xs font-medium text-teal hover:underline"
+            >
+              {employeeMode === 'hr' ? 'Person not in HR? Add manually' : 'Select from HR instead'}
+            </button>
           </div>
+          {employeeMode === 'hr' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <select
+                  value={issuedToEmployeeId}
+                  onChange={(e) => {
+                    const employeeId = e.target.value;
+                    setIssuedToEmployeeId(employeeId);
+                    const emp = (employees ?? []).find((x) => String(x.id) === String(employeeId)) ?? null;
+                    setIssuedToUserId(emp?.user_id ? String(emp.user_id) : '');
+                    if (emp?.employee_no) setIssuedToEmployeeNumber(String(emp.employee_no));
+                    if (emp?.job_title) setJobRole(emp.job_title);
+                    if (emp?.department_id) setDepartmentId(String(emp.department_id));
+                    if (emp?.site_id) setSiteId(String(emp.site_id));
+                  }}
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                >
+                  <option value="">Select employee</option>
+                  {(employees ?? []).map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {`${emp.last_name ?? ''}, ${emp.first_name ?? ''}`.trim()} — {emp.employee_no}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <input
+                  value={issuedToEmployeeNumber}
+                  onChange={(e) => setIssuedToEmployeeNumber(e.target.value)}
+                  placeholder="Employee number (optional)"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <input
+                  value={issuedToName}
+                  onChange={(e) => setIssuedToName(e.target.value)}
+                  placeholder="Name (contractor / not in HR)"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+              <div>
+                <input
+                  value={issuedToEmployeeNumber}
+                  onChange={(e) => setIssuedToEmployeeNumber(e.target.value)}
+                  placeholder="Contractor / employee number (optional)"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

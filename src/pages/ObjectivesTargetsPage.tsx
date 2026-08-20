@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { motion } from 'framer-motion';
 import { PlusIcon, TargetIcon } from 'lucide-react';
@@ -83,6 +83,10 @@ function ReviewEditor(props: {
   companyId: UUID;
   target: ModuleTarget;
   actorUserId?: UUID;
+  /** Set when the status change to 'not_achieved' hasn't been persisted yet -- the
+   *  transition and the reason are committed together so an objective can never be
+   *  saved as not-achieved without an explanation. */
+  pendingStatus?: ModuleTargetStatus;
   onSaved: () => void;
 }) {
   const [reason, setReason] = useState(props.target.review_reason ?? '');
@@ -101,13 +105,20 @@ function ReviewEditor(props: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isNotAchieved = props.pendingStatus === 'not_achieved' || props.target.status === 'not_achieved';
+
   async function saveReview() {
-    setSaving(true);
     setError(null);
+    if (isNotAchieved && !reason.trim()) {
+      setError('A reason is required when marking this objective as not achieved.');
+      return;
+    }
+    setSaving(true);
     try {
       await updateModuleTarget({
         companyId: props.companyId,
         id: props.target.id,
+        status: props.pendingStatus,
         reviewReason: reason.trim() || null,
         reviewCorrectiveAction: correctiveAction.trim() || null,
         reviewResponsibleEmployeeId: responsibleEmployeeId || null,
@@ -129,14 +140,22 @@ function ReviewEditor(props: {
 
   return (
     <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-4">
+      {props.pendingStatus === 'not_achieved' && (
+        <p className="text-sm text-warning-700 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2">
+          This objective will be marked <strong>Not Achieved</strong> once you provide a reason and save below.
+        </p>
+      )}
       {error && <p className="text-sm text-critical">{error}</p>}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <label className="md:col-span-2">
-          <span className="block text-sm font-medium text-charcoal mb-1.5">Reason for not achieving objective</span>
+          <span className="block text-sm font-medium text-charcoal mb-1.5">
+            Reason for not achieving objective {isNotAchieved && <span className="text-critical">*</span>}
+          </span>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={2}
+            required={isNotAchieved}
             className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
           />
         </label>
@@ -207,7 +226,7 @@ function ReviewEditor(props: {
         <button
           type="button"
           onClick={() => void saveReview()}
-          disabled={saving}
+          disabled={saving || (isNotAchieved && !reason.trim())}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60"
         >
           {saving && <LoadingSpinner size={16} />}
@@ -306,6 +325,9 @@ export function ObjectivesTargetsPage() {
   const [createModule, setCreateModule] = useState<ModuleKey>('safety');
   const [createOpen, setCreateOpen] = useState(false);
   const [expandedReviewId, setExpandedReviewId] = useState<string | null>(null);
+  /** Objective whose status was set to 'not_achieved' in the UI but not yet persisted --
+   *  it commits together with the required reason so the two can never be saved apart. */
+  const [pendingNotAchievedId, setPendingNotAchievedId] = useState<string | null>(null);
   const [expandedNotesId, setExpandedNotesId] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -334,6 +356,13 @@ export function ObjectivesTargetsPage() {
 
   async function handleStatusChange(target: ModuleTarget, status: ModuleTargetStatus) {
     if (!activeCompanyId) return;
+    // Marking an objective not-achieved requires a reason -- don't persist the status
+    // change yet; open the review editor and let saveReview() commit both together.
+    if (status === 'not_achieved' && !(target.review_reason ?? '').trim()) {
+      setPendingNotAchievedId(target.id);
+      setExpandedReviewId(target.id);
+      return;
+    }
     setStatusUpdatingId(target.id);
     setPageError(null);
     try {
@@ -464,7 +493,10 @@ export function ObjectivesTargetsPage() {
                     />
                   )}
                   {objectives.map((objective) => {
-                    const normalizedStatus = objective.status ?? (objective.achieved ? 'completed' : 'not_started');
+                    const isPendingNotAchieved = pendingNotAchievedId === objective.id;
+                    const normalizedStatus = isPendingNotAchieved
+                      ? 'not_achieved'
+                      : objective.status ?? (objective.achieved ? 'completed' : 'not_started');
                     return (
                       <React.Fragment key={objective.id}>
                         <tr className={isOverdue(objective) ? 'bg-critical/5' : undefined}>
@@ -545,7 +577,11 @@ export function ObjectivesTargetsPage() {
                                 companyId={activeCompanyId}
                                 target={objective}
                                 actorUserId={user?.id}
-                                onSaved={() => setRefreshKey((k) => k + 1)}
+                                pendingStatus={isPendingNotAchieved ? 'not_achieved' : undefined}
+                                onSaved={() => {
+                                  setPendingNotAchievedId((cur) => (cur === objective.id ? null : cur));
+                                  setRefreshKey((k) => k + 1);
+                                }}
                               />
                             </td>
                           </tr>

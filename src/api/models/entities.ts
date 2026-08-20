@@ -1248,6 +1248,8 @@ export type PPEIssue = {
   total_cost_at_issue?: number | null;
   issuer_signature?: string | null;
   receiver_signature?: string | null;
+  /** Display name for the recipient when they are not HR/user-linked (e.g. a contractor). */
+  issued_to_name?: string | null;
 };
 
 export type PpeIssueTrackerStatus =
@@ -1274,6 +1276,8 @@ export type PpeIssueTracker = {
   department_name_text: string | null;
   site_id: UUID | null;
   site_name_text: string | null;
+  /** HR employee this report concerns, when the person is a known HR employee (NULL for manual/contractor entries). */
+  employee_id: UUID | null;
   contractor_or_employee_name: string | null;
   employee_number: string | null;
   job_role_or_task: string | null;
