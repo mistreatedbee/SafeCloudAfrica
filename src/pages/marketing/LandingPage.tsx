@@ -395,9 +395,12 @@ export function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14">
           <div className="flex items-end justify-between gap-6">
             <div>
-              <h2 className="text-2xl font-bold text-navy">Core modules</h2>
-              <p className="text-sm text-charcoal-500 mt-2">
-                Built around Quality, Safety, Health, Legal, HR, and General—plus supporting modules for evidence and control.
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-navy">Core modules</h2>
+              <p className="mt-3 text-lg font-semibold text-charcoal">
+                Built around <span className="text-teal">Quality, Safety, Health, Environment, Legal, HR, and General</span>—plus supporting modules for evidence and control.
+              </p>
+              <p className="mt-2 text-sm text-charcoal-500">
+                Every module works together so your programme stays connected and fully controlled in one place.
               </p>
             </div>
             <Link
@@ -415,7 +418,13 @@ export function LandingPage() {
               { title: 'Incidents & CAPA', icon: AlertTriangleIcon, desc: 'Near misses, investigations, corrective actions.' },
               { title: 'Training & Competency', icon: GraduationCapIcon, desc: 'Training matrix, expiry alerts, certificates.' },
               { title: 'Audits & Inspections', icon: BarChart3Icon, desc: 'Checklists, findings, evidence uploads.' },
-              { title: 'Legal Register', icon: ScaleIcon, desc: 'Compliance obligations linked to evidence and actions.' }
+              { title: 'Legal Register', icon: ScaleIcon, desc: 'Compliance obligations linked to evidence and actions.' },
+              { title: 'Environmental', icon: CloudIcon, desc: 'EIA, waste, water, air, risk & opportunity tracking.' },
+              { title: 'Health', icon: ShieldCheckIcon, desc: 'Medical surveillance, hygiene, wellness programmes.' },
+              { title: 'Human Resources', icon: BuildingIcon, desc: 'Employees, leave, performance, training records.' },
+              { title: 'Security', icon: SettingsIcon, desc: 'SSSA/SSA processes and workplace security controls.' },
+              { title: 'Hazardous Chemicals', icon: AlertTriangleIcon, desc: 'SDS management and hazardous chemical registers.' },
+              { title: 'Risk Assessments', icon: AwardIcon, desc: 'HIRA, risk registers, and assessment workflows.' }
             ].map((m, i) => (
               <motion.div
                 key={m.title}
@@ -671,9 +680,6 @@ export function LandingPage() {
           <p className="text-sm text-charcoal-500 mt-2 max-w-3xl">
             Simple, transparent licensing for South African businesses. All prices in South African Rands (R) per month.
           </p>
-          <p className="mt-3 text-sm text-charcoal-600">
-            HR module: R30 per employee, but it is included in the major system pricing and therefore free within the selected plan.
-          </p>
 
           <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <motion.div
@@ -686,9 +692,9 @@ export function LandingPage() {
             >
               <div className="flex items-center justify-between">
                 <p className="text-lg font-bold text-charcoal">Starter</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">1–35 employees</span>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">1–15 employees</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R450<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-2 text-3xl font-bold text-navy">R650<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
               <p className="mt-1 text-xs text-charcoal-500">Ideal for small businesses and growing teams.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Core platform access</li>
@@ -713,10 +719,10 @@ export function LandingPage() {
             >
               <div className="flex items-center justify-between">
                 <p className="text-lg font-bold text-charcoal">Professional</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">36–100 employees</span>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">16–40 employees</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R650<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
-              <p className="mt-1 text-xs text-charcoal-500">Built for medium-sized operations with multiple departments.</p>
+              <p className="mt-2 text-3xl font-bold text-navy">R950<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-1 text-xs text-charcoal-500">Built for growing operations with more oversight needs.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />All core modules</li>
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Advanced reporting</li>
@@ -741,9 +747,9 @@ export function LandingPage() {
               <div className="absolute top-0 right-0 bg-teal text-white px-3 py-1 rounded-bl-lg rounded-tr-lg text-xs font-semibold">Most popular</div>
               <div className="flex items-center justify-between">
                 <p className="text-lg font-bold text-charcoal">Business</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">100–200 employees</span>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">41–100 employees</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R899<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-2 text-3xl font-bold text-navy">R1,799<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
               <p className="mt-1 text-xs text-charcoal-500">Designed for scaling organisations with broader oversight needs.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Expanded operational controls</li>
@@ -768,10 +774,10 @@ export function LandingPage() {
             >
               <div className="flex items-center justify-between">
                 <p className="text-lg font-bold text-charcoal">Enterprise</p>
-                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">250+ employees</span>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">101–250 employees</span>
               </div>
-              <p className="mt-2 text-3xl font-bold text-navy">R1,599<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
-              <p className="mt-1 text-xs text-charcoal-500">For large organisations that need deeper safety oversight and support.</p>
+              <p className="mt-2 text-3xl font-bold text-navy">R3,200<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-1 text-xs text-charcoal-500">For large organisations that need deeper safety oversight.</p>
               <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Full platform access</li>
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Dedicated support coverage</li>
@@ -790,6 +796,33 @@ export function LandingPage() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: 0.5 }}
+              whileHover={{ y: -5 }}
+              className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-bold text-charcoal">Corporate</p>
+                <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">251+ employees</span>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-navy">R4,200<span className="text-sm font-normal text-charcoal-500">/mo</span></p>
+              <p className="mt-1 text-xs text-charcoal-500">For large organisations that need broader corporate oversight.</p>
+              <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Full platform access</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Dedicated support coverage</li>
+                <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Free SHEQ Support</li>
+              </ul>
+              <Link
+                to="/register"
+                className="mt-4 inline-block text-sm font-medium text-teal hover:underline underline-offset-2"
+              >
+                Choose Corporate plan
+              </Link>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.6 }}
               whileHover={{ y: -5 }}
               className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
             >
@@ -836,15 +869,77 @@ export function LandingPage() {
             </div>
           </motion.div>
 
-          <div className="mt-6 text-center">
-            <button
-              type="button"
-              onClick={() => window.alert('More pricing details available on request. Please contact sales for the full package breakdown.')}
-              className="inline-flex items-center justify-center rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-charcoal hover:border-teal hover:text-teal transition-colors"
-            >
-              Show more
-            </button>
-          </div>
+          {/* HR Pricing */}
+          <motion.div
+            id="hr-pricing"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mt-12 pt-10 border-t border-surface-200"
+          >
+            <h2 className="text-2xl font-bold text-navy">HR module pricing</h2>
+            <p className="text-sm text-charcoal-500 mt-2 max-w-3xl">
+              Choose between buying the HR module on its own, or — better yet — getting it free as part of the major system.
+            </p>
+
+            <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                whileHover={{ y: -5 }}
+                className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-lg font-bold text-charcoal">HR module only</p>
+                  <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">Standalone</span>
+                </div>
+                <p className="mt-2 text-3xl font-bold text-navy">R30<span className="text-sm font-normal text-charcoal-500">/employee/mo</span></p>
+                <p className="mt-1 text-xs text-charcoal-500">For teams that only need HR functionality.</p>
+                <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
+                  <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Employees & profiles</li>
+                  <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Leave & attendance</li>
+                  <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Training & performance</li>
+                </ul>
+                <Link
+                  to="/register"
+                  className="mt-4 inline-block text-sm font-medium text-teal hover:underline underline-offset-2"
+                >
+                  Get HR module
+                </Link>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                whileHover={{ y: -5 }}
+                className="bg-navy rounded-2xl border-2 border-teal shadow-card p-6 text-white relative"
+              >
+                <div className="absolute top-0 right-0 bg-teal text-white px-3 py-1 rounded-bl-lg rounded-tr-lg text-xs font-semibold">Included free</div>
+                <div className="flex items-center justify-between">
+                  <p className="text-lg font-bold text-white">HR inside the major system</p>
+                  <span className="px-2 py-1 rounded-full bg-navy-700 text-xs font-semibold text-white">Recommended option</span>
+                </div>
+                <p className="mt-2 text-3xl font-bold text-teal">Included<span className="text-sm font-normal text-navy-200"> — free</span></p>
+                <p className="mt-1 text-xs text-navy-200">
+                  Already included in the major system pricing, so it is effectively free within your chosen plan:
+                </p>
+                <ul className="mt-4 space-y-2 text-sm text-navy-200">
+                  <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-teal mt-0.5" />Starter (1–35) <span className="ml-auto font-semibold text-white">R450/mo</span></li>
+                  <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-teal mt-0.5" />Professional (36–100) <span className="ml-auto font-semibold text-white">R650/mo</span></li>
+                  <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-teal mt-0.5" />Business (100–200) <span className="ml-auto font-semibold text-white">R899/mo</span></li>
+                  <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-teal mt-0.5" />Enterprise (250+) <span className="ml-auto font-semibold text-white">R1,599/mo</span></li>
+                </ul>
+                <Link
+                  to="/register"
+                  className="mt-4 inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-teal text-white font-semibold hover:bg-teal-600 transition-colors"
+                >
+                  Get started <ArrowRightIcon className="w-4 h-4" />
+                </Link>
+              </motion.div>
+            </div>
+          </motion.div>
 
           {/* CTA */}
           <motion.div
