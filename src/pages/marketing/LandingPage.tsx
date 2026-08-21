@@ -1025,22 +1025,45 @@ export function LandingPage() {
       </motion.section>
 
       {/* NextWave teaser */}
-      <section className="border-t border-surface-200 bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 bg-surface-50 border border-surface-200 rounded-2xl px-6 py-6">
-            <div>
-              <p className="text-xs font-semibold text-teal uppercase tracking-wide">Built by NextWave Digital Solutions</p>
-              <p className="mt-1 text-sm text-charcoal-500 max-w-xl">
-                Safe Cloud Africa is developed and supported by NextWave Digital Solutions (Pty) Ltd — a South African
-                technology company behind the software, AI, and ongoing platform improvements.
+      <section className="relative overflow-hidden border-t border-surface-200 bg-navy text-white">
+        <div className="absolute -top-24 -right-24 w-72 h-72 bg-teal/25 blur-3xl rounded-full animate-pulse pointer-events-none" />
+        <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-teal/10 blur-3xl rounded-full animate-pulse pointer-events-none" />
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-14">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+            <div className="max-w-2xl">
+              <p className="inline-flex items-center gap-2 text-xs font-bold text-teal-300 uppercase tracking-widest">
+                <SparklesIcon className="w-4 h-4" /> Built by NextWave Digital Solutions
               </p>
+              <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold leading-tight">
+                We build digital futures.
+              </h2>
+              <p className="mt-3 text-white/75 max-w-xl">
+                Safe Cloud Africa is developed and supported by NextWave Digital Solutions (Pty) Ltd — a South African
+                technology company behind the software, AI, websites, apps, and ongoing platform improvements.
+              </p>
+              <div className="mt-6 grid grid-cols-3 gap-6 max-w-md">
+                <div>
+                  <div className="text-2xl font-bold text-teal-300">Websites</div>
+                  <p className="mt-0.5 text-xs text-white/60">From R2,000</p>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-teal-300">AI</div>
+                  <p className="mt-0.5 text-xs text-white/60">Automation</p>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-teal-300">Apps</div>
+                  <p className="mt-0.5 text-xs text-white/60">Custom built</p>
+                </div>
+              </div>
             </div>
-            <Link
-              to="/nextwave"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold border border-navy text-navy hover:bg-navy hover:text-white transition-colors whitespace-nowrap"
-            >
-              About NextWave <ArrowRightIcon className="w-4 h-4" />
-            </Link>
+            <div className="shrink-0">
+              <Link
+                to="/nextwave"
+                className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl text-base font-bold bg-teal text-white hover:bg-teal-600 hover:shadow-elevated transition-all whitespace-nowrap"
+              >
+                Explore NextWave <ArrowRightIcon className="w-5 h-5" />
+              </Link>
+            </div>
           </div>
         </div>
       </section>
