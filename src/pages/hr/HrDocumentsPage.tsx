@@ -16,6 +16,7 @@ import {
   listHrEmployees,
   listHrPersonalDocuments,
   submitHrAcknowledgement,
+  updateHrAcknowledgementDocument,
   updateHrPersonalDocument,
   sendHrDocumentExpiryAlerts
 } from '../../api/services/hrService';
@@ -71,10 +72,13 @@ export function HrDocumentsPage() {
   const [ackReviewDate, setAckReviewDate] = useState('');
   const [ackAssignedAll, setAckAssignedAll] = useState(true);
   const [ackAssignedRoleCsv, setAckAssignedRoleCsv] = useState('');
+  const [ackAssignEmployeeId, setAckAssignEmployeeId] = useState('');
   const [ackRequired, setAckRequired] = useState(true);
   const [signatureRequired, setSignatureRequired] = useState(false);
   const [ackFile, setAckFile] = useState<File | null>(null);
   const [deletingAckId, setDeletingAckId] = useState<UUID | null>(null);
+  const [archivingAckId, setArchivingAckId] = useState<UUID | null>(null);
+  const [ackShowArchived, setAckShowArchived] = useState(false);
   const [pendingAckDocId, setPendingAckDocId] = useState<UUID | null>(null);
   const [pendingAckSign, setPendingAckSign] = useState(false);
   const [pendingAckDecline, setPendingAckDecline] = useState(false);
@@ -129,6 +133,10 @@ export function HrDocumentsPage() {
   }, [ackDocs]);
 
   const employeeById = useMemo(() => new Map((employees ?? []).map((e) => [e.id as UUID, e])), [employees]);
+
+  const filteredAckDocs = useMemo(() => {
+    return (ackDocs ?? []).filter((d) => (ackShowArchived ? d.status === 'ARCHIVED' : d.status !== 'ARCHIVED'));
+  }, [ackDocs, ackShowArchived]);
 
   const filteredPersonalDocs = useMemo(() => {
     return (personalDocs ?? []).filter((row) => {
@@ -259,7 +267,8 @@ export function HrDocumentsPage() {
         effectiveDate: ackEffectiveDate || null,
         reviewDate: ackReviewDate || null,
         assignedAll: ackAssignedAll,
-        assignedRoles: ackAssignedAll ? null : ackAssignedRoleCsv.split(',').map((x) => x.trim()).filter(Boolean),
+        assignedRoles: ackAssignedAll || ackAssignEmployeeId ? null : ackAssignedRoleCsv.split(',').map((x) => x.trim()).filter(Boolean),
+        assignedEmployeeId: ackAssignedAll ? null : (ackAssignEmployeeId as UUID) || null,
         acknowledgementRequired: ackRequired,
         signatureRequired
       });
@@ -276,6 +285,7 @@ export function HrDocumentsPage() {
       setAckTitle('');
       setAckVersion('');
       setAckAssignedRoleCsv('');
+      setAckAssignEmployeeId('');
       setAckFile(null);
       setSuccess('Record saved.');
       await refetchAck();
@@ -392,6 +402,27 @@ export function HrDocumentsPage() {
       setError(err instanceof Error ? err.message : 'Failed to delete acknowledgement document.');
     } finally {
       setDeletingAckId(null);
+    }
+  }
+
+  async function onArchiveAckDoc(docId: UUID) {
+    if (!activeCompanyId || !user?.id) return;
+    if (!(canEdit || isSupervisor(activeRole ?? null))) return;
+    if (!window.confirm('Archive this document? It will be hidden from the default list but can still be viewed via the Archived filter.')) return;
+    setError(null);
+    setArchivingAckId(docId);
+    try {
+      await updateHrAcknowledgementDocument({
+        companyId: activeCompanyId,
+        documentId: docId,
+        actorUserId: user.id as UUID,
+        patch: { status: 'ARCHIVED' }
+      });
+      await refetchAck();
+    } catch (err) {
+      setError(toUserFacingError(err, 'Failed to archive document.'));
+    } finally {
+      setArchivingAckId(null);
     }
   }
 
@@ -659,8 +690,24 @@ export function HrDocumentsPage() {
                   <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Effective date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={ackEffectiveDate} onChange={(e) => setAckEffectiveDate(e.target.value)} /></label>
                   <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Review date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={ackReviewDate} onChange={(e) => setAckReviewDate(e.target.value)} /></label>
                   <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">File</span><input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" className="w-full border border-surface-300 rounded-lg px-3 py-2" onChange={(e) => setAckFile(e.target.files?.[0] ?? null)} /></label>
-                  <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={ackAssignedAll} onChange={(e) => setAckAssignedAll(e.target.checked)} />Assign to all employees</label>
-                  <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Assigned roles (CSV)</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={ackAssignedRoleCsv} onChange={(e) => setAckAssignedRoleCsv(e.target.value)} placeholder="employee,supervisor" disabled={ackAssignedAll} /></label>
+                  <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={ackAssignedAll} onChange={(e) => { setAckAssignedAll(e.target.checked); if (e.target.checked) setAckAssignEmployeeId(''); }} />Assign to all employees</label>
+                  <div>
+                    <HrEmployeeSelect
+                      companyId={activeCompanyId ?? null}
+                      value={ackAssignEmployeeId as any}
+                      valueField="id"
+                      includeUnlinked={true}
+                      onChange={(val) => { setAckAssignEmployeeId(val); if (val) setAckAssignedRoleCsv(''); }}
+                      label="Assign to employee (optional)"
+                      placeholder="Search employee..."
+                      disabled={ackAssignedAll}
+                      formatOptionLabel={(e) => {
+                        const name = `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || e.email;
+                        return e.employee_no ? `${name} (${e.employee_no})` : name;
+                      }}
+                    />
+                  </div>
+                  <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Assigned roles (CSV)</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" value={ackAssignedRoleCsv} onChange={(e) => setAckAssignedRoleCsv(e.target.value)} placeholder="employee,supervisor" disabled={ackAssignedAll || !!ackAssignEmployeeId} /></label>
                   <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={ackRequired} onChange={(e) => setAckRequired(e.target.checked)} />Acknowledgement required</label>
                   <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={signatureRequired} onChange={(e) => setSignatureRequired(e.target.checked)} />Signature required</label>
                 </div>
@@ -670,10 +717,10 @@ export function HrDocumentsPage() {
 
             {activeRole === 'employee' ? (
               <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
-                {(ackDocs ?? []).length === 0 ? (
+                {filteredAckDocs.length === 0 ? (
                   <div className="text-center py-8 text-charcoal-500 text-sm">No documents require your acknowledgement.</div>
                 ) : (
-                  (ackDocs ?? []).map((row) => {
+                  filteredAckDocs.map((row) => {
                     const myReceipt = (row.receipts ?? [])[0];
                     const status = myReceipt?.status ?? 'PENDING';
                     return (
@@ -726,31 +773,68 @@ export function HrDocumentsPage() {
               </div>
             ) : (
               <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-surface-100">
+                  <label className="text-xs text-charcoal-600 flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={ackShowArchived} onChange={(e) => setAckShowArchived(e.target.checked)} />
+                    Show archived only
+                  </label>
+                </div>
                 {ackLoading ? (
                   <div className="flex justify-center py-10"><LoadingSpinner /></div>
-                ) : (ackDocs ?? []).length === 0 ? (
-                  <div className="text-center py-10 text-sm text-charcoal-500">No documents yet.</div>
+                ) : filteredAckDocs.length === 0 ? (
+                  <div className="text-center py-10 text-sm text-charcoal-500">{ackShowArchived ? 'No archived documents.' : 'No documents yet.'}</div>
                 ) : (
-                <table className="w-full min-w-[600px] text-sm">
-                  <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Title</th><th className="text-left px-3 py-2">Category</th><th className="text-left px-3 py-2">Version</th><th className="text-left px-3 py-2">Dates</th><th className="text-left px-3 py-2">Completion</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
+                <table className="w-full min-w-[700px] text-sm">
+                  <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Title</th><th className="text-left px-3 py-2">Category</th><th className="text-left px-3 py-2">Version</th><th className="text-left px-3 py-2">Dates</th><th className="text-left px-3 py-2">Assigned to</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Actions</th></tr></thead>
                   <tbody>
-                    {(ackDocs ?? []).map((row) => {
+                    {filteredAckDocs.map((row) => {
                       const receipts = row.receipts ?? [];
                       const completed = receipts.filter((r) => r.status === 'ACKNOWLEDGED' || r.status === 'SIGNED').length;
                       const completion = receipts.length ? Math.round((completed / receipts.length) * 100) : 0;
+                      const assignedEmployee = row.employee_id ? employeeById.get(row.employee_id as UUID) : null;
+                      const singleReceipt = row.employee_id ? receipts.find((r) => String(r.employee_id) === String(row.employee_id)) : undefined;
+                      const canArchive = row.status !== 'ARCHIVED' && (row.employee_id ? (singleReceipt?.status === 'ACKNOWLEDGED' || singleReceipt?.status === 'SIGNED') : completion === 100 && receipts.length > 0);
                       return (
                         <tr key={row.id} id={`ack-doc-${row.id}`} className="border-t border-surface-100">
                           <td className="px-3 py-2">{row.title}</td>
                           <td className="px-3 py-2">{row.category}</td>
                           <td className="px-3 py-2">{row.version ?? '-'}</td>
                           <td className="px-3 py-2">{row.effective_date ?? '-'} / {row.review_date ?? '-'}</td>
-                          <td className="px-3 py-2">{completion}% ({completed}/{receipts.length})</td>
-                          <td className="px-3 py-2 space-x-2">
+                          <td className="px-3 py-2">
+                            {row.employee_id
+                              ? (assignedEmployee ? `${assignedEmployee.first_name} ${assignedEmployee.last_name}` : String(row.employee_id))
+                              : <span className="text-charcoal-400">All / role-based</span>}
+                          </td>
+                          <td className="px-3 py-2">
+                            {!row.employee_id ? (
+                              <span className="px-2 py-1 rounded-full bg-surface-100 text-charcoal-600 text-xs font-medium">{completion}% ({completed}/{receipts.length})</span>
+                            ) : !singleReceipt ? (
+                              <span className="px-2 py-1 rounded-full bg-surface-100 text-charcoal-500 text-xs font-medium">Not assigned</span>
+                            ) : singleReceipt.status === 'ACKNOWLEDGED' || singleReceipt.status === 'SIGNED' ? (
+                              <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
+                                Acknowledged{singleReceipt.acknowledged_at ? ` ${new Date(singleReceipt.acknowledged_at).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}
+                              </span>
+                            ) : singleReceipt.status === 'DECLINED' ? (
+                              <span className="px-2 py-1 rounded-full bg-red-100 text-red-700 text-xs font-medium" title={singleReceipt.decline_reason ?? undefined}>Declined</span>
+                            ) : (
+                              <span className="px-2 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">Pending acknowledgement</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 space-x-2 whitespace-nowrap">
                             <button className="text-teal underline" onClick={async () => {
                               const url = await firstEvidenceUrl('hr_ack_document', row.id as UUID);
                               if (url) window.open(url, '_blank', 'noopener,noreferrer');
                               else alert('No file uploaded.');
                             }}>Preview</button>
+                            {(canEdit || isSupervisor(activeRole ?? null)) && canArchive && (
+                              <button
+                                className="text-charcoal-700 underline disabled:opacity-50"
+                                onClick={() => void onArchiveAckDoc(row.id as UUID)}
+                                disabled={archivingAckId === (row.id as UUID)}
+                              >
+                                {archivingAckId === (row.id as UUID) ? 'Archiving...' : 'Archive'}
+                              </button>
+                            )}
                             {(canEdit || isSupervisor(activeRole ?? null)) && (
                               <button
                                 className="text-critical underline disabled:opacity-50"

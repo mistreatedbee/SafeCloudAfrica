@@ -202,6 +202,7 @@ export type HrPersonalDocumentRow = HrSimpleRecord & {
   visible_to_employee: boolean;
   acknowledged_by_employee: boolean | null;
   acknowledged_at: string | null;
+  decline_reason?: string | null;
   send_expiry_notification?: boolean | null;
   expiry_notification_email?: string | null;
 };
@@ -216,6 +217,9 @@ export type HrAckDocumentRow = HrSimpleRecord & {
   assigned_all: boolean;
   assigned_department_ids: UUID[] | null;
   assigned_roles: string[] | null;
+  /** Set when this document is assigned to exactly one employee (not the whole company/role/department). */
+  employee_id?: UUID | null;
+  status?: 'ACTIVE' | 'ARCHIVED';
   acknowledgement_required: boolean;
   signature_required: boolean;
   created_by_user_id: UUID;
@@ -1548,7 +1552,7 @@ export async function updateHrPersonalDocument(input: {
   companyId: UUID;
   documentId: UUID;
   actorUserId: UUID;
-  patch: Partial<Pick<HrPersonalDocumentRow, 'doc_name' | 'doc_type' | 'issue_date' | 'expiry_date' | 'notes' | 'status' | 'acknowledged_by_employee' | 'acknowledged_at' | 'file_ids' | 'send_expiry_notification' | 'expiry_notification_email'>>;
+  patch: Partial<Pick<HrPersonalDocumentRow, 'doc_name' | 'doc_type' | 'issue_date' | 'expiry_date' | 'notes' | 'status' | 'acknowledged_by_employee' | 'acknowledged_at' | 'decline_reason' | 'file_ids' | 'send_expiry_notification' | 'expiry_notification_email'>>;
 }): Promise<HrPersonalDocumentRow> {
   return withHrSession('personal-documents:update', async () => {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -1563,6 +1567,7 @@ export async function updateHrPersonalDocument(input: {
   if (typeof input.patch.status !== 'undefined') patch.status = input.patch.status;
   if (typeof input.patch.acknowledged_by_employee !== 'undefined') patch.acknowledged_by_employee = input.patch.acknowledged_by_employee;
   if (typeof input.patch.acknowledged_at !== 'undefined') patch.acknowledged_at = input.patch.acknowledged_at;
+  if (typeof input.patch.decline_reason !== 'undefined') patch.decline_reason = input.patch.decline_reason;
   if (typeof input.patch.file_ids !== 'undefined') patch.file_ids = input.patch.file_ids;
 
   const { data, error } = await insforge.database
@@ -1582,6 +1587,39 @@ export async function updateHrPersonalDocument(input: {
     entityType: 'hr_employee_document',
     entityId: input.documentId
   });
+
+  // The employee responding (acknowledge or decline) is the only case that should ping
+  // the person who assigned/uploaded the document — other field edits stay silent.
+  const isAckResponse = typeof input.patch.acknowledged_by_employee !== 'undefined';
+  if (isAckResponse) {
+    const row = data as HrPersonalDocumentRow;
+    const assignerUserId = row.uploaded_by_user_id as UUID | undefined;
+    if (assignerUserId && assignerUserId !== input.actorUserId) {
+      const declined = input.patch.acknowledged_by_employee === false && Boolean(input.patch.decline_reason);
+      const docName = row.doc_name ?? row.title ?? 'HR document';
+      const employee = await getHrEmployeeById(input.companyId, row.employee_id).catch(() => null);
+      const employeeName = employee ? `${employee.first_name} ${employee.last_name}`.trim() : 'An employee';
+      const subjectTitle = declined
+        ? `${employeeName} declined to acknowledge ${docName}`
+        : `${employeeName} has acknowledged ${docName}`;
+      const { notifyRelevantUsers } = await import('./notificationEventsService');
+      await notifyRelevantUsers({
+        companyId: input.companyId,
+        eventKey: `personal-document-response:${input.documentId}:${declined ? 'declined' : 'acknowledged'}:${row.acknowledged_at ?? ''}`,
+        eventType: declined ? 'hr_document_declined' : 'hr_document_acknowledged',
+        title: subjectTitle,
+        message: declined
+          ? `${employeeName} declined to acknowledge "${docName}".${input.patch.decline_reason ? ` Reason: ${input.patch.decline_reason}` : ''}`
+          : `${employeeName} acknowledged "${docName}"${row.acknowledged_at ? ` on ${new Date(row.acknowledged_at).toLocaleString()}` : ''}.`,
+        recipientUserIds: [assignerUserId],
+        emailTemplateKey: 'hr_updates',
+        emailVariables: { title: subjectTitle, employee: employeeName, status: declined ? 'Declined' : 'Acknowledged' },
+        actionUrl: '/dashboard/hr/documents',
+        metadata: { itemType: 'hr_employee_document', itemId: input.documentId }
+      }).catch((err) => console.warn('[hr] personal-document-response notification failed', err));
+    }
+  }
+
   return data as HrPersonalDocumentRow;
   });
 }
@@ -1621,6 +1659,8 @@ export async function createHrAcknowledgementDocument(input: {
   assignedAll: boolean;
   assignedDepartmentIds?: UUID[] | null;
   assignedRoles?: string[] | null;
+  /** Assign this document to exactly one HR employee. Takes priority over assignedRoles/assignedDepartmentIds when set. */
+  assignedEmployeeId?: UUID | null;
   acknowledgementRequired: boolean;
   signatureRequired: boolean;
 }): Promise<HrAckDocumentRow> {
@@ -1638,6 +1678,8 @@ export async function createHrAcknowledgementDocument(input: {
       assigned_all: input.assignedAll,
       assigned_department_ids: input.assignedDepartmentIds ?? null,
       assigned_roles: input.assignedRoles ?? null,
+      employee_id: input.assignedEmployeeId ?? null,
+      status: 'ACTIVE',
       acknowledgement_required: input.acknowledgementRequired,
       signature_required: input.signatureRequired,
       created_by_user_id: input.actorUserId
@@ -1659,7 +1701,10 @@ export async function createHrAcknowledgementDocument(input: {
 
   type EligibleEmployee = { id: string; user_id: string | null; department_id: string | null };
   let eligible = (employees ?? []) as EligibleEmployee[];
-  if (!input.assignedAll && (assignedDeptSet.size > 0 || assignedRoleSet.size > 0)) {
+  if (input.assignedEmployeeId) {
+    // Single-employee assignment overrides role/department targeting — exactly one receipt.
+    eligible = eligible.filter((e) => e.id === input.assignedEmployeeId);
+  } else if (!input.assignedAll && (assignedDeptSet.size > 0 || assignedRoleSet.size > 0)) {
     let membershipMap = new Map<string, string>();
     if (assignedRoleSet.size > 0) {
       const userIds = eligible.map((e) => e.user_id).filter(Boolean);
@@ -1714,6 +1759,37 @@ export async function createHrAcknowledgementDocument(input: {
     entityType: 'hr_ack_document',
     entityId: (data as { id: string }).id as UUID
   });
+  return data as HrAckDocumentRow;
+  });
+}
+
+export async function updateHrAcknowledgementDocument(input: {
+  companyId: UUID;
+  documentId: UUID;
+  actorUserId: UUID;
+  patch: Partial<Pick<HrAckDocumentRow, 'status'>>;
+}): Promise<HrAckDocumentRow> {
+  return withHrSession('ack-documents:update', async () => {
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (typeof input.patch.status !== 'undefined') patch.status = input.patch.status;
+
+  const { data, error } = await insforge.database
+    .from('hr_ack_documents')
+    .update(patch)
+    .eq('company_id', input.companyId)
+    .eq('id', input.documentId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update acknowledgement document.');
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: input.patch.status === 'ARCHIVED' ? 'hr.ack_document.archive' : 'hr.ack_document.update',
+    entityType: 'hr_ack_document',
+    entityId: input.documentId
+  }).catch(() => {});
   return data as HrAckDocumentRow;
   });
 }

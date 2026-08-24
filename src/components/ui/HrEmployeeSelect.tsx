@@ -27,6 +27,8 @@ export type HrEmployeeSelectProps = {
   label?: string;
   disabled?: boolean;
   onEmployeeChange?: (employee: HrEmployee | null) => void;
+  /** Override the option display text (defaults to "employee_no - Full Name"). */
+  formatOptionLabel?: (employee: HrEmployee) => string;
 };
 
 export function HrEmployeeSelect({
@@ -38,7 +40,8 @@ export function HrEmployeeSelect({
   placeholder = 'Select',
   label,
   disabled,
-  onEmployeeChange
+  onEmployeeChange,
+  formatOptionLabel
 }: HrEmployeeSelectProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -114,7 +117,7 @@ export function HrEmployeeSelect({
         {rows.map((e) => {
           const name = `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || e.email || e.employee_no;
           const empId = e.employee_no || '';
-          const display = empId ? `${empId} - ${name}` : name;
+          const display = formatOptionLabel ? formatOptionLabel(e) : empId ? `${empId} - ${name}` : name;
           const optionValue = valueField === 'id' ? e.id : e.user_id ?? '';
           if (!optionValue) return null;
           return (

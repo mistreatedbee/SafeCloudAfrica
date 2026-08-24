@@ -5,7 +5,7 @@ import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
-import { canViewRestrictedFields, getEmployeeIntegratedProfile, listHrPersonalDocuments, logRestrictedFieldAccess } from '../../api/services/hrService';
+import { canViewRestrictedFields, getEmployeeIntegratedProfile, listHrPersonalDocuments, logRestrictedFieldAccess, updateHrPersonalDocument } from '../../api/services/hrService';
 import type { UUID } from '../../api/models/core';
 import type { CompanyRole } from '../../api/models/core';
 import type { HrEmployee, HrEmployeeDependent, HrEmployeeSensitiveDetails } from '../../api/services/hrService';
@@ -44,6 +44,10 @@ export function HrEmployeeProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [ackSubmittingDocId, setAckSubmittingDocId] = useState<UUID | null>(null);
+  const [declineDocId, setDeclineDocId] = useState<UUID | null>(null);
+  const [declineReason, setDeclineReason] = useState('');
+  const [ackError, setAckError] = useState<string | null>(null);
 
   const allowedRoles: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
   const canEditEmployee = !!(
@@ -182,6 +186,34 @@ export function HrEmployeeProfilePage() {
       setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const isSelf = Boolean(employee?.user_id && user?.id && String(employee.user_id) === String(user.id));
+
+  const onAcknowledgePersonalDoc = async (docId: UUID, decision: 'acknowledge' | 'decline', reason?: string) => {
+    if (!activeCompanyId || !user?.id) return;
+    if (decision === 'decline' && !reason?.trim()) return;
+    setAckError(null);
+    setAckSubmittingDocId(docId);
+    try {
+      await updateHrPersonalDocument({
+        companyId: activeCompanyId,
+        documentId: docId,
+        actorUserId: user.id as UUID,
+        patch: {
+          acknowledged_by_employee: decision === 'acknowledge',
+          acknowledged_at: new Date().toISOString(),
+          decline_reason: decision === 'decline' ? reason!.trim() : null
+        }
+      });
+      setDocRefreshKey((k) => k + 1);
+      setDeclineDocId(null);
+      setDeclineReason('');
+    } catch (err) {
+      setAckError(toUserFacingError(err, 'Failed to record your response. Please try again.'));
+    } finally {
+      setAckSubmittingDocId(null);
     }
   };
 
@@ -444,6 +476,7 @@ export function HrEmployeeProfilePage() {
                 <div className="px-4 py-3 border-b border-surface-200">
                   <h3 className="font-semibold text-sm">HR Document Records ({(personalDocs ?? []).length})</h3>
                 </div>
+                {ackError && <div className="mx-4 mt-3 bg-critical/10 border border-critical/30 rounded-lg p-2 text-xs text-critical">{ackError}</div>}
                 <table className="w-full min-w-[540px] text-sm">
                   <thead className="bg-surface-100">
                     <tr>
@@ -455,7 +488,14 @@ export function HrEmployeeProfilePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(personalDocs ?? []).map((doc) => (
+                    {(personalDocs ?? []).map((doc) => {
+                      const docRecord = doc as Record<string, unknown>;
+                      const acknowledged = Boolean(docRecord.acknowledged_by_employee);
+                      const declineReasonValue = docRecord.decline_reason as string | null | undefined;
+                      const declined = !acknowledged && Boolean(declineReasonValue);
+                      const respondedAt = docRecord.acknowledged_at ? new Date(String(docRecord.acknowledged_at)).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+                      const docId = doc.id as UUID;
+                      return (
                       <tr key={String(doc.id)} className="border-t border-surface-100">
                         <td className="px-4 py-2 font-medium">{String(doc.doc_name ?? doc.title ?? '-')}</td>
                         <td className="px-4 py-2 text-charcoal-500">{String(doc.doc_type ?? '-')}</td>
@@ -466,14 +506,63 @@ export function HrEmployeeProfilePage() {
                           </span>
                         </td>
                         <td className="px-4 py-2 text-charcoal-500">
-                          {(doc as Record<string, unknown>).acknowledged_by_employee ? (
-                            <span className="text-emerald-700 text-xs">Yes</span>
+                          {acknowledged ? (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">Acknowledged ✓{respondedAt ? ` ${respondedAt}` : ''}</span>
+                          ) : declined ? (
+                            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium" title={declineReasonValue ?? undefined}>Declined{respondedAt ? ` ${respondedAt}` : ''}</span>
+                          ) : isSelf ? (
+                            declineDocId === docId ? (
+                              <div className="space-y-1.5 min-w-[200px]">
+                                <textarea
+                                  className="w-full border border-surface-300 rounded px-2 py-1 text-xs"
+                                  rows={2}
+                                  placeholder="Reason for not acknowledging"
+                                  value={declineReason}
+                                  onChange={(e) => setDeclineReason(e.target.value)}
+                                  disabled={ackSubmittingDocId === docId}
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    className="px-2 py-1 rounded bg-critical text-white text-xs disabled:opacity-60"
+                                    disabled={!declineReason.trim() || ackSubmittingDocId === docId}
+                                    onClick={() => void onAcknowledgePersonalDoc(docId, 'decline', declineReason)}
+                                  >
+                                    {ackSubmittingDocId === docId ? 'Submitting...' : 'Submit decline'}
+                                  </button>
+                                  <button
+                                    className="px-2 py-1 rounded border border-surface-300 text-xs"
+                                    onClick={() => { setDeclineDocId(null); setDeclineReason(''); }}
+                                    disabled={ackSubmittingDocId === docId}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex gap-2">
+                                <button
+                                  className="px-2 py-1 rounded bg-teal text-white text-xs disabled:opacity-60"
+                                  disabled={ackSubmittingDocId === docId}
+                                  onClick={() => void onAcknowledgePersonalDoc(docId, 'acknowledge')}
+                                >
+                                  ✓ Acknowledge
+                                </button>
+                                <button
+                                  className="px-2 py-1 rounded border border-critical text-critical text-xs disabled:opacity-60"
+                                  disabled={ackSubmittingDocId === docId}
+                                  onClick={() => { setDeclineDocId(docId); setDeclineReason(''); }}
+                                >
+                                  ✗ Decline
+                                </button>
+                              </div>
+                            )
                           ) : (
                             <span className="text-charcoal-400 text-xs">No</span>
                           )}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
