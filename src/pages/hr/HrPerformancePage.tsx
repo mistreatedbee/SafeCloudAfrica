@@ -211,6 +211,8 @@ export function HrPerformancePage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivingId, setArchivingId] = useState<UUID | null>(null);
 
   const filtersActiveCount = [filterQuery, filterCycle, filterStatus, filterDateFrom, filterDateTo].filter(Boolean).length;
 
@@ -222,9 +224,57 @@ export function HrPerformancePage() {
     setFilterDateTo('');
   }
 
+  async function onToggleArchive(rowId: UUID, archived: boolean) {
+    if (!activeCompanyId || !user?.id) return;
+    setError(null);
+    setSuccess(null);
+    setArchivingId(rowId);
+    try {
+      await updateHrRecord('hr_performance_reviews', {
+        companyId: activeCompanyId,
+        rowId,
+        actorUserId: user.id as UUID,
+        patch: { archived }
+      });
+      await refetch();
+      setSuccess(archived ? 'Review archived.' : 'Review restored.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to update the archive status right now.'));
+    } finally {
+      setArchivingId(null);
+    }
+  }
+
+  async function onArchiveAllApprovedClosed() {
+    if (!activeCompanyId || !user?.id) return;
+    const targets = (reviews ?? []).filter((row) => {
+      const r = row as Record<string, unknown>;
+      return String(r['status'] ?? '') === 'CLOSED' && !Boolean(r['archived']);
+    });
+    if (targets.length === 0) return;
+    if (!window.confirm(`Archive ${targets.length} closed review${targets.length === 1 ? '' : 's'}?`)) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      for (const row of targets) {
+        await updateHrRecord('hr_performance_reviews', {
+          companyId: activeCompanyId,
+          rowId: (row as Record<string, unknown>)['id'] as UUID,
+          actorUserId: user.id as UUID,
+          patch: { archived: true }
+        });
+      }
+      await refetch();
+      setSuccess(`Archived ${targets.length} closed review${targets.length === 1 ? '' : 's'}.`);
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to archive closed reviews right now.'));
+    }
+  }
+
   const filteredReviews = useMemo(() => {
     return (reviews ?? []).filter((row) => {
       const r = row as Record<string, unknown>;
+      if (Boolean(r['archived']) !== showArchived) return false;
       const q = filterQuery.trim().toLowerCase();
       if (q) {
         const name = (employeeLabel.get(r['employee_id'] as UUID) ?? '').toLowerCase();
@@ -237,7 +287,10 @@ export function HrPerformancePage() {
       if (filterDateTo && due && due > filterDateTo) return false;
       return true;
     });
-  }, [reviews, employeeLabel, filterQuery, filterCycle, filterStatus, filterDateFrom, filterDateTo]);
+  }, [reviews, employeeLabel, filterQuery, filterCycle, filterStatus, filterDateFrom, filterDateTo, showArchived]);
+
+  const reportPeriodLabel = filterDateFrom || filterDateTo ? `${filterDateFrom || 'earliest'} to ${filterDateTo || 'latest'}` : undefined;
+  const reportFileNameBase = `SCA_PerformanceReviews_${filterDateFrom || 'all'}_${filterDateTo || 'all'}`;
 
   useEffect(() => {
     const highlightId = new URLSearchParams(window.location.search).get('highlight');
@@ -305,6 +358,10 @@ export function HrPerformancePage() {
         linkedTaskId = (currentReview?.['linked_task_id'] as UUID | null) ?? null;
       }
       if (!linkedTaskId && correctiveActionsRequired.trim()) {
+        // responsibleUserId holds an hr_employees.id (any employee can be picked, even
+        // without a linked login) — tasks need a real platform user, so resolve that
+        // employee's user_id separately and only assign the task when one exists.
+        const responsibleEmployee = (employees ?? []).find((e) => String(e.id) === String(responsibleUserId));
         const task = await createTask({
           companyId: activeCompanyId,
           module: 'hr',
@@ -314,7 +371,7 @@ export function HrPerformancePage() {
           riskLevel: 'medium',
           priority: 'medium',
           dueAt: dueDate || undefined,
-          assigneeUserId: (responsibleUserId || undefined) as UUID | undefined,
+          assigneeUserId: (responsibleEmployee?.user_id || undefined) as UUID | undefined,
           sourceEntityType: 'hr_performance_review',
           createdByUserId: user.id as UUID
         });
@@ -530,10 +587,8 @@ export function HrPerformancePage() {
               <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={responsibleUserId} onChange={(e) => setResponsibleUserId(e.target.value)}>
                 <option value="">Select responsible person</option>
                 {(employees ?? [])
-                  .filter((employee) => Boolean(employee.user_id))
-                  .map((employee) => <option key={employee.id} value={employee.user_id as string}>{employee.first_name} {employee.last_name}</option>)}
+                  .map((employee) => <option key={employee.id} value={employee.id as string}>{employee.first_name} {employee.last_name}</option>)}
               </select>
-              <span className="block text-xs text-charcoal-400 mt-1">Only employees with a linked user account can be selected as responsible person.</span>
             </label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Due date</span><input type="date" className="w-full border border-surface-300 rounded-lg px-3 py-2" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></label>
           </div>
@@ -597,8 +652,19 @@ export function HrPerformancePage() {
                 <button type="button" className="text-teal underline" onClick={clearFilters}>Clear filters</button>
               </div>
             )}
+            <div className="flex rounded-lg border border-surface-300 overflow-hidden text-sm">
+              <button type="button" className={`px-3 py-2 ${!showArchived ? 'bg-teal text-white' : 'bg-white text-charcoal-600'}`} onClick={() => setShowArchived(false)}>Active</button>
+              <button type="button" className={`px-3 py-2 ${showArchived ? 'bg-teal text-white' : 'bg-white text-charcoal-600'}`} onClick={() => setShowArchived(true)}>View Archived</button>
+            </div>
+            {canManage && !showArchived && (
+              <button type="button" className="px-3 py-2 rounded-lg border border-surface-300 text-sm text-charcoal-700" onClick={() => void onArchiveAllApprovedClosed()}>
+                Archive closed
+              </button>
+            )}
             <HrExportMenu
               moduleName="Performance Reviews"
+              periodLabel={reportPeriodLabel}
+              fileNameBase={reportFileNameBase}
               columns={[
                 { key: 'employee', label: 'Employee' },
                 { key: 'cycle', label: 'Cycle' },
@@ -647,12 +713,23 @@ export function HrPerformancePage() {
                   <td className="px-3 py-2">
                     {canManage && (
                       <div className="flex gap-2">
-                        <button type="button" className="text-charcoal-700 hover:underline" onClick={() => beginEdit(r)}>
-                          Edit
-                        </button>
+                        {!showArchived && (
+                          <button type="button" className="text-charcoal-700 hover:underline" onClick={() => beginEdit(r)}>
+                            Edit
+                          </button>
+                        )}
                         <button type="button" className="text-critical hover:underline" onClick={() => void onDelete(r['id'] as UUID)}>
                           Delete
                         </button>
+                        {!showArchived ? (
+                          <button type="button" className="text-charcoal-700 hover:underline disabled:opacity-50" disabled={archivingId === r['id']} onClick={() => void onToggleArchive(r['id'] as UUID, true)}>
+                            {archivingId === r['id'] ? 'Archiving...' : 'Archive'}
+                          </button>
+                        ) : (
+                          <button type="button" className="text-charcoal-700 hover:underline disabled:opacity-50" disabled={archivingId === r['id']} onClick={() => void onToggleArchive(r['id'] as UUID, false)}>
+                            {archivingId === r['id'] ? 'Restoring...' : 'Restore'}
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>

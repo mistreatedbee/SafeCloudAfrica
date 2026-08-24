@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
@@ -116,6 +116,7 @@ export function HrHoursPage() {
   const [filterMonth, setFilterMonth] = useState(currentMonth);
   const [showArchived, setShowArchived] = useState(false);
   const [archivingId, setArchivingId] = useState<UUID | null>(null);
+  const [viewMode, setViewMode] = useState<'employee' | 'month'>('month');
 
   const filtersActiveCount = [filterQuery, filterStatus, filterDepartment, filterDateFrom, filterDateTo].filter(Boolean).length;
 
@@ -140,6 +141,24 @@ export function HrHoursPage() {
       setError(toUserFacingError(err, 'Unable to update the archive status right now.'));
     } finally {
       setArchivingId(null);
+    }
+  }
+
+  async function onArchiveAllApproved() {
+    if (!activeCompanyId || !user?.id) return;
+    const targets = (rows ?? []).filter((row) => row.status === 'APPROVED' && !Boolean((row as any).archived));
+    if (targets.length === 0) return;
+    if (!window.confirm(`Archive ${targets.length} approved timesheet${targets.length === 1 ? '' : 's'}?`)) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      for (const row of targets) {
+        await archiveHrTimesheet({ companyId: activeCompanyId, timesheetId: row.id as UUID, actorUserId: user.id as UUID, archived: true });
+      }
+      await refetch();
+      setSuccess(`Archived ${targets.length} approved timesheet${targets.length === 1 ? '' : 's'}.`);
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to archive approved timesheets right now.'));
     }
   }
 
@@ -179,6 +198,24 @@ export function HrHoursPage() {
     const t = setTimeout(() => el.classList.remove('ring-2', 'ring-teal', 'ring-offset-2'), 3000);
     return () => clearTimeout(t);
   }, [filteredRows]);
+
+  const rowsByEmployee = useMemo(() => {
+    const map = new Map<string, typeof filteredRows>();
+    for (const row of filteredRows) {
+      const key = String(row.employee_id ?? '');
+      const list = map.get(key) ?? [];
+      list.push(row);
+      map.set(key, list);
+    }
+    return Array.from(map.entries())
+      .map(([employeeIdKey, list]) => ({
+        employeeIdKey,
+        label: employeeLabel.get(employeeIdKey as UUID) ?? employeeIdKey,
+        rows: list,
+        total: list.reduce((sum, r) => sum + Number(r.hours_worked ?? 0) + Number(r.overtime_hours ?? 0), 0)
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [filteredRows, employeeLabel]);
 
   const byMonth = useMemo(() => {
     const map = new Map<string, number>();
@@ -434,7 +471,20 @@ export function HrHoursPage() {
           </div>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          <div className="flex rounded-lg border border-surface-300 overflow-hidden text-sm mr-auto">
+            <button type="button" className={`px-3 py-2 ${viewMode === 'employee' ? 'bg-teal text-white' : 'bg-white text-charcoal-600'}`} onClick={() => setViewMode('employee')}>
+              View by Employee
+            </button>
+            <button type="button" className={`px-3 py-2 ${viewMode === 'month' ? 'bg-teal text-white' : 'bg-white text-charcoal-600'}`} onClick={() => setViewMode('month')}>
+              View by Month
+            </button>
+          </div>
+          {canApprove && !showArchived && (
+            <button type="button" className="px-3 py-2 rounded-lg border border-surface-300 text-sm text-charcoal-700" onClick={() => void onArchiveAllApproved()}>
+              Archive approved
+            </button>
+          )}
           <HrExportMenu
             moduleName="Timesheets"
             periodLabel={filterMonth && filterYear ? `${MONTH_OPTIONS.find((m) => m.value === filterMonth)?.label ?? filterMonth} ${filterYear}` : filterYear || undefined}
@@ -469,7 +519,62 @@ export function HrHoursPage() {
           <table className="w-full text-sm">
             <thead className="bg-surface-100"><tr><th className="text-left px-3 py-2">Employee</th><th className="text-left px-3 py-2">Date</th><th className="text-left px-3 py-2">Hours worked</th><th className="text-left px-3 py-2">Overtime</th><th className="text-left px-3 py-2">Daily total</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Decline reason</th><th className="text-left px-3 py-2">Action</th></tr></thead>
             <tbody>
-              {filteredRows.map((row) => (
+              {viewMode === 'employee' && rowsByEmployee.map((group) => (
+                <Fragment key={group.employeeIdKey}>
+                  <tr className="bg-surface-50">
+                    <td colSpan={8} className="px-3 py-1.5 text-xs font-semibold text-charcoal-700">
+                      {group.label} — {group.total.toFixed(2)} hrs total
+                    </td>
+                  </tr>
+                  {group.rows.map((row) => (
+                    <tr key={row.id} id={`timesheet-${row.id}`} className="border-t border-surface-100">
+                      <td className="px-3 py-2">{employeeLabel.get(row.employee_id as UUID) ?? row.employee_id}</td>
+                      <td className="px-3 py-2">{row.date}</td>
+                      <td className="px-3 py-2">{row.hours_worked}</td>
+                      <td className="px-3 py-2">{row.overtime_hours}</td>
+                      <td className="px-3 py-2 font-semibold">{(Number(row.hours_worked ?? 0) + Number(row.overtime_hours ?? 0)).toFixed(2)}</td>
+                      <td className="px-3 py-2">{row.status}</td>
+                      <td className="px-3 py-2">
+                        {canApprove && row.status === 'SUBMITTED' ? (
+                          <textarea
+                            className="w-48 border border-surface-300 rounded px-2 py-1 text-xs"
+                            value={declineReasonByRow[String(row.id)] ?? ''}
+                            onChange={(e) => setDeclineReasonByRow((prev) => ({ ...prev, [String(row.id)]: e.target.value }))}
+                            placeholder="Required if declining"
+                          />
+                        ) : row.status === 'DECLINED' ? (
+                          <span className="text-critical text-xs">{row.decline_reason ? String(row.decline_reason) : 'No reason provided'}</span>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {canApprove && row.status === 'SUBMITTED' && (
+                          <div className="space-x-2">
+                            <button className="text-teal" onClick={() => void onApprove(row.id as UUID)}>Approve</button>
+                            <button className="text-critical" onClick={() => void onDecline(row.id as UUID)}>Decline</button>
+                          </div>
+                        )}
+                        {canReopen && row.status === 'DECLINED' && (!isEmployee || String(row.employee_id) === String(selfEmployee?.id)) && (
+                          <button className="text-teal" onClick={() => onReopen(row.id as UUID)}>Reopen</button>
+                        )}
+                        {row.status === 'APPROVED' && <span className="text-xs text-charcoal-500 mr-2">Locked</span>}
+                        {canApprove && row.status === 'APPROVED' && !showArchived && (
+                          <button className="text-charcoal-700" disabled={archivingId === row.id} onClick={() => void onToggleArchive(row.id as UUID, true)}>
+                            {archivingId === row.id ? 'Archiving...' : 'Archive'}
+                          </button>
+                        )}
+                        {canApprove && showArchived && (
+                          <button className="text-charcoal-700" disabled={archivingId === row.id} onClick={() => void onToggleArchive(row.id as UUID, false)}>
+                            {archivingId === row.id ? 'Restoring...' : 'Restore'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+              {viewMode === 'month' && filteredRows.map((row) => (
                 <tr key={row.id} id={`timesheet-${row.id}`} className="border-t border-surface-100">
                   <td className="px-3 py-2">{employeeLabel.get(row.employee_id as UUID) ?? row.employee_id}</td>
                   <td className="px-3 py-2">{row.date}</td>

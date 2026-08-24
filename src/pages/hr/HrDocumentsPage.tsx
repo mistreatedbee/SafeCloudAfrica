@@ -274,13 +274,16 @@ export function HrDocumentsPage() {
       });
       if (ackFile) {
         const evidenceId = await uploadAndAttachEvidence('hr_ack_document', created.id as UUID, ackFile, ackTitle.trim());
-        const { insforge } = await import('../../api/insforge/client');
-        const { error: patchError } = await insforge.database
-          .from('hr_ack_documents')
-          .update({ file_ids: [evidenceId], updated_at: new Date().toISOString() })
-          .eq('company_id', activeCompanyId)
-          .eq('id', created.id);
-        if (patchError) throw patchError;
+        // Route through the wrapped hrService helper (not a raw insforge.database call) so
+        // this patch gets the same proactive session refresh as every other HR write — a
+        // direct client call here could silently 401 on a stale session and leave the
+        // document created but without its file attached.
+        await updateHrAcknowledgementDocument({
+          companyId: activeCompanyId,
+          documentId: created.id as UUID,
+          actorUserId: user.id as UUID,
+          patch: { file_ids: [evidenceId] }
+        });
       }
       setAckTitle('');
       setAckVersion('');
@@ -362,7 +365,7 @@ export function HrDocumentsPage() {
       });
       await refetchPersonal();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to archive document.');
+      setError(toUserFacingError(err, 'Failed to archive document.'));
     }
   }
 
@@ -379,7 +382,7 @@ export function HrDocumentsPage() {
       });
       await refetchPersonal();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete personal document.');
+      setError(toUserFacingError(err, 'Failed to delete personal document.'));
     } finally {
       setDeletingPersonalId(null);
     }
@@ -399,7 +402,7 @@ export function HrDocumentsPage() {
       });
       await refetchAck();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete acknowledgement document.');
+      setError(toUserFacingError(err, 'Failed to delete acknowledgement document.'));
     } finally {
       setDeletingAckId(null);
     }
@@ -453,7 +456,7 @@ export function HrDocumentsPage() {
       const count = await sendHrDocumentExpiryAlerts(activeCompanyId, user.id as UUID);
       setSuccess(`Sent ${count} expiry notification${count === 1 ? '' : 's'}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send expiry notifications.');
+      setError(toUserFacingError(err, 'Failed to send expiry notifications.'));
     }
   }
 

@@ -38,7 +38,8 @@ import {
   markAwaitingEvidence,
   submitForReview,
   approveTask,
-  closeTask
+  closeTask,
+  reopenTask
 } from '../api/services/tasksService';
 import type { Task } from '../api/models/entities';
 import type { CorrectiveAction } from '../api/services/correctiveActionsService';
@@ -271,6 +272,17 @@ export function TasksPage() {
       setRefreshKey((k) => k + 1);
     } catch (err) {
       alert(toUserFacingError(err, 'Unable to approve this task right now.'));
+    }
+  }
+  async function handleRejectTask(task: Task) {
+    if (!activeCompanyId || !user?.id) return;
+    const reason = window.prompt('Reason for rejecting this task? (returns it to the assignee)');
+    if (!reason?.trim()) return;
+    try {
+      await reopenTask({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id, reason: reason.trim() });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      alert(toUserFacingError(err, 'Unable to reject this task right now.'));
     }
   }
   async function handleCloseTask(task: Task) {
@@ -973,13 +985,22 @@ export function TasksPage() {
                           </button>
                         )}
                         {task.status === 'under-review' && canManageTasks(activeRole) && (
-                          <button
-                            type="button"
-                            onClick={() => handleApproveTask(task)}
-                            className="px-3 py-1.5 rounded-lg bg-surface-100 text-xs font-medium text-charcoal hover:bg-surface-200"
-                          >
-                            Approve
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleApproveTask(task)}
+                              className="px-3 py-1.5 rounded-lg bg-surface-100 text-xs font-medium text-charcoal hover:bg-surface-200"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRejectTask(task)}
+                              className="px-3 py-1.5 rounded-lg border border-critical text-critical text-xs font-medium hover:bg-critical/5"
+                            >
+                              Reject
+                            </button>
+                          </>
                         )}
                         {task.status === 'approved' && canManageTasks(activeRole) && (
                           <button

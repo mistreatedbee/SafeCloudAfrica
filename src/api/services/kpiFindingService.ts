@@ -134,7 +134,8 @@ export async function updateKPIFindingStatus(
   findingId: UUID,
   organizationId: UUID,
   status: KpiFindingStatus,
-  actorUserId: UUID
+  actorUserId: UUID,
+  comment?: string
 ): Promise<KPIFinding> {
   const updates: Record<string, unknown> = {
     status,
@@ -142,6 +143,9 @@ export async function updateKPIFindingStatus(
   };
   if (status === 'closed') {
     updates.closed_at = new Date().toISOString();
+  }
+  if (comment?.trim()) {
+    updates.manager_sign_off_comment = comment.trim();
   }
   const { data, error } = await insforge.database
     .from('kpi_findings')
@@ -171,7 +175,7 @@ export async function updateKPIFindingStatus(
       eventKey: `kpi-finding-status:${findingId}:${status}`,
       eventType: 'kpi_finding_status_updated',
       title: 'KPI finding status updated',
-      message: `KPI finding status changed to ${status}.`,
+      message: `KPI finding status changed to ${status}.${comment?.trim() ? ` Comment: ${comment.trim()}` : ''}`,
       recipientUserIds: [updated.assigned_line_manager_id],
       emailTemplateKey: 'kpi_updates',
       emailVariables: { title: updated.description?.slice(0, 120) ?? 'KPI finding', status },

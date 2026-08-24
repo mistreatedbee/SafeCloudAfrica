@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
@@ -107,6 +107,8 @@ export function HrLabourPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivingId, setArchivingId] = useState<UUID | null>(null);
 
   const filtersActiveCount = [filterQuery, filterStatus, filterDateFrom, filterDateTo].filter(Boolean).length;
 
@@ -117,8 +119,30 @@ export function HrLabourPage() {
     setFilterDateTo('');
   }
 
+  async function onToggleArchive(rowId: UUID, archived: boolean) {
+    if (!activeCompanyId || !user?.id) return;
+    setError(null);
+    setSuccess(null);
+    setArchivingId(rowId);
+    try {
+      await updateHrRecord('hr_disciplinary_cases', {
+        companyId: activeCompanyId,
+        rowId,
+        actorUserId: user.id as UUID,
+        patch: { archived }
+      });
+      await refetch();
+      setSuccess(archived ? 'Case archived.' : 'Case restored.');
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to update the archive status right now.'));
+    } finally {
+      setArchivingId(null);
+    }
+  }
+
   const filteredCases = useMemo(() => {
     return (cases ?? []).filter((row) => {
+      if (Boolean(row.archived) !== showArchived) return false;
       const q = filterQuery.trim().toLowerCase();
       if (q) {
         const name = (employeeLabel.get(row.employee_id as UUID) ?? '').toLowerCase();
@@ -131,7 +155,18 @@ export function HrLabourPage() {
       if (filterDateTo && issued && issued > filterDateTo) return false;
       return true;
     });
-  }, [cases, employeeLabel, filterQuery, filterStatus, filterDateFrom, filterDateTo]);
+  }, [cases, employeeLabel, filterQuery, filterStatus, filterDateFrom, filterDateTo, showArchived]);
+
+  useEffect(() => {
+    const highlightId = new URLSearchParams(window.location.search).get('highlight');
+    if (!highlightId) return;
+    const el = document.getElementById(`labour-case-${highlightId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('ring-2', 'ring-teal', 'ring-offset-2');
+    const t = setTimeout(() => el.classList.remove('ring-2', 'ring-teal', 'ring-offset-2'), 3000);
+    return () => clearTimeout(t);
+  }, [filteredCases]);
 
   const repeatCount = useMemo(() => {
     if (!employeeId) return 0;
@@ -262,7 +297,8 @@ export function HrLabourPage() {
     offence_severity: row.offence_severity,
     repeat_offence_flag: row.repeat_offence_flag,
     status: row.status,
-    date_issued: row.date_issued
+    date_issued: row.date_issued,
+    created_on: row.created_at ? new Date(String(row.created_at)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''
   }));
   const exportColumns = [
     { key: 'employee', label: 'Employee' },
@@ -274,8 +310,11 @@ export function HrLabourPage() {
     { key: 'offence_severity', label: 'Severity' },
     { key: 'repeat_offence_flag', label: 'Repeat Offence' },
     { key: 'status', label: 'Status' },
-    { key: 'date_issued', label: 'Date Issued' }
+    { key: 'date_issued', label: 'Date Issued' },
+    { key: 'created_on', label: 'Created' }
   ];
+  const reportPeriodLabel = filterDateFrom || filterDateTo ? `${filterDateFrom || 'earliest'} to ${filterDateTo || 'latest'}` : undefined;
+  const reportFileNameBase = `SCA_Disciplinary_${filterDateFrom || 'all'}_${filterDateTo || 'all'}`;
 
   return (
     <Layout title="Labour Relations & Compliance">
@@ -345,7 +384,7 @@ export function HrLabourPage() {
             <button className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-60" onClick={() => void onCreate()} disabled={!canManage || saving}>
               {saving ? 'Saving...' : 'Report Offence / Log Case'}
             </button>
-            <HrExportMenu moduleName="Labour Relations" columns={exportColumns} rows={exportRows} />
+            <HrExportMenu moduleName="Labour Relations" columns={exportColumns} rows={exportRows} periodLabel={reportPeriodLabel} fileNameBase={reportFileNameBase} />
           </div>
         </div>
 
@@ -383,6 +422,10 @@ export function HrLabourPage() {
                 <button type="button" className="text-teal underline" onClick={clearFilters}>Clear filters</button>
               </div>
             )}
+            <div className="flex rounded-lg border border-surface-300 overflow-hidden text-sm ml-auto">
+              <button type="button" className={`px-3 py-2 ${!showArchived ? 'bg-teal text-white' : 'bg-white text-charcoal-600'}`} onClick={() => setShowArchived(false)}>Active</button>
+              <button type="button" className={`px-3 py-2 ${showArchived ? 'bg-teal text-white' : 'bg-white text-charcoal-600'}`} onClick={() => setShowArchived(true)}>View Archived</button>
+            </div>
           </div>
         </div>
 
@@ -390,7 +433,7 @@ export function HrLabourPage() {
           {casesLoading ? (
             <div className="flex justify-center py-10"><LoadingSpinner /></div>
           ) : filteredCases.length === 0 ? (
-            <div className="text-center py-10 text-sm text-charcoal-500">No labour cases match your filters.</div>
+            <div className="text-center py-10 text-sm text-charcoal-500">{showArchived ? 'No archived labour cases.' : 'No labour cases match your filters.'}</div>
           ) : (
           <table className="w-full text-sm">
             <thead className="bg-surface-100">
@@ -400,12 +443,13 @@ export function HrLabourPage() {
                 <th className="text-left px-3 py-2">Severity</th>
                 <th className="text-left px-3 py-2">Repeat</th>
                 <th className="text-left px-3 py-2">Status</th>
+                <th className="text-left px-3 py-2">Created</th>
                 <th className="text-left px-3 py-2">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredCases.map((row) => (
-                <tr key={row.id} className="border-t border-surface-100">
+                <tr key={row.id} id={`labour-case-${row.id}`} className="border-t border-surface-100">
                   <td className="px-3 py-2">{employeeLabel.get(row.employee_id as UUID) ?? String(row.employee_id ?? '')}</td>
                   <td className="px-3 py-2">{String(row.offence_type ?? row.offence_category ?? '')}</td>
                   <td className="px-3 py-2">{String(row.offence_severity ?? '-')}</td>
@@ -419,10 +463,21 @@ export function HrLabourPage() {
                     )}
                   </td>
                   <td className="px-3 py-2">{String(row.status ?? '')}</td>
+                  <td className="px-3 py-2">{row.created_at ? new Date(String(row.created_at)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-2">
                       <button className="text-teal font-medium hover:underline" onClick={() => openCaseDetails(row)}>View details</button>
                       <button className="text-charcoal-700 font-medium hover:underline" onClick={() => setEvidenceCaseId(row.id as UUID)}>Warnings/Evidence</button>
+                      {canManage && String(row.status ?? '') === 'CLOSED' && !showArchived && (
+                        <button className="text-charcoal-700 font-medium hover:underline disabled:opacity-50" disabled={archivingId === row.id} onClick={() => void onToggleArchive(row.id as UUID, true)}>
+                          {archivingId === row.id ? 'Archiving...' : 'Archive'}
+                        </button>
+                      )}
+                      {canManage && showArchived && (
+                        <button className="text-charcoal-700 font-medium hover:underline disabled:opacity-50" disabled={archivingId === row.id} onClick={() => void onToggleArchive(row.id as UUID, false)}>
+                          {archivingId === row.id ? 'Restoring...' : 'Restore'}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -441,6 +496,7 @@ export function HrLabourPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <p><span className="text-charcoal-500">Employee:</span> {employeeLabel.get(selectedCase.employee_id as UUID) ?? String(selectedCase.employee_id)}</p>
               <p><span className="text-charcoal-500">Offence:</span> {String(selectedCase.offence_type ?? selectedCase.offence_category ?? '')}</p>
+              <p><span className="text-charcoal-500">Created:</span> {selectedCase.created_at ? new Date(String(selectedCase.created_at)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</p>
               {Boolean(selectedCase.repeat_offence_flag) && (
                 <div className="md:col-span-2">
                   <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-300 text-xs font-semibold">

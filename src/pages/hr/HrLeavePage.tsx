@@ -407,6 +407,24 @@ export function HrLeavePage() {
     setFilterDateTo('');
   }
 
+  async function onArchiveAllApproved() {
+    if (!activeCompanyId || !user?.id) return;
+    const targets = (requests ?? []).filter((row) => row.status === 'APPROVED' && !Boolean((row as any).archived));
+    if (targets.length === 0) return;
+    if (!window.confirm(`Archive ${targets.length} approved leave request${targets.length === 1 ? '' : 's'}?`)) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      for (const row of targets) {
+        await archiveHrLeaveRequest({ companyId: activeCompanyId, leaveRequestId: row.id as UUID, actorUserId: user.id as UUID, archived: true });
+      }
+      await refetch();
+      setSuccess(`Archived ${targets.length} approved leave request${targets.length === 1 ? '' : 's'}.`);
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to archive approved leave requests right now.'));
+    }
+  }
+
   async function onToggleArchive(row: Record<string, unknown>, archived: boolean) {
     if (!activeCompanyId || !user?.id) return;
     setError(null);
@@ -571,6 +589,8 @@ export function HrLeavePage() {
           <div className="mt-3">
             <HrExportMenu
               moduleName="Leave Requests"
+              periodLabel={filterDateFrom || filterDateTo ? `${filterDateFrom || 'earliest'} to ${filterDateTo || 'latest'}` : filterYear ? (filterMonth ? `${MONTH_OPTIONS.find((m) => m.value === filterMonth)?.label ?? filterMonth} ${filterYear}` : filterYear) : undefined}
+              fileNameBase={`SCA_Leave_${filterDateFrom || 'all'}_${filterDateTo || 'all'}`}
               columns={[
                 { key: 'employee', label: 'Employee' },
                 { key: 'leave_type', label: 'Leave Type' },
@@ -650,6 +670,11 @@ export function HrLeavePage() {
                 <span>{filtersActiveCount} filter{filtersActiveCount === 1 ? '' : 's'} active</span>
                 <button type="button" className="text-teal underline" onClick={clearFilters}>Clear filters</button>
               </div>
+            )}
+            {canApprove && !showArchived && (
+              <button type="button" className="px-3 py-2 rounded-lg border border-surface-300 text-sm text-charcoal-700" onClick={() => void onArchiveAllApproved()}>
+                Archive approved
+              </button>
             )}
             <div className="flex rounded-lg border border-surface-300 overflow-hidden text-sm ml-auto">
               <button

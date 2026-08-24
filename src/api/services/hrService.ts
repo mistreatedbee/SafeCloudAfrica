@@ -1767,11 +1767,12 @@ export async function updateHrAcknowledgementDocument(input: {
   companyId: UUID;
   documentId: UUID;
   actorUserId: UUID;
-  patch: Partial<Pick<HrAckDocumentRow, 'status'>>;
+  patch: Partial<Pick<HrAckDocumentRow, 'status' | 'file_ids'>>;
 }): Promise<HrAckDocumentRow> {
   return withHrSession('ack-documents:update', async () => {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (typeof input.patch.status !== 'undefined') patch.status = input.patch.status;
+  if (typeof input.patch.file_ids !== 'undefined') patch.file_ids = input.patch.file_ids;
 
   const { data, error } = await insforge.database
     .from('hr_ack_documents')

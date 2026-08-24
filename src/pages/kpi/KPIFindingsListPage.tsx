@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listKPIFindings, attachProofToFinding, closeKPIFindingWithSignOff } from '../../api/services/kpiFindingService';
+import { listKPIFindings, attachProofToFinding, closeKPIFindingWithSignOff, updateKPIFindingStatus } from '../../api/services/kpiFindingService';
 import { uploadFile } from '../../api/services/storageService';
 import type { KPIFinding, KpiFindingStatus } from '../../api/models/entities';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
@@ -21,6 +21,9 @@ export function KPIFindingsListPage() {
   const [signOffComments, setSignOffComments] = useState<Record<string, string>>({});
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectComment, setRejectComment] = useState('');
+  const [rejectSubmittingId, setRejectSubmittingId] = useState<string | null>(null);
 
   const { data: findings, loading } = useAsync<KPIFinding[]>(
     async () => {
@@ -59,6 +62,23 @@ export function KPIFindingsListPage() {
       setRefreshKey((k) => k + 1);
     } catch (err: unknown) {
       setActionError(toUserFacingError(err, 'Failed to upload proof.'));
+    }
+  };
+
+  const handleReject = async (f: KPIFinding) => {
+    if (!activeCompanyId || !user?.id) return;
+    if (!rejectComment.trim()) return;
+    setActionError(null);
+    setRejectSubmittingId(f.finding_id);
+    try {
+      await updateKPIFindingStatus(f.finding_id as any, activeCompanyId, 'in_progress', user.id as any, rejectComment.trim());
+      setRejectingId(null);
+      setRejectComment('');
+      setRefreshKey((k) => k + 1);
+    } catch (err: unknown) {
+      setActionError(toUserFacingError(err, 'Failed to reject finding.'));
+    } finally {
+      setRejectSubmittingId(null);
     }
   };
 
@@ -192,6 +212,43 @@ export function KPIFindingsListPage() {
                           >
                             {closingId === f.finding_id ? 'Closing…' : 'Close with sign-off'}
                           </button>
+                          {rejectingId === f.finding_id ? (
+                            <div className="flex flex-col gap-1.5 w-48">
+                              <textarea
+                                rows={2}
+                                placeholder="Reason for rejecting (required)"
+                                value={rejectComment}
+                                onChange={(e) => setRejectComment(e.target.value)}
+                                className="px-2 py-1 border border-surface-300 rounded text-sm"
+                                disabled={rejectSubmittingId === f.finding_id}
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleReject(f)}
+                                  disabled={!rejectComment.trim() || rejectSubmittingId === f.finding_id}
+                                  className="text-sm px-3 py-1 rounded-lg bg-critical text-white hover:bg-critical-600 disabled:opacity-50"
+                                >
+                                  {rejectSubmittingId === f.finding_id ? 'Rejecting…' : 'Confirm reject'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setRejectingId(null); setRejectComment(''); }}
+                                  className="text-sm px-3 py-1 rounded-lg border border-surface-300 hover:bg-surface-50"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => { setRejectingId(f.finding_id); setRejectComment(''); }}
+                              className="text-sm px-3 py-1 rounded-lg border border-critical text-critical hover:bg-critical/5"
+                            >
+                              Reject
+                            </button>
+                          )}
                         </>
                       )}
                     </>

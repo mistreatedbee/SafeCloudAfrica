@@ -39,7 +39,7 @@ const CRITICALITY_OPTIONS: CalibrationCriticality[] = ['HIGH', 'MEDIUM', 'LOW'];
 const EQUIPMENT_STATUS_OPTIONS: CalibrationEquipmentStatus[] = ['IN_SERVICE', 'OUT_OF_SERVICE', 'REQUIRES_ADJUSTMENT_REPAIR'];
 const RESULT_OPTIONS: CalibrationResult[] = ['PASS', 'FAIL'];
 const TYPE_SUGGESTIONS = ['External', 'Internal', 'Lab', 'Field'];
-const FREQ_SUGGESTIONS = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Annual'];
+const FREQ_SUGGESTIONS = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Bi-annually', 'Annual', 'Ad hoc'];
 
 type FormMode = 'create' | 'edit' | 'view';
 type FormState = {

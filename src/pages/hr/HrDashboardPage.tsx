@@ -1,18 +1,38 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
-import { getHrDashboardStats } from '../../api/services/hrService';
-import { listHrEmployees, listHrLeaveRequests, listHrTimesheets } from '../../api/services/hrService';
+import {
+  applyHrLeaveApproval,
+  getHrDashboardStats,
+  getHrEmployeeByUserId,
+  listHrAcknowledgementDocuments,
+  listHrEmployees,
+  listHrLeaveRequests,
+  listHrRecords,
+  listHrTimesheets,
+  submitHrAcknowledgement
+} from '../../api/services/hrService';
 import { FirstWinBanner } from '../../components/onboarding/FirstWinBanner';
+import { toUserFacingError } from '../../utils/userFacingMessage';
+import type { UUID } from '../../api/models/core';
+
+function isApproverRole(role: string | null): boolean {
+  return role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor';
+}
 
 export function HrDashboardPage() {
   const navigate = useNavigate();
+  const { user } = useUser();
   const { activeCompanyId, activeRole, memberships } = useTenant();
   const activeMembership = memberships.find((m) => m.company_id === activeCompanyId);
   const showHrFirstWin = activeRole === 'admin' || activeMembership?.is_hr_manager === true;
+  const canApproveLeave = isApproverRole(activeRole ?? null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actingKey, setActingKey] = useState<string | null>(null);
 
   const { data: stats } = useAsync(async () => {
     if (!activeCompanyId) return null;
@@ -33,6 +53,94 @@ export function HrDashboardPage() {
     if (!activeCompanyId) return [];
     return listHrTimesheets(activeCompanyId);
   }, [activeCompanyId]);
+
+  const { data: selfEmployee } = useAsync(async () => {
+    if (!activeCompanyId || !user?.id) return null;
+    return getHrEmployeeByUserId(activeCompanyId, user.id as UUID);
+  }, [activeCompanyId, user?.id]);
+
+  // actorRole is hard-coded to 'employee' here regardless of the viewer's real company
+  // role — that's what makes listHrAcknowledgementDocuments scope the result to
+  // documents where *this specific person* has a pending receipt, which is exactly
+  // "my" pending acknowledgements for the approvals panel below.
+  const { data: myAckDocs, refetch: refetchMyAckDocs } = useAsync(async () => {
+    if (!activeCompanyId || !user?.id) return [];
+    return listHrAcknowledgementDocuments({ companyId: activeCompanyId, actorRole: 'employee', actorUserId: user.id as UUID });
+  }, [activeCompanyId, user?.id]);
+
+  const { data: myReviews } = useAsync(async () => {
+    if (!activeCompanyId || !selfEmployee?.id) return [];
+    return listHrRecords(activeCompanyId, 'hr_performance_reviews');
+  }, [activeCompanyId, selfEmployee?.id]);
+
+  const { refetch: refetchLeaveRequests } = useAsync(async () => {
+    if (!activeCompanyId) return [];
+    return listHrLeaveRequests(activeCompanyId);
+  }, [activeCompanyId]);
+
+  const pendingLeave = useMemo(
+    () => (canApproveLeave ? (leaveRequests ?? []).filter((row) => row.status === 'SUBMITTED') : []),
+    [leaveRequests, canApproveLeave]
+  );
+
+  const pendingAckDocs = useMemo(
+    () => (myAckDocs ?? []).filter((doc) => (doc.receipts ?? []).some((r) => r.status === 'PENDING')),
+    [myAckDocs]
+  );
+
+  const pendingReviews = useMemo(() => {
+    if (!selfEmployee?.id) return [];
+    return (myReviews ?? []).filter((row) => {
+      const r = row as Record<string, unknown>;
+      return String(r['corrective_responsible_user_id'] ?? '') === String(selfEmployee.id) && String(r['status'] ?? '') !== 'CLOSED' && !Boolean(r['archived']);
+    });
+  }, [myReviews, selfEmployee?.id]);
+
+  const employeeLabel = useMemo(
+    () => new Map((employees ?? []).map((employee) => [employee.id as UUID, `${employee.first_name} ${employee.last_name}`])),
+    [employees]
+  );
+
+  const pendingApprovalsCount = pendingLeave.length + pendingAckDocs.length + pendingReviews.length;
+
+  async function onLeaveDecision(leaveId: UUID, decision: 'SUPERVISOR_APPROVE' | 'SUPERVISOR_DECLINE' | 'HR_APPROVE' | 'HR_DECLINE') {
+    if (!activeCompanyId || !user?.id) return;
+    const isDecline = decision.endsWith('DECLINE');
+    let declineReason: string | undefined;
+    if (isDecline) {
+      declineReason = window.prompt('Reason for declining this leave request?') ?? undefined;
+      if (!declineReason?.trim()) return;
+    }
+    setActionError(null);
+    setActingKey(`leave-${leaveId}`);
+    try {
+      await applyHrLeaveApproval({ companyId: activeCompanyId, leaveRequestId: leaveId, actorUserId: user.id as UUID, decision, declineReason });
+      await refetchLeaveRequests();
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Unable to update this leave request right now.'));
+    } finally {
+      setActingKey(null);
+    }
+  }
+
+  async function onAckDecision(docId: UUID, action: 'acknowledge' | 'decline') {
+    if (!activeCompanyId || !user?.id) return;
+    let declineReason: string | undefined;
+    if (action === 'decline') {
+      declineReason = window.prompt('Reason for declining to acknowledge this document?') ?? undefined;
+      if (!declineReason?.trim()) return;
+    }
+    setActionError(null);
+    setActingKey(`ack-${docId}`);
+    try {
+      await submitHrAcknowledgement({ companyId: activeCompanyId, actorUserId: user.id as UUID, ackDocumentId: docId, action, declineReason });
+      await refetchMyAckDocs();
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Unable to record your response right now.'));
+    } finally {
+      setActingKey(null);
+    }
+  }
 
   const headcountByDepartment = useMemo(() => {
     const map = new Map<string, number>();
@@ -77,6 +185,87 @@ export function HrDashboardPage() {
           <Stat label="HR Docs Expired" value={String(stats?.hrDocsExpired ?? 0)} subtitle="Compliance gap" />
           <Stat label="Ack Completion" value={`${stats?.acknowledgementCompletionPercent ?? 0}%`} subtitle="Policies/sign-offs" />
         </div>
+
+        {(canApproveLeave || pendingAckDocs.length > 0 || pendingReviews.length > 0) && (
+          <div className="bg-white border border-surface-300 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-charcoal">My Pending Approvals</h3>
+              <span className="px-2 py-0.5 rounded-full bg-surface-100 text-xs font-semibold text-charcoal-600">{pendingApprovalsCount}</span>
+            </div>
+            {actionError && <div className="bg-critical/10 border border-critical/30 rounded-lg p-2 text-sm text-critical">{actionError}</div>}
+            {pendingApprovalsCount === 0 ? (
+              <p className="text-sm text-charcoal-500">Nothing awaiting your approval right now.</p>
+            ) : (
+              <div className="divide-y divide-surface-100">
+                {pendingLeave.map((row) => (
+                  <div key={`leave-${row.id}`} className="py-2 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <button className="text-sm font-medium text-teal hover:underline" onClick={() => navigate(`/dashboard/hr/leave?highlight=${row.id}`)}>
+                        Leave request — {employeeLabel.get(row.employee_id as UUID) ?? row.employee_id}
+                      </button>
+                      <p className="text-xs text-charcoal-500">{row.start_date} to {row.end_date} · Submitted {row.submitted_at ? new Date(String(row.submitted_at)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        className="px-3 py-1.5 rounded-lg bg-teal text-white text-xs disabled:opacity-60"
+                        disabled={actingKey === `leave-${row.id}`}
+                        onClick={() => void onLeaveDecision(row.id as UUID, activeRole === 'supervisor' ? 'SUPERVISOR_APPROVE' : 'HR_APPROVE')}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        className="px-3 py-1.5 rounded-lg border border-critical text-critical text-xs disabled:opacity-60"
+                        disabled={actingKey === `leave-${row.id}`}
+                        onClick={() => void onLeaveDecision(row.id as UUID, activeRole === 'supervisor' ? 'SUPERVISOR_DECLINE' : 'HR_DECLINE')}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {pendingAckDocs.map((doc) => (
+                  <div key={`ack-${doc.id}`} className="py-2 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <button className="text-sm font-medium text-teal hover:underline" onClick={() => navigate(`/dashboard/hr/documents?highlight=${doc.id}`)}>
+                        Document acknowledgement — {doc.title}
+                      </button>
+                      <p className="text-xs text-charcoal-500">{doc.category}{doc.created_at ? ` · Assigned ${new Date(doc.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}</p>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        className="px-3 py-1.5 rounded-lg bg-teal text-white text-xs disabled:opacity-60"
+                        disabled={actingKey === `ack-${doc.id}`}
+                        onClick={() => void onAckDecision(doc.id as UUID, 'acknowledge')}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        className="px-3 py-1.5 rounded-lg border border-critical text-critical text-xs disabled:opacity-60"
+                        disabled={actingKey === `ack-${doc.id}`}
+                        onClick={() => void onAckDecision(doc.id as UUID, 'decline')}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {pendingReviews.map((row) => {
+                  const r = row as Record<string, unknown>;
+                  return (
+                    <div key={`review-${String(r['id'])}`} className="py-2 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <button className="text-sm font-medium text-teal hover:underline" onClick={() => navigate(`/dashboard/hr/performance?highlight=${String(r['id'])}`)}>
+                          Performance review corrective action — {employeeLabel.get(r['employee_id'] as UUID) ?? String(r['employee_id'] ?? '')}
+                        </button>
+                        <p className="text-xs text-charcoal-500">Due: {String(r['corrective_due_date'] ?? '-')} · Assigned to you</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <button className="bg-white border border-surface-300 rounded-xl p-4 text-left" onClick={() => navigate('/dashboard/hr/employees')}>Add employee</button>
