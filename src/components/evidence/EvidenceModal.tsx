@@ -6,6 +6,7 @@ import type { EvidenceAttachment, UUID } from '../../api/models/entities';
 import { createEvidence, deleteEvidence, listEvidence } from '../../api/services/evidenceService';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/services/documentsStorageService';
 import { insforge } from '../../api/insforge/client';
+import { uploadFile } from '../../api/services/storageService';
 import { useAsync } from '../../api/hooks/useAsync';
 import { ListEmptyState } from '../ui/ListEmptyState';
 import { useToast } from '../ui/ToastProvider';
@@ -55,8 +56,7 @@ export function EvidenceModal(props: {
       const createdItems: EvidenceAttachment[] = [];
       for (const file of files) {
         const key = `${props.companyId}/${props.entityType}/${props.entityId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-        const { data: uploaded, error: upErr } = await insforge.storage.from(EVIDENCE_BUCKET).upload(key, file);
-        if (upErr) throw upErr;
+        const uploaded = await uploadFile(EVIDENCE_BUCKET as any, file, { key });
         const created = await createEvidence({
           companyId: props.companyId,
           entityType: props.entityType,
@@ -65,8 +65,8 @@ export function EvidenceModal(props: {
           displayTitle: files.length === 1 ? uploadTitle.trim() || file.name : file.name,
           originalFilename: file.name,
           fileKind: file.type.startsWith('image/') ? 'image' : 'document',
-          storageBucket: EVIDENCE_BUCKET,
-          storageKey: uploaded?.key ?? key,
+          storageBucket: uploaded.bucket,
+          storageKey: uploaded.key,
           createdByUserId: props.actorUserId
         });
         createdItems.push(created);
