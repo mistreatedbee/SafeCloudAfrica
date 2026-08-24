@@ -8,6 +8,7 @@ import { exportKPIReports } from '../../api/services/kpiExportService';
 import { downloadFile } from '../../api/services/exportService';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { listDepartments } from '../../api/services/departmentsService';
+import { listHrEmployees } from '../../api/services/hrService';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 
 type ReportType = 'individual_history' | 'department_trends' | 'achieved_vs_not_achieved' | 'manager_rating_distribution' | 'period_comparison';
@@ -49,6 +50,13 @@ export function KPIReportsPage() {
     async () => {
       if (!activeCompanyId) return [];
       return listDepartments(activeCompanyId);
+    },
+    [activeCompanyId]
+  );
+  const { data: hrEmployees } = useAsync(
+    async () => {
+      if (!activeCompanyId) return [];
+      return listHrEmployees(activeCompanyId);
     },
     [activeCompanyId]
   );
@@ -115,12 +123,17 @@ export function KPIReportsPage() {
 
   const employeeOptions = useMemo(() => {
     const map = new Map<string, string>();
+    // Start from the live HR employee list so the filter includes everyone,
+    // not just employees who already have an assessment on record.
+    (hrEmployees ?? []).forEach((e) => {
+      map.set(String(e.id), `${e.first_name} ${e.last_name}`.trim() || e.email || String(e.id));
+    });
     (assessments ?? []).forEach((a) => {
       const key = String(a.employee_id ?? 'none');
       if (!map.has(key)) map.set(key, a.employee_name_snapshot || 'Unknown');
     });
-    return [...map.entries()].map(([value, label]) => ({ value, label }));
-  }, [assessments]);
+    return [...map.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [assessments, hrEmployees]);
 
   const handleExport = async (format: 'pdf' | 'excel') => {
     if (!activeCompanyId) return;

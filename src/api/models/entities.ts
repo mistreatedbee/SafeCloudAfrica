@@ -2505,9 +2505,15 @@ export type HrKpi = {
 // --- KPI Performance Module (HR) ---
 export type KpiImportance = 'low' | 'medium' | 'high';
 export type KpiAssessmentType = 'employee' | 'project';
-export type KpiPeriodType = 'monthly' | 'quarterly' | 'annual';
+export type KpiPeriodType = 'monthly' | 'quarterly' | 'bi_annual' | 'annual';
 export type KpiAssessmentStatus = 'draft' | 'in_progress' | 'under_review' | 'completed' | 'closed' | 'submitted' | 'finalized';
 export type KpiFindingStatus = 'open' | 'in_progress' | 'awaiting_evidence' | 'under_review' | 'closed' | 'overdue';
+
+export type KpiTemplateQuestionnaireLine = {
+  kpiItemId: UUID | null;
+  kpiQuestionnaire: string;
+  importanceRating: KpiImportance;
+};
 
 export type KPIItem = {
   kpi_item_id: UUID;
@@ -2518,6 +2524,10 @@ export type KPIItem = {
   category: string | null;
   tags: unknown;
   active: boolean;
+  /** Reusable questionnaire lines for a full template — same shape as KPIAssessmentCreatePage's QuestionnaireInput. Null for a plain single-line library item. */
+  questionnaire_lines: KpiTemplateQuestionnaireLine[] | null;
+  /** Default period type to pre-fill when this template is loaded into a new assessment. */
+  period_type: KpiPeriodType | null;
   created_by: UUID;
   created_at: string;
   updated_at: string;

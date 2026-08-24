@@ -1,6 +1,6 @@
 import { insforge } from '../insforge/client';
 import { withInsforgeSession } from '../insforge/ensureSession';
-import type { KPIItem, KpiImportance, UUID } from '../models/entities';
+import type { KPIItem, KpiImportance, KpiPeriodType, KpiTemplateQuestionnaireLine, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 
@@ -11,6 +11,9 @@ export type CreateKPIItemInput = {
   defaultImportance?: KpiImportance;
   category?: string | null;
   tags?: unknown;
+  /** Full reusable questionnaire lines for a template. Omit/null for a plain single-line library item. */
+  questionnaireLines?: KpiTemplateQuestionnaireLine[] | null;
+  periodType?: KpiPeriodType | null;
   createdBy: UUID;
 };
 
@@ -47,6 +50,8 @@ export async function createKpiItem(input: CreateKPIItemInput, actorUserId: UUID
         default_importance: input.defaultImportance ?? 'medium',
         category: input.category ?? null,
         tags: input.tags ?? null,
+        questionnaire_lines: input.questionnaireLines ?? null,
+        period_type: input.periodType ?? null,
         active: true,
         created_by: input.createdBy
       })
@@ -73,7 +78,7 @@ export async function createKpiItem(input: CreateKPIItemInput, actorUserId: UUID
 
 export async function updateKpiItem(
   itemId: UUID,
-  patch: Partial<Pick<KPIItem, 'title' | 'description' | 'default_importance' | 'category' | 'tags' | 'active'>>,
+  patch: Partial<Pick<KPIItem, 'title' | 'description' | 'default_importance' | 'category' | 'tags' | 'active' | 'questionnaire_lines' | 'period_type'>>,
   organizationId: UUID,
   actorUserId: UUID
 ): Promise<KPIItem> {

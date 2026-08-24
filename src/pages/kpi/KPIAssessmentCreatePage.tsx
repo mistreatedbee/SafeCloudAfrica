@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
@@ -25,6 +25,7 @@ const EMPTY_QUESTIONNAIRE: QuestionnaireInput = { kpiItemId: null, kpiQuestionna
 
 export function KPIAssessmentCreatePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
 
@@ -71,6 +72,31 @@ export function KPIAssessmentCreatePage() {
   );
 
   const managerOptions = useMemo(() => profiles ?? [], [profiles]);
+
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const templatesLoadedFromUrlRef = useRef(false);
+  const fullTemplates = useMemo(() => (kpiItems ?? []).filter((k) => (k.questionnaire_lines?.length ?? 0) > 0), [kpiItems]);
+
+  const applyTemplate = (item: KPIItem) => {
+    const hasContent = questionnaires.some((q) => q.kpiQuestionnaire.trim());
+    if (hasContent && !window.confirm('This will replace your current questionnaire lines. Continue?')) return;
+    setQuestionnaires((item.questionnaire_lines ?? []).map((l) => ({ kpiItemId: l.kpiItemId, kpiQuestionnaire: l.kpiQuestionnaire, importanceRating: l.importanceRating })));
+    if (item.period_type) setPeriodType(item.period_type);
+    setShowTemplateModal(false);
+  };
+
+  // Support deep-linking from the Library page's "Use template" action (?template=<kpi_item_id>).
+  React.useEffect(() => {
+    if (templatesLoadedFromUrlRef.current) return;
+    const templateId = searchParams.get('template');
+    if (!templateId || !kpiItems) return;
+    const item = kpiItems.find((k) => String(k.kpi_item_id) === templateId);
+    if (item && (item.questionnaire_lines?.length ?? 0) > 0) {
+      templatesLoadedFromUrlRef.current = true;
+      setQuestionnaires(item.questionnaire_lines!.map((l) => ({ kpiItemId: l.kpiItemId, kpiQuestionnaire: l.kpiQuestionnaire, importanceRating: l.importanceRating })));
+      if (item.period_type) setPeriodType(item.period_type);
+    }
+  }, [kpiItems, searchParams]);
 
   const projectWeightingScore = useMemo(() => {
     return questionnaires.reduce((sum, q) => {
@@ -337,6 +363,7 @@ export function KPIAssessmentCreatePage() {
               >
                 <option value="monthly">Monthly</option>
                 <option value="quarterly">Quarterly</option>
+                <option value="bi_annual">Bi-annual</option>
                 <option value="annual">Annual</option>
               </select>
             </div>
@@ -392,6 +419,8 @@ export function KPIAssessmentCreatePage() {
               <HrEmployeeSelect
                 companyId={activeCompanyId ?? null}
                 value={employeeId}
+                valueField="id"
+                includeUnlinked={true}
                 onChange={(id, meta) => {
                   setEmployeeId(id);
                   setEmployeeNameSnapshot(meta.nameSnapshot);
@@ -399,6 +428,10 @@ export function KPIAssessmentCreatePage() {
                 label="Employee"
                 placeholder="Select employee"
                 disabled={!canCreate}
+                formatOptionLabel={(e) => {
+                  const name = `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || e.email;
+                  return e.employee_no ? `${name} (${e.employee_no})` : name;
+                }}
               />
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1">Employee name (snapshot)</label>
@@ -442,8 +475,21 @@ export function KPIAssessmentCreatePage() {
         </div>
 
         <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card space-y-4">
-          <h3 className="font-semibold text-charcoal">KPI Assessment</h3>
-          <p className="text-sm text-charcoal-500">Add KPI Questionnaire rows for this assessment.</p>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 className="font-semibold text-charcoal">KPI Assessment</h3>
+              <p className="text-sm text-charcoal-500">Add KPI Questionnaire rows for this assessment.</p>
+            </div>
+            {fullTemplates.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowTemplateModal(true)}
+                className="px-3 py-2 rounded-lg border border-teal text-teal text-sm font-medium hover:bg-teal-50"
+              >
+                Load from template
+              </button>
+            )}
+          </div>
 
           {questionnaires.map((q, i) => (
             <div key={i} className="flex flex-wrap gap-2 items-start p-3 border border-surface-200 rounded-lg">
@@ -506,6 +552,39 @@ export function KPIAssessmentCreatePage() {
           </button>
         </div>
       </form>
+
+      {showTemplateModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowTemplateModal(false)} />
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+            <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
+              <h3 className="font-semibold text-charcoal">Load from template</h3>
+              <button type="button" onClick={() => setShowTemplateModal(false)} className="text-sm text-charcoal-500 hover:text-charcoal">Close</button>
+            </div>
+            <div className="p-5 space-y-2">
+              {fullTemplates.length === 0 ? (
+                <p className="text-sm text-charcoal-500">No active KPI library templates with questionnaire lines yet.</p>
+              ) : (
+                fullTemplates.map((item) => (
+                  <button
+                    key={item.kpi_item_id}
+                    type="button"
+                    onClick={() => applyTemplate(item)}
+                    className="w-full text-left p-3 border border-surface-200 rounded-lg hover:border-teal hover:bg-teal-50"
+                  >
+                    <p className="font-medium text-charcoal text-sm">{item.title}</p>
+                    <p className="text-xs text-charcoal-500">
+                      {item.questionnaire_lines?.length ?? 0} indicator{(item.questionnaire_lines?.length ?? 0) === 1 ? '' : 's'}
+                      {item.period_type ? ` · ${item.period_type.replace('_', '-')}` : ''}
+                    </p>
+                    {item.description && <p className="text-xs text-charcoal-500 mt-1">{item.description}</p>}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
