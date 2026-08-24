@@ -879,36 +879,10 @@ export function LandingPage() {
           >
             <h2 className="text-2xl font-bold text-navy">HR module pricing</h2>
             <p className="text-sm text-charcoal-500 mt-2 max-w-3xl">
-              Choose between buying the HR module on its own, or — better yet — getting it free as part of the major system.
+              The HR module is included free as part of the major system.
             </p>
 
-            <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                whileHover={{ y: -5 }}
-                className="bg-surface-50 rounded-2xl border border-surface-200 p-6"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-lg font-bold text-charcoal">HR module only</p>
-                  <span className="px-2 py-1 rounded-full bg-surface-200 text-xs font-semibold text-charcoal-600">Standalone</span>
-                </div>
-                <p className="mt-2 text-3xl font-bold text-navy">R30<span className="text-sm font-normal text-charcoal-500">/employee/mo</span></p>
-                <p className="mt-1 text-xs text-charcoal-500">For teams that only need HR functionality.</p>
-                <ul className="mt-4 space-y-2 text-sm text-charcoal-500">
-                  <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Employees & profiles</li>
-                  <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Leave & attendance</li>
-                  <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Training & performance</li>
-                </ul>
-                <Link
-                  to="/register"
-                  className="mt-4 inline-block text-sm font-medium text-teal hover:underline underline-offset-2"
-                >
-                  Get HR module
-                </Link>
-              </motion.div>
-
+            <div className="mt-8 grid grid-cols-1 max-w-xl gap-6">
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
