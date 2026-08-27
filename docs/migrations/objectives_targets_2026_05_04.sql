@@ -28,7 +28,7 @@ alter table public.module_targets
 
 alter table public.module_targets
   add constraint module_targets_status_check
-  check (status in ('not_started','in_progress','completed','not_achieved'));
+  check (status in ('not_started','in_progress','completed','not_achieved','on_hold','achieved','closed'));
 
 alter table public.module_targets
   drop constraint if exists module_targets_review_action_status_check;

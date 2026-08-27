@@ -118,11 +118,34 @@ alter table public.company_invites
   add column if not exists status text null;
 
 -- Backfill: generate token and expires_at for existing rows
+-- De-duplicate active invites first (aligns with org_invites_end_to_end / invite_validation)
+with ranked as (
+  select
+    id,
+    row_number() over (
+      partition by company_id, lower(email)
+      order by coalesce(sent_at, created_at) desc, created_at desc, id desc
+    ) as rn
+  from public.company_invites
+  where status in ('PENDING', 'SENT')
+)
+update public.company_invites i
+set
+  status = 'CANCELLED',
+  error_message = coalesce(i.error_message, 'Auto-cancelled during license activation backfill.')
+from ranked r
+where i.id = r.id
+  and r.rn > 1;
+
 update public.company_invites
 set
   token = coalesce(token, gen_random_uuid()::text),
   expires_at = coalesce(expires_at, created_at + interval '7 days'),
-  status = case when accepted_at is not null then 'accepted' else 'pending' end
+  status = case
+    when accepted_at is not null then 'ACCEPTED'
+    when expires_at is not null and expires_at <= now() then 'EXPIRED'
+    else coalesce(nullif(upper(status), ''), 'PENDING')
+  end
 where token is null or expires_at is null or status is null;
 
 alter table public.company_invites alter column token set not null;
@@ -132,13 +155,13 @@ alter table public.company_invites alter column status set not null;
 alter table public.company_invites drop constraint if exists company_invites_status_check;
 alter table public.company_invites
   add constraint company_invites_status_check
-  check (status in ('pending','accepted','expired'));
+  check (status in ('PENDING','SENT','FAILED','ACCEPTED','EXPIRED','CANCELLED'));
 
 create unique index if not exists idx_company_invites_token on public.company_invites(token);
 
 comment on column public.company_invites.token is 'Unique token for invite link (e.g. /invite/accept?token=...).';
 comment on column public.company_invites.expires_at is 'Invite expiry.';
-comment on column public.company_invites.status is 'pending | accepted | expired.';
+comment on column public.company_invites.status is 'PENDING | SENT | FAILED | ACCEPTED | EXPIRED | CANCELLED.';
 
 -- ---------------------------------------------------------------------------
 -- 5) RPC: resolve invite id by token (for /invite/accept?token=...)

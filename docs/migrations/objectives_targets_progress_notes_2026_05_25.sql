@@ -33,7 +33,7 @@ create index if not exists idx_module_target_notes_target
 
 alter table public.module_target_notes enable row level security;
 
--- RLS: scoped to company members via app.company_id context variable
+drop policy if exists "company_rls" on public.module_target_notes;
 create policy "company_rls" on public.module_target_notes
   for all
   using (company_id = current_setting('app.company_id', true)::uuid);

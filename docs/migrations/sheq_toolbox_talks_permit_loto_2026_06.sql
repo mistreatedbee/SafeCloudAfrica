@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS toolbox_talks (
 
 ALTER TABLE toolbox_talks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "toolbox_talks_company_member" ON toolbox_talks;
 CREATE POLICY "toolbox_talks_company_member" ON toolbox_talks
   FOR ALL USING (
     EXISTS (
@@ -51,6 +52,7 @@ CREATE TABLE IF NOT EXISTS permits_to_work (
 
 ALTER TABLE permits_to_work ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "permits_to_work_company_member" ON permits_to_work;
 CREATE POLICY "permits_to_work_company_member" ON permits_to_work
   FOR ALL USING (
     EXISTS (
@@ -81,6 +83,7 @@ CREATE TABLE IF NOT EXISTS loto_records (
 
 ALTER TABLE loto_records ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "loto_records_company_member" ON loto_records;
 CREATE POLICY "loto_records_company_member" ON loto_records
   FOR ALL USING (
     EXISTS (
