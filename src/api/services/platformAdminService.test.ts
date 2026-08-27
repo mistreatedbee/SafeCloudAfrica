@@ -21,7 +21,7 @@ vi.mock('../insforge/client', () => ({
   }
 }));
 
-import { ensureMeAsSuperAdmin } from './platformAdminService';
+import { ensureMeAsSuperAdmin, isPlatformAdmin } from './platformAdminService';
 
 function encodeBase64Url(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64url');
@@ -101,5 +101,26 @@ describe('platformAdminService', () => {
     const result = await ensureMeAsSuperAdmin();
 
     expect(result).toEqual({ status: 'compat_ignored' });
+  });
+
+  it('returns false for isPlatformAdmin when platform_admins query is forbidden', async () => {
+    const token = createJwt(Date.now() + 60_000);
+    getCurrentSessionMock.mockResolvedValue({
+      data: {
+        session: {
+          accessToken: token,
+          user: { id: 'user-1' }
+        }
+      }
+    });
+    fromMock.mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: null, error: { status: 403, message: 'Forbidden' } })
+        })
+      })
+    });
+
+    await expect(isPlatformAdmin('user-1')).resolves.toBe(false);
   });
 });

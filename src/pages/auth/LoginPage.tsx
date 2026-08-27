@@ -5,7 +5,7 @@ import { AuthShell } from '../../components/auth/AuthShell';
 import { formatAuthError } from '../../auth/authMessages';
 import { recoverAuthState } from '../../auth/recoverAuthState';
 import { useTenant } from '../../tenant/TenantContext';
-import { ensureInsforgeSession } from '../../api/insforge/ensureSession';
+import { ensureInsforgeSession, InsforgeAuthBootstrapError } from '../../api/insforge/ensureSession';
 import { ensureMeAsSuperAdmin, isPlatformAdmin, getDashboardRoute, getLoginRedirectPath } from '../../api/services/platformAdminService';
 import { acceptInviteByToken, PendingInviteAcceptanceError } from '../../api/services/tenantService';
 import { insforge, insforgeReady } from '../../api/insforge/client';
@@ -85,6 +85,7 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const redirectInFlightRef = React.useRef(false);
   const resolveSignedInUserId = React.useCallback(async (initialResult: unknown): Promise<UUID | null> => {
     const initialSession = readAuthSession(initialResult);
     if (initialSession.accessToken) {
@@ -106,6 +107,8 @@ export function LoginPage() {
   }, []);
 
   const redirectAfterLogin = React.useCallback(async (resolvedUserId: UUID) => {
+    if (redirectInFlightRef.current) return;
+    redirectInFlightRef.current = true;
     setAuthError(null);
     setRedirectError(null);
     setRedirecting(true);
@@ -216,10 +219,17 @@ export function LoginPage() {
         wait(TENANT_REFRESH_MAX_WAIT_MS)
       ]);
       redirectToPath(pathWithReason);
-    } catch {
-      await recoverAuthState(signOut, refreshTenant);
+    } catch (error) {
+      if (error instanceof InsforgeAuthBootstrapError) {
+        await recoverAuthState(signOut, refreshTenant);
+        setRedirectError(LOGIN_FAILED_MESSAGE);
+        setRedirecting(false);
+        return;
+      }
       setRedirectError(LOGIN_FAILED_MESSAGE);
       setRedirecting(false);
+    } finally {
+      redirectInFlightRef.current = false;
     }
   }, [searchParams, refreshTenant, setActiveCompanyId, signOut]);
 

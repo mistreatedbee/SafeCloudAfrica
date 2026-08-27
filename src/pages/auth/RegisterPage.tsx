@@ -62,9 +62,7 @@ export function RegisterPage() {
         email: normalizedEmail,
         password,
         name: displayName || undefined,
-        options: {
-          emailRedirectTo: getVerificationRedirectUrl()
-        }
+        redirectTo: getVerificationRedirectUrl()
       });
 
       if (signUpError) throw signUpError;

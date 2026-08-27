@@ -173,12 +173,14 @@ export async function isPlatformAdmin(userId: UUID): Promise<boolean> {
     if (error) throw error;
     return !!data;
   } catch (err) {
+    if (err instanceof InsforgeAuthBootstrapError) {
+      throw err;
+    }
     const msg = getErrorMessage(err);
     // If the table doesn't exist yet, treat as not a platform admin.
     if (msg.toLowerCase().includes('does not exist')) return false;
-    if (err instanceof InsforgeAuthBootstrapError || isAuthDeniedError(err)) {
-      throw err;
-    }
+    // RLS or permission errors mean the user is not a platform admin.
+    if (isAuthDeniedError(err)) return false;
     return false;
   }
 }

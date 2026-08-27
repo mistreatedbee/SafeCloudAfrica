@@ -99,9 +99,7 @@ export function ActivateLicensePage() {
           email,
           password,
           name: primaryContactName.trim(),
-          options: {
-            emailRedirectTo: getVerificationRedirectUrl()
-          }
+          redirectTo: getVerificationRedirectUrl()
         });
         if (error) {
           if (error.message?.toLowerCase().includes('already registered') || error.message?.toLowerCase().includes('already exists')) {
