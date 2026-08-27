@@ -74,9 +74,9 @@ export function InspectionChecklistItemTableRow(props: InspectionChecklistItemPr
           onChange={(e) => void onUpdateItem(item, { inspection_rating: e.target.value })}
           className={selectTable}
         >
-          <option value="C">Compliant (2)</option>
-          <option value="PC">Partially (1)</option>
-          <option value="NC">Non-Compliant (0)</option>
+          <option value="C">C — Compliant</option>
+          <option value="PC">PC — Partially</option>
+          <option value="NC">NC — Non-Compliant</option>
         </select>
       </td>
       <td className="py-2 pr-3">
@@ -86,9 +86,9 @@ export function InspectionChecklistItemTableRow(props: InspectionChecklistItemPr
           onChange={(e) => void onUpdateItem(item, { risk_level: e.target.value })}
           className={selectTable}
         >
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
+          <option value="low">L — Low</option>
+          <option value="medium">M — Medium</option>
+          <option value="high">H — High</option>
         </select>
       </td>
       <td className="py-2 pr-3">
@@ -289,9 +289,9 @@ export function InspectionChecklistItemCard(props: InspectionChecklistItemProps)
             onChange={(e) => void onUpdateItem(item, { inspection_rating: e.target.value })}
             className={selectCard}
           >
-            <option value="C">Compliant (2)</option>
-            <option value="PC">Partially (1)</option>
-            <option value="NC">Non-Compliant (0)</option>
+            <option value="C">C — Compliant</option>
+            <option value="PC">PC — Partially</option>
+            <option value="NC">NC — Non-Compliant</option>
           </select>
         </div>
         <div>
@@ -302,9 +302,9 @@ export function InspectionChecklistItemCard(props: InspectionChecklistItemProps)
             onChange={(e) => void onUpdateItem(item, { risk_level: e.target.value })}
             className={selectCard}
           >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
+            <option value="low">L — Low</option>
+            <option value="medium">M — Medium</option>
+            <option value="high">H — High</option>
           </select>
         </div>
         <div>

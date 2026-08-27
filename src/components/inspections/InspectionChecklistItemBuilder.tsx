@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PlusIcon, Trash2Icon, XIcon, ChevronUpIcon, ChevronDownIcon } from 'lucide-react';
 import type { InspectionChecklistItem, InspectionChecklistTemplate, UUID } from '../../api/models/entities';
 import {
@@ -7,6 +7,7 @@ import {
   upsertInspectionChecklistItems
 } from '../../api/services/inspectionsService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { computeInspectionSectionScores } from '../../utils/inspectionSectionScores';
 
 type ItemDraft = {
   id?: UUID;
@@ -19,6 +20,7 @@ type ItemDraft = {
   inspection_method_default: 'physical-inspection' | 'observation' | 'record-review';
   evidence_required_default: boolean;
   is_mandatory: boolean;
+  allocated_score: number;
 };
 
 function toDraft(item: InspectionChecklistItem, order: number): ItemDraft {
@@ -32,7 +34,8 @@ function toDraft(item: InspectionChecklistItem, order: number): ItemDraft {
     risk_level_default: item.risk_level_default ?? 'medium',
     inspection_method_default: item.inspection_method_default ?? 'observation',
     evidence_required_default: item.evidence_required_default ?? false,
-    is_mandatory: item.is_mandatory ?? false
+    is_mandatory: item.is_mandatory ?? false,
+    allocated_score: Number(item.allocated_score ?? 2) || 2
   };
 }
 
@@ -46,7 +49,8 @@ function emptyDraft(order: number): ItemDraft {
     risk_level_default: 'medium',
     inspection_method_default: 'observation',
     evidence_required_default: false,
-    is_mandatory: false
+    is_mandatory: false,
+    allocated_score: 2
   };
 }
 
@@ -134,7 +138,8 @@ export function InspectionChecklistItemBuilder({ open, onClose, companyId, templ
           risk_level_default: row.risk_level_default,
           inspection_method_default: row.inspection_method_default,
           evidence_required_default: row.evidence_required_default,
-          is_mandatory: row.is_mandatory
+          is_mandatory: row.is_mandatory,
+          allocated_score: row.allocated_score
         }))
       });
       onClose();
@@ -144,6 +149,19 @@ export function InspectionChecklistItemBuilder({ open, onClose, companyId, templ
       setSaving(false);
     }
   }
+
+  const sectionScores = useMemo(() => {
+    const pseudoItems = items
+      .filter((row) => row.question.trim())
+      .map((row, idx) => ({
+        id: row.id ?? `draft-${idx}`,
+        audit_section_or_category: row.section.trim() || null,
+        section: row.section.trim() || null,
+        score: row.allocated_score,
+        max_score: row.allocated_score
+      }));
+    return computeInspectionSectionScores(pseudoItems as any);
+  }, [items]);
 
   if (!open) return null;
 
@@ -173,6 +191,21 @@ export function InspectionChecklistItemBuilder({ open, onClose, companyId, templ
             </div>
           ) : (
             <div className="space-y-3">
+              {sectionScores.length > 0 && (
+                <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+                  <p className="text-xs font-semibold text-charcoal mb-2">Score per section (max points)</p>
+                  <div className="flex flex-wrap gap-2">
+                    {sectionScores.map((s) => (
+                      <span
+                        key={s.section}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-surface-200 text-xs text-charcoal-600"
+                      >
+                        {s.section}: {s.maxScore} pts ({s.itemCount} Q)
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               {items.map((item, index) => (
                 <div key={item.id ?? `new-${index}`} className="border border-surface-200 rounded-xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
@@ -244,17 +277,30 @@ export function InspectionChecklistItemBuilder({ open, onClose, companyId, templ
                       className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
                     />
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     <div>
-                      <label className="block text-xs text-charcoal-500 mb-1">Default risk</label>
+                      <label className="block text-xs text-charcoal-500 mb-1">Max points</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={item.allocated_score}
+                        onChange={(e) =>
+                          updateItem(index, { allocated_score: Math.max(1, Number(e.target.value) || 1) })
+                        }
+                        className="w-full px-2 py-2 border border-surface-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-charcoal-500 mb-1">Default risk (L/M/H)</label>
                       <select
                         value={item.risk_level_default}
                         onChange={(e) => updateItem(index, { risk_level_default: e.target.value as ItemDraft['risk_level_default'] })}
                         className="w-full px-2 py-2 border border-surface-300 rounded-lg text-sm"
                       >
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
+                        <option value="low">L — Low</option>
+                        <option value="medium">M — Medium</option>
+                        <option value="high">H — High</option>
                       </select>
                     </div>
                     <div>
@@ -279,7 +325,7 @@ export function InspectionChecklistItemBuilder({ open, onClose, companyId, templ
                         checked={item.evidence_required_default}
                         onChange={(e) => updateItem(index, { evidence_required_default: e.target.checked })}
                       />
-                      Evidence required
+                      Evidence / photo required
                     </label>
                     <label className="flex items-center gap-2 text-xs text-charcoal-600 mt-6">
                       <input

@@ -150,14 +150,8 @@ export async function ensureMeAsSuperAdmin(): Promise<EnsureSuperAdminResult> {
       return { status: 'auth_failed', error };
     }
     if (isAuthDeniedError(error)) {
-      return {
-        status: 'auth_failed',
-        error: new InsforgeAuthBootstrapError(
-          'AUTH_SESSION_INVALID',
-          'Your session is not available. Please sign in again.',
-          { cause: error }
-        )
-      };
+      // ensure_me_as_super_admin may return 403 for users not on the allowed-email list.
+      return { status: 'compat_ignored' };
     }
     const msg = getErrorMessage(error).toLowerCase();
     if (

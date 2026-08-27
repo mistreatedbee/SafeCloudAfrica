@@ -14,6 +14,11 @@ import { InspectionChecklistLibrary } from '../components/inspections/Inspection
 import { toCsv, downloadTextFile } from '../utils/csv';
 import { useIdentity } from '../hooks/useIdentity';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
+import type { ModuleKey } from '../api/models/core';
+import {
+  formatInspectionFrequencyLabel,
+  formatInspectionPeriod
+} from '../utils/inspectionFrequency';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -34,6 +39,11 @@ export function InspectionsPage() {
   const { fullName, organisationName } = useIdentity();
 
   const isNew = location.pathname.endsWith('/new');
+  const moduleFromQuery = useMemo(() => {
+    const raw = new URLSearchParams(location.search).get('module');
+    const allowed: ModuleKey[] = ['safety', 'quality', 'environment', 'health', 'legal', 'hr', 'general', 'security'];
+    return allowed.includes(raw as ModuleKey) ? (raw as ModuleKey) : undefined;
+  }, [location.search]);
   const [createOpen, setCreateOpen] = useState(isNew);
   useEffect(() => setCreateOpen(isNew), [isNew]);
 
@@ -76,7 +86,8 @@ export function InspectionsPage() {
       findings: i.findings_count ?? 0,
       nonConformances: i.nonconformances_count ?? 0,
       location: i.location,
-      frequency: i.frequency ?? null
+      frequency: i.frequency ?? null,
+      periodLabel: formatInspectionPeriod(i.frequency, i.inspection_date ?? i.scheduled_at ?? i.created_at)
     };
   });
 
@@ -275,7 +286,7 @@ export function InspectionsPage() {
                           </span>
                           {inspection.frequency && (
                             <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
-                              {inspection.frequency}
+                              {formatInspectionFrequencyLabel(inspection.frequency)} — {inspection.periodLabel}
                             </span>
                           )}
                           {inspection.findings > 0 && (
@@ -302,6 +313,7 @@ export function InspectionsPage() {
               <InspectionChecklistLibrary
                 companyId={activeCompanyId}
                 canManage={canSchedule}
+                defaultModule={moduleFromQuery}
               />
             )
           )}

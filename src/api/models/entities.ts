@@ -992,7 +992,7 @@ export type Inspection = {
   inspection_date?: string | null;
   completion_date_stamp?: string | null;
   sector?: string | null;
-  frequency?: 'daily' | 'monthly' | 'audit-linked' | null;
+  frequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annually' | 'audit-linked' | 'ad_hoc' | null;
   inspector_user_id?: UUID | null;
   auditor_user_id?: UUID | null;
   auditee_user_id?: UUID | null;
@@ -1022,7 +1022,11 @@ export type InspectionChecklistTemplate = {
   google_doc_id?: string | null;
   google_doc_url?: string | null;
   default_sector?: string | null;
-  frequency?: 'daily' | 'monthly' | 'audit-linked' | null;
+  subtitle?: string | null;
+  default_area?: string | null;
+  default_auditor_user_id?: UUID | null;
+  default_area_manager_user_id?: UUID | null;
+  frequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annually' | 'audit-linked' | 'ad_hoc' | null;
   default_inspection_method?: 'physical-inspection' | 'observation' | 'record-review' | null;
   created_by_user_id: UUID;
   updated_by_user_id?: UUID | null;
@@ -1044,6 +1048,7 @@ export type InspectionChecklistItem = {
   default_risk_rating: string | null;
   default_nc_severity: string | null;
   evidence_required_default?: boolean;
+  allocated_score?: number | null;
   risk_level_default?: 'low' | 'medium' | 'high' | null;
   inspection_method_default?: 'physical-inspection' | 'observation' | 'record-review' | null;
   question_source_type?: 'google-doc-template' | 'manual' | null;
@@ -1073,7 +1078,9 @@ export type InspectionRun = {
   auditee_submitted_at?: string | null;
   sector?: string | null;
   location?: string | null;
-  frequency?: 'daily' | 'monthly' | 'audit-linked' | null;
+  frequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annually' | 'audit-linked' | 'ad_hoc' | null;
+  tracking_period_key?: string | null;
+  tracking_period_label?: string | null;
   inspection_date_stamp?: string | null;
   items_total: number;
   items_nc: number;

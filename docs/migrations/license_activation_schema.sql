@@ -165,6 +165,7 @@ comment on column public.company_invites.status is 'PENDING | SENT | FAILED | AC
 
 -- ---------------------------------------------------------------------------
 -- 5) RPC: resolve invite id by token (for /invite/accept?token=...)
+-- Delegates to resolve_invitation_token (uppercase status lifecycle).
 -- ---------------------------------------------------------------------------
 create or replace function public.get_invite_id_by_token(p_token text)
 returns uuid
@@ -173,17 +174,17 @@ security definer
 set search_path = public
 as $$
 declare
-  v_id uuid;
+  v_row record;
 begin
-  if nullif(trim(p_token), '') is null then
-    return null;
-  end if;
-  select id into v_id
-  from public.company_invites
-  where token = trim(p_token) and status = 'pending'
-  and (expires_at is null or expires_at > now())
+  select * into v_row
+  from public.resolve_invitation_token(p_token)
   limit 1;
-  return v_id;
+
+  if v_row.resolution_code = 'ok' then
+    return v_row.invite_id;
+  end if;
+
+  return null;
 end;
 $$;
 

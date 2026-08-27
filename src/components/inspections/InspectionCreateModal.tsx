@@ -8,6 +8,11 @@ import { listUserProfiles } from '../../api/services/profilesService';
 import type { UserProfile } from '../../api/models/entities';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import {
+  INSPECTION_FREQUENCY_OPTIONS,
+  formatInspectionPeriod,
+  type InspectionFrequency
+} from '../../utils/inspectionFrequency';
 
 type ChecklistTemplateOption = {
   id: string;
@@ -30,7 +35,7 @@ export function InspectionCreateModal(props: {
   const [location, setLocation] = useState('');
   const [sector, setSector] = useState('');
   const [department, setDepartment] = useState('');
-  const [frequency, setFrequency] = useState<'daily' | 'monthly' | 'audit-linked'>('daily');
+  const [frequency, setFrequency] = useState<InspectionFrequency>('daily');
   const [inspectorUserId, setInspectorUserId] = useState('');
   const [auditorUserId, setAuditorUserId] = useState('');
   const [templates, setTemplates] = useState<ChecklistTemplateOption[]>([]);
@@ -86,7 +91,7 @@ export function InspectionCreateModal(props: {
       location?: string;
       sector?: string;
       department?: string;
-      frequency?: 'daily' | 'monthly' | 'audit-linked';
+      frequency?: InspectionFrequency;
       inspectorUserId?: string;
       auditorUserId?: string;
     }>(draftKey);
@@ -149,6 +154,11 @@ export function InspectionCreateModal(props: {
   }, [props.companyId]);
 
   const canSubmit = useMemo(() => !!templateId && !loading, [templateId, loading]);
+
+  const periodPreview = useMemo(() => {
+    const date = inspectionDate || scheduledAt || new Date().toISOString().slice(0, 10);
+    return formatInspectionPeriod(frequency, date);
+  }, [frequency, inspectionDate, scheduledAt]);
 
   useEffect(() => {
     if (!props.open) return;
@@ -326,13 +336,18 @@ export function InspectionCreateModal(props: {
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Frequency</label>
                 <select
                   value={frequency}
-                  onChange={(e) => setFrequency(e.target.value as 'daily' | 'monthly' | 'audit-linked')}
+                  onChange={(e) => setFrequency(e.target.value as InspectionFrequency)}
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                 >
-                  <option value="daily">Daily</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="audit-linked">Audit-linked</option>
+                  {INSPECTION_FREQUENCY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
+                <p className="mt-1 text-xs text-charcoal-500">
+                  Tracking period: <span className="font-medium">{periodPreview}</span>
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Inspector</label>

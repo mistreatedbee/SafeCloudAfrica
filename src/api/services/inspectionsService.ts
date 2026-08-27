@@ -18,6 +18,11 @@ import { createPpeIssueTracker } from './ppeIssueTrackerService';
 import { createCorrectiveAction } from './correctiveActionsService';
 import { createNotification } from './notificationsService';
 import { sendTemplatedNotificationEmail } from './emailService';
+import {
+  formatInspectionPeriod,
+  getInspectionPeriodKey,
+  type InspectionFrequency
+} from '../../utils/inspectionFrequency';
 
 export type ListInspectionsInput = {
   companyId: UUID;
@@ -84,7 +89,7 @@ export type CreateInspectionInput = {
   auditorUserId?: UUID | null;
   auditeeUserId?: UUID | null;
   sector?: string;
-  frequency?: 'daily' | 'monthly' | 'audit-linked';
+  frequency?: InspectionFrequency;
   inspectionMethod?: 'physical-inspection' | 'observation' | 'record-review';
   inspectionDate?: string;
 };
@@ -160,35 +165,39 @@ export type ListInspectionChecklistTemplatesInput = {
 export async function listInspectionChecklistTemplates(
   input: ListInspectionChecklistTemplatesInput
 ): Promise<InspectionChecklistTemplate[]> {
-  let q = insforge.database
-    .from('inspection_checklist_templates')
-    .select('*')
-    .eq('company_id', input.companyId);
+  return withInsforgeSession('inspections:templates:list', async () => {
+    let q = insforge.database
+      .from('inspection_checklist_templates')
+      .select('*')
+      .eq('company_id', input.companyId);
 
-  if (input.module) q = q.eq('module', input.module);
-  if (!input.includeInactive) q = q.eq('is_active', true);
-  if (input.scope) q = q.eq('scope', input.scope);
-  if (input.siteId) q = q.eq('site_id', input.siteId);
-  if (input.departmentId) q = q.eq('department_id', input.departmentId);
-  if (input.search) q = q.ilike('name', `%${input.search.trim().slice(0, 200)}%`);
+    if (input.module) q = q.eq('module', input.module);
+    if (!input.includeInactive) q = q.eq('is_active', true);
+    if (input.scope) q = q.eq('scope', input.scope);
+    if (input.siteId) q = q.eq('site_id', input.siteId);
+    if (input.departmentId) q = q.eq('department_id', input.departmentId);
+    if (input.search) q = q.ilike('name', `%${input.search.trim().slice(0, 200)}%`);
 
-  const { data, error } = await q.order('name', { ascending: true });
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as InspectionChecklistTemplate[];
+    const { data, error } = await q.order('name', { ascending: true });
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as InspectionChecklistTemplate[];
+  });
 }
 
 export async function getInspectionChecklistTemplateById(
   companyId: UUID,
   templateId: UUID
 ): Promise<InspectionChecklistTemplate | null> {
-  const { data, error } = await insforge.database
-    .from('inspection_checklist_templates')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('id', templateId)
-    .maybeSingle();
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? null) as InspectionChecklistTemplate | null;
+  return withInsforgeSession('inspections:templates:get', async () => {
+    const { data, error } = await insforge.database
+      .from('inspection_checklist_templates')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('id', templateId)
+      .maybeSingle();
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? null) as InspectionChecklistTemplate | null;
+  });
 }
 
 export async function createInspectionChecklistTemplate(input: {
@@ -204,14 +213,20 @@ export async function createInspectionChecklistTemplate(input: {
   googleDocId?: string | null;
   googleDocUrl?: string | null;
   defaultSector?: string | null;
-  frequency?: 'daily' | 'monthly' | 'audit-linked';
+  subtitle?: string | null;
+  defaultArea?: string | null;
+  defaultAuditorUserId?: UUID | null;
+  defaultAreaManagerUserId?: UUID | null;
+  frequency?: InspectionFrequency;
 }): Promise<InspectionChecklistTemplate> {
+  return withInsforgeSession('inspections:templates:create', async () => {
   const { data, error } = await insforge.database
     .from('inspection_checklist_templates')
     .insert({
       company_id: input.companyId,
       module: input.module,
       name: input.name,
+      subtitle: input.subtitle ?? null,
       description: input.description ?? null,
       scope: input.scope ?? 'global',
       site_id: input.siteId ?? null,
@@ -221,6 +236,9 @@ export async function createInspectionChecklistTemplate(input: {
       google_doc_url: input.googleDocUrl ?? null,
       source_type: (input.googleDocId || input.googleDocUrl) ? 'google-doc' : 'manual',
       default_sector: input.defaultSector ?? null,
+      default_area: input.defaultArea ?? null,
+      default_auditor_user_id: input.defaultAuditorUserId ?? null,
+      default_area_manager_user_id: input.defaultAreaManagerUserId ?? null,
       frequency: input.frequency ?? 'daily',
       created_by_user_id: input.createdByUserId,
       updated_by_user_id: input.createdByUserId
@@ -229,6 +247,7 @@ export async function createInspectionChecklistTemplate(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   return data as InspectionChecklistTemplate;
+  });
 }
 
 export async function updateInspectionChecklistTemplate(input: {
@@ -244,8 +263,13 @@ export async function updateInspectionChecklistTemplate(input: {
   googleDocId?: string | null;
   googleDocUrl?: string | null;
   defaultSector?: string | null;
-  frequency?: 'daily' | 'monthly' | 'audit-linked';
+  subtitle?: string | null;
+  defaultArea?: string | null;
+  defaultAuditorUserId?: UUID | null;
+  defaultAreaManagerUserId?: UUID | null;
+  frequency?: InspectionFrequency;
 }): Promise<InspectionChecklistTemplate> {
+  return withInsforgeSession('inspections:templates:update', async () => {
   const patch: Record<string, unknown> = {
     updated_by_user_id: input.updatedByUserId,
     updated_at: new Date().toISOString()
@@ -259,6 +283,11 @@ export async function updateInspectionChecklistTemplate(input: {
   if (typeof input.googleDocId !== 'undefined') patch.google_doc_id = input.googleDocId;
   if (typeof input.googleDocUrl !== 'undefined') patch.google_doc_url = input.googleDocUrl;
   if (typeof input.defaultSector !== 'undefined') patch.default_sector = input.defaultSector;
+  if (typeof input.subtitle !== 'undefined') patch.subtitle = input.subtitle;
+  if (typeof input.defaultArea !== 'undefined') patch.default_area = input.defaultArea;
+  if (typeof input.defaultAuditorUserId !== 'undefined') patch.default_auditor_user_id = input.defaultAuditorUserId;
+  if (typeof input.defaultAreaManagerUserId !== 'undefined')
+    patch.default_area_manager_user_id = input.defaultAreaManagerUserId;
   if (typeof input.frequency !== 'undefined') patch.frequency = input.frequency;
   if (typeof input.googleDocId !== 'undefined' || typeof input.googleDocUrl !== 'undefined') {
     const hasGoogleDoc = Boolean(input.googleDocId || input.googleDocUrl);
@@ -274,6 +303,7 @@ export async function updateInspectionChecklistTemplate(input: {
     .single();
   if (error) throw new Error(getErrorMessage(error));
   return data as InspectionChecklistTemplate;
+  });
 }
 
 export async function archiveInspectionChecklistTemplate(
@@ -293,14 +323,16 @@ export async function listInspectionChecklistItems(
   companyId: UUID,
   templateId: UUID
 ): Promise<InspectionChecklistItem[]> {
-  const { data, error } = await insforge.database
-    .from('inspection_checklist_items')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('template_id', templateId)
-    .order('item_order', { ascending: true });
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as InspectionChecklistItem[];
+  return withInsforgeSession('inspections:template-items:list', async () => {
+    const { data, error } = await insforge.database
+      .from('inspection_checklist_items')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('template_id', templateId)
+      .order('item_order', { ascending: true });
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as InspectionChecklistItem[];
+  });
 }
 
 export async function upsertInspectionChecklistItems(input: {
@@ -320,9 +352,11 @@ export async function upsertInspectionChecklistItems(input: {
       evidence_required_default?: boolean;
       risk_level_default?: 'low' | 'medium' | 'high' | null;
       inspection_method_default?: 'physical-inspection' | 'observation' | 'record-review';
+      allocated_score?: number | null;
       is_mandatory?: boolean;
     }>;
 }): Promise<InspectionChecklistItem[]> {
+  return withInsforgeSession('inspections:template-items:upsert', async () => {
   const rows = input.items.map((item) => ({
     id: item.id ?? undefined,
     company_id: input.companyId,
@@ -339,6 +373,7 @@ export async function upsertInspectionChecklistItems(input: {
     evidence_required_default: item.evidence_required_default ?? false,
     risk_level_default: item.risk_level_default ?? null,
     inspection_method_default: item.inspection_method_default ?? 'observation',
+    allocated_score: item.allocated_score ?? null,
     is_mandatory: item.is_mandatory ?? false
   }));
 
@@ -349,15 +384,18 @@ export async function upsertInspectionChecklistItems(input: {
     .order('item_order', { ascending: true });
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as InspectionChecklistItem[];
+  });
 }
 
 export async function deleteInspectionChecklistItem(companyId: UUID, itemId: UUID): Promise<void> {
-  const { error } = await insforge.database
-    .from('inspection_checklist_items')
-    .delete()
-    .eq('company_id', companyId)
-    .eq('id', itemId);
-  if (error) throw new Error(getErrorMessage(error));
+  return withInsforgeSession('inspections:template-items:delete', async () => {
+    const { error } = await insforge.database
+      .from('inspection_checklist_items')
+      .delete()
+      .eq('company_id', companyId)
+      .eq('id', itemId);
+    if (error) throw new Error(getErrorMessage(error));
+  });
 }
 
 // ---------------------------
@@ -385,6 +423,7 @@ export async function createInspectionRunFromTemplate(input: {
   auditorUserId?: UUID | null;
   auditeeUserId?: UUID | null;
 }): Promise<{ run: InspectionRun; items: InspectionRunItem[] }> {
+  return withInsforgeSession('inspections:runs:create-from-template', async () => {
   // Determine next run number
   const { data: existingRuns, error: runsError } = await insforge.database
     .from('inspection_runs')
@@ -412,6 +451,10 @@ export async function createInspectionRunFromTemplate(input: {
   if (inspectionError) throw new Error(getErrorMessage(inspectionError));
   if (!template) throw new Error('Checklist template not found.');
   const inspection = (inspectionData ?? {}) as Partial<Inspection>;
+  const runFrequency = (inspection.frequency ?? template.frequency ?? 'daily') as InspectionFrequency;
+  const inspectionDate = inspection.inspection_date ?? nowIso.slice(0, 10);
+  const trackingPeriodKey = getInspectionPeriodKey(runFrequency, inspectionDate);
+  const trackingPeriodLabel = formatInspectionPeriod(runFrequency, inspectionDate);
 
   // Create run
   const { data: runData, error: runError } = await insforge.database
@@ -427,12 +470,15 @@ export async function createInspectionRunFromTemplate(input: {
       started_at: nowIso,
       status: 'in-progress',
       inspector_user_id: input.inspectorUserId ?? null,
-      auditor_user_id: input.auditorUserId ?? inspection.auditor_user_id ?? null,
+      auditor_user_id:
+        input.auditorUserId ?? inspection.auditor_user_id ?? template.default_auditor_user_id ?? null,
       auditee_user_id: input.auditeeUserId ?? null,
-      sector: inspection.sector ?? (template as any).default_sector ?? null,
-      location: inspection.location ?? null,
-      frequency: inspection.frequency ?? (template as any).frequency ?? 'daily',
-      inspection_date_stamp: inspection.inspection_date ?? nowIso.slice(0, 10),
+      sector: inspection.sector ?? template.default_sector ?? null,
+      location: inspection.location ?? template.default_area ?? null,
+      frequency: runFrequency,
+      tracking_period_key: trackingPeriodKey,
+      tracking_period_label: trackingPeriodLabel,
+      inspection_date_stamp: inspectionDate,
       items_total: templateItems.length,
       items_nc: 0,
       ncrs_created_count: 0
@@ -443,7 +489,9 @@ export async function createInspectionRunFromTemplate(input: {
   const run = runData as unknown as InspectionRun;
 
   // Clone items
-  const runItemsPayload = templateItems.map((item) => ({
+  const runItemsPayload = templateItems.map((item) => {
+    const maxScore = Number((item as any).allocated_score ?? 2);
+    return {
     company_id: input.companyId,
     run_id: run.id,
     template_item_id: item.id,
@@ -460,10 +508,11 @@ export async function createInspectionRunFromTemplate(input: {
     evidence_required: (item as any).evidence_required_default ?? false,
     risk_level: (item as any).risk_level_default ?? null,
     question_fingerprint: (item as any).question_fingerprint ?? null,
+    allocated_score: maxScore,
     compliance_status: 'C' as InspectionRunComplianceStatus,
     inspection_rating: 'C',
-    score: 2,
-    max_score: 2,
+    score: maxScore,
+    max_score: maxScore,
     comments: null,
     auditor_comments: null,
     evidence_document_url: null,
@@ -472,7 +521,8 @@ export async function createInspectionRunFromTemplate(input: {
     corrective_action_required: false,
     status: 'open',
     auto_ncr_id: null
-  }));
+  };
+  });
 
   const { data: itemsData, error: itemsError } = await insforge.database
     .from('inspection_run_items')
@@ -485,6 +535,7 @@ export async function createInspectionRunFromTemplate(input: {
     run,
     items: (itemsData ?? []) as unknown as InspectionRunItem[]
   };
+  });
 }
 
 export async function getInspectionRunById(
@@ -542,6 +593,17 @@ export async function updateInspectionRunItem(
     auditor_verified_at: string | null;
   }>
 ): Promise<InspectionRunItem> {
+  let existingMaxScore = 2;
+  if (typeof patch.inspection_rating !== 'undefined') {
+    const { data: existing } = await insforge.database
+      .from('inspection_run_items')
+      .select('max_score')
+      .eq('company_id', companyId)
+      .eq('id', runItemId)
+      .maybeSingle();
+    existingMaxScore = Number((existing as any)?.max_score ?? 2) || 2;
+  }
+
   const updatePatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (typeof patch.compliance_status !== 'undefined') {
     updatePatch.compliance_status = patch.compliance_status;
@@ -549,11 +611,11 @@ export async function updateInspectionRunItem(
   }
   if (typeof patch.inspection_rating !== 'undefined') {
     updatePatch.inspection_rating = patch.inspection_rating;
-    // Map rating to numeric score: C=2, PC=1, NC=0
     const rating = patch.inspection_rating;
-    const score = rating === 'C' ? 2 : rating === 'PC' ? 1 : 0;
+    const score =
+      rating === 'C' ? existingMaxScore : rating === 'PC' ? Math.round(existingMaxScore / 2) : 0;
     updatePatch.score = score;
-    updatePatch.max_score = 2;
+    updatePatch.max_score = existingMaxScore;
     updatePatch.nonconformance_flag = rating === 'NC';
     updatePatch.compliance_status = rating === 'NC' ? 'NC' : rating === 'PC' ? 'NA' : 'C';
   }
@@ -610,6 +672,15 @@ export async function updateInspectionRunItem(
       },
       actionUrl: '/dashboard/operations/inspections',
       metadata: { itemType: 'inspection_run_item', itemId: updatedItem.id }
+    }).catch(() => undefined);
+  }
+
+  // Escalate medium/high risk ratings to responsible person and area manager.
+  if (typeof patch.risk_level !== 'undefined' && (patch.risk_level === 'medium' || patch.risk_level === 'high')) {
+    await notifyInspectionRiskEscalation({
+      companyId,
+      item: updatedItem,
+      riskLevel: patch.risk_level
     }).catch(() => undefined);
   }
 
@@ -787,59 +858,15 @@ export async function completeInspectionRun(input: {
     .eq('company_id', input.companyId)
     .eq('id', run.inspection_id);
 
-  // Escalation: notify on high-risk findings
-  const highRiskItems = items.filter((i) => i.risk_level === 'high');
-  if (highRiskItems.length > 0) {
-    const { data: profiles, error: profilesError } = await insforge.database
-      .from('user_profiles')
-      .select('*')
-      .eq('company_id', input.companyId);
-    if (!profilesError && profiles) {
-      const byUserId = new Map<string, any>();
-      for (const p of profiles as any[]) {
-        if (p.user_id) byUserId.set(String(p.user_id), p);
-      }
-
-      const recipientUserIds = new Set<string>();
-      for (const item of highRiskItems) {
-        if (item.responsible_person_id) recipientUserIds.add(String(item.responsible_person_id));
-        if (run.department_id) {
-          // Best-effort: notify all managers in this tenant as department managers are not modeled directly
-          // This can be tightened later if department-manager mapping is added.
-        }
-      }
-
-      const link = `/dashboard/operations/inspections`;
-      const emails: string[] = [];
-      for (const userId of recipientUserIds) {
-        const profile = byUserId.get(userId);
-        if (profile?.email) emails.push(profile.email as string);
-        await createNotification(
-          input.companyId,
-          userId as unknown as UUID,
-          'warning',
-          'High risk inspection finding',
-          `One or more checklist items were rated high risk in inspection "${run.inspection_id}".`
-        );
-      }
-      if (emails.length > 0) {
-        await sendTemplatedNotificationEmail({
-          to: emails,
-          templateKey: 'inspections',
-          variables: {
-          title: 'High risk inspection finding',
-          status: 'High risk',
-          owner: '',
-          dueDate: '',
-          severity: 'high',
-          category: run.module,
-          location: (run as any).location ?? ''
-          },
-          actionUrl: link,
-          meta: { companyId: input.companyId, inspectionRunId: run.id, inspectionId: run.inspection_id }
-        });
-      }
-    }
+  // Escalation: notify on medium/high-risk findings
+  const escalatedItems = items.filter((i) => i.risk_level === 'high' || i.risk_level === 'medium');
+  for (const item of escalatedItems) {
+    await notifyInspectionRiskEscalation({
+      companyId: input.companyId,
+      item,
+      riskLevel: item.risk_level as 'medium' | 'high',
+      run
+    }).catch(() => undefined);
   }
 
   await createActivityLog({
@@ -903,6 +930,87 @@ export async function submitAuditeeSelfAssessment(input: {
   }
 
   return updated;
+}
+
+async function notifyInspectionRiskEscalation(input: {
+  companyId: UUID;
+  item: InspectionRunItem;
+  riskLevel: 'medium' | 'high';
+  run?: InspectionRun;
+}): Promise<void> {
+  const { data: runData } = input.run
+    ? { data: input.run }
+    : await insforge.database
+        .from('inspection_runs')
+        .select('*')
+        .eq('company_id', input.companyId)
+        .eq('id', input.item.run_id)
+        .maybeSingle();
+  const run = (runData ?? null) as InspectionRun | null;
+
+  const { data: templateData } = run?.template_id
+    ? await insforge.database
+        .from('inspection_checklist_templates')
+        .select('default_area_manager_user_id')
+        .eq('company_id', input.companyId)
+        .eq('id', run.template_id)
+        .maybeSingle()
+    : { data: null };
+
+  const recipientUserIds = new Set<string>();
+  if (input.item.responsible_person_id) recipientUserIds.add(String(input.item.responsible_person_id));
+  if ((templateData as any)?.default_area_manager_user_id) {
+    recipientUserIds.add(String((templateData as any).default_area_manager_user_id));
+  }
+
+  if (recipientUserIds.size === 0) return;
+
+  const severityLabel = input.riskLevel === 'high' ? 'High' : 'Medium';
+  const link = '/dashboard/operations/inspections';
+  const emails: string[] = [];
+
+  const { data: profiles } = await insforge.database
+    .from('user_profiles')
+    .select('user_id, email')
+    .eq('company_id', input.companyId);
+  const byUserId = new Map<string, any>();
+  for (const p of (profiles ?? []) as any[]) {
+    if (p.user_id) byUserId.set(String(p.user_id), p);
+  }
+
+  for (const userId of recipientUserIds) {
+    const profile = byUserId.get(userId);
+    if (profile?.email) emails.push(profile.email as string);
+    await createNotification(
+      input.companyId,
+      userId as unknown as UUID,
+      input.riskLevel === 'high' ? 'warning' : 'info',
+      `${severityLabel} risk inspection finding`,
+      `Checklist item "${input.item.question}" was rated ${severityLabel.toLowerCase()} risk.`
+    );
+  }
+
+  if (emails.length > 0) {
+    await sendTemplatedNotificationEmail({
+      to: emails,
+      templateKey: 'inspections',
+      variables: {
+        title: input.item.question,
+        status: `${severityLabel} risk`,
+        owner: '',
+        dueDate: (input.item.due_date as string | null | undefined) ?? '',
+        severity: input.riskLevel,
+        category: run?.module ?? '',
+        location: run?.location ?? ''
+      },
+      actionUrl: link,
+      meta: {
+        companyId: input.companyId,
+        inspectionRunId: run?.id,
+        inspectionItemId: input.item.id
+      }
+    });
+  }
 }
 
 export async function syncInspectionItemsFromNcrStatus(companyId: UUID, runId: UUID): Promise<void> {

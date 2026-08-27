@@ -4,40 +4,12 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-type AuthState = {
-  isLoaded: boolean;
-  isSignedIn: boolean;
-};
+const startProactiveSessionRefreshMock = vi.fn();
+const stopProactiveSessionRefreshMock = vi.fn();
 
-const authState: AuthState = {
-  isLoaded: true,
-  isSignedIn: true
-};
-
-const flushAllDraftsMock = vi.fn().mockResolvedValue(undefined);
-const httpClientState = {
-  authorization: ''
-};
-
-vi.mock('@insforge/react', () => ({
-  useAuth: () => authState
-}));
-
-vi.mock('../session/DraftManagerProvider', () => ({
-  useDraftManager: () => ({
-    flushAllDrafts: flushAllDraftsMock
-  })
-}));
-
-vi.mock('../api/insforge/client', () => ({
-  insforge: {
-    getHttpClient: () => ({
-      getHeaders: () =>
-        httpClientState.authorization
-          ? { Authorization: httpClientState.authorization }
-          : {}
-    })
-  }
+vi.mock('../api/insforge/ensureSession', () => ({
+  startProactiveSessionRefresh: () => startProactiveSessionRefreshMock(),
+  stopProactiveSessionRefresh: () => stopProactiveSessionRefreshMock()
 }));
 
 import { AuthSessionListener } from './AuthSessionListener';
@@ -55,12 +27,8 @@ describe('AuthSessionListener', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    authState.isLoaded = true;
-    authState.isSignedIn = true;
-    flushAllDraftsMock.mockReset();
-    flushAllDraftsMock.mockResolvedValue(undefined);
-    httpClientState.authorization = '';
-    sessionStorage.clear();
+    startProactiveSessionRefreshMock.mockReset();
+    stopProactiveSessionRefreshMock.mockReset();
 
     await act(async () => {
       root.render(<AuthSessionListener />);
@@ -76,30 +44,21 @@ describe('AuthSessionListener', () => {
     container.remove();
   });
 
-  it('sets the expired-session banner after a real signed-in to signed-out transition', async () => {
-    authState.isSignedIn = false;
-
-    await act(async () => {
-      root.render(<AuthSessionListener />);
-      await flushAsyncWork();
-    });
-
-    expect(flushAllDraftsMock).toHaveBeenCalledTimes(1);
-    expect(sessionStorage.getItem('sca_session_expired')).toBe('1');
-    expect(sessionStorage.getItem('sca_session_expired_message')).toBe('Your session has expired. Please log in again.');
+  it('starts proactive session refresh on mount', () => {
+    expect(startProactiveSessionRefreshMock).toHaveBeenCalledTimes(1);
   });
 
-  it('does not set the expired-session banner when a client token is still present', async () => {
-    httpClientState.authorization = 'Bearer transient-token';
-    authState.isSignedIn = false;
+  it('does not render a reconnect banner', () => {
+    expect(container.textContent).toBe('');
+    expect(container.querySelector('button')).toBeNull();
+  });
 
+  it('stops proactive session refresh on unmount', async () => {
     await act(async () => {
-      root.render(<AuthSessionListener />);
+      root.unmount();
       await flushAsyncWork();
     });
 
-    expect(flushAllDraftsMock).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem('sca_session_expired')).toBeNull();
-    expect(sessionStorage.getItem('sca_session_expired_message')).toBeNull();
+    expect(stopProactiveSessionRefreshMock).toHaveBeenCalledTimes(1);
   });
 });

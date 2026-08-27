@@ -7,30 +7,45 @@ import {
   createInspectionChecklistTemplate,
   updateInspectionChecklistTemplate
 } from '../../api/services/inspectionsService';
+import { listUserProfiles } from '../../api/services/profilesService';
+import type { UserProfile } from '../../api/models/entities';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useUser } from '@insforge/react';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 import { InspectionChecklistItemBuilder } from './InspectionChecklistItemBuilder';
+import {
+  INSPECTION_FREQUENCY_OPTIONS,
+  formatInspectionFrequencyLabel,
+  type InspectionFrequency
+} from '../../utils/inspectionFrequency';
 
 type Props = {
   companyId: UUID;
   canManage: boolean;
+  defaultModule?: ModuleKey;
 };
 
 type TemplateFormState = {
   id?: UUID;
   name: string;
+  subtitle: string;
   description: string;
   module: ModuleKey;
   scope: 'global' | 'site' | 'department';
+  defaultArea: string;
+  frequency: InspectionFrequency;
+  defaultAuditorUserId: string;
+  defaultAreaManagerUserId: string;
 };
 
 export function InspectionChecklistLibrary(props: Props) {
   const { user } = useUser();
-  const [moduleFilter, setModuleFilter] = useState<ModuleKey | 'all'>('all');
+  const [moduleFilter, setModuleFilter] = useState<ModuleKey | 'all'>(props.defaultModule ?? 'all');
   const [templates, setTemplates] = useState<InspectionChecklistTemplate[]>([]);
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchSucceeded, setFetchSucceeded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<TemplateFormState | null>(null);
@@ -59,6 +74,18 @@ export function InspectionChecklistLibrary(props: Props) {
     setEditing(restored);
   }, [draftKey, props.canManage, restoreDraft]);
 
+  useEffect(() => {
+    async function loadProfiles() {
+      try {
+        const data = await listUserProfiles(props.companyId);
+        setProfiles(data);
+      } catch {
+        setProfiles([]);
+      }
+    }
+    void loadProfiles();
+  }, [props.companyId]);
+
   async function refresh() {
     if (!props.companyId) return;
     try {
@@ -69,8 +96,10 @@ export function InspectionChecklistLibrary(props: Props) {
         module: moduleFilter === 'all' ? undefined : moduleFilter,
         includeInactive: true
       });
-      setTemplates(data as any);
+      setTemplates(data);
+      setFetchSucceeded(true);
     } catch (err: any) {
+      setFetchSucceeded(false);
       setError(err.message ?? 'Failed to load checklist templates.');
     } finally {
       setLoading(false);
@@ -86,9 +115,14 @@ export function InspectionChecklistLibrary(props: Props) {
   function startCreate() {
     setEditing({
       name: '',
+      subtitle: '',
       description: '',
-      module: 'safety',
-      scope: 'global'
+      module: props.defaultModule ?? 'safety',
+      scope: 'global',
+      defaultArea: '',
+      frequency: 'monthly',
+      defaultAuditorUserId: '',
+      defaultAreaManagerUserId: ''
     });
   }
 
@@ -96,9 +130,14 @@ export function InspectionChecklistLibrary(props: Props) {
     setEditing({
       id: t.id,
       name: t.name,
+      subtitle: t.subtitle ?? '',
       description: t.description ?? '',
       module: t.module,
-      scope: t.scope
+      scope: t.scope,
+      defaultArea: t.default_area ?? '',
+      frequency: (t.frequency ?? 'monthly') as InspectionFrequency,
+      defaultAuditorUserId: t.default_auditor_user_id ?? '',
+      defaultAreaManagerUserId: t.default_area_manager_user_id ?? ''
     });
   }
 
@@ -111,22 +150,27 @@ export function InspectionChecklistLibrary(props: Props) {
     try {
       setSaving(true);
       setError(null);
+      const payload = {
+        companyId: props.companyId,
+        name: editing.name.trim(),
+        subtitle: editing.subtitle.trim() || null,
+        description: editing.description.trim() || undefined,
+        scope: editing.scope,
+        defaultArea: editing.defaultArea.trim() || null,
+        frequency: editing.frequency,
+        defaultAuditorUserId: (editing.defaultAuditorUserId || null) as UUID | null,
+        defaultAreaManagerUserId: (editing.defaultAreaManagerUserId || null) as UUID | null
+      };
       if (editing.id) {
         await updateInspectionChecklistTemplate({
-          companyId: props.companyId,
+          ...payload,
           templateId: editing.id,
-          name: editing.name.trim(),
-          description: editing.description.trim() || null,
-          scope: editing.scope,
           updatedByUserId: (user?.id ?? props.companyId) as UUID
         });
       } else {
         await createInspectionChecklistTemplate({
-          companyId: props.companyId,
+          ...payload,
           module: editing.module,
-          name: editing.name.trim(),
-          description: editing.description.trim() || undefined,
-          scope: editing.scope,
           createdByUserId: (user?.id ?? props.companyId) as UUID
         });
       }
@@ -207,11 +251,11 @@ export function InspectionChecklistLibrary(props: Props) {
           <LoadingSpinner size={16} />
           Loading templates…
         </div>
-      ) : visibleTemplates.length === 0 ? (
+      ) : fetchSucceeded && visibleTemplates.length === 0 ? (
         <div className="text-sm text-charcoal-500 border border-dashed border-surface-300 rounded-xl p-4">
           No checklist templates yet. Create your first template to standardise inspections.
         </div>
-      ) : (
+      ) : fetchSucceeded ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {visibleTemplates.map((t) => (
             <div
@@ -221,8 +265,10 @@ export function InspectionChecklistLibrary(props: Props) {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold text-charcoal">{t.name}</p>
+                  {t.subtitle && <p className="text-xs text-charcoal-600">{t.subtitle}</p>}
                   <p className="text-xs text-charcoal-500 mt-0.5">
                     {t.module} • {t.scope}
+                    {t.frequency ? ` • ${formatInspectionFrequencyLabel(t.frequency)}` : ''}
                   </p>
                 </div>
                 {props.canManage && (
@@ -262,7 +308,7 @@ export function InspectionChecklistLibrary(props: Props) {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
 
       {editing && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
@@ -283,11 +329,21 @@ export function InspectionChecklistLibrary(props: Props) {
             </div>
             <div className="p-5 space-y-3">
               <div>
-                <label className="block text-xs font-medium text-charcoal mb-1.5">Name *</label>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Title *</label>
                 <input
                   value={editing.name}
                   onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                  placeholder="e.g. Vehicle inspection"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Sub-title</label>
+                <input
+                  value={editing.subtitle}
+                  onChange={(e) => setEditing({ ...editing, subtitle: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                  placeholder="e.g. Section 2 — Environmental Compliance"
                 />
               </div>
               <div>
@@ -328,6 +384,61 @@ export function InspectionChecklistLibrary(props: Props) {
                 </select>
               </div>
               <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Default area</label>
+                <input
+                  value={editing.defaultArea}
+                  onChange={(e) => setEditing({ ...editing, defaultArea: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                  placeholder="e.g. Plant A — north yard"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Frequency</label>
+                <select
+                  value={editing.frequency}
+                  onChange={(e) =>
+                    setEditing({ ...editing, frequency: e.target.value as InspectionFrequency })
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                >
+                  {INSPECTION_FREQUENCY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Default auditor</label>
+                <select
+                  value={editing.defaultAuditorUserId}
+                  onChange={(e) => setEditing({ ...editing, defaultAuditorUserId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                >
+                  <option value="">None</option>
+                  {profiles.map((p) => (
+                    <option key={p.user_id} value={p.user_id}>
+                      {p.full_name || p.email || p.user_id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Area manager</label>
+                <select
+                  value={editing.defaultAreaManagerUserId}
+                  onChange={(e) => setEditing({ ...editing, defaultAreaManagerUserId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                >
+                  <option value="">None</option>
+                  {profiles.map((p) => (
+                    <option key={p.user_id} value={p.user_id}>
+                      {p.full_name || p.email || p.user_id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-xs font-medium text-charcoal mb-1.5">
                   Description
                 </label>
@@ -339,7 +450,7 @@ export function InspectionChecklistLibrary(props: Props) {
                 />
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-surface-200">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-surface-200 px-5 pb-5">
               <button
                 type="button"
                 onClick={() => {

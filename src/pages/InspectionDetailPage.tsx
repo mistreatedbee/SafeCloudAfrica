@@ -32,6 +32,11 @@ import { exportInspectionRunPdf, getInspectionRunReport } from '../api/services/
 import { downloadFile } from '../api/services/exportService';
 import { useIdentity } from '../hooks/useIdentity';
 import { getCompanyLogoUrl } from '../utils/companyLogo';
+import { computeInspectionSectionScores } from '../utils/inspectionSectionScores';
+import {
+  formatInspectionFrequencyLabel,
+  formatInspectionPeriod
+} from '../utils/inspectionFrequency';
 
 type RunWithItems = { run: InspectionRun; items: InspectionRunItem[] };
 
@@ -135,6 +140,11 @@ export function InspectionDetailPage() {
     const compliancePercent = maxScore > 0 ? (score / maxScore) * 100 : 0;
     return { total, nc, score, maxScore, compliancePercent };
   }, [latestRun]);
+
+  const sectionScores = useMemo(
+    () => (latestRun ? computeInspectionSectionScores(latestRun.items) : []),
+    [latestRun]
+  );
 
   const hasDirtyDraft = useMemo(() => {
     if (!user?.id || !activeCompanyId || !inspectionId) return false;
@@ -250,6 +260,16 @@ export function InspectionDetailPage() {
                     <p className="text-xs font-medium text-charcoal-400">{inspection.module} - {inspection.id}</p>
                     <p className="mt-1 text-base font-semibold text-charcoal">{inspection.title || 'Inspection'}</p>
                     <p className="mt-1 text-sm text-charcoal-500">{inspection.location || 'No location specified.'}</p>
+                    {(inspection.frequency || latestRun?.run.frequency) && (
+                      <p className="mt-1 text-xs text-charcoal-500">
+                        {formatInspectionFrequencyLabel(inspection.frequency ?? latestRun?.run.frequency)} —{' '}
+                        {latestRun?.run.tracking_period_label ??
+                          formatInspectionPeriod(
+                            inspection.frequency ?? latestRun?.run.frequency,
+                            inspection.inspection_date ?? inspection.scheduled_at ?? inspection.created_at
+                          )}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
@@ -266,6 +286,21 @@ export function InspectionDetailPage() {
                 <div><p className="text-xs text-charcoal-500">Compliance</p><p className="font-medium">{checklistStats.compliancePercent.toFixed(1)}%</p></div>
                 <div><p className="text-xs text-charcoal-500">Findings / NC</p><p className="font-medium">{inspection.findings_count ?? 0} / {inspection.nonconformances_count ?? 0}</p></div>
               </div>
+              {sectionScores.length > 0 && (
+                <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+                  <p className="text-xs font-semibold text-charcoal mb-2">Score per section</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {sectionScores.map((s) => (
+                      <div key={s.section} className="bg-white rounded-lg border border-surface-200 px-3 py-2 text-xs">
+                        <p className="font-medium text-charcoal">{s.section}</p>
+                        <p className="text-charcoal-500 mt-0.5">
+                          {s.score} / {s.maxScore} pts ({s.itemCount} items)
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {latestRun && (
                 <div className="flex flex-wrap gap-2 pt-2 border-t border-surface-100">
                   <button
