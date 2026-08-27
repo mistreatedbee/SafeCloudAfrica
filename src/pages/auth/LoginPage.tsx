@@ -128,6 +128,16 @@ export function LoginPage() {
         return;
       }
 
+      const storedCompanyId = (() => {
+        try {
+          return (localStorage.getItem(ACTIVE_COMPANY_KEY) as UUID | null) ?? null;
+        } catch {
+          return null;
+        }
+      })();
+      const loginRedirect = await getLoginRedirectPath(effectiveUserId, storedCompanyId);
+      const hasExistingWorkspace = loginRedirect.reason !== 'no_org';
+
       const redirectParam = searchParams.get('redirect');
       const redirectInviteContext = getPendingInviteContextFromRedirect(redirectParam);
       if (redirectInviteContext) {
@@ -136,7 +146,7 @@ export function LoginPage() {
       const pendingInviteContext: PendingInviteContext | null = redirectInviteContext ?? getPendingInviteContext();
       let returnToInvitePathAfterEmailFallback: string | null = null;
 
-      if (pendingInviteContext) {
+      if (!hasExistingWorkspace && pendingInviteContext) {
         try {
           const membership = await acceptInviteByToken({
             token: pendingInviteContext.token,
@@ -159,19 +169,21 @@ export function LoginPage() {
       }
 
       let pendingEmailInviteResult = null;
-      try {
-        pendingEmailInviteResult = await acceptPendingInviteAndActivateWorkspace({
-          userId: effectiveUserId,
-          setActiveCompanyId,
-          refreshTenant
-        });
-      } catch (error) {
-        if (error instanceof PendingInviteAcceptanceError) {
-          setRedirectError(error.message);
-          setRedirecting(false);
-          return;
+      if (!hasExistingWorkspace) {
+        try {
+          pendingEmailInviteResult = await acceptPendingInviteAndActivateWorkspace({
+            userId: effectiveUserId,
+            setActiveCompanyId,
+            refreshTenant
+          });
+        } catch (error) {
+          if (error instanceof PendingInviteAcceptanceError) {
+            // Invite API can fail transiently; continue to activation routing instead of blocking login.
+            pendingEmailInviteResult = null;
+          } else {
+            throw error;
+          }
         }
-        throw error;
       }
       if (pendingEmailInviteResult?.status === 'accepted') {
         redirectToPath(pendingEmailInviteResult.redirectPath);
@@ -201,14 +213,7 @@ export function LoginPage() {
         return;
       }
 
-      const storedCompanyId = (() => {
-        try {
-          return (localStorage.getItem(ACTIVE_COMPANY_KEY) as UUID | null) ?? null;
-        } catch {
-          return null;
-        }
-      })();
-      const { path: defaultPath, organizationId, reason } = await getLoginRedirectPath(effectiveUserId, storedCompanyId);
+      const { path: defaultPath, organizationId, reason } = loginRedirect;
       if (organizationId) setActiveCompanyId(organizationId);
       const target = defaultPath;
       const pathWithReason = reason
@@ -226,7 +231,8 @@ export function LoginPage() {
         setRedirecting(false);
         return;
       }
-      setRedirectError(LOGIN_FAILED_MESSAGE);
+      const message = formatAuthError(error);
+      setRedirectError(message);
       setRedirecting(false);
     } finally {
       redirectInFlightRef.current = false;
@@ -262,7 +268,12 @@ export function LoginPage() {
     setRedirectError(null);
     const message = formatAuthError(error);
     const isVerificationIssue = message.toLowerCase().includes('verify your email');
-    setAuthError(isVerificationIssue ? message : `${LOGIN_FAILED_MESSAGE} ${message}`);
+    const isSpecificMessage =
+      isVerificationIssue ||
+      message.toLowerCase().includes('incorrect email or password') ||
+      message.toLowerCase().includes('temporarily unavailable') ||
+      message.toLowerCase().includes('too many attempts');
+    setAuthError(isSpecificMessage ? message : `${LOGIN_FAILED_MESSAGE} ${message}`);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

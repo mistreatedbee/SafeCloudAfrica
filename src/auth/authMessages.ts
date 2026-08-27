@@ -34,7 +34,7 @@ export function formatAuthError(err: unknown): string {
     return 'Incorrect email or password. If you just registered, verify your email first, then try again.';
   }
   if (statusCode === 502 || statusCode === 503 || statusCode === 504) {
-    return 'Service temporarily unavailable. Please try again.';
+    return 'Our sign-in service is temporarily unavailable. Please wait a moment and try again.';
   }
   if (statusCode === 429) return 'Too many attempts. Please wait a moment and try again.';
   if (statusCode === 400 && lowered.includes('email')) return 'Please enter a valid email address.';

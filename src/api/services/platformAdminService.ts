@@ -162,7 +162,12 @@ export async function ensureMeAsSuperAdmin(): Promise<EnsureSuperAdminResult> {
     ) {
       return { status: 'compat_ignored' };
     }
-    throw error;
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    if (statusCode === 502 || statusCode === 503 || statusCode === 504 || statusCode === 429) {
+      return { status: 'compat_ignored' };
+    }
+    // Super-admin bootstrap must never block regular login.
+    return { status: 'compat_ignored' };
   }
 }
 

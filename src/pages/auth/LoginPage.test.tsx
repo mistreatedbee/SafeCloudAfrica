@@ -210,7 +210,6 @@ describe('LoginPage', () => {
       'ensureSession',
       'ensureMeAsSuperAdmin',
       'isPlatformAdmin',
-      'acceptPendingInviteForCurrentUser',
       'getLoginRedirectPath'
     ]);
     expect(signInWithPasswordMock).not.toHaveBeenCalled();
@@ -228,7 +227,6 @@ describe('LoginPage', () => {
       'ensureSession',
       'ensureMeAsSuperAdmin',
       'isPlatformAdmin',
-      'acceptPendingInviteForCurrentUser',
       'getLoginRedirectPath'
     ]);
     expect(signInWithPasswordMock).toHaveBeenCalledWith({
@@ -241,6 +239,10 @@ describe('LoginPage', () => {
 
   it('accepts invite redirects before normal post-login routing', async () => {
     useAuthState.isSignedIn = false;
+    getLoginRedirectPathMock.mockImplementation(async () => {
+      callOrder.push('getLoginRedirectPath');
+      return { path: '/activate', reason: 'no_org' };
+    });
     routerState.searchParams = new URLSearchParams(`redirect=${encodeURIComponent('/invite/accept?token=invite-token-1')}`);
 
     await renderLogin(root);
@@ -250,19 +252,23 @@ describe('LoginPage', () => {
       'ensureSession',
       'ensureMeAsSuperAdmin',
       'isPlatformAdmin',
+      'getLoginRedirectPath',
       'acceptInviteByToken'
     ]);
     expect(acceptInviteByTokenMock).toHaveBeenCalledWith({
       token: 'invite-token-1',
       userId: 'user-1'
     });
-    expect(getLoginRedirectPathMock).not.toHaveBeenCalled();
     expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-invite');
     expect(replaceMock).toHaveBeenCalledWith('/employee/dashboard');
   });
 
   it('accepts pending email invites before no-org activation routing', async () => {
     useAuthState.isSignedIn = false;
+    getLoginRedirectPathMock.mockImplementation(async () => {
+      callOrder.push('getLoginRedirectPath');
+      return { path: '/activate', reason: 'no_org' };
+    });
     acceptPendingInviteForCurrentUserMock.mockImplementation(async () => {
       callOrder.push('acceptPendingInviteForCurrentUser');
       return { company_id: 'company-pending', role: 'admin' };
@@ -275,16 +281,20 @@ describe('LoginPage', () => {
       'ensureSession',
       'ensureMeAsSuperAdmin',
       'isPlatformAdmin',
+      'getLoginRedirectPath',
       'acceptPendingInviteForCurrentUser'
     ]);
     expect(acceptPendingInviteForCurrentUserMock).toHaveBeenCalledWith({ userId: 'user-1' });
-    expect(getLoginRedirectPathMock).not.toHaveBeenCalled();
     expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-pending');
     expect(replaceMock).toHaveBeenCalledWith('/admin/dashboard');
   });
 
   it('falls back to pending email invite acceptance when token acceptance returns not found', async () => {
     useAuthState.isSignedIn = false;
+    getLoginRedirectPathMock.mockImplementation(async () => {
+      callOrder.push('getLoginRedirectPath');
+      return { path: '/activate', reason: 'no_org' };
+    });
     routerState.searchParams = new URLSearchParams(`redirect=${encodeURIComponent('/invite/accept?token=stale-token-1')}`);
     acceptInviteByTokenMock.mockImplementation(async () => {
       callOrder.push('acceptInviteByToken');
@@ -302,16 +312,49 @@ describe('LoginPage', () => {
       'ensureSession',
       'ensureMeAsSuperAdmin',
       'isPlatformAdmin',
+      'getLoginRedirectPath',
       'acceptInviteByToken',
       'acceptPendingInviteForCurrentUser'
     ]);
     expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-pending');
-    expect(getLoginRedirectPathMock).not.toHaveBeenCalled();
     expect(replaceMock).toHaveBeenCalledWith('/employee/dashboard');
   });
 
-  it('shows pending invite backend errors without continuing to activation routing', async () => {
+  it('continues to activation routing when pending invite backend errors', async () => {
     useAuthState.isSignedIn = false;
+    getLoginRedirectPathMock.mockImplementation(async () => {
+      callOrder.push('getLoginRedirectPath');
+      return { path: '/activate', reason: 'no_org' };
+    });
+    const { PendingInviteAcceptanceError } = await import('../../api/services/tenantService');
+    acceptPendingInviteForCurrentUserMock.mockImplementation(async () => {
+      callOrder.push('acceptPendingInviteForCurrentUser');
+      throw new PendingInviteAcceptanceError(
+        'We could not accept your invitation right now. Please try again or contact support.',
+        'INVITE_BACKEND_UNAVAILABLE',
+        500
+      );
+    });
+
+    await renderLogin(root);
+    await submitLogin(container);
+
+    expect(callOrder).toEqual([
+      'ensureSession',
+      'ensureMeAsSuperAdmin',
+      'isPlatformAdmin',
+      'getLoginRedirectPath',
+      'acceptPendingInviteForCurrentUser'
+    ]);
+    expect(replaceMock).toHaveBeenCalledWith('/activate?reason=no_org');
+  });
+
+  it('continues to activation routing when invite acceptance is misconfigured', async () => {
+    useAuthState.isSignedIn = false;
+    getLoginRedirectPathMock.mockImplementation(async () => {
+      callOrder.push('getLoginRedirectPath');
+      return { path: '/activate', reason: 'no_org' };
+    });
     const { PendingInviteAcceptanceError } = await import('../../api/services/tenantService');
     acceptPendingInviteForCurrentUserMock.mockImplementation(async () => {
       callOrder.push('acceptPendingInviteForCurrentUser');
@@ -325,10 +368,9 @@ describe('LoginPage', () => {
       'ensureSession',
       'ensureMeAsSuperAdmin',
       'isPlatformAdmin',
+      'getLoginRedirectPath',
       'acceptPendingInviteForCurrentUser'
     ]);
-    expect(getLoginRedirectPathMock).not.toHaveBeenCalled();
-    expect(replaceMock).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Invite acceptance is not configured. Please contact support.');
+    expect(replaceMock).toHaveBeenCalledWith('/activate?reason=no_org');
   });
 });
