@@ -540,7 +540,6 @@ export function ImprovementPage() {
                   const responsibleName = row.responsible_user_id
                     ? resolveUserLabel(profileNameByUser, row.responsible_user_id)
                     : '—';
-                    : '-';
 
                   return (
                     <tr key={row.id} className="align-top">
