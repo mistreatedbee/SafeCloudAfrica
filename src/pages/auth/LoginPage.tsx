@@ -260,7 +260,9 @@ export function LoginPage() {
   const handleSignInError = (error: unknown) => {
     setRedirecting(false);
     setRedirectError(null);
-    setAuthError(`${LOGIN_FAILED_MESSAGE} ${formatAuthError(error)}`);
+    const message = formatAuthError(error);
+    const isVerificationIssue = message.toLowerCase().includes('verify your email');
+    setAuthError(isVerificationIssue ? message : `${LOGIN_FAILED_MESSAGE} ${message}`);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -279,17 +281,25 @@ export function LoginPage() {
 
     try {
       await insforgeReady;
-      const signInResult = await signIn(normalizedEmail, password);
-      const error = (signInResult as any)?.error ?? null;
+      const { data, error: signInError } = await insforge.auth.signInWithPassword({
+        email: normalizedEmail,
+        password
+      });
 
-      if (error) {
-        handleSignInError(error);
+      if (signInError) {
+        handleSignInError(signInError);
         return;
       }
 
-      const resolvedUserId = await resolveSignedInUserId(signInResult);
+      if (data?.accessToken) {
+        insforge.getHttpClient().setAuthToken(data.accessToken);
+      }
+
+      const resolvedUserId =
+        (typeof data?.user?.id === 'string' && data.user.id.trim() ? data.user.id : null) ??
+        (await resolveSignedInUserId(data));
       if (resolvedUserId) {
-        await redirectAfterLogin(resolvedUserId);
+        await redirectAfterLogin(resolvedUserId as UUID);
         return;
       }
 

@@ -28,6 +28,7 @@ const getLoginRedirectPathMock = vi.fn();
 const acceptInviteByTokenMock = vi.fn();
 const acceptPendingInviteForCurrentUserMock = vi.fn();
 const recoverAuthStateMock = vi.fn().mockResolvedValue(undefined);
+const signInWithPasswordMock = vi.fn();
 const callOrder: string[] = [];
 const routerState = vi.hoisted(() => ({
   searchParams: new URLSearchParams()
@@ -84,7 +85,8 @@ vi.mock('../../api/insforge/client', () => ({
       setAuthToken: vi.fn()
     }),
     auth: {
-      getCurrentSession: vi.fn()
+      getCurrentSession: vi.fn(),
+      signInWithPassword: (...args: unknown[]) => signInWithPasswordMock(...args)
     }
   }
 }));
@@ -154,6 +156,11 @@ describe('LoginPage', () => {
     acceptInviteByTokenMock.mockReset();
     acceptPendingInviteForCurrentUserMock.mockReset();
     recoverAuthStateMock.mockReset();
+    signInWithPasswordMock.mockReset();
+    signInWithPasswordMock.mockResolvedValue({
+      data: { accessToken: 'token', user: { id: 'user-1' } },
+      error: null
+    });
 
     ensureInsforgeSessionMock.mockImplementation(async () => {
       callOrder.push('ensureSession');
@@ -206,7 +213,7 @@ describe('LoginPage', () => {
       'acceptPendingInviteForCurrentUser',
       'getLoginRedirectPath'
     ]);
-    expect(useAuthState.signIn).not.toHaveBeenCalled();
+    expect(signInWithPasswordMock).not.toHaveBeenCalled();
     expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-1');
     expect(replaceMock).toHaveBeenCalledWith('/org/dashboard');
   });
@@ -224,6 +231,10 @@ describe('LoginPage', () => {
       'acceptPendingInviteForCurrentUser',
       'getLoginRedirectPath'
     ]);
+    expect(signInWithPasswordMock).toHaveBeenCalledWith({
+      email: 'user@example.com',
+      password: 'password-1'
+    });
     expect(tenantState.setActiveCompanyId).toHaveBeenCalledWith('company-1');
     expect(replaceMock).toHaveBeenCalledWith('/org/dashboard');
   });

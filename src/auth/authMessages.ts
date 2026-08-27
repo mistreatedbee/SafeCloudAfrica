@@ -12,6 +12,15 @@ export function formatAuthError(err: unknown): string {
   const code: string | undefined = anyErr?.error;
 
   const lowered = (msg ?? '').toLowerCase();
+  const nextActions = typeof anyErr?.nextActions === 'string' ? anyErr.nextActions : '';
+
+  if (
+    lowered.includes('email verification') ||
+    lowered.includes('verify your email') ||
+    (statusCode === 403 && (code === 'FORBIDDEN' || lowered.includes('forbidden')))
+  ) {
+    return nextActions || 'Please verify your email address before signing in. Check your inbox for the verification link.';
+  }
   if (lowered.includes('already') && (lowered.includes('registered') || lowered.includes('exists'))) {
     return 'This email is already registered. Please sign in instead.';
   }
@@ -19,9 +28,11 @@ export function formatAuthError(err: unknown): string {
     return 'This email is already registered. Please sign in instead.';
   }
   if (lowered.includes('invalid') && (lowered.includes('password') || lowered.includes('credentials'))) {
-    return 'Incorrect email or password. Please check and try again.';
+    return 'Incorrect email or password. If you just registered, verify your email first, then try again.';
   }
-  if (statusCode === 401) return 'You are not authorised. Please sign in again.';
+  if (statusCode === 401 || code === 'AUTH_UNAUTHORIZED') {
+    return 'Incorrect email or password. If you just registered, verify your email first, then try again.';
+  }
   if (statusCode === 502 || statusCode === 503 || statusCode === 504) {
     return 'Service temporarily unavailable. Please try again.';
   }
