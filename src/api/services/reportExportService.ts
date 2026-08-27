@@ -36,7 +36,7 @@ export function downloadCsvReport(filename: string, rows: ReportRow[], metaLines
   downloadBlob(filename, new Blob([content], { type: 'text/csv;charset=utf-8' }));
 }
 
-async function fetchImageAsDataUrl(url: string): Promise<string | null> {
+export async function fetchImageAsDataUrl(url: string): Promise<string | null> {
   try {
     const response = await fetch(url);
     if (!response.ok) return null;
@@ -50,6 +50,52 @@ async function fetchImageAsDataUrl(url: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export async function drawPdfCoverWithLogo(
+  doc: import('jspdf').jsPDF,
+  options: {
+    title: string;
+    subtitle?: string;
+    companyName?: string;
+    generatedBy?: string;
+    logoUrl?: string | null;
+    bandHeight?: number;
+  }
+): Promise<number> {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const bandHeight = options.bandHeight ?? 90;
+  let titleX = 40;
+
+  doc.setFillColor(15, 118, 110);
+  doc.rect(0, 0, pageWidth, bandHeight, 'F');
+
+  if (options.logoUrl) {
+    const dataUrl = await fetchImageAsDataUrl(options.logoUrl);
+    if (dataUrl) {
+      try {
+        doc.addImage(dataUrl, 40, 16, 52, 52, undefined, 'FAST');
+        titleX = 104;
+      } catch {
+        // Report still generates without the logo.
+      }
+    }
+  }
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text(options.title, titleX, 38);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  if (options.companyName) doc.text(options.companyName, titleX, 54);
+  if (options.subtitle) doc.text(options.subtitle, titleX, 68);
+  const generatedAt = new Date().toLocaleString('en-ZA');
+  doc.text(`Generated: ${generatedAt}`, pageWidth - 40, 34, { align: 'right' });
+  if (options.generatedBy) doc.text(`By: ${options.generatedBy}`, pageWidth - 40, 48, { align: 'right' });
+
+  doc.setTextColor(30, 41, 59);
+  return bandHeight + 20;
 }
 
 export async function downloadPdfReport(

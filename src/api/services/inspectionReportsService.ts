@@ -150,3 +150,83 @@ export async function getInspectionRunReport(companyId: UUID, runId: UUID): Prom
   };
   });
 }
+
+export async function exportInspectionRunPdf(
+  report: InspectionRunReport,
+  options: { title?: string; companyName?: string; generatedBy?: string; logoUrl?: string | null } = {}
+): Promise<Blob> {
+  const { default: jsPDF } = await import('jspdf');
+  const { default: autoTable } = await import('jspdf-autotable');
+  const { drawPdfCoverWithLogo } = await import('./reportExportService');
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const title = options.title ?? 'Inspection Report';
+
+  let y = await drawPdfCoverWithLogo(doc, {
+    title,
+    subtitle: report.checklistName ? `Checklist: ${report.checklistName}` : undefined,
+    companyName: options.companyName,
+    generatedBy: options.generatedBy,
+    logoUrl: options.logoUrl
+  });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('Score summary', 40, y);
+  y += 18;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  const summaryLines = [
+    `Total score: ${report.totalScore} / ${report.maxScore} (${report.compliancePercent.toFixed(1)}% compliant)`,
+    `Department performance: ${report.departmentPerformanceScore}%`,
+    `Repeat findings: ${report.repeatFindingsCount} (${report.repeatFindingsIndicator})`,
+    `Non-conformances: ${report.nonConformances.length}`,
+    `High-risk items: ${report.highRiskFindings.length}`
+  ];
+  summaryLines.forEach((line) => {
+    doc.text(line, 40, y);
+    y += 14;
+  });
+
+  const itemRows = report.findings.map((item: any, idx: number) => [
+    String(idx + 1),
+    String(item.audit_section_or_category || item.section || '—'),
+    String(item.question ?? '').slice(0, 80),
+    String(item.inspection_rating ?? '—'),
+    String(item.risk_level ?? '—')
+  ]);
+
+  autoTable(doc, {
+    startY: y + 10,
+    head: [['#', 'Category', 'Question', 'Rating', 'Risk']],
+    body: itemRows.length > 0 ? itemRows : [['—', '—', 'No findings recorded', '—', '—']],
+    styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
+    headStyles: { fillColor: [15, 118, 110], textColor: 255 },
+    columnStyles: { 2: { cellWidth: 180 } }
+  });
+
+  const finalY = (doc as any).lastAutoTable?.finalY ?? y + 40;
+  if (report.auditScoreHistory.length > 0) {
+    autoTable(doc, {
+      startY: finalY + 20,
+      head: [['Run', 'Completed', 'Compliance %']],
+      body: report.auditScoreHistory.map((h) => [
+        String(h.runId).slice(0, 8),
+        h.completedAt ? new Date(h.completedAt).toLocaleDateString('en-ZA') : '—',
+        `${h.compliancePercent.toFixed(1)}%`
+      ]),
+      styles: { fontSize: 8, cellPadding: 4 },
+      headStyles: { fillColor: [30, 64, 175], textColor: 255 }
+    });
+  }
+
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page++) {
+    doc.setPage(page);
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Page ${page} of ${pageCount}`, pageWidth - 80, doc.internal.pageSize.getHeight() - 20);
+  }
+
+  return doc.output('blob');
+}

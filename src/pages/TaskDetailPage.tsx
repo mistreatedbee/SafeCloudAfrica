@@ -30,6 +30,7 @@ import {
   approveTask,
   closeTask,
   reopenTask,
+  rejectTaskReview,
   addTaskComment,
   addTaskProgressUpdate,
   listTaskTimeLogs,
@@ -48,6 +49,13 @@ import { TASK_CATEGORY_LABELS, TASK_TIME_STATUS_LABELS, TASK_SOURCE_ENTITY_LABEL
 import type { Task, Approval, ActivityLog, EvidenceAttachment, TaskTimeLog, UUID } from '../api/models/entities';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../api/services/documentsStorageService';
 import { toUserFacingError } from '../utils/userFacingMessage';
+import {
+  canApproveOrRejectTask,
+  canCloseTask,
+  canManageTasks,
+  canSubmitTaskForReview,
+  isSeniorRole
+} from '../api/permissions/taskPermissions';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -90,7 +98,8 @@ export function TaskDetailPage() {
   const location = useLocation();
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
-  const canManageTasks = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant' || activeRole === 'auditor';
+  const canManage = canManageTasks(activeRole);
+  const canApproveReject = canApproveOrRejectTask(activeRole);
   const [refreshKey, setRefreshKey] = useState(0);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -103,6 +112,7 @@ export function TaskDetailPage() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [pageSuccess, setPageSuccess] = useState<string | null>(null);
   const [approvalModal, setApprovalModal] = useState<{ approval: Approval; decision: 'approved' | 'rejected' } | null>(null);
+  const [rejectComment, setRejectComment] = useState('');
 
   const backTo = useMemo(() => {
     if (location.pathname.startsWith('/tasks')) return '/tasks';
@@ -189,7 +199,12 @@ export function TaskDetailPage() {
     setPageError(null);
     setPageSuccess(null);
     try {
-      await submitForReview({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
+      await submitForReview({
+        companyId: activeCompanyId,
+        taskId: taskId as UUID,
+        actorUserId: user.id,
+        actorRole: activeRole
+      });
       const signOff = await requestTaskSignOff({ companyId: activeCompanyId, taskId: taskId as UUID, requestedByUserId: user.id });
       if (signOff.requested) {
         setPageSuccess('Submitted for review — the approver has been notified.');
@@ -219,11 +234,38 @@ export function TaskDetailPage() {
     setPageError(null);
     setPageSuccess(null);
     try {
-      await closeTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
+      await closeTask({
+        companyId: activeCompanyId,
+        taskId: taskId as UUID,
+        actorUserId: user.id,
+        actorRole: activeRole
+      });
       setPageSuccess('Saved successfully');
       refresh();
     } catch (err) {
       setPageError(toUserFacingError(err, 'Unable to close this task right now.'));
+    }
+  }
+
+  async function handleRejectReview() {
+    if (!activeCompanyId || !taskId || !user?.id || !rejectComment.trim()) {
+      setPageError('A rejection comment is required.');
+      return;
+    }
+    setPageError(null);
+    setPageSuccess(null);
+    try {
+      await rejectTaskReview({
+        companyId: activeCompanyId,
+        taskId: taskId as UUID,
+        actorUserId: user.id,
+        comment: rejectComment.trim()
+      });
+      setRejectComment('');
+      setPageSuccess('Task reopened with your comments.');
+      refresh();
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to reject this task right now.'));
     }
   }
 
@@ -375,6 +417,10 @@ export function TaskDetailPage() {
   }
 
   const isAssignee = user?.id === task.assignee_user_id;
+  const canSubmitReview =
+    !!user?.id && canSubmitTaskForReview({ task, actorUserId: user.id, actorRole: activeRole });
+  const canClose =
+    !!user?.id && canCloseTask({ task, actorUserId: user.id, actorRole: activeRole });
   const comments = (task.comments as { timestamp: string; user_id: string; text: string }[] | null) ?? [];
   const progressUpdates = (task.progress_updates as { timestamp: string; user_id: string; note: string; percent_complete?: number }[] | null) ?? [];
 
@@ -449,7 +495,7 @@ export function TaskDetailPage() {
                 Mark in progress
               </button>
             )}
-            {task.status === 'in-progress' && (
+            {['in-progress', 'reopened'].includes(task.status) && (
               <>
                 <button
                   type="button"
@@ -458,16 +504,18 @@ export function TaskDetailPage() {
                 >
                   Awaiting evidence
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSubmitForReview()}
-                  className="px-3 py-1.5 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
-                >
-                  Send for review
-                </button>
+                {canSubmitReview && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmitForReview()}
+                    className="px-3 py-1.5 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
+                  >
+                    Send for review
+                  </button>
+                )}
               </>
             )}
-            {task.status === 'awaiting-evidence' && (
+            {task.status === 'awaiting-evidence' && canSubmitReview && (
               <button
                 type="button"
                 onClick={() => void handleSubmitForReview()}
@@ -476,24 +524,42 @@ export function TaskDetailPage() {
                 Send for review
               </button>
             )}
-                        {task.status === 'under-review' && canManageTasks && (
-                          <button
-                            type="button"
-                            onClick={() => void handleApprove()}
-                            className="px-3 py-1.5 rounded-lg bg-surface-200 text-charcoal text-sm font-medium hover:bg-surface-300"
-                          >
-                            Approve
-                          </button>
-                        )}
-                        {task.status === 'approved' && canManageTasks && (
-                          <button
-                            type="button"
-                            onClick={() => void handleClose()}
-                            className="px-3 py-1.5 rounded-lg bg-success text-white text-sm font-medium hover:bg-success-600"
-                          >
-                            Close task
-                          </button>
-                        )}
+            {task.status === 'under-review' && canApproveReject && (
+              <button
+                type="button"
+                onClick={() => void handleApprove()}
+                className="px-3 py-1.5 rounded-lg bg-surface-200 text-charcoal text-sm font-medium hover:bg-surface-300"
+              >
+                Approve
+              </button>
+            )}
+            {task.status === 'approved' && canClose && (
+              <button
+                type="button"
+                onClick={() => void handleClose()}
+                className="px-3 py-1.5 rounded-lg bg-success text-white text-sm font-medium hover:bg-success-600"
+              >
+                Close task
+              </button>
+            )}
+            {['under-review', 'approved'].includes(task.status) && canApproveReject && (
+              <div className="flex flex-wrap items-center gap-2 w-full">
+                <input
+                  type="text"
+                  value={rejectComment}
+                  onChange={(e) => setRejectComment(e.target.value)}
+                  placeholder="Rejection comment"
+                  className="flex-1 min-w-[200px] px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleRejectReview()}
+                  className="px-3 py-1.5 rounded-lg bg-orange-600 text-white text-sm font-medium hover:bg-orange-700"
+                >
+                  Reject & reopen
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -796,7 +862,7 @@ export function TaskDetailPage() {
         )}
 
         {/* Effectiveness check (for closure) — managers/supervisors only */}
-        {task.status !== 'closed' && canManageTasks && (
+        {task.status !== 'closed' && (canManage || isSeniorRole(activeRole)) && (
           <div className="bg-white rounded-xl border border-surface-300 p-4">
             <h2 className="text-sm font-semibold text-charcoal mb-3">Effectiveness check</h2>
             <div className="flex flex-wrap gap-3 items-start">

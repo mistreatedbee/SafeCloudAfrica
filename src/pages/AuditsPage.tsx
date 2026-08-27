@@ -19,6 +19,7 @@ import { listAudits } from '../api/services/auditsService';
 import { listInspections } from '../api/services/inspectionsService';
 import type { Inspection } from '../api/models/entities';
 import { AuditScheduleModal } from '../components/audits/AuditScheduleModal';
+import { AuditChecklistTemplatesLibrary } from '../components/audits/AuditChecklistTemplatesLibrary';
 
 const auditTypeColors = {
   internal: 'bg-teal-50 text-teal-700',
@@ -56,6 +57,7 @@ export function AuditsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [auditTypeFilter, setAuditTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'audits' | 'templates'>('audits');
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
 
@@ -175,6 +177,34 @@ export function AuditsPage() {
         </motion.div>
 
         {/* Header Actions */}
+        <motion.div variants={itemVariants} className="flex gap-1 sm:gap-2 border-b border-surface-200 pb-2 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveTab('audits')}
+            className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap shrink-0 ${activeTab === 'audits' ? 'border-teal text-teal' : 'border-transparent text-charcoal-500'}`}
+          >
+            <ClipboardCheckIcon className="w-4 h-4" />
+            Audits
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('templates')}
+            className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap shrink-0 ${activeTab === 'templates' ? 'border-teal text-teal' : 'border-transparent text-charcoal-500'}`}
+          >
+            <ClipboardCheckIcon className="w-4 h-4" />
+            <span className="hidden sm:inline">Checklist templates</span>
+            <span className="sm:hidden">Templates</span>
+          </button>
+        </motion.div>
+
+        {activeTab === 'templates' && activeCompanyId && (
+          <motion.div variants={itemVariants}>
+            <AuditChecklistTemplatesLibrary companyId={activeCompanyId} canManage={canSchedule} />
+          </motion.div>
+        )}
+
+        {activeTab === 'audits' && (
+        <>
         <motion.div
           variants={itemVariants}
           className="flex flex-col sm:flex-row gap-4 justify-between">
@@ -308,6 +338,8 @@ export function AuditsPage() {
             </div>
           )}
         </motion.div>
+        </>
+        )}
       </motion.div>
     </Layout>);
 }

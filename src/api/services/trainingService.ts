@@ -232,6 +232,7 @@ export async function createTrainingRecord(input: {
   cost?: number | null;
   createdByUserId: UUID;
 }): Promise<TrainingRecord> {
+  return withInsforgeSession('training-records:create', async () => {
   const status = input.status ?? 'REQUIRED';
   requireCertForCompleted(status, input.completedAt, input.certificateBucket, input.certificateKey);
   if (!input.userId && !input.employeeId) {
@@ -303,6 +304,7 @@ export async function createTrainingRecord(input: {
   }
 
   return data as TrainingRecord;
+  });
 }
 
 async function notifyTrainingStatusChange(input: {

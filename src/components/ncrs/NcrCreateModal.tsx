@@ -69,7 +69,6 @@ export function NcrCreateModal(props: {
     if (rootCause.trim().length === 0) missing.push('Root Cause Analysis');
     if (correctiveActions.trim().length === 0) missing.push('Corrective Actions');
     if (responsiblePerson.trim().length === 0) missing.push('Responsible Person');
-    if (evidenceBeforeFiles.length === 0) missing.push('Evidence of Non-Conformance (at least one file)');
     return missing;
   }, [
     title,
@@ -81,7 +80,6 @@ export function NcrCreateModal(props: {
     rootCause,
     correctiveActions,
     responsiblePerson,
-    evidenceBeforeFiles.length
   ]);
 
   const canSubmit = missingFields.length === 0;
@@ -268,10 +266,6 @@ export function NcrCreateModal(props: {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
-    if (evidenceBeforeFiles.length < 1) {
-      setError('Evidence of Non-Conformance is required before creating an NCR.');
-      return;
-    }
 
     setError(null);
     try {
@@ -671,14 +665,13 @@ export function NcrCreateModal(props: {
 
           <div className="border-b border-surface-200 pb-4 space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-charcoal">Evidence of Non-Conformance *</h3>
-              <p className="text-xs text-charcoal-500 mt-1">Upload proof showing the non-conformance before corrective action.</p>
+              <h3 className="text-sm font-semibold text-charcoal">Evidence of Non-Conformance</h3>
+              <p className="text-xs text-charcoal-500 mt-1">Optional at creation — you can upload proof now or attach it later from the NCR detail view.</p>
               <input
                 type="file"
                 multiple
                 onChange={(e) => appendFiles(e.target.files, setEvidenceBeforeFiles)}
                 className="w-full text-sm mt-2"
-                required
               />
               {evidenceBeforeFiles.length > 0 && (
                 <div className="mt-2 space-y-1">

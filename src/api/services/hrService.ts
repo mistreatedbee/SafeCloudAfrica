@@ -514,6 +514,49 @@ export async function createHrLeaveRequest(input: Omit<HrLeaveRequest, 'id' | 'c
   return row;
 }
 
+/** Sync evidence attachment IDs uploaded via EvidenceModal into proof_file_ids for RPC approval checks. */
+export async function syncHrLeaveRequestProofFiles(input: {
+  companyId: UUID;
+  leaveRequestId: UUID;
+  actorUserId: UUID;
+}): Promise<HrLeaveRequest> {
+  return withHrSession('leave:sync-proof', async () => {
+    const { listEvidence } = await import('./evidenceService');
+    const evidence = await listEvidence(input.companyId, {
+      entityType: 'hr_leave_request',
+      entityId: input.leaveRequestId
+    });
+    const proofFileIds = evidence.map((item) => item.id);
+
+    const { data, error } = await insforge.database
+      .from('hr_leave_requests')
+      .update({
+        proof_file_ids: proofFileIds,
+        updated_at: new Date().toISOString()
+      })
+      .eq('company_id', input.companyId)
+      .eq('id', input.leaveRequestId)
+      .select('*')
+      .single();
+
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Leave request not found.');
+
+    if (proofFileIds.length > 0) {
+      await createActivityLog({
+        companyId: input.companyId,
+        actorUserId: input.actorUserId,
+        action: 'hr.leave.proof.sync',
+        entityType: 'hr_leave_request',
+        entityId: input.leaveRequestId,
+        metadata: { proofCount: proofFileIds.length }
+      }).catch(() => undefined);
+    }
+
+    return data as HrLeaveRequest;
+  });
+}
+
 export async function applyHrLeaveApproval(input: {
   companyId: UUID;
   leaveRequestId: UUID;
@@ -526,6 +569,13 @@ export async function applyHrLeaveApproval(input: {
   if ((input.decision === 'SUPERVISOR_DECLINE' || input.decision === 'HR_DECLINE') && !input.declineReason?.trim()) {
     throw new Error('Decline reason is required.');
   }
+  if (input.decision === 'HR_APPROVE') {
+    await syncHrLeaveRequestProofFiles({
+      companyId: input.companyId,
+      leaveRequestId: input.leaveRequestId,
+      actorUserId: input.actorUserId
+    });
+  }
   const { data, error } = await insforge.database.rpc('hr_apply_leave_approval', {
     p_leave_request_id: input.leaveRequestId,
     p_company_id: input.companyId,
@@ -535,7 +585,13 @@ export async function applyHrLeaveApproval(input: {
   });
   if (error) {
     console.error('[hr.leave.approval] RPC error', JSON.stringify(error));
-    throw new Error(getErrorMessage(error));
+    const message = getErrorMessage(error);
+    if (message.toLowerCase().includes('proof is required')) {
+      throw new Error(
+        'Supporting proof is required before HR can approve this leave. Upload documents via "View documents" on the request, then try again.'
+      );
+    }
+    throw new Error(message);
   }
   const row = data as HrLeaveRequest;
   await createActivityLog({

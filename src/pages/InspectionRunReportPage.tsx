@@ -1,17 +1,27 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import type { UUID } from '../api/models/entities';
 import { useAsync } from '../api/hooks/useAsync';
-import { getInspectionRunReport } from '../api/services/inspectionReportsService';
-import { LoadingSpinner } from '../components/ui/LoadingSpinner';
-import { ArrowLeftIcon } from 'lucide-react';
+import { exportInspectionRunPdf, getInspectionRunReport } from '../api/services/inspectionReportsService';
+import { downloadFile } from '../api/services/exportService';
+import { useIdentity } from '../hooks/useIdentity';
+import { downloadWorkbook } from '../api/services/reportExportService';
+import { getCompanyLogoUrl } from '../utils/companyLogo';
+import { ArrowLeftIcon, DownloadIcon } from 'lucide-react';
 
 export function InspectionRunReportPage() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
-  const { activeCompanyId } = useTenant();
+  const { activeCompanyId, activeCompany } = useTenant();
+  const { organisationName, fullName } = useIdentity();
+  const logoUrl = useMemo(
+    () => getCompanyLogoUrl((activeCompany?.metadata ?? {}) as Record<string, unknown>),
+    [activeCompany?.metadata]
+  );
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const { data: report, loading, error } = useAsync(
     async () => {
@@ -49,6 +59,78 @@ export function InspectionRunReportPage() {
 
         {report && (
           <div className="space-y-6">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={exportingPdf}
+                onClick={async () => {
+                  if (!report) return;
+                  setExportingPdf(true);
+                  setExportError(null);
+                  try {
+                    const blob = await exportInspectionRunPdf(report, {
+                      title: report.checklistName || 'Inspection Report',
+                      companyName: organisationName,
+                      generatedBy: fullName,
+                      logoUrl
+                    });
+                    downloadFile(blob, `inspection-run-${String(report.runId).slice(0, 8)}.pdf`);
+                  } catch (err: any) {
+                    setExportError(err.message ?? 'Failed to generate PDF.');
+                  } finally {
+                    setExportingPdf(false);
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60"
+              >
+                <DownloadIcon className="w-4 h-4" />
+                {exportingPdf ? 'Generating PDF…' : 'Download PDF'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!report) return;
+                  const safeOrg = organisationName.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'safecloudafrica';
+                  downloadWorkbook(`${safeOrg}-inspection-run-${String(report.runId).slice(0, 8)}.xlsx`, [
+                    {
+                      name: 'Summary',
+                      rows: [
+                        { metric: 'Checklist', value: report.checklistName ?? '' },
+                        { metric: 'Total score', value: report.totalScore },
+                        { metric: 'Max score', value: report.maxScore },
+                        { metric: 'Compliance %', value: report.compliancePercent.toFixed(1) },
+                        { metric: 'Department performance %', value: report.departmentPerformanceScore },
+                        { metric: 'Repeat findings', value: report.repeatFindingsCount }
+                      ]
+                    },
+                    {
+                      name: 'Findings',
+                      rows: report.findings.map((item: any, idx: number) => ({
+                        '#': idx + 1,
+                        category: item.audit_section_or_category || item.section || '',
+                        question: item.question,
+                        rating: item.inspection_rating,
+                        risk: item.risk_level ?? ''
+                      }))
+                    },
+                    {
+                      name: 'Non-conformances',
+                      rows: report.nonConformances.map((item: any, idx: number) => ({
+                        '#': idx + 1,
+                        question: item.question,
+                        rating: item.inspection_rating,
+                        risk: item.risk_level ?? ''
+                      }))
+                    }
+                  ]);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium hover:bg-surface-50"
+              >
+                Export Excel
+              </button>
+            </div>
+            {exportError && <p className="text-sm text-critical">{exportError}</p>}
+
             <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card">
               <h2 className="text-base font-semibold text-charcoal mb-2">
                 Score summary {report.checklistName ? `– ${report.checklistName}` : ''}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDownIcon, DownloadIcon } from 'lucide-react';
 import { useIdentity } from '../../hooks/useIdentity';
 import { useTenant } from '../../tenant/TenantContext';
-import { insforge } from '../../api/insforge/client';
+import { getCompanyLogoUrl } from '../../utils/companyLogo';
 import { exportHrReport, type HrReportColumn } from '../../api/services/hrReportExportService';
 
 export function HrExportMenu({
@@ -23,17 +23,10 @@ export function HrExportMenu({
   const { fullName, organisationName } = useIdentity();
   const { activeCompany } = useTenant();
 
-  const logoUrl = useMemo(() => {
-    const meta = (activeCompany?.metadata ?? {}) as Record<string, unknown>;
-    const bucket = meta.logo_bucket as string | undefined;
-    const key = meta.logo_key as string | undefined;
-    if (!bucket || !key) return null;
-    try {
-      return insforge.storage.from(bucket).getPublicUrl(key);
-    } catch {
-      return null;
-    }
-  }, [activeCompany?.metadata]);
+  const logoUrl = useMemo(
+    () => getCompanyLogoUrl((activeCompany?.metadata ?? {}) as Record<string, unknown>),
+    [activeCompany?.metadata]
+  );
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

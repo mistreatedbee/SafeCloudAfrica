@@ -15,6 +15,11 @@ import type { ModuleKey, Severity } from '../models/core';
 import { getMyProfile } from './profilesService';
 import { listEvidence } from './evidenceService';
 import { listApprovals } from './approvalsService';
+import type { CompanyRole } from '../models/core';
+import {
+  canCloseTask as canActorCloseTask,
+  canSubmitTaskForReview as canActorSubmitTaskForReview
+} from '../permissions/taskPermissions';
 
 const OPEN_STATUSES: TaskStatus[] = [
   'draft',
@@ -335,6 +340,7 @@ export type CreateTaskInput = {
 };
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {
+  return withInsforgeSession('tasks:create', async () => {
   const profile = await getMyProfile(input.companyId, input.createdByUserId);
   const initialStatus = input.assigneeUserId ? 'assigned' : 'draft';
   const insertPayload: Record<string, unknown> = {
@@ -421,6 +427,7 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   }
 
   return created;
+  });
 }
 
 async function notifyTaskTransition(input: {
@@ -620,9 +627,16 @@ export async function submitForReview(input: {
   companyId: UUID;
   taskId: UUID;
   actorUserId: UUID;
+  actorRole?: CompanyRole | null;
 }): Promise<Task> {
   const task = await getTaskById(input.companyId, input.taskId);
   if (!task) throw new Error('Task not found.');
+  if (
+    input.actorRole !== undefined &&
+    !canActorSubmitTaskForReview({ task, actorUserId: input.actorUserId, actorRole: input.actorRole })
+  ) {
+    throw new Error('You do not have permission to submit this task for review.');
+  }
   if (!canTransition(task.status, 'under-review')) throw new Error(`Cannot submit for review from ${task.status}.`);
   const updated = await updateTaskStatusInternal({
     companyId: input.companyId,
@@ -718,10 +732,17 @@ export async function closeTask(input: {
   companyId: UUID;
   taskId: UUID;
   actorUserId: UUID;
+  actorRole?: CompanyRole | null;
   closureData?: { finalStatus?: string; lessonsLearned?: string };
 }): Promise<Task> {
   const task = await getTaskById(input.companyId, input.taskId);
   if (!task) throw new Error('Task not found.');
+  if (
+    input.actorRole !== undefined &&
+    !canActorCloseTask({ task, actorUserId: input.actorUserId, actorRole: input.actorRole })
+  ) {
+    throw new Error('You do not have permission to close this task.');
+  }
   if (!canTransition(task.status, 'closed')) throw new Error(`Cannot close task from status ${task.status}.`);
   const validation = await validateTaskReadyForClosure(input.companyId, input.taskId);
   if (!validation.ok) throw new Error(validation.errors.join(' '));
@@ -756,6 +777,29 @@ export async function closeTask(input: {
     status: 'Closed'
   });
   return updated;
+}
+
+export async function rejectTaskReview(input: {
+  companyId: UUID;
+  taskId: UUID;
+  actorUserId: UUID;
+  comment: string;
+}): Promise<Task> {
+  const comment = input.comment.trim();
+  if (!comment) throw new Error('A rejection comment is required.');
+
+  const task = await getTaskById(input.companyId, input.taskId);
+  if (!task) throw new Error('Task not found.');
+  if (!['under-review', 'approved'].includes(task.status)) {
+    throw new Error('Only tasks under review or approved can be rejected.');
+  }
+
+  return reopenTask({
+    companyId: input.companyId,
+    taskId: input.taskId,
+    actorUserId: input.actorUserId,
+    reason: comment
+  });
 }
 
 export async function reopenTask(input: {

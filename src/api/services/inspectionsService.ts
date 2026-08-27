@@ -351,6 +351,15 @@ export async function upsertInspectionChecklistItems(input: {
   return (data ?? []) as InspectionChecklistItem[];
 }
 
+export async function deleteInspectionChecklistItem(companyId: UUID, itemId: UUID): Promise<void> {
+  const { error } = await insforge.database
+    .from('inspection_checklist_items')
+    .delete()
+    .eq('company_id', companyId)
+    .eq('id', itemId);
+  if (error) throw new Error(getErrorMessage(error));
+}
+
 // ---------------------------
 // Inspection runs
 // ---------------------------

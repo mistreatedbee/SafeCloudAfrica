@@ -11,6 +11,7 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useUser } from '@insforge/react';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { InspectionChecklistItemBuilder } from './InspectionChecklistItemBuilder';
 
 type Props = {
   companyId: UUID;
@@ -33,6 +34,7 @@ export function InspectionChecklistLibrary(props: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<TemplateFormState | null>(null);
+  const [buildingTemplate, setBuildingTemplate] = useState<InspectionChecklistTemplate | null>(null);
   const [saving, setSaving] = useState(false);
 
   const { restoreDraft, clearDraft } = useDraftManager();
@@ -116,7 +118,7 @@ export function InspectionChecklistLibrary(props: Props) {
           name: editing.name.trim(),
           description: editing.description.trim() || null,
           scope: editing.scope,
-          updatedByUserId: props.companyId as unknown as UUID // Note: will be replaced with real user id via service layer if needed
+          updatedByUserId: (user?.id ?? props.companyId) as UUID
         });
       } else {
         await createInspectionChecklistTemplate({
@@ -125,7 +127,7 @@ export function InspectionChecklistLibrary(props: Props) {
           name: editing.name.trim(),
           description: editing.description.trim() || undefined,
           scope: editing.scope,
-          createdByUserId: props.companyId as unknown as UUID
+          createdByUserId: (user?.id ?? props.companyId) as UUID
         });
       }
       clearDraft(draftKey);
@@ -146,7 +148,7 @@ export function InspectionChecklistLibrary(props: Props) {
         companyId: props.companyId,
         templateId: t.id,
         isActive: !t.is_active,
-        updatedByUserId: props.companyId as unknown as UUID
+        updatedByUserId: (user?.id ?? props.companyId) as UUID
       });
       await refresh();
     } finally {
@@ -225,6 +227,13 @@ export function InspectionChecklistLibrary(props: Props) {
                 </div>
                 {props.canManage && (
                   <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setBuildingTemplate(t)}
+                      className="px-2 py-1 rounded-lg border border-teal/30 text-[11px] text-teal font-medium hover:bg-teal/5"
+                    >
+                      Items
+                    </button>
                     <button
                       type="button"
                       onClick={() => startEdit(t)}
@@ -353,6 +362,18 @@ export function InspectionChecklistLibrary(props: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {buildingTemplate && user?.id && (
+        <InspectionChecklistItemBuilder
+          open={Boolean(buildingTemplate)}
+          onClose={() => {
+            setBuildingTemplate(null);
+            void refresh();
+          }}
+          companyId={props.companyId}
+          template={buildingTemplate}
+        />
       )}
     </div>
   );

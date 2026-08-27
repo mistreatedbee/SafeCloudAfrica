@@ -20,6 +20,9 @@ import type {
 } from '../api/models/entities';
 import type { ModuleKey } from '../api/models/core';
 import { toUserFacingError } from '../utils/userFacingMessage';
+import { subscribeToLiveDataMutations } from '../api/liveData';
+import { listIncidents } from '../api/services/incidentsService';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -332,6 +335,8 @@ export function ObjectivesTargetsPage() {
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
 
+  useEffect(() => subscribeToLiveDataMutations(() => setRefreshKey((k) => k + 1)), []);
+
   const { data, loading, error } = useAsync<ModuleTarget[]>(
     async () => {
       if (!activeCompanyId) return [];
@@ -344,10 +349,44 @@ export function ObjectivesTargetsPage() {
     [activeCompanyId, moduleFilter, refreshKey]
   );
 
+  const { data: incidents } = useAsync(
+    async () => {
+      if (!activeCompanyId) return [];
+      const since = new Date();
+      since.setMonth(since.getMonth() - 5);
+      since.setDate(1);
+      const rows = await listIncidents({ companyId: activeCompanyId, limit: 500 });
+      return rows.filter((inc) => new Date(inc.occurred_at) >= since);
+    },
+    [activeCompanyId, refreshKey]
+  );
+
+  const incidentTrend = useMemo(() => {
+    const buckets = new Map<string, number>();
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      buckets.set(key, 0);
+    }
+    for (const inc of incidents ?? []) {
+      const d = new Date(inc.occurred_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
+    }
+    return Array.from(buckets.entries()).map(([month, count]) => ({
+      month: month.slice(5) + '/' + month.slice(2, 4),
+      incidents: count
+    }));
+  }, [incidents]);
+
   const objectives = data ?? [];
+  const doneStatuses: ModuleTargetStatus[] = ['completed', 'achieved', 'closed'];
   const summary = useMemo(() => {
     const total = objectives.length;
-    const completed = objectives.filter((o) => (o.status ?? (o.achieved ? 'completed' : 'not_started')) === 'completed').length;
+    const completed = objectives.filter((o) =>
+      doneStatuses.includes((o.status ?? (o.achieved ? 'completed' : 'not_started')) as ModuleTargetStatus)
+    ).length;
     const notAchieved = objectives.filter((o) => (o.status ?? '') === 'not_achieved').length;
     const overdue = objectives.filter(isOverdue).length;
     const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -437,6 +476,26 @@ export function ObjectivesTargetsPage() {
           <StatCard title="Not Achieved" value={summary.notAchieved} icon="AlertTriangle" iconColor="#E74C3C" variant="critical" />
           <StatCard title="Overdue" value={summary.overdue} icon="Calendar" iconColor="#F5A623" variant="warning" />
           <StatCard title="Completion Rate" value={`${summary.completionRate}%`} icon="Shield" iconColor="#0A2540" />
+        </motion.div>
+
+        <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
+          <h3 className="font-semibold text-charcoal mb-1">Incident trend (last 6 months)</h3>
+          <p className="text-xs text-charcoal-500 mb-4">Track incident volume alongside objective completion — useful for safety/quality target reviews.</p>
+          {incidentTrend.every((row) => row.incidents === 0) ? (
+            <p className="text-sm text-charcoal-500">No incidents recorded in the last 6 months.</p>
+          ) : (
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={incidentTrend}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="incidents" fill="#0FB9B1" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </motion.div>
 
         <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">

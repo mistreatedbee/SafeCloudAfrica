@@ -266,6 +266,30 @@ export type CreatePpeIssueInput = {
   adminOverrideInsufficientStock?: boolean;
 };
 
+/** Resolve stock for issuing: match site/dept first, then fall back to any active stock for the item/size. */
+export async function resolvePpeStockForIssue(input: {
+  companyId: UUID;
+  ppeItemId: UUID;
+  siteId?: UUID | null;
+  departmentId?: UUID | null;
+  size?: string | null;
+}): Promise<PpeStock | null> {
+  const exact = await getPpeStockByLocation(input);
+  if (exact) return exact;
+  const candidates = await listPpeStock({
+    companyId: input.companyId,
+    ppeItemId: input.ppeItemId,
+    size: input.size ?? null,
+    includeInactive: false
+  });
+  if (candidates.length === 1) return candidates[0];
+  if (candidates.length > 1) {
+    const withQty = candidates.filter((row) => (row.on_hand_qty ?? 0) > 0);
+    return (withQty[0] ?? candidates[0]) ?? null;
+  }
+  return null;
+}
+
 export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIssue> {
   return withInsforgeSession('ppe_issues:create', async () => {
   const quantity = Number.isFinite(input.quantityIssued) && input.quantityIssued! > 0 ? input.quantityIssued! : 1;

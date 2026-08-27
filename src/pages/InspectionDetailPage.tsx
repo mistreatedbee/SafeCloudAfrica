@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toUserFacingError } from '../utils/userFacingMessage';
-import { ArrowLeftIcon, CalendarIcon, ClipboardCheckIcon, CheckCircleIcon } from 'lucide-react';
+import { ArrowLeftIcon, CalendarIcon, ClipboardCheckIcon, CheckCircleIcon, FileTextIcon, DownloadIcon } from 'lucide-react';
 import { useUser } from '@insforge/react';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
@@ -28,14 +28,23 @@ import {
 } from '../components/inspections/InspectionChecklistItemViews';
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { useDraftRegistration } from '../session/useDraftRegistration';
+import { exportInspectionRunPdf, getInspectionRunReport } from '../api/services/inspectionReportsService';
+import { downloadFile } from '../api/services/exportService';
+import { useIdentity } from '../hooks/useIdentity';
+import { getCompanyLogoUrl } from '../utils/companyLogo';
 
 type RunWithItems = { run: InspectionRun; items: InspectionRunItem[] };
 
 export function InspectionDetailPage() {
   const { inspectionId } = useParams<{ inspectionId: string }>();
   const navigate = useNavigate();
-  const { activeCompanyId, activeRole } = useTenant();
+  const { activeCompanyId, activeRole, activeCompany } = useTenant();
   const { user } = useUser();
+  const { organisationName, fullName } = useIdentity();
+  const logoUrl = useMemo(
+    () => getCompanyLogoUrl((activeCompany?.metadata ?? {}) as Record<string, unknown>),
+    [activeCompany?.metadata]
+  );
 
   const canEditBase = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
   const isAuditee = activeRole === 'employee';
@@ -112,15 +121,19 @@ export function InspectionDetailPage() {
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [evidenceItemId, setEvidenceItemId] = useState<string | null>(null);
   const [runActionError, setRunActionError] = useState<string | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `inspection-detail:${activeCompanyId ?? 'company'}:${inspectionId ?? 'unknown'}:${user?.id ?? 'anon'}`;
 
   const checklistStats = useMemo(() => {
-    if (!latestRun) return { total: 0, nc: 0 };
+    if (!latestRun) return { total: 0, nc: 0, score: 0, maxScore: 0, compliancePercent: 0 };
     const total = latestRun.items.length;
     const nc = latestRun.items.filter((i) => i.inspection_rating === 'NC').length;
-    return { total, nc };
+    const score = latestRun.items.reduce((sum, i) => sum + (i.score ?? 0), 0);
+    const maxScore = latestRun.items.reduce((sum, i) => sum + (i.max_score ?? 0), 0);
+    const compliancePercent = maxScore > 0 ? (score / maxScore) * 100 : 0;
+    return { total, nc, score, maxScore, compliancePercent };
   }, [latestRun]);
 
   const hasDirtyDraft = useMemo(() => {
@@ -189,6 +202,26 @@ export function InspectionDetailPage() {
     }
   }
 
+  async function handleDownloadPdf() {
+    if (!activeCompanyId || !latestRun) return;
+    setExportingPdf(true);
+    setRunActionError(null);
+    try {
+      const report = await getInspectionRunReport(activeCompanyId as UUID, latestRun.run.id as UUID);
+      const blob = await exportInspectionRunPdf(report, {
+        title: inspection?.title || 'Inspection Report',
+        companyName: organisationName,
+        generatedBy: fullName,
+        logoUrl
+      });
+      downloadFile(blob, `inspection-run-${String(latestRun.run.id).slice(0, 8)}.pdf`);
+    } catch (e) {
+      setRunActionError(toUserFacingError(e, 'Failed to generate PDF report.'));
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   const loading = inspectionLoading || runLoading;
   if (!inspectionId) return <Layout title="Inspection not found"><div className="p-6 text-sm text-charcoal-500">No inspection id provided.</div></Layout>;
 
@@ -226,12 +259,34 @@ export function InspectionDetailPage() {
                   </span>
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-sm">
                 <div><p className="text-xs text-charcoal-500">Checklist items</p><p className="font-medium">{checklistStats.total}</p></div>
                 <div><p className="text-xs text-charcoal-500">NC items</p><p className="font-medium text-critical">{checklistStats.nc}</p></div>
-                <div><p className="text-xs text-charcoal-500">Sector/Frequency</p><p className="font-medium">{inspection.sector || '-'} / {inspection.frequency || '-'}</p></div>
+                <div><p className="text-xs text-charcoal-500">Score</p><p className="font-medium">{checklistStats.score} / {checklistStats.maxScore}</p></div>
+                <div><p className="text-xs text-charcoal-500">Compliance</p><p className="font-medium">{checklistStats.compliancePercent.toFixed(1)}%</p></div>
                 <div><p className="text-xs text-charcoal-500">Findings / NC</p><p className="font-medium">{inspection.findings_count ?? 0} / {inspection.nonconformances_count ?? 0}</p></div>
               </div>
+              {latestRun && (
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-surface-100">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/inspection-runs/${latestRun.run.id}/report`)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium hover:bg-surface-50"
+                  >
+                    <FileTextIcon className="w-3.5 h-3.5" />
+                    View report
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDownloadPdf()}
+                    disabled={exportingPdf}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium hover:bg-surface-50 disabled:opacity-60"
+                  >
+                    <DownloadIcon className="w-3.5 h-3.5" />
+                    {exportingPdf ? 'Generating PDF…' : 'Download PDF'}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-xl border border-surface-300 p-5 shadow-card space-y-4">

@@ -8,6 +8,7 @@ import { listEvidence } from './evidenceService';
 import { getPublicUrl } from './storageService';
 import { evaluateNcrTrigger } from './riskAssessmentTriggersService';
 import { sendTemplatedNotificationEmail } from './emailService';
+import { canCloseQualityNcr } from '../permissions/ncrPermissions';
 
 async function getNcrProfileEmails(companyId: UUID, userIds: Array<UUID | null | undefined>): Promise<string[]> {
   const ids = [...new Set(userIds.filter(Boolean).map(String))];
@@ -270,6 +271,12 @@ export async function createQualityNcr(input: {
     console.warn('[quality-ncrs] create notification failed', err);
   }
 
+  try {
+    await ensureLinkedCapaForNcr(ncr, input.createdByUserId);
+  } catch {
+    // Best-effort CAPA auto-link from new NCR.
+  }
+
   return ncr;
   }); // end withInsforgeSession
 }
@@ -382,10 +389,15 @@ export async function closeQualityNcr(
   ncrId: UUID,
   companyId: UUID,
   signedByUserId: UUID,
-  actorUserId: UUID
+  actorUserId: UUID,
+  actorRole?: CompanyRole | null
 ): Promise<QualityNcr | null> {
   const current = await getQualityNcr(ncrId, companyId);
   if (!current) throw new Error('NCR not found.');
+
+  if (actorRole !== undefined && !canCloseQualityNcr({ ncr: current, actorUserId, actorRole })) {
+    throw new Error('You do not have permission to close this NCR.');
+  }
 
   const { evidenceAfter } = await listNcrEvidence(companyId, ncrId);
   if (evidenceAfter.length < 1) {
@@ -673,6 +685,93 @@ export async function auditorVerifyQualityNcr(input: {
   }
 
   return verified;
+}
+
+async function ensureLinkedCapaForNcr(ncr: QualityNcr, createdByUserId: UUID): Promise<void> {
+  const { listCorrectiveActions, createCorrectiveAction } = await import('./correctiveActionsService');
+  const existing = await listCorrectiveActions({
+    companyId: ncr.company_id,
+    sourceType: 'ncr',
+    sourceId: ncr.id,
+    limit: 1
+  });
+  if (existing.length > 0) return;
+
+  const dueDate =
+    ncr.corrective_action_due_date ??
+    new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const severity = String(ncr.severity ?? 'medium').toLowerCase();
+  const priority: 'low' | 'medium' | 'high' | 'urgent' =
+    severity === 'critical' ? 'urgent' : severity === 'high' ? 'high' : severity === 'low' ? 'low' : 'medium';
+
+  await createCorrectiveAction({
+    companyId: ncr.company_id,
+    title: `CAPA: ${ncr.title}`,
+    description: ncr.description ?? undefined,
+    actionType: 'corrective',
+    sourceType: 'ncr',
+    sourceId: ncr.id,
+    priority,
+    dueDate,
+    assignedToUserId: ncr.corrective_action_owner_user_id ?? undefined,
+    rootCause: ncr.root_cause ?? undefined,
+    proposedSolution: ncr.corrective_action ?? undefined,
+    createdByUserId
+  });
+}
+
+export async function sendQualityNcrForReview(input: {
+  companyId: UUID;
+  ncrId: UUID;
+  actorUserId: UUID;
+}): Promise<QualityNcr> {
+  const updated = await updateQualityNcr(
+    input.ncrId,
+    input.companyId,
+    { status: 'under-review' } as Partial<QualityNcr>,
+    input.actorUserId
+  );
+  if (!updated) throw new Error('Failed to send NCR for review.');
+  return updated;
+}
+
+export async function rejectQualityNcrClosure(input: {
+  companyId: UUID;
+  ncrId: UUID;
+  actorUserId: UUID;
+  comment: string;
+}): Promise<QualityNcr> {
+  const comment = input.comment.trim();
+  if (!comment) throw new Error('A rejection comment is required.');
+
+  const updated = await updateQualityNcr(
+    input.ncrId,
+    input.companyId,
+    {
+      status: 'in-progress',
+      manager_signoff_user_id: null,
+      manager_signoff_at: null,
+      manager_signoff_comment: null,
+      auditor_verify_user_id: null,
+      auditor_verify_at: null,
+      auditor_comment: comment,
+      closure_comments: comment,
+      effectiveness_verified: false
+    } as Partial<QualityNcr>,
+    input.actorUserId
+  );
+  if (!updated) throw new Error('Failed to reject NCR closure.');
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'quality_ncrs.closure_rejected',
+    entityType: 'quality_ncr',
+    entityId: input.ncrId,
+    metadata: { comment }
+  });
+
+  return updated;
 }
 
 function normalizeNcrSourceType(source: string | null | undefined): string | null {

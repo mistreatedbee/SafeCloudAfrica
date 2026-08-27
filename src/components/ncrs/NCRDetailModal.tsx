@@ -2,19 +2,33 @@ import { useEffect, useMemo, useState } from 'react';
 import { X, CheckCircle, AlertTriangle, FileText, EyeIcon, DownloadIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { LegalRequirement, NcrEvidenceReference, QualityNcr, UUID } from '../../api/models/entities';
+import type { CompanyRole } from '../../api/models/core';
 import { getRiskAssessment } from '../../api/services/riskAssessmentsService';
 import { listLegalRequirementsForLinkedRecord } from '../../api/services/legalRequirementsService';
 import { formatAuthError } from '../../auth/authMessages';
 import { createEvidence } from '../../api/services/evidenceService';
 import {
   auditorVerifyQualityNcr,
+  getQualityNcr,
   listNcrEvidence,
   managerSignOffQualityNcr,
+  rejectQualityNcrClosure,
+  sendQualityNcrForReview,
   syncNcrEvidenceFromAttachments,
   updateQualityNcr
 } from '../../api/services/qualityNcrsService';
+import {
+  canCloseQualityNcr,
+  canRejectNcrClosure,
+  canSendNcrForReview
+} from '../../api/permissions/ncrPermissions';
 import { insforge } from '../../api/insforge/client';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/services/documentsStorageService';
+import { downloadFile } from '../../api/services/exportService';
+import { exportNcrDetailPdf } from '../../api/services/ncrReportExportService';
+import { useIdentity } from '../../hooks/useIdentity';
+import { useTenant } from '../../tenant/TenantContext';
+import { getCompanyLogoUrl } from '../../utils/companyLogo';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useToast } from '../ui/ToastProvider';
 
@@ -26,7 +40,7 @@ interface NCRDetailModalProps {
   ncr: QualityNcr;
   companyId: UUID;
   actorUserId: UUID;
-  canCloseNcr: boolean;
+  actorRole: CompanyRole | null;
   canDeleteNcr: boolean;
   canUploadEvidence: boolean;
   onClose: () => void;
@@ -39,7 +53,7 @@ export default function NCRDetailModal({
   ncr,
   companyId,
   actorUserId,
-  canCloseNcr,
+  actorRole,
   canDeleteNcr,
   canUploadEvidence,
   onClose,
@@ -48,6 +62,16 @@ export default function NCRDetailModal({
   onNcrUpdated
 }: NCRDetailModalProps) {
   const { showSuccess, showError } = useToast();
+  const { fullName, organisationName } = useIdentity();
+  const { activeCompany } = useTenant();
+  const logoUrl = useMemo(
+    () => getCompanyLogoUrl((activeCompany?.metadata ?? {}) as Record<string, unknown>),
+    [activeCompany?.metadata]
+  );
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const canCloseNcr = canCloseQualityNcr({ ncr, actorUserId, actorRole });
+  const canSendForReview = canSendNcrForReview({ ncr, actorUserId, actorRole });
+  const canRejectClosure = canRejectNcrClosure(actorRole);
   const [error, setError] = useState<string | null>(null);
   const [uploadingKind, setUploadingKind] = useState<EvidenceKind | null>(null);
   const [filesBefore, setFilesBefore] = useState<File[]>([]);
@@ -61,7 +85,8 @@ export default function NCRDetailModal({
   );
   const [linkedRequirementEdit, setLinkedRequirementEdit] = useState(ncr.linked_requirement ?? '');
   const [savingDetails, setSavingDetails] = useState(false);
-  const [workflowSaving, setWorkflowSaving] = useState<'manager' | 'auditor' | null>(null);
+  const [workflowSaving, setWorkflowSaving] = useState<'manager' | 'auditor' | 'review' | 'reject' | null>(null);
+  const [rejectComment, setRejectComment] = useState('');
   const [linkedRiskReference, setLinkedRiskReference] = useState<string | null>(null);
   const [linkedRiskId, setLinkedRiskId] = useState<UUID | null>(null);
   const [linkedLegalRequirements, setLinkedLegalRequirements] = useState<
@@ -229,18 +254,22 @@ export default function NCRDetailModal({
 
   async function handleCloseClick() {
     if (!canCloseNcr) {
-      setError('Only Supervisor/Admin roles can close an NCR.');
+      setError('Only the assigned person or a senior/manager role can close this NCR.');
       return;
     }
 
     setError(null);
     setClosing(true);
     try {
-      if (evidenceAfter.length < 1) {
-        const latestEvidence = await listNcrEvidence(companyId, ncr.id);
-        if (latestEvidence.evidenceAfter.length < 1) {
-          throw new Error('Evidence of Closure is required before closing this NCR.');
-        }
+      const latestNcr = (await getQualityNcr(ncr.id, companyId)) ?? ncr;
+      if (!latestNcr.manager_signoff_user_id || !latestNcr.auditor_verify_user_id) {
+        throw new Error('Manager sign-off and auditor verification are required before closing this NCR.');
+      }
+
+      const latestEvidence = await listNcrEvidence(companyId, ncr.id);
+      setLoadedAfter(latestEvidence.evidenceAfter);
+      if (latestEvidence.evidenceAfter.length < 1) {
+        throw new Error('Evidence of Closure is required before closing this NCR.');
       }
       await onCloseNCR(ncr.id);
       showSuccess(`${ncr.nc_number} closed successfully.`);
@@ -316,18 +345,45 @@ export default function NCRDetailModal({
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90dvh] overflow-y-auto"
       >
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <div>
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
             <h2 className="text-xl font-bold text-gray-900">{ncr.nc_number}</h2>
-            <p className="text-sm text-gray-600 mt-1">{ncr.title}</p>
+            <p className="text-sm text-gray-600 mt-1 truncate">{ncr.title}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0"
-            aria-label="Close"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              disabled={exportingPdf}
+              onClick={async () => {
+                setExportingPdf(true);
+                try {
+                  const blob = await exportNcrDetailPdf({
+                    ncr,
+                    companyName: organisationName,
+                    generatedBy: fullName,
+                    logoUrl
+                  });
+                  const safeNumber = (ncr.nc_number ?? ncr.id.slice(0, 8)).replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+                  downloadFile(blob, `ncr-${safeNumber}.pdf`);
+                } catch (err: unknown) {
+                  showError(err instanceof Error ? err.message : 'Failed to export PDF.');
+                } finally {
+                  setExportingPdf(false);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-surface-300 text-sm hover:bg-surface-50 disabled:opacity-60"
+            >
+              <DownloadIcon className="w-4 h-4" />
+              {exportingPdf ? 'PDF…' : 'PDF'}
+            </button>
+            <button
+              onClick={onClose}
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
@@ -463,6 +519,79 @@ export default function NCRDetailModal({
           />
 
           <div className="sticky bottom-0 -mx-6 -mb-6 mt-2 rounded-b-lg border-t border-gray-200 bg-white px-6 py-4 flex flex-wrap gap-3 z-10">
+            {canRejectClosure &&
+              ncr.status !== 'closed' &&
+              (ncr.manager_signoff_user_id || ncr.auditor_verify_user_id) && (
+                <div className="w-full flex flex-col gap-2">
+                  <input
+                    type="text"
+                    value={rejectComment}
+                    onChange={(e) => setRejectComment(e.target.value)}
+                    placeholder="Rejection comment (required to reopen)"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!rejectComment.trim()) {
+                        setError('A rejection comment is required.');
+                        return;
+                      }
+                      setError(null);
+                      setWorkflowSaving('reject');
+                      try {
+                        const updated = await rejectQualityNcrClosure({
+                          companyId,
+                          ncrId: ncr.id,
+                          actorUserId,
+                          comment: rejectComment.trim()
+                        });
+                        onNcrUpdated(updated);
+                        setRejectComment('');
+                        showSuccess(`${ncr.nc_number} reopened for further action.`);
+                      } catch (err: any) {
+                        const message = formatAuthError(err);
+                        setError(message);
+                        showError(message);
+                      } finally {
+                        setWorkflowSaving(null);
+                      }
+                    }}
+                    disabled={workflowSaving !== null}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium disabled:opacity-60"
+                  >
+                    {workflowSaving === 'reject' ? 'Rejecting...' : 'Reject closure & reopen'}
+                  </button>
+                </div>
+              )}
+            {canSendForReview &&
+              ncr.status !== 'closed' &&
+              !['under-review', 'approved'].includes(ncr.status) && (
+                <button
+                  onClick={async () => {
+                    setError(null);
+                    setWorkflowSaving('review');
+                    try {
+                      const updated = await sendQualityNcrForReview({
+                        companyId,
+                        ncrId: ncr.id,
+                        actorUserId
+                      });
+                      onNcrUpdated(updated);
+                      showSuccess(`${ncr.nc_number} sent for review.`);
+                    } catch (err: any) {
+                      const message = formatAuthError(err);
+                      setError(message);
+                      showError(message);
+                    } finally {
+                      setWorkflowSaving(null);
+                    }
+                  }}
+                  disabled={workflowSaving !== null}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-60"
+                >
+                  {workflowSaving === 'review' ? 'Sending...' : 'Send for review'}
+                </button>
+              )}
             {canDeleteNcr && (
               <button
                 onClick={() => void handleDeleteClick()}
@@ -485,7 +614,6 @@ export default function NCRDetailModal({
                     });
                     onNcrUpdated(updated);
                     showSuccess(`${ncr.nc_number} signed off. Awaiting auditor verification.`);
-                    onClose();
                   } catch (err: any) {
                     const message = formatAuthError(err);
                     setError(message);
@@ -512,8 +640,9 @@ export default function NCRDetailModal({
                       auditorUserId: actorUserId
                     });
                     onNcrUpdated(updated);
-                    showSuccess(`${ncr.nc_number} verified by auditor.`);
-                    onClose();
+                    const latestEvidence = await listNcrEvidence(companyId, ncr.id);
+                    setLoadedAfter(latestEvidence.evidenceAfter);
+                    showSuccess(`${ncr.nc_number} verified by auditor. Upload closure evidence if needed, then close the NCR.`);
                   } catch (err: any) {
                     const message = formatAuthError(err);
                     setError(message);

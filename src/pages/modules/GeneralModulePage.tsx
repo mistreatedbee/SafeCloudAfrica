@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FolderIcon, ClipboardCheckIcon, FileTextIcon, BarChart3Icon, PlusIcon } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
@@ -14,6 +14,7 @@ import { listActivityLogs } from '../../api/services/activityLogService';
 import type { Approval, Document, ModuleTarget, Task } from '../../api/models/entities';
 import { useNavigate } from 'react-router-dom';
 import { ModuleTargetCreateModal } from '../../components/general/ModuleTargetCreateModal';
+import { subscribeToLiveDataMutations } from '../../api/liveData';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -29,6 +30,8 @@ export function GeneralModulePage() {
 
   const [createKpiOpen, setCreateKpiOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => subscribeToLiveDataMutations(() => setRefreshKey((k) => k + 1)), []);
 
   const { data: kpis } = useAsync<ModuleTarget[]>(
     async () => {

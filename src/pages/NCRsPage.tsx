@@ -1,16 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, AlertTriangle, CheckCircle, Clock, Filter } from 'lucide-react';
+import { Plus, AlertTriangle, CheckCircle, Clock, Filter, Download, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { listQualityNcrs, createQualityNcr, closeQualityNcr, deleteQualityNcr } from '../api/services/qualityNcrsService';
+import { canCloseQualityNcr } from '../api/permissions/ncrPermissions';
 import { toUserFacingError } from '../utils/userFacingMessage';
 import type { QualityNcr, UUID } from '../api/models/entities';
 import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
 import NCRDetailModal from '../components/ncrs/NCRDetailModal';
 import { Layout } from '../components/layout/Layout';
 import { useDraftManager } from '../session/DraftManagerProvider';
+import { toCsv, downloadTextFile } from '../utils/csv';
+import { useIdentity } from '../hooks/useIdentity';
+import { exportNcrListPdf } from '../api/services/ncrReportExportService';
+import { getCompanyLogoUrl } from '../utils/companyLogo';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -27,8 +32,11 @@ const itemVariants = {
 
 export default function NCRsPage() {
   const navigate = useNavigate();
-  const { activeCompanyId, activeRole } = useTenant();
+  const { activeCompanyId, activeRole, activeCompany } = useTenant();
   const { user } = useUser();
+  const { fullName, organisationName } = useIdentity();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showOverdueOnly, setShowOverdueOnly] = useState(false);
   const [ncrs, setNcrs] = useState<QualityNcr[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedSource, setSelectedSource] = useState<string>('all');
@@ -43,6 +51,25 @@ export default function NCRsPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  const logoUrl = useMemo(
+    () => getCompanyLogoUrl((activeCompany?.metadata ?? {}) as Record<string, unknown>),
+    [activeCompany?.metadata]
+  );
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(event.target as Node)) {
+        setExportOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const { restoreLatestDraftByPrefix } = useDraftManager();
 
@@ -67,9 +94,13 @@ export default function NCRsPage() {
   }, [activeCompanyId, isCreateModalOpen, isDetailModalOpen, restoreLatestDraftByPrefix, user?.id]);
 
   const canCreateNcr = activeRole !== 'employee';
-  const canCloseNcr = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'supervisor';
   const canDeleteNcr =
     activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor';
+
+  const canUserCloseNcr = (ncr: QualityNcr): boolean => {
+    if (!user?.id) return false;
+    return canCloseQualityNcr({ ncr, actorUserId: user.id as UUID, actorRole: activeRole });
+  };
 
   const canUploadEvidenceForNcr = (ncr: QualityNcr): boolean => {
     if (!user?.id) return false;
@@ -117,15 +148,15 @@ export default function NCRsPage() {
   }
 
   async function handleCloseNCR(ncrId: UUID) {
-    if (!user?.id || !canCloseNcr || !activeCompanyId) return;
-    try {
-      const updated = await closeQualityNcr(ncrId, activeCompanyId, user.id, user.id);
-      if (updated) {
-        setNcrs(ncrs.map(ncr => ncr.id === ncrId ? updated : ncr));
-        setSelectedNCR(updated);
-      }
-    } catch (err) {
-      setError(toUserFacingError(err, 'Failed to close NCR. Please try again.'));
+    if (!user?.id || !activeCompanyId) return;
+    const ncr = ncrs.find((row) => row.id === ncrId) ?? selectedNCR;
+    if (!ncr || !canUserCloseNcr(ncr)) {
+      throw new Error('You do not have permission to close this NCR.');
+    }
+    const updated = await closeQualityNcr(ncrId, activeCompanyId, user.id, user.id, activeRole);
+    if (updated) {
+      setNcrs(ncrs.map(ncr => ncr.id === ncrId ? updated : ncr));
+      setSelectedNCR(updated);
     }
   }
 
@@ -171,7 +202,71 @@ export default function NCRsPage() {
     }
   };
 
-  const filteredNCRs = ncrs;
+  const filteredNCRs = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return ncrs.filter((ncr) => {
+      if (showOverdueOnly) {
+        const overdue =
+          ncr.status !== 'closed' &&
+          ncr.corrective_action_due_date &&
+          String(ncr.corrective_action_due_date).slice(0, 10) < today;
+        if (!overdue && ncr.status !== 'overdue') return false;
+      }
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        ncr.nc_number.toLowerCase().includes(q) ||
+        ncr.title.toLowerCase().includes(q) ||
+        String(ncr.location ?? '').toLowerCase().includes(q) ||
+        String(ncr.process_involved ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [ncrs, searchQuery, showOverdueOnly]);
+
+  async function handleExportPdf() {
+    if (filteredNCRs.length === 0) return;
+    setExportOpen(false);
+    setExportingPdf(true);
+    try {
+      await exportNcrListPdf({
+        ncrs: filteredNCRs,
+        companyName: organisationName,
+        generatedBy: fullName,
+        logoUrl
+      });
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
+  function handleExportCsv() {
+    setExportOpen(false);
+    if (filteredNCRs.length === 0) return;
+    const metaLines = [
+      `Company: ${organisationName}`,
+      `Generated by: ${fullName}`,
+      `Generated at: ${new Date().toISOString()}`,
+      ''
+    ];
+    const rows = filteredNCRs.map((ncr) => ({
+      nc_number: ncr.nc_number,
+      title: ncr.title,
+      status: ncr.status,
+      severity: ncr.severity,
+      location: ncr.location ?? '',
+      process: ncr.process_involved ?? '',
+      source: (ncr as any).source_entity_type ?? '',
+      occurrence_date: ncr.occurrence_date ?? '',
+      due_date: ncr.corrective_action_due_date ?? '',
+      corrective_action_owner: ncr.corrective_action_owner_user_id ?? ''
+    }));
+    const safeOrg = organisationName.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'safecloudafrica';
+    downloadTextFile(
+      `${safeOrg}-ncrs-${new Date().toISOString().slice(0, 10)}.csv`,
+      `${metaLines.join('\r\n')}\r\n${toCsv(rows)}`,
+      'text/csv;charset=utf-8'
+    );
+  }
 
   return (
     <>
@@ -187,14 +282,46 @@ export default function NCRsPage() {
               <h1 className="text-2xl font-bold text-charcoal">Non-Conformance Reports</h1>
               <p className="text-charcoal-500 mt-1">Manage quality non-conformances and corrective actions</p>
             </div>
-            <button
-              onClick={() => setIsCreateModalOpen(true)}
-              disabled={!canCreateNcr}
-              className="flex items-center gap-2 px-4 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-5 h-5" />
-              New NCR
-            </button>
+            <div className="flex items-center gap-2">
+            <div className="relative" ref={exportRef}>
+              <button
+                type="button"
+                onClick={() => setExportOpen((v) => !v)}
+                disabled={filteredNCRs.length === 0 || exportingPdf}
+                className="flex items-center gap-2 px-4 py-2.5 border border-surface-300 rounded-lg text-sm font-medium hover:bg-surface-50 disabled:opacity-60"
+              >
+                <Download className="w-4 h-4" />
+                {exportingPdf ? 'Exporting…' : 'Export'}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {exportOpen && (
+                <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-elevated border border-surface-200 overflow-hidden z-50">
+                  <button
+                    type="button"
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-surface-50"
+                    onClick={handleExportCsv}
+                  >
+                    CSV
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-surface-50"
+                    onClick={() => void handleExportPdf()}
+                  >
+                    PDF
+                  </button>
+                </div>
+              )}
+            </div>
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                disabled={!canCreateNcr}
+                className="flex items-center gap-2 px-4 py-2.5 bg-teal text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-5 h-5" />
+                New NCR
+              </button>
+            </div>
           </motion.div>
 
           {error && (
@@ -271,9 +398,20 @@ export default function NCRsPage() {
               placeholder="Assigned user ID"
               className="px-3 py-2 rounded-lg border border-surface-300 text-sm"
             />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search NCRs..."
+              className="px-3 py-2 rounded-lg border border-surface-300 text-sm md:col-span-2"
+            />
             <label className="inline-flex items-center gap-2 text-sm text-charcoal-600">
               <input type="checkbox" checked={assignedToMeOnly} onChange={(e) => setAssignedToMeOnly(e.target.checked)} />
               Assigned to me
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm text-charcoal-600">
+              <input type="checkbox" checked={showOverdueOnly} onChange={(e) => setShowOverdueOnly(e.target.checked)} />
+              Overdue only
             </label>
           </motion.div>
 
@@ -374,7 +512,7 @@ export default function NCRsPage() {
             ncr={selectedNCR}
             companyId={activeCompanyId}
             actorUserId={user.id as UUID}
-            canCloseNcr={canCloseNcr}
+            actorRole={activeRole}
             canDeleteNcr={canDeleteNcr}
             canUploadEvidence={canUploadEvidenceForNcr(selectedNCR)}
             onClose={() => {

@@ -140,9 +140,20 @@ export function TrainingPage() {
 
   const now = Date.now();
   const all = records ?? [];
-  const expired = all.filter((r) => r.expires_at && new Date(r.expires_at).getTime() < now).length;
-  const validCount = all.length - expired;
-  const compliance = all.length > 0 ? Math.round((validCount / all.length) * 100) : 0;
+  const outstanding = all.filter((r) => r.status === 'REQUIRED' || r.status === 'OVERDUE' || r.status === 'SCHEDULED').length;
+  const expired = all.filter((r) => {
+    if (r.status === 'EXPIRED' || r.status === 'OVERDUE') return true;
+    return Boolean(r.expires_at && new Date(r.expires_at).getTime() < now);
+  }).length;
+  const nonCompliant = new Set(
+    all
+      .filter((r) => {
+        if (r.status === 'REQUIRED' || r.status === 'OVERDUE' || r.status === 'SCHEDULED' || r.status === 'EXPIRED') return true;
+        return Boolean(r.expires_at && new Date(r.expires_at).getTime() < now);
+      })
+      .map((r) => r.id)
+  ).size;
+  const compliance = all.length > 0 ? Math.round(((all.length - nonCompliant) / all.length) * 100) : 0;
 
   const courseById = useMemo(() => new Map((courses ?? []).map((c) => [c.id, c])), [courses]);
 
@@ -276,16 +287,16 @@ export function TrainingPage() {
             <p className="text-2xl font-bold text-success mt-1">{compliance}%</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-            <p className="text-sm text-charcoal-500">Expiring Soon</p>
-            <p className="text-2xl font-bold text-warning mt-1">{expiringSoon ?? 0}</p>
+            <p className="text-sm text-charcoal-500">Outstanding</p>
+            <p className="text-2xl font-bold text-warning mt-1">{outstanding}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
             <p className="text-sm text-charcoal-500">Expired</p>
             <p className="text-2xl font-bold text-critical mt-1">{expired}</p>
           </div>
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-            <p className="text-sm text-charcoal-500">Active Courses</p>
-            <p className="text-2xl font-bold text-teal mt-1">{(courses ?? []).length}</p>
+            <p className="text-sm text-charcoal-500">Expiring Soon</p>
+            <p className="text-2xl font-bold text-teal mt-1">{expiringSoon ?? 0}</p>
           </div>
         </motion.div>
 

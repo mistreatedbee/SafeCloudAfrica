@@ -67,6 +67,7 @@ import { PpeIssueTrackerDetailModal } from '../components/ppe/PpeIssueTrackerDet
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { OrgStructureManager } from '../components/org/OrgStructureManager';
 import { toUserFacingError } from '../utils/userFacingMessage';
+import { subscribeToLiveDataMutations } from '../api/liveData';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -165,6 +166,8 @@ export function PPEPage() {
   const [selectedStock, setSelectedStock] = useState<PpeStock | null>(null);
   const [stockDetailOpen, setStockDetailOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => subscribeToLiveDataMutations(() => setRefreshKey((k) => k + 1)), []);
   const [trackerCreateOpen, setTrackerCreateOpen] = useState(false);
   const [selectedTrackerIssue, setSelectedTrackerIssue] = useState<PpeIssueTracker | null>(null);
   const [trackerDetailOpen, setTrackerDetailOpen] = useState(false);

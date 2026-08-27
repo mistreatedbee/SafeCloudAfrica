@@ -14,6 +14,7 @@ import type {
 import {
   createPpeIssue,
   getPpeStockByLocation,
+  resolvePpeStockForIssue,
   setPpeIssueLinks,
   type CreatePpeIssueInput
 } from '../../api/services/ppeService';
@@ -284,7 +285,7 @@ export function PpeIssueModal(props: {
     }
     let cancelled = false;
     (async () => {
-      const stock = await getPpeStockByLocation({
+      const stock = await resolvePpeStockForIssue({
         companyId: props.companyId,
         siteId: siteId || null,
         departmentId: departmentId || null,

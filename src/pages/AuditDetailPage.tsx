@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toUserFacingError } from '../utils/userFacingMessage';
-import { CalendarIcon, ClipboardCheckIcon, ArrowLeftIcon, AlertCircleIcon, FileTextIcon, DownloadIcon } from 'lucide-react';
+import { CalendarIcon, ClipboardCheckIcon, ArrowLeftIcon, AlertCircleIcon, FileTextIcon, DownloadIcon, ChevronUpIcon, ChevronDownIcon } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
@@ -10,12 +10,17 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
 import type { UUID, Audit, QualityNcr } from '../api/models/entities';
-import { exportAuditPDF, exportAuditChecklistCSV, downloadFile } from '../api/services/exportService';
+import { exportAuditChecklistCSV, downloadFile } from '../api/services/exportService';
+import { exportAuditDetailPdf } from '../api/services/auditReportExportService';
+import { getCompanyLogoUrl } from '../utils/companyLogo';
 import {
   getAudit,
   listAuditQuestions,
   listAuditResponses,
   deleteAuditQuestion,
+  createAuditQuestion,
+  importAuditChecklistFromTemplate,
+  reorderAuditQuestions,
   startAudit,
   completeAudit,
   updateAuditFindingsCounts,
@@ -54,7 +59,7 @@ import { insforge } from '../api/insforge/client';
 import { EVIDENCE_BUCKET } from '../components/evidence/EvidenceModal';
 import { useIdentity } from '../hooks/useIdentity';
 import { useDraftManager } from '../session/DraftManagerProvider';
-import { useDraftRegistration } from '../session/useDraftRegistration';
+import { listAuditChecklistTemplates } from '../api/services/auditChecklistTemplatesService';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -66,9 +71,13 @@ function formatDate(iso: string | null): string {
 export function AuditDetailPage() {
   const { auditId } = useParams<{ auditId: string }>();
   const navigate = useNavigate();
-  const { activeCompanyId, activeRole } = useTenant();
+  const { activeCompanyId, activeRole, activeCompany } = useTenant();
   const { user } = useUser();
   const { fullName, organisationName } = useIdentity();
+  const logoUrl = useMemo(
+    () => getCompanyLogoUrl((activeCompany?.metadata ?? {}) as Record<string, unknown>),
+    [activeCompany?.metadata]
+  );
 
   const canEdit =
     activeRole === 'owner' ||
@@ -138,7 +147,23 @@ export function AuditDetailPage() {
   const [reportGenerating, setReportGenerating] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [deletingQuestionId, setDeletingQuestionId] = useState<UUID | null>(null);
+  const [newQuestion, setNewQuestion] = useState('');
+  const [newQuestionSection, setNewQuestionSection] = useState('');
+  const [newQuestionEvidence, setNewQuestionEvidence] = useState('');
+  const [newQuestionScore, setNewQuestionScore] = useState('1');
+  const [addingQuestion, setAddingQuestion] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [importingTemplate, setImportingTemplate] = useState(false);
+  const [exportingAuditPdf, setExportingAuditPdf] = useState(false);
+  const [reorderingQuestions, setReorderingQuestions] = useState(false);
 
+  const { data: checklistTemplates } = useAsync(
+    async () => {
+      if (!activeCompanyId) return [];
+      return await listAuditChecklistTemplates(activeCompanyId);
+    },
+    [activeCompanyId]
+  );
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `audit-date-approval:${auditId ?? 'unknown'}:${user?.id ?? 'anon'}`;
 
@@ -370,6 +395,74 @@ export function AuditDetailPage() {
     }
   }
 
+  async function handleAddQuestion() {
+    if (!auditId || !user?.id || !newQuestion.trim()) return;
+    setAddingQuestion(true);
+    setActionError(null);
+    try {
+      await createAuditQuestion({
+        auditId: auditId as UUID,
+        question: newQuestion.trim(),
+        section: newQuestionSection.trim() || null,
+        expectedEvidence: newQuestionEvidence.trim() || undefined,
+        questionOrder: (questions?.length ?? 0) + 1,
+        allocatedScore: Number(newQuestionScore) || 1,
+        createdByUserId: user.id as UUID
+      });
+      setNewQuestion('');
+      setNewQuestionSection('');
+      setNewQuestionEvidence('');
+      setNewQuestionScore('1');
+      await refreshQuestions();
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Unable to add checklist question.'));
+    } finally {
+      setAddingQuestion(false);
+    }
+  }
+
+  async function handleMoveQuestion(index: number, direction: -1 | 1) {
+    if (!questions || !auditId) return;
+    const target = index + direction;
+    if (target < 0 || target >= questions.length) return;
+    const reordered = [...questions];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setReorderingQuestions(true);
+    setActionError(null);
+    try {
+      await reorderAuditQuestions(
+        auditId as UUID,
+        reordered.map((q) => q.id)
+      );
+      await refreshQuestions();
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Unable to reorder checklist questions.'));
+    } finally {
+      setReorderingQuestions(false);
+    }
+  }
+
+  async function handleExportAuditPdf() {
+    if (!audit) return;
+    setExportingAuditPdf(true);
+    setActionError(null);
+    try {
+      const blob = await exportAuditDetailPdf({
+        audit,
+        questions: questions ?? [],
+        responses: responses ?? [],
+        companyName: organisationName,
+        generatedBy: fullName,
+        logoUrl
+      });
+      downloadFile(blob, `audit-${audit.audit_number ?? audit.id.slice(0, 8)}.pdf`);
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Failed to generate audit PDF.'));
+    } finally {
+      setExportingAuditPdf(false);
+    }
+  }
+
   const loading = auditLoading || questionsLoading || responsesLoading;
 
   if (!auditId) {
@@ -468,8 +561,18 @@ export function AuditDetailPage() {
                 </div>
               </div>
 
-              {canEdit && (
-                <div className="flex flex-wrap gap-2 justify-end">
+              <div className="flex flex-wrap gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleExportAuditPdf()}
+                  disabled={exportingAuditPdf}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-surface-300 text-xs font-semibold text-charcoal hover:bg-surface-50 disabled:opacity-60"
+                >
+                  <DownloadIcon className="w-3.5 h-3.5" />
+                  {exportingAuditPdf ? 'Generating PDF…' : 'Download PDF'}
+                </button>
+                {canEdit && (
+                  <>
                   {audit.status === 'scheduled' && (
                     <button
                       type="button"
@@ -490,8 +593,9 @@ export function AuditDetailPage() {
                       {statusUpdating ? 'Updating…' : 'Complete audit'}
                     </button>
                   )}
-                </div>
-              )}
+                  </>
+                )}
+              </div>
             </div>
 
             {awaitingDateApproval && (
@@ -715,10 +819,114 @@ export function AuditDetailPage() {
                 </div>
               )}
 
+              {canEdit && audit.status !== 'completed' && audit.status !== 'archived' && (
+                <div className="mb-4 border border-surface-200 rounded-xl p-4 space-y-3 bg-white">
+                  <p className="text-xs font-semibold text-charcoal">Import from checklist template</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(e) => setSelectedTemplateId(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                    >
+                      <option value="">Select template…</option>
+                      {(checklistTemplates ?? []).map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!selectedTemplateId || !activeCompanyId || !user?.id || importingTemplate}
+                      onClick={async () => {
+                        if (!activeCompanyId || !user?.id || !auditId || !selectedTemplateId) return;
+                        const append = (questions?.length ?? 0) > 0;
+                        if (
+                          append &&
+                          !window.confirm(
+                            'Append template questions to the existing checklist? Existing questions will be kept.'
+                          )
+                        ) {
+                          return;
+                        }
+                        setImportingTemplate(true);
+                        setActionError(null);
+                        try {
+                          await importAuditChecklistFromTemplate({
+                            companyId: activeCompanyId,
+                            auditId: auditId as UUID,
+                            templateId: selectedTemplateId as UUID,
+                            createdByUserId: user.id as UUID,
+                            startingOrder: append ? (questions?.length ?? 0) + 1 : 1
+                          });
+                          await refreshQuestions();
+                          setSelectedTemplateId('');
+                        } catch (err) {
+                          setActionError(toUserFacingError(err, 'Unable to import checklist template.'));
+                        } finally {
+                          setImportingTemplate(false);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-lg bg-navy text-white text-sm font-medium hover:bg-navy-600 disabled:opacity-60 whitespace-nowrap"
+                    >
+                      {importingTemplate ? 'Importing…' : 'Import template'}
+                    </button>
+                  </div>
+                  {(checklistTemplates ?? []).length === 0 && (
+                    <p className="text-xs text-charcoal-500">
+                      No templates yet. Create them under Audits → Checklist templates.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {canEdit && audit.status !== 'completed' && audit.status !== 'archived' && (
+                <div className="mb-4 border border-surface-200 rounded-xl p-4 space-y-3 bg-surface-50">
+                  <p className="text-xs font-semibold text-charcoal">Add checklist question</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input
+                      value={newQuestionSection}
+                      onChange={(e) => setNewQuestionSection(e.target.value)}
+                      placeholder="Section (optional)"
+                      className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={newQuestionScore}
+                      onChange={(e) => setNewQuestionScore(e.target.value)}
+                      placeholder="Allocated score"
+                      className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <textarea
+                    value={newQuestion}
+                    onChange={(e) => setNewQuestion(e.target.value)}
+                    rows={2}
+                    placeholder="Question text *"
+                    className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                  />
+                  <input
+                    value={newQuestionEvidence}
+                    onChange={(e) => setNewQuestionEvidence(e.target.value)}
+                    placeholder="Expected evidence (optional)"
+                    className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                  />
+                  <button
+                    type="button"
+                    disabled={addingQuestion || !newQuestion.trim()}
+                    onClick={() => void handleAddQuestion()}
+                    className="px-4 py-2 rounded-lg bg-teal text-white text-xs font-semibold hover:bg-teal-600 disabled:opacity-60"
+                  >
+                    {addingQuestion ? 'Adding…' : 'Add question'}
+                  </button>
+                </div>
+              )}
+
               {questions && questions.length === 0 && (
                 <p className="text-sm text-charcoal-500">
-                  No checklist questions have been added yet. You can manage questions from the audits configuration
-                  or a future checklist builder.
+                  No checklist questions yet. Use the form above to build your audit questionnaire.
                 </p>
               )}
 
@@ -746,7 +954,33 @@ export function AuditDetailPage() {
                         const disabled = !canEdit || audit.status === 'completed' || audit.status === 'archived';
                         return (
                           <tr key={q.id} className="border-b border-surface-100 align-top">
-                            <td className="py-2 pr-3 text-xs text-charcoal-500">{idx + 1}</td>
+                            <td className="py-2 pr-3 text-xs text-charcoal-500">
+                              <div className="flex items-center gap-1">
+                                <span>{idx + 1}</span>
+                                {canEdit && audit.status !== 'completed' && audit.status !== 'archived' && (
+                                  <span className="inline-flex flex-col">
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleMoveQuestion(idx, -1)}
+                                      disabled={idx === 0 || reorderingQuestions}
+                                      className="p-0.5 rounded hover:bg-surface-100 disabled:opacity-40"
+                                      aria-label="Move question up"
+                                    >
+                                      <ChevronUpIcon className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleMoveQuestion(idx, 1)}
+                                      disabled={idx === questions.length - 1 || reorderingQuestions}
+                                      className="p-0.5 rounded hover:bg-surface-100 disabled:opacity-40"
+                                      aria-label="Move question down"
+                                    >
+                                      <ChevronDownIcon className="w-3 h-3" />
+                                    </button>
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="py-2 pr-3">
                               <p className="text-sm text-charcoal">{q.question}</p>
                             </td>
@@ -1188,17 +1422,12 @@ export function AuditDetailPage() {
                   {audit.report_document_url && (
                     <button
                       type="button"
-                      onClick={async () => {
-                        const blob = await exportAuditPDF(audit, {
-                          companyName: organisationName,
-                          generatedBy: fullName,
-                        });
-                        downloadFile(blob, `audit-${audit.audit_number}.pdf`);
-                      }}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"
+                      onClick={() => void handleExportAuditPdf()}
+                      disabled={exportingAuditPdf}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50 disabled:opacity-60"
                     >
                       <DownloadIcon className="w-3.5 h-3.5" />
-                      Download PDF
+                      {exportingAuditPdf ? 'Generating…' : 'Download PDF'}
                     </button>
                   )}
                   {canEdit && activeCompanyId && user?.id && (

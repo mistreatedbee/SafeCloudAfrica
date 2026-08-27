@@ -14,7 +14,8 @@ import {
   getOrCreateHrLeaveTypeByName,
   listHrEmployees,
   listHrLeaveRequests,
-  listHrRecords
+  listHrRecords,
+  syncHrLeaveRequestProofFiles
 } from '../../api/services/hrService';
 import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { SelectOrType } from '../../components/ui/SelectOrType';
@@ -339,6 +340,19 @@ export function HrLeavePage() {
     setError(null);
     setSuccess(null);
     try {
+      const requiresProof = leaveTypeRequiresProofById.get(row.leave_type_id as UUID) ?? false;
+      const isHrFinalApproval = !isSupervisor;
+      if (isHrFinalApproval && requiresProof) {
+        const synced = await syncHrLeaveRequestProofFiles({
+          companyId: activeCompanyId,
+          leaveRequestId: row.id as UUID,
+          actorUserId: user.id as UUID
+        });
+        if (!synced.proof_file_ids?.length) {
+          setError('Supporting proof is required before HR can approve. Use "View documents" to upload proof first.');
+          return;
+        }
+      }
       await applyHrLeaveApproval({
         companyId: activeCompanyId,
         leaveRequestId: row.id as UUID,
@@ -349,6 +363,35 @@ export function HrLeavePage() {
       setSuccess('Saved successfully');
     } catch (err) {
       setError(toUserFacingError(err, 'Unable to approve this leave request right now.'));
+    }
+  }
+
+  async function onProofEvidenceChanged() {
+    if (!activeCompanyId || !user?.id || !proofEvidenceRequestId) return;
+    try {
+      await syncHrLeaveRequestProofFiles({
+        companyId: activeCompanyId,
+        leaveRequestId: proofEvidenceRequestId,
+        actorUserId: user.id as UUID
+      });
+      await refetch();
+    } catch (err) {
+      setError(toUserFacingError(err, 'Proof was uploaded but could not be linked to the leave request. Please try again.'));
+    }
+  }
+
+  async function openProofModal(leaveRequestId: UUID) {
+    setProofEvidenceRequestId(leaveRequestId);
+    if (!activeCompanyId || !user?.id) return;
+    try {
+      await syncHrLeaveRequestProofFiles({
+        companyId: activeCompanyId,
+        leaveRequestId,
+        actorUserId: user.id as UUID
+      });
+      await refetch();
+    } catch {
+      // Non-blocking; modal still opens for upload.
     }
   }
 
@@ -705,6 +748,8 @@ export function HrLeavePage() {
               {filteredRequests.map((row) => {
                 const badge = leaveStatusBadge(String(row.status ?? ''));
                 const requiresProof = leaveTypeRequiresProofById.get(row.leave_type_id as UUID) ?? false;
+                const proofCount = Array.isArray(row.proof_file_ids) ? row.proof_file_ids.length : 0;
+                const proofMissing = requiresProof && proofCount === 0;
                 return (
                 <tr key={row.id} id={`leave-${row.id}`} className="border-t border-surface-100">
                   <td className="px-3 py-2">{employeeLabel.get(row.employee_id as UUID) ?? row.employee_id}</td>
@@ -723,8 +768,26 @@ export function HrLeavePage() {
                     />
                   </td>
                   <td className="px-3 py-2 space-x-2">
-                    {requiresProof && <button className="text-charcoal-700 underline text-xs" onClick={() => setProofEvidenceRequestId(row.id as UUID)}>View documents</button>}
-                    {canApprove && row.status === 'SUBMITTED' && <button className="text-teal" onClick={() => void onApprove(row)}>Approve</button>}
+                    {requiresProof && (
+                      <span className={`text-xs ${proofMissing ? 'text-amber-700' : 'text-emerald-700'}`}>
+                        {proofMissing ? 'Proof missing' : `Proof (${proofCount})`}
+                      </span>
+                    )}
+                    {requiresProof && (
+                      <button className="text-charcoal-700 underline text-xs" onClick={() => void openProofModal(row.id as UUID)}>
+                        {proofMissing ? 'Upload proof' : 'View documents'}
+                      </button>
+                    )}
+                    {canApprove && row.status === 'SUBMITTED' && (
+                      <button
+                        className="text-teal disabled:opacity-50"
+                        disabled={!isSupervisor && proofMissing}
+                        title={!isSupervisor && proofMissing ? 'Upload proof before HR approval' : undefined}
+                        onClick={() => void onApprove(row)}
+                      >
+                        Approve
+                      </button>
+                    )}
                     {canApprove && row.status === 'SUBMITTED' && <button className="text-critical" onClick={() => void onDecline(row)}>Decline</button>}
                     {canApprove && row.status === 'APPROVED' && !showArchived && (
                       <button className="text-charcoal-700" disabled={archivingId === row.id} onClick={() => void onToggleArchive(row, true)}>
@@ -747,11 +810,15 @@ export function HrLeavePage() {
         {activeCompanyId && user?.id && proofEvidenceRequestId && (
           <EvidenceModal
             open={Boolean(proofEvidenceRequestId)}
-            onClose={() => setProofEvidenceRequestId(null)}
+            onClose={() => {
+              void onProofEvidenceChanged().finally(() => setProofEvidenceRequestId(null));
+            }}
             companyId={activeCompanyId}
             actorUserId={user.id}
             entityType="hr_leave_request"
             entityId={proofEvidenceRequestId}
+            title="Leave supporting proof"
+            onUploaded={() => void onProofEvidenceChanged()}
           />
         )}
       </div>

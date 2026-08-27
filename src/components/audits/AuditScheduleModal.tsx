@@ -169,7 +169,7 @@ export function AuditScheduleModal(props: {
       objectives.trim().length > 2 &&
       auditCriteria.trim().length > 2 &&
       scopeOfAudit.trim().length > 2 &&
-      proposedDatesParsed.length >= 3,
+      proposedDatesParsed.length >= 1,
     [objectives, auditCriteria, scopeOfAudit, proposedDatesParsed.length]
   );
 

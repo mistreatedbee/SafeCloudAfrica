@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useUser } from '@insforge/react';
 import { Layout } from '../components/layout/Layout';
@@ -19,6 +19,11 @@ import {
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { useDraftRegistration } from '../session/useDraftRegistration';
 import { toUserFacingError } from '../utils/userFacingMessage';
+import { exportCapaDetailPdf } from '../api/services/capaReportExportService';
+import { downloadFile } from '../api/services/exportService';
+import { useIdentity } from '../hooks/useIdentity';
+import { getCompanyLogoUrl } from '../utils/companyLogo';
+import { DownloadIcon } from 'lucide-react';
 
 type CapaSourceType = 'ncr' | 'risk_assessment' | 'incident' | 'audit' | 'observation' | 'complaint' | 'pjo' | 'kpi' | 'audit_finding';
 
@@ -66,8 +71,14 @@ export function CapaDetailPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useUser();
-  const { activeCompanyId, activeRole } = useTenant();
+  const { activeCompanyId, activeRole, activeCompany } = useTenant();
+  const { fullName, organisationName } = useIdentity();
+  const logoUrl = useMemo(
+    () => getCompanyLogoUrl((activeCompany?.metadata ?? {}) as Record<string, unknown>),
+    [activeCompany?.metadata]
+  );
   const editable = canManage(activeRole ?? null);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `capa-form:${activeCompanyId ?? 'company'}:${capaId ?? 'new'}:${user?.id ?? 'anon'}`;
@@ -276,6 +287,34 @@ export function CapaDetailPage() {
             <p className="text-lg font-semibold mt-1">{isCreate ? 'New CAPA' : `CAPA ${record?.action_number ?? capaId?.slice(0, 8)}`}</p>
           </div>
           <div className="flex items-center gap-2">
+            {!isCreate && (
+              <button
+                type="button"
+                disabled={exportingPdf || !record}
+                onClick={async () => {
+                  if (!record) return;
+                  setExportingPdf(true);
+                  try {
+                    const blob = await exportCapaDetailPdf({
+                      capa: record,
+                      companyName: organisationName,
+                      generatedBy: fullName,
+                      logoUrl
+                    });
+                    const safeNumber = record.action_number.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+                    downloadFile(blob, `capa-${safeNumber}.pdf`);
+                  } catch (e: unknown) {
+                    setError(toUserFacingError(e, 'Failed to export CAPA PDF.'));
+                  } finally {
+                    setExportingPdf(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-surface-300 text-sm hover:bg-surface-50 disabled:opacity-60"
+              >
+                <DownloadIcon className="w-4 h-4" />
+                {exportingPdf ? 'PDF…' : 'PDF'}
+              </button>
+            )}
             {!isCreate && activeCompanyId && capaId && user?.id && (
               <button type="button" onClick={() => setEvidenceOpen(true)} className="px-3 py-2 rounded-lg border border-surface-300 text-sm">
                 Evidence ({evidenceCount})
@@ -389,6 +428,29 @@ export function CapaDetailPage() {
             </div>
           )}
         </section>
+
+        {(isCreate || editable) && (
+          <div className="sticky bottom-0 bg-white border border-surface-300 rounded-xl p-4 flex flex-wrap justify-end gap-2 shadow-lg z-10">
+            <button
+              type="button"
+              onClick={() => void onSave()}
+              disabled={!editable || saving}
+              className="px-4 py-2 rounded-lg bg-success text-white text-sm font-semibold disabled:opacity-60"
+            >
+              {saving ? 'Saving...' : isCreate ? 'Create CAPA' : 'Save'}
+            </button>
+            {!isCreate && (
+              <button
+                type="button"
+                onClick={() => void onCloseCapa()}
+                disabled={!canClose}
+                className="px-4 py-2 rounded-lg bg-navy text-white text-sm font-semibold disabled:opacity-60"
+              >
+                Close CAPA
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {!isCreate && activeCompanyId && capaId && user?.id && (

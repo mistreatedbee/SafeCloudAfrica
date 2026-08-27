@@ -2,7 +2,7 @@ import { insforge } from '../insforge/client';
 import { withInsforgeSession } from '../insforge/ensureSession';
 import type { Audit, AuditInvitationToken, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
-import { createActivityLog } from './activityLogService';
+import { getAuditChecklistTemplate } from './auditChecklistTemplatesService';
 import { sendTemplatedNotificationEmail } from './emailService';
 
 export interface AuditQuestion {
@@ -199,6 +199,19 @@ export async function createAudit(input: {
     }
   } catch (err) {
     console.warn('[audits] notification failed', err);
+  }
+
+  if (input.checklistTemplateId) {
+    try {
+      await importAuditChecklistFromTemplate({
+        companyId: input.companyId,
+        auditId: audit.id,
+        templateId: input.checklistTemplateId,
+        createdByUserId: input.createdByUserId
+      });
+    } catch (err) {
+      console.warn('[audits] checklist template import failed', err);
+    }
   }
 
   return audit;
@@ -514,6 +527,7 @@ export async function listAuditQuestions(auditId: UUID): Promise<AuditQuestion[]
 export async function createAuditQuestion(input: {
   auditId: UUID;
   question: string;
+  section?: string | null;
   expectedEvidence?: string;
   questionOrder: number;
   allocatedScore?: number | null;
@@ -524,6 +538,7 @@ export async function createAuditQuestion(input: {
     .insert({
       audit_id: input.auditId,
       question: input.question,
+      section: input.section ?? null,
       expected_evidence: input.expectedEvidence ?? null,
       allocated_score: input.allocatedScore ?? 1,
       question_order: input.questionOrder,
@@ -534,6 +549,41 @@ export async function createAuditQuestion(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create audit question.');
   return data as AuditQuestion;
+}
+
+export async function importAuditChecklistFromTemplate(input: {
+  companyId: UUID;
+  auditId: UUID;
+  templateId: UUID;
+  createdByUserId: UUID;
+  startingOrder?: number;
+}): Promise<number> {
+  const template = await getAuditChecklistTemplate(input.companyId, input.templateId);
+  if (!template) throw new Error('Checklist template not found.');
+
+  const rawQuestions = template.questions;
+  const questionRows = Array.isArray(rawQuestions) ? rawQuestions : [];
+  const startOrder = input.startingOrder ?? 1;
+  let imported = 0;
+
+  for (let i = 0; i < questionRows.length; i++) {
+    const row = questionRows[i] as Record<string, unknown>;
+    const text = String(row.question ?? row.text ?? '').trim();
+    if (!text) continue;
+    await createAuditQuestion({
+      auditId: input.auditId,
+      question: text,
+      section: row.section ? String(row.section) : null,
+      expectedEvidence: row.expected_evidence ? String(row.expected_evidence) : undefined,
+      questionOrder: startOrder + imported,
+      allocatedScore: Number(row.allocated_score ?? row.score ?? 1) || 1,
+      createdByUserId: input.createdByUserId
+    });
+    imported += 1;
+  }
+
+  if (imported === 0) throw new Error('Template has no valid questions to import.');
+  return imported;
 }
 
 export async function deleteAuditQuestion(questionId: UUID): Promise<void> {
@@ -549,6 +599,19 @@ export async function deleteAuditQuestion(questionId: UUID): Promise<void> {
       .delete()
       .eq('id', questionId);
     if (error) throw new Error(getErrorMessage(error));
+  });
+}
+
+export async function reorderAuditQuestions(auditId: UUID, orderedQuestionIds: UUID[]): Promise<void> {
+  return withInsforgeSession('audit_questions:reorder', async () => {
+    for (let i = 0; i < orderedQuestionIds.length; i++) {
+      const { error } = await insforge.database
+        .from('audit_questions')
+        .update({ question_order: i + 1 })
+        .eq('id', orderedQuestionIds[i])
+        .eq('audit_id', auditId);
+      if (error) throw new Error(getErrorMessage(error));
+    }
   });
 }
 

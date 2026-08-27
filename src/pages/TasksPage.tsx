@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -10,7 +10,9 @@ import {
   FlagIcon,
   AlertTriangleIcon,
   BarChart3Icon,
-  TargetIcon
+  TargetIcon,
+  DownloadIcon,
+  ChevronDownIcon
 } from 'lucide-react';
 import {
   BarChart,
@@ -49,8 +51,10 @@ import { toCsv, downloadTextFile } from '../utils/csv';
 import { useIdentity } from '../hooks/useIdentity';
 import { TASK_CATEGORY_LABELS, TASK_TIME_STATUS_LABELS, TASK_SOURCE_ENTITY_LABELS } from '../api/constants/taskLabels';
 import { getMyProfile } from '../api/services/profilesService';
-import { canManageTasks } from '../api/permissions/taskPermissions';
+import { canApproveOrRejectTask, canCloseTask, canManageTasks, canSubmitTaskForReview } from '../api/permissions/taskPermissions';
 import { toUserFacingError } from '../utils/userFacingMessage';
+import { exportCapaListPdf } from '../api/services/capaReportExportService';
+import { getCompanyLogoUrl } from '../utils/companyLogo';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -103,10 +107,30 @@ export function TasksPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [riskFilter, setRiskFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [capaSourceFilter, setCapaSourceFilter] = useState<string>('all');
+  const [capaOverdueOnly, setCapaOverdueOnly] = useState(false);
+  const [capaAssignedToMe, setCapaAssignedToMe] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const { user } = useUser();
-  const { activeCompanyId, activeRole } = useTenant();
+  const { activeCompanyId, activeRole, activeCompany } = useTenant();
   const { fullName, organisationName } = useIdentity();
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportingCapaPdf, setExportingCapaPdf] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+  const logoUrl = useMemo(
+    () => getCompanyLogoUrl((activeCompany?.metadata ?? {}) as Record<string, unknown>),
+    [activeCompany?.metadata]
+  );
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(event.target as Node)) {
+        setExportOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   const canCreate = canManageTasks(activeRole);
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
@@ -201,9 +225,16 @@ export function TasksPage() {
       !q ||
       c.title.toLowerCase().includes(q) ||
       String(c.description ?? '').toLowerCase().includes(q) ||
-      String((c as any).source_entity_type ?? '').toLowerCase().includes(q);
+      String(c.source_type ?? '').toLowerCase().includes(q);
     const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesSource = capaSourceFilter === 'all' || c.source_type === capaSourceFilter;
+    const today = new Date().toISOString().slice(0, 10);
+    const matchesOverdue =
+      !capaOverdueOnly ||
+      (c.status !== 'closed' && c.status !== 'verified' && c.due_date && String(c.due_date).slice(0, 10) < today);
+    const matchesAssignee =
+      !capaAssignedToMe || !user?.id || String(c.assigned_to_user_id ?? '') === String(user.id);
+    return matchesSearch && matchesStatus && matchesSource && matchesOverdue && matchesAssignee;
   });
 
   async function onCloseCapa(id: string) {
@@ -259,7 +290,12 @@ export function TasksPage() {
   async function handleSubmitForReview(task: Task) {
     if (!activeCompanyId || !user?.id) return;
     try {
-      await submitForReview({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
+      await submitForReview({
+        companyId: activeCompanyId,
+        taskId: task.id,
+        actorUserId: user.id,
+        actorRole: activeRole
+      });
       setRefreshKey((k) => k + 1);
     } catch (err) {
       alert(toUserFacingError(err, 'Unable to submit this task for review right now.'));
@@ -289,7 +325,12 @@ export function TasksPage() {
     if (!activeCompanyId || !user?.id) return;
     if (!window.confirm('Close this task? This will lock the task record.')) return;
     try {
-      await closeTask({ companyId: activeCompanyId, taskId: task.id, actorUserId: user.id });
+      await closeTask({
+        companyId: activeCompanyId,
+        taskId: task.id,
+        actorUserId: user.id,
+        actorRole: activeRole
+      });
       setRefreshKey((k) => k + 1);
     } catch (err) {
       alert(toUserFacingError(err, 'Cannot close: missing evidence or approvals.'));
@@ -297,6 +338,7 @@ export function TasksPage() {
   }
 
   function handleExportCsv() {
+    setExportOpen(false);
     if (!activeCompanyId) return;
 
     const metaLines = [
@@ -410,6 +452,22 @@ export function TasksPage() {
     downloadTextFile(`${safeOrg}-capa-closure-${today}.csv`, content, 'text/csv;charset=utf-8');
   }
 
+  async function handleExportCapaPdf() {
+    if (filteredCapas.length === 0) return;
+    setExportOpen(false);
+    setExportingCapaPdf(true);
+    try {
+      await exportCapaListPdf({
+        capas: filteredCapas,
+        companyName: organisationName,
+        generatedBy: fullName,
+        logoUrl
+      });
+    } finally {
+      setExportingCapaPdf(false);
+    }
+  }
+
   return (
     <Layout title="Tasks & Corrective Actions">
       {canCreate && activeCompanyId && user?.id && (
@@ -422,7 +480,11 @@ export function TasksPage() {
           companyId={activeCompanyId}
           createdByUserId={user.id}
           defaultModule="safety"
-          onCreated={() => navigate('/dashboard/management/tasks', { replace: true })}
+          onCreated={() => {
+            setRefreshKey((k) => k + 1);
+            setCreateOpen(false);
+            if (isNew) navigate('/dashboard/management/tasks', { replace: true });
+          }}
         />
       )}
       <motion.div
@@ -611,17 +673,47 @@ export function TasksPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleExportCsv}
-              disabled={
-                !activeCompanyId ||
-                (view === 'tasks' ? filteredTasks.length === 0 : filteredCapas.length === 0)
-              }
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-navy text-white rounded-lg text-sm font-medium hover:bg-navy-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              Export CSV
-            </button>
+            {view === 'capa' ? (
+              <div className="relative" ref={exportRef}>
+                <button
+                  type="button"
+                  onClick={() => setExportOpen((v) => !v)}
+                  disabled={filteredCapas.length === 0 || exportingCapaPdf || !activeCompanyId}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 bg-navy text-white rounded-lg text-sm font-medium hover:bg-navy-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <DownloadIcon className="w-4 h-4" />
+                  {exportingCapaPdf ? 'Exporting…' : 'Export'}
+                  <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {exportOpen && (
+                  <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-elevated border border-surface-200 overflow-hidden z-50">
+                    <button
+                      type="button"
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-surface-50"
+                      onClick={handleExportCsv}
+                    >
+                      CSV
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-surface-50"
+                      onClick={() => void handleExportCapaPdf()}
+                    >
+                      PDF
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleExportCsv}
+                disabled={!activeCompanyId || filteredTasks.length === 0}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-navy text-white rounded-lg text-sm font-medium hover:bg-navy-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Export CSV
+              </button>
+            )}
             {view === 'tasks' && (
               <button
                 type="button"
@@ -730,6 +822,33 @@ export function TasksPage() {
             )
           )}
         </motion.div>
+
+        {view === 'capa' && (
+          <motion.div variants={itemVariants} className="flex flex-wrap gap-2 items-center">
+            <select
+              value={capaSourceFilter}
+              onChange={(e) => setCapaSourceFilter(e.target.value)}
+              className="px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm"
+            >
+              <option value="all">All sources</option>
+              <option value="ncr">NCR</option>
+              <option value="incident">Incident</option>
+              <option value="audit">Audit</option>
+              <option value="audit_finding">Audit finding</option>
+              <option value="risk_assessment">Risk assessment</option>
+              <option value="observation">Observation</option>
+              <option value="complaint">Complaint</option>
+            </select>
+            <label className="inline-flex items-center gap-2 text-sm text-charcoal-600 px-2">
+              <input type="checkbox" checked={capaOverdueOnly} onChange={(e) => setCapaOverdueOnly(e.target.checked)} />
+              Overdue only
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm text-charcoal-600 px-2">
+              <input type="checkbox" checked={capaAssignedToMe} onChange={(e) => setCapaAssignedToMe(e.target.checked)} />
+              Assigned to me
+            </label>
+          </motion.div>
+        )}
 
         {/* Tasks: List / Gantt / Resource / Time */}
         <motion.div variants={itemVariants} className="space-y-3">
@@ -957,7 +1076,7 @@ export function TasksPage() {
                             Mark in progress
                           </button>
                         )}
-                        {task.status === 'in-progress' && (
+                        {['in-progress', 'reopened'].includes(task.status) && (
                           <>
                             <button
                               type="button"
@@ -966,16 +1085,19 @@ export function TasksPage() {
                             >
                               Awaiting evidence
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSubmitForReview(task)}
-                              className="px-3 py-1.5 rounded-lg bg-teal text-white text-xs font-medium hover:bg-teal-600"
-                            >
-                              Send for review
-                            </button>
+                            {canSubmitTaskForReview({ task, actorUserId: user.id, actorRole: activeRole }) && (
+                              <button
+                                type="button"
+                                onClick={() => handleSubmitForReview(task)}
+                                className="px-3 py-1.5 rounded-lg bg-teal text-white text-xs font-medium hover:bg-teal-600"
+                              >
+                                Send for review
+                              </button>
+                            )}
                           </>
                         )}
-                        {task.status === 'awaiting-evidence' && (
+                        {task.status === 'awaiting-evidence' &&
+                          canSubmitTaskForReview({ task, actorUserId: user.id, actorRole: activeRole }) && (
                           <button
                             type="button"
                             onClick={() => handleSubmitForReview(task)}
@@ -984,7 +1106,7 @@ export function TasksPage() {
                             Send for review
                           </button>
                         )}
-                        {task.status === 'under-review' && canManageTasks(activeRole) && (
+                        {task.status === 'under-review' && canApproveOrRejectTask(activeRole) && (
                           <>
                             <button
                               type="button"
@@ -1002,7 +1124,8 @@ export function TasksPage() {
                             </button>
                           </>
                         )}
-                        {task.status === 'approved' && canManageTasks(activeRole) && (
+                        {task.status === 'approved' &&
+                          canCloseTask({ task, actorUserId: user.id, actorRole: activeRole }) && (
                           <button
                             type="button"
                             onClick={() => handleCloseTask(task)}

@@ -67,6 +67,7 @@ export type CreateCorrectiveActionInput = {
 };
 
 export async function createCorrectiveAction(input: CreateCorrectiveActionInput): Promise<CorrectiveAction> {
+  return withInsforgeSession('corrective-actions:create', async () => {
   const actionNumber = generateActionNumber();
   
   const { data, error } = await insforge.database
@@ -127,6 +128,7 @@ export async function createCorrectiveAction(input: CreateCorrectiveActionInput)
   }
 
   return data as CorrectiveAction;
+  });
 }
 
 export type ListCorrectiveActionsInput = {
@@ -139,6 +141,7 @@ export type ListCorrectiveActionsInput = {
 };
 
 export async function listCorrectiveActions(input: ListCorrectiveActionsInput): Promise<CorrectiveAction[]> {
+  return withInsforgeSession('corrective-actions:list', async () => {
   let query = insforge.database
     .from('corrective_actions')
     .select('*')
@@ -166,9 +169,11 @@ export async function listCorrectiveActions(input: ListCorrectiveActionsInput): 
   
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as CorrectiveAction[];
+  });
 }
 
 export async function getCorrectiveAction(actionId: UUID, companyId: UUID): Promise<CorrectiveAction> {
+  return withInsforgeSession('corrective-actions:get', async () => {
   const { data, error } = await insforge.database
     .from('corrective_actions')
     .select('*')
@@ -180,6 +185,7 @@ export async function getCorrectiveAction(actionId: UUID, companyId: UUID): Prom
   if (!data) throw new Error('Corrective action not found');
   
   return data as CorrectiveAction;
+  });
 }
 
 export type UpdateCorrectiveActionInput = {
@@ -201,6 +207,7 @@ export type UpdateCorrectiveActionInput = {
 };
 
 export async function updateCorrectiveAction(input: UpdateCorrectiveActionInput): Promise<CorrectiveAction> {
+  return withInsforgeSession('corrective-actions:update', async () => {
   const updateData: any = {
     updated_at: new Date().toISOString()
   };
@@ -239,6 +246,7 @@ export async function updateCorrectiveAction(input: UpdateCorrectiveActionInput)
   });
   
   return data as CorrectiveAction;
+  });
 }
 
 async function notifyCorrectiveActionTransition(input: {
@@ -421,6 +429,7 @@ export async function closeCorrectiveAction(
   companyId: UUID,
   closedByUserId: UUID
 ): Promise<CorrectiveAction> {
+  return withInsforgeSession('corrective-actions:close', async () => {
   const current = await getCorrectiveAction(actionId, companyId);
   if (!current.verified_by_user_id) {
     throw new Error('Manager sign-off is required before closing this CAPA.');
@@ -465,6 +474,7 @@ export async function closeCorrectiveAction(
   }).catch(() => undefined);
 
   return closed;
+  });
 }
 
 export async function getOverdueActions(companyId: UUID): Promise<CorrectiveAction[]> {
@@ -498,30 +508,26 @@ export async function getDueSoonActions(companyId: UUID, daysAhead = 7): Promise
   return (data ?? []) as CorrectiveAction[];
 }
 
-export async function countOpenCorrectiveActions(companyId: UUID, input?: { module?: ModuleKey }): Promise<number> {
+export async function countOpenCorrectiveActions(companyId: UUID, _input?: { module?: ModuleKey }): Promise<number> {
   return withInsforgeSession('corrective-actions:count-open', async () => {
-  const base = insforge.database
+  const { count, error } = await insforge.database
     .from('corrective_actions')
     .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .neq('status', 'closed');
-  const q = input?.module ? base.eq('module', input.module) : base;
-  const { count, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
   });
 }
 
-export async function countOverdueCorrectiveActions(companyId: UUID, input?: { module?: ModuleKey }): Promise<number> {
+export async function countOverdueCorrectiveActions(companyId: UUID, _input?: { module?: ModuleKey }): Promise<number> {
   return withInsforgeSession('corrective-actions:count-overdue', async () => {
-  const base = insforge.database
+  const { count, error } = await insforge.database
     .from('corrective_actions')
     .select('*', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .neq('status', 'closed')
     .lt('due_date', new Date().toISOString());
-  const q = input?.module ? base.eq('module', input.module) : base;
-  const { count, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   return count ?? 0;
   });
@@ -532,6 +538,7 @@ export async function deleteCorrectiveAction(
   companyId: UUID,
   deletedByUserId: UUID
 ): Promise<void> {
+  return withInsforgeSession('corrective-actions:delete', async () => {
   const { error } = await insforge.database
     .from('corrective_actions')
     .delete()
@@ -546,5 +553,6 @@ export async function deleteCorrectiveAction(
     action: 'corrective_actions.delete',
     entityType: 'corrective_action',
     entityId: actionId
+  });
   });
 }
