@@ -254,9 +254,7 @@ export function LoginPage() {
   const verified = searchParams.get('verified') === '1' || insforgeVerified;
   const registered = searchParams.get('registered') === '1';
   const isInviteContinuation = searchParams.get('redirect')?.includes('/invite/');
-  // Reached only after the user explicitly clicked "Reconnect" on the
-  // session-attention banner (AuthSessionListener) and that attempt failed --
-  // never shown as a result of an automatic/background redirect.
+  // Reached only after a prior reconnect attempt failed (legacy query param).
   const reconnectFailed = searchParams.get('reason') === 'reconnect_failed';
 
   const handleSignInError = (error: unknown) => {

@@ -5,7 +5,6 @@ import {
   readStoredAccessToken,
   refreshSessionThroughProxy
 } from './sessionState';
-import { emitAuthNeedsAttention } from '../liveData';
 
 const AUTH_BOOTSTRAP_DEBUG = (import.meta as any)?.env?.VITE_AUTH_BOOTSTRAP_DEBUG === '1';
 
@@ -252,12 +251,9 @@ async function runProactiveRefresh(): Promise<void> {
     return;
   }
   // Second consecutive invalid_session/refresh_unavailable — genuinely
-  // nothing to refresh. Surface this to the user immediately instead of
-  // waiting for them to stumble into a stale reactive fetch; the reactive
-  // path in ensureInsforgeSession will also throw the next time the app
-  // makes an authenticated call, but nothing forces a logout here.
+  // nothing to refresh. The reactive path in ensureInsforgeSession will
+  // throw the next time the app makes an authenticated call.
   debugAuthBootstrap('proactive-refresh:stopped', { reason: outcome.reason });
-  emitAuthNeedsAttention({ source: 'proactive-refresh' });
 }
 
 /**
@@ -278,10 +274,7 @@ export function startProactiveSessionRefresh(): void {
         return;
       }
       if (err instanceof InsforgeAuthBootstrapError) {
-        // Already dead by the time the listener mounted (e.g. tab was
-        // asleep past expiry) -- surface the reconnect banner right away
-        // instead of waiting for the user to hit a stale fetch.
-        emitAuthNeedsAttention({ source: 'proactive-refresh' });
+        debugAuthBootstrap('proactive-refresh:no-valid-session-on-init', {});
       }
       // Anything else: no valid session to schedule around.
     }

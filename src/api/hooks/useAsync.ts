@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { emitAuthNeedsAttention, subscribeToAuthRecovered, subscribeToLiveDataMutations } from '../liveData';
+import { subscribeToAuthRecovered, subscribeToLiveDataMutations } from '../liveData';
 
 export type AsyncState<T> = {
   data: T | null;
@@ -116,7 +116,6 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
           authFailureRef.current = true;
           if (!authFailureEmittedRef.current) {
             authFailureEmittedRef.current = true;
-            emitAuthNeedsAttention({ source: 'reactive-fetch' });
           }
         }
         setState((prev) => ({
