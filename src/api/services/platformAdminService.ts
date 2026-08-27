@@ -70,14 +70,29 @@ export type LoginRedirectResult = { path: string; organizationId?: UUID; reason?
 export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId?: UUID | null): Promise<LoginRedirectResult> {
   try {
     await ensureInsforgeSession({ reason: 'platform-admin:get-login-redirect' });
+
+    const { data: rpcData, error: rpcError } = await insforge.database.rpc('get_my_login_redirect', {
+      p_preferred_company_id: preferredOrganizationId ?? null
+    });
+    if (!rpcError && rpcData && typeof rpcData === 'object') {
+      const redirect = rpcData as { path?: string; organizationId?: UUID; reason?: string };
+      if (redirect.path) {
+        return {
+          path: redirect.path,
+          organizationId: redirect.organizationId,
+          reason: redirect.reason
+        };
+      }
+    }
+
     const { data: memberships, error: mErr } = await insforge.database
       .from('company_memberships')
-      .select('company_id, role')
-      .eq('user_id', userId)
-      .eq('status', 'ACTIVE');
-    if (mErr || !memberships?.length) return { path: '/activate', reason: 'no_org' };
-
-    const membershipRows = memberships as { company_id: UUID; role: string }[];
+      .select('company_id, role, status')
+      .eq('user_id', userId);
+    const membershipRows = (memberships ?? []).filter(
+      (row: { status?: string | null }) => row.status === 'ACTIVE' || row.status == null || row.status === ''
+    ) as { company_id: UUID; role: string }[];
+    if (mErr || !membershipRows.length) return { path: '/activate', reason: 'no_org' };
     if (preferredOrganizationId) {
       const preferredMembership = membershipRows.find((m) => m.company_id === preferredOrganizationId);
       if (preferredMembership) {
@@ -90,7 +105,7 @@ export async function getLoginRedirectPath(userId: UUID, preferredOrganizationId
     let bestCompanyId: UUID | null = null;
     let bestRole: string | null = null;
     for (const m of membershipRows) {
-      const idx = ROLE_ORDER.indexOf(m.role as (typeof ROLE_ORDER)[number]);
+      const idx = ROLE_ORDER.indexOf(m.role.toLowerCase() as (typeof ROLE_ORDER)[number]);
       if (idx >= 0 && idx < bestIdx) {
         bestIdx = idx;
         bestCompanyId = m.company_id;

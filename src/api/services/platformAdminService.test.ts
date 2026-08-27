@@ -21,7 +21,7 @@ vi.mock('../insforge/client', () => ({
   }
 }));
 
-import { ensureMeAsSuperAdmin, isPlatformAdmin } from './platformAdminService';
+import { ensureMeAsSuperAdmin, getLoginRedirectPath, isPlatformAdmin } from './platformAdminService';
 
 function encodeBase64Url(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64url');
@@ -101,6 +101,33 @@ describe('platformAdminService', () => {
     const result = await ensureMeAsSuperAdmin();
 
     expect(result).toEqual({ status: 'compat_ignored' });
+  });
+
+  it('uses get_my_login_redirect RPC when available', async () => {
+    const token = createJwt(Date.now() + 60_000);
+    getCurrentSessionMock.mockResolvedValue({
+      data: {
+        session: {
+          accessToken: token,
+          user: { id: 'user-1' }
+        }
+      }
+    });
+    rpcMock.mockImplementation(async (name: string) => {
+      if (name === 'get_my_login_redirect') {
+        return {
+          data: { path: '/org/dashboard', organizationId: 'company-1' },
+          error: null
+        };
+      }
+      return { data: null, error: null };
+    });
+
+    await expect(getLoginRedirectPath('user-1')).resolves.toEqual({
+      path: '/org/dashboard',
+      organizationId: 'company-1'
+    });
+    expect(fromMock).not.toHaveBeenCalled();
   });
 
   it('returns false for isPlatformAdmin when platform_admins query is forbidden', async () => {
