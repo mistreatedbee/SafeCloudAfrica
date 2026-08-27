@@ -328,7 +328,7 @@ export function ReviewMeetingDetailPage() {
   }, [activeCompanyId, activeRole, memberships, user?.email, user?.id]);
 
   const canEdit = useMemo(() => {
-    if (isCreate) return ['admin', 'manager', 'supervisor'].includes(String(activeRole));
+    if (isCreate) return ['owner', 'admin', 'manager', 'supervisor'].includes(String(activeRole));
     if (!meetingData || !viewer) return false;
     return canEditReviewMeeting({ meeting: meetingData.meeting, items: meetingData.items, viewer });
   }, [activeRole, isCreate, meetingData, viewer]);

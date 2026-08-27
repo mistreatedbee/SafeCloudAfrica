@@ -19,6 +19,7 @@ import {
 import { listUserProfiles } from '../api/services/profilesService';
 import { toCsv, downloadTextFile } from '../utils/csv';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { useToast } from '../components/ui/ToastProvider';
 import { ClipboardListIcon } from 'lucide-react';
 import { toUserFacingError } from '../utils/userFacingMessage';
 
@@ -49,6 +50,7 @@ function shortDescription(text: string | null): string {
 }
 
 const STATUS_OPTIONS: ImprovementWorkflowStatus[] = [
+  'draft',
   'open',
   'in_progress',
   'awaiting_evidence',
@@ -59,14 +61,68 @@ const STATUS_OPTIONS: ImprovementWorkflowStatus[] = [
   'escalated'
 ];
 
+type StatusUpdateModalState = {
+  record: ImprovementRecord;
+  nextStatus: ImprovementWorkflowStatus;
+  comment: string;
+};
+
+function StatusUpdateModal(props: {
+  state: StatusUpdateModalState;
+  saving: boolean;
+  error: string | null;
+  onCommentChange: (comment: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { state } = props;
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={props.onCancel} aria-hidden />
+      <div className="relative w-full max-w-md bg-white rounded-2xl border border-surface-200 shadow-xl p-5 space-y-4">
+        <h3 className="text-lg font-semibold text-charcoal">Update status</h3>
+        <p className="text-sm text-charcoal-500">
+          Change <span className="font-semibold text-charcoal">{state.record.reference_number}</span> from{' '}
+          <span className="font-medium">{IMPROVEMENT_STATUS_LABELS[state.record.status]}</span> to{' '}
+          <span className="font-medium text-teal">{IMPROVEMENT_STATUS_LABELS[state.nextStatus]}</span>.
+        </p>
+        <label className="block text-sm">
+          <span className="block text-xs font-medium text-charcoal-500 mb-1">Comment (optional)</span>
+          <textarea
+            rows={3}
+            value={state.comment}
+            onChange={(e) => props.onCommentChange(e.target.value)}
+            placeholder="Add a note about this status change…"
+            className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+          />
+        </label>
+        {props.error && <p className="text-sm text-critical">{props.error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={props.onCancel} disabled={props.saving} className="px-4 py-2 rounded-lg border border-surface-300 text-sm text-charcoal disabled:opacity-50">
+            Cancel
+          </button>
+          <button type="button" onClick={props.onConfirm} disabled={props.saving} className="px-4 py-2 rounded-lg bg-teal text-white text-sm disabled:opacity-50">
+            {props.saving ? 'Updating…' : 'Confirm update'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ImprovementPage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
   const navigate = useNavigate();
+  const { showSuccess, showError } = useToast();
   const canEdit = roleCanEdit(activeRole ?? null);
   const canClose = roleCanClose(activeRole ?? null);
 
   const [refreshKey, setRefreshKey] = useState(0);
+  const [statusModal, setStatusModal] = useState<StatusUpdateModalState | null>(null);
+  const [statusModalError, setStatusModalError] = useState<string | null>(null);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [optimisticRecords, setOptimisticRecords] = useState<ImprovementRecord[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<'' | ImprovementWorkflowStatus>('');
   const [typeFilter, setTypeFilter] = useState<'' | ImprovementType>('');
   const [riskFilter, setRiskFilter] = useState('');
@@ -143,6 +199,12 @@ export function ImprovementPage() {
   );
 
   useEffect(() => {
+    setOptimisticRecords(records ?? []);
+  }, [records]);
+
+  const displayRecords = optimisticRecords ?? records ?? [];
+
+  useEffect(() => {
     if (!activeCompanyId) return;
     void runImprovementReminderSweep(activeCompanyId).catch(() => undefined);
   }, [activeCompanyId, refreshKey]);
@@ -157,40 +219,84 @@ export function ImprovementPage() {
 
   const uniqueDepartments = useMemo(() => {
     const values = new Set<string>();
-    (records ?? []).forEach((row) => {
+    displayRecords.forEach((row) => {
       if (row.department_site?.trim()) values.add(row.department_site.trim());
     });
     return [...values].sort((a, b) => a.localeCompare(b));
-  }, [records]);
+  }, [displayRecords]);
 
   const uniqueUsers = useMemo(() => {
     const ids = new Set<string>();
-    (records ?? []).forEach((row) => {
+    displayRecords.forEach((row) => {
       if (row.raised_by_user_id) ids.add(row.raised_by_user_id);
       if (row.responsible_user_id) ids.add(row.responsible_user_id);
     });
     return [...ids];
-  }, [records]);
+  }, [displayRecords]);
 
-  async function onChangeStatus(rec: ImprovementRecord, nextStatus: ImprovementWorkflowStatus) {
-    if (!activeCompanyId || !user?.id) return;
-    if (!canEdit) return;
-    if ((nextStatus === 'closed' || nextStatus === 'monitoring_required') && !canClose) return;
-    const comment = prompt('Optional status update comment:') ?? '';
+  function selectStatusValue(row: ImprovementRecord): ImprovementWorkflowStatus {
+    if (statusModal?.record.id === row.id) return statusModal.nextStatus;
+    return row.status;
+  }
+
+  function openStatusModal(row: ImprovementRecord, nextStatus: ImprovementWorkflowStatus) {
+    if (nextStatus === row.status) return;
+    if ((nextStatus === 'closed' || nextStatus === 'monitoring_required') && !canClose) {
+      showError('Only owner, admin, or manager roles can close or mark monitoring required.');
+      return;
+    }
+    setStatusModalError(null);
+    setStatusModal({ record: row, nextStatus, comment: '' });
+  }
+
+  function closeStatusModal() {
+    setStatusModal(null);
+    setStatusModalError(null);
+  }
+
+  async function confirmStatusUpdate() {
+    if (!statusModal || !activeCompanyId || !user?.id) return;
+    if (!canEdit) {
+      showError('You do not have permission to update improvement status.');
+      return;
+    }
+
+    const { record, nextStatus, comment } = statusModal;
+    setStatusSaving(true);
+    setStatusModalError(null);
+
+    const previousRecords = optimisticRecords ?? records ?? [];
+    const optimistic = previousRecords.map((r) =>
+      r.id === record.id ? { ...r, status: nextStatus, updated_at: new Date().toISOString() } : r
+    );
+    setOptimisticRecords(optimistic);
+
     try {
-      await updateImprovementStatus({
+      const updated = await updateImprovementStatus({
         companyId: activeCompanyId,
-        improvementId: rec.id,
+        improvementId: record.id,
         actorUserId: user.id as UUID,
         actorRole: activeRole ?? null,
         status: nextStatus,
         comment: comment.trim() || undefined
       });
+
+      setOptimisticRecords((current) =>
+        (current ?? []).map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
+      );
+
       setRefreshKey((v) => v + 1);
       await refresh();
       await refreshSummary();
+      closeStatusModal();
+      showSuccess(`Status updated to ${IMPROVEMENT_STATUS_LABELS[updated.status]}.`);
     } catch (err) {
-      alert(toUserFacingError(err, 'Unable to update improvement status.'));
+      setOptimisticRecords(previousRecords);
+      const message = toUserFacingError(err, 'Unable to update improvement status.');
+      setStatusModalError(message);
+      showError(message);
+    } finally {
+      setStatusSaving(false);
     }
   }
 
@@ -247,7 +353,7 @@ export function ImprovementPage() {
   }
 
   function exportCsv() {
-    const rows = (records ?? []).map((r) => ({
+    const rows = displayRecords.map((r) => ({
       reference_number: r.reference_number,
       type: IMPROVEMENT_TYPE_LABELS[r.improvement_type],
       description: shortDescription(r.description),
@@ -275,7 +381,7 @@ export function ImprovementPage() {
           <th>Reference</th><th>Type</th><th>Description</th><th>Risk</th><th>Department/Site</th><th>Status</th><th>Target</th>
         </tr></thead>
         <tbody>
-          ${(records ?? [])
+          ${displayRecords
             .map(
               (r) =>
                 `<tr><td>${r.reference_number}</td><td>${IMPROVEMENT_TYPE_LABELS[r.improvement_type]}</td><td>${shortDescription(
@@ -433,7 +539,7 @@ export function ImprovementPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-100">
-                {(records ?? []).map((row) => {
+                {displayRecords.map((row) => {
                   const overdue = isImprovementOverdue(row);
                   const raisedByName = profileNameByUser.get(row.raised_by_user_id) ?? row.raised_by_user_id.slice(0, 8);
                   const responsibleName = row.responsible_user_id
@@ -469,9 +575,10 @@ export function ImprovementPage() {
                           )}
                           {canEdit && (
                             <select
-                              value={row.status}
-                              onChange={(e) => void onChangeStatus(row, e.target.value as ImprovementWorkflowStatus)}
-                              className="px-2 py-1 rounded border border-surface-300 text-xs"
+                              value={selectStatusValue(row)}
+                              disabled={statusSaving && statusModal?.record.id === row.id}
+                              onChange={(e) => openStatusModal(row, e.target.value as ImprovementWorkflowStatus)}
+                              className="px-2 py-1 rounded border border-surface-300 text-xs disabled:opacity-50"
                             >
                               {STATUS_OPTIONS.map((statusValue) => (
                                 <option
@@ -501,7 +608,7 @@ export function ImprovementPage() {
                     </tr>
                   );
                 })}
-                {(records ?? []).length === 0 && (
+                {displayRecords.length === 0 && (
                   <ListEmptyState
                     tableColSpan={13}
                     icon={ClipboardListIcon}
@@ -519,6 +626,17 @@ export function ImprovementPage() {
             </table>
           )}
         </div>
+
+        {statusModal && (
+          <StatusUpdateModal
+            state={statusModal}
+            saving={statusSaving}
+            error={statusModalError}
+            onCommentChange={(comment) => setStatusModal((current) => (current ? { ...current, comment } : current))}
+            onCancel={closeStatusModal}
+            onConfirm={() => void confirmStatusUpdate()}
+          />
+        )}
       </div>
     </Layout>
   );

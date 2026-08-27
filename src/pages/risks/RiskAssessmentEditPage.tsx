@@ -259,7 +259,7 @@ export function RiskAssessmentEditPage() {
     const raw = err instanceof Error ? err.message : String(err ?? '');
     const msg = raw.toLowerCase();
     if (msg.includes('access denied')) return 'You do not have permission to save this risk assessment.';
-    if (msg.includes('closed')) return 'This risk assessment is closed and cannot be edited.';
+    if (msg.includes('archived')) return 'This risk assessment is archived and cannot be edited.';
     if (msg.includes('network')) return 'Network error. Please check your connection and try again.';
     if (msg.includes('duplicate') || msg.includes('unique')) return 'A record with these details already exists.';
     return 'Failed to save risk assessment. Please try again.';
@@ -353,7 +353,7 @@ export function RiskAssessmentEditPage() {
     }
   }
 
-  const readOnly = status === 'closed';
+  const readOnly = status === 'archived';
   const hasDirtyDraft = useMemo(() => {
     if ((header.title ?? '').trim()) return true;
     if ((docUrl ?? '').trim()) return true;
@@ -443,7 +443,7 @@ export function RiskAssessmentEditPage() {
         <div>
           <Link to={`/risk-assessments/${id}`} className="text-sm text-charcoal-500 hover:underline">Back to details</Link>
           <h1 className="text-2xl font-bold text-charcoal">Edit {typeLabel(type)}</h1>
-          {readOnly && <p className="text-sm text-critical mt-1">This assessment is closed and read-only.</p>}
+          {readOnly && <p className="text-sm text-critical mt-1">This assessment is archived and read-only.</p>}
         </div>
 
         <div className="bg-white border border-surface-300 rounded-xl p-4 shadow-card space-y-4">
@@ -481,7 +481,7 @@ export function RiskAssessmentEditPage() {
               </span>
             </label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Google Doc URL</span><input disabled={readOnly} value={docUrl} onChange={(e) => setDocUrl(e.target.value)} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
-            <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Status</span><select disabled={readOnly} value={status} onChange={(e) => setStatus(e.target.value as RiskAssessmentStatus)} className="w-full px-3 py-2 border border-surface-300 rounded-lg"><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="closed">Closed</option></select></label>
+            <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Status</span><select disabled={readOnly} value={status} onChange={(e) => setStatus(e.target.value as RiskAssessmentStatus)} className="w-full px-3 py-2 border border-surface-300 rounded-lg"><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="active">Active</option></select></label>
           </div>
 
           {type === 'baseline' && !readOnly && (

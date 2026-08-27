@@ -63,7 +63,7 @@ export function RiskReviewsPage() {
 
   const filtered = assessments.filter((a) => {
     if (!a.next_review_date) return false;
-    if (a.status === 'closed') return false;
+    if (a.status === 'archived') return false;
     if (filter === 'all') return true;
     const due = new Date(a.next_review_date);
     const today = new Date();

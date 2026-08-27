@@ -41,11 +41,19 @@ const TYPE_LABEL: Record<RiskAssessmentType, string> = {
 const STATUS_LABEL: Record<RiskAssessmentStatus, string> = {
   draft: 'Draft',
   submitted: 'Submitted',
-  closed: 'Closed'
+  active: 'Active',
+  archived: 'Archived'
 };
 
 function StatusPill({ status }: { status: RiskAssessmentStatus }) {
-  const cls = status === 'closed' ? 'bg-gray-200 text-gray-700' : status === 'submitted' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700';
+  const cls =
+    status === 'archived'
+      ? 'bg-gray-200 text-gray-700'
+      : status === 'active'
+        ? 'bg-emerald-100 text-emerald-800'
+        : status === 'submitted'
+          ? 'bg-blue-100 text-blue-700'
+          : 'bg-amber-100 text-amber-700';
   return <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${cls}`}>{STATUS_LABEL[status]}</span>;
 }
 
@@ -106,7 +114,8 @@ export function RisksPage() {
         companyId: activeCompanyId as UUID,
         templateId,
         actorUserId: user.id as UUID,
-        actorRole: activeRole
+        actorRole: activeRole,
+        scope
       });
       navigate(`/risk-assessments/${created.assessment.id}`);
     } catch (e) {

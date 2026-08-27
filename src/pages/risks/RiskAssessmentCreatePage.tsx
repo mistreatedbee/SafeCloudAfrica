@@ -365,7 +365,7 @@ export function RiskAssessmentCreatePage() {
     const raw = err instanceof Error ? err.message : String(err ?? '');
     const msg = raw.toLowerCase();
     if (msg.includes('access denied')) return 'You do not have permission to save this risk assessment.';
-    if (msg.includes('closed')) return 'This risk assessment is closed and cannot be edited.';
+    if (msg.includes('archived')) return 'This risk assessment is archived and cannot be edited.';
     if (msg.includes('network')) return 'Network error. Please check your connection and try again.';
     if (msg.includes('duplicate') || msg.includes('unique')) return 'A record with these details already exists.';
     return 'Failed to save risk assessment. Please try again.';

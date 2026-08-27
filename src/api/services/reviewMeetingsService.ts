@@ -103,7 +103,7 @@ function hasResponsibleAssignment(items: ReviewMeetingItem[], userId: UUID): boo
 }
 
 function canManageReviewMeetings(role: CompanyRole): boolean {
-  return role === 'admin' || role === 'manager' || role === 'supervisor';
+  return role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor';
 }
 
 export function canSignReviewMeeting(params: {
@@ -170,7 +170,7 @@ export function canEditReviewMeeting(params: {
 }): boolean {
   const { meeting, items, viewer } = params;
   if (meeting.is_locked) return false;
-  if (viewer.role === 'admin' || viewer.role === 'manager') return true;
+  if (viewer.role === 'owner' || viewer.role === 'admin' || viewer.role === 'manager') return true;
   if (viewer.role === 'supervisor') {
     return hasResponsibleAssignment(items, viewer.userId) || meeting.created_by_user_id === viewer.userId;
   }
@@ -544,7 +544,7 @@ export async function emailReviewMeetingReportWithAudit(input: {
 
 export async function createReviewMeeting(input: ReviewMeetingInput): Promise<ReviewMeetingWithItems> {
   if (!canManageReviewMeetings(input.actorRole)) {
-    throw new Error('Only admin/manager/supervisor can create review meetings.');
+    throw new Error('Only owner/admin/manager/supervisor can create review meetings.');
   }
   if (!input.items.length) throw new Error('At least one review item is required.');
   const payload = {
@@ -618,7 +618,7 @@ export async function createReviewMeeting(input: ReviewMeetingInput): Promise<Re
 
 export async function updateReviewMeeting(input: ReviewMeetingInput & { meetingId: UUID }): Promise<ReviewMeetingWithItems> {
   if (!canManageReviewMeetings(input.actorRole)) {
-    throw new Error('Only admin/manager/supervisor can update review meetings.');
+    throw new Error('Only owner/admin/manager/supervisor can update review meetings.');
   }
   const existing = await getReviewMeeting(input.companyId, input.meetingId);
   if (!existing) throw new Error('Review meeting not found.');

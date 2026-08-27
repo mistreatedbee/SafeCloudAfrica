@@ -383,7 +383,7 @@ async function collectDomainMetrics(companyId: UUID): Promise<Record<ComplianceD
   for (const risk of risks) {
     metricAccumulators.risks.totalCount += 1;
     const overdue = Boolean(risk.review_due_at) && String(risk.review_due_at) < todayIso;
-    const compliant = ['approved', 'closed'].includes(String(risk.status)) && Number(risk.high_risks ?? 0) === 0;
+    const compliant = ['approved', 'active', 'closed'].includes(String(risk.status)) && Number(risk.high_risks ?? 0) === 0;
     if (compliant) metricAccumulators.risks.compliantCount += 1;
     if (overdue) metricAccumulators.risks.overdueCount += 1;
     if (Number(risk.high_risks ?? 0) > 0 || !compliant) metricAccumulators.risks.attentionCount += 1;

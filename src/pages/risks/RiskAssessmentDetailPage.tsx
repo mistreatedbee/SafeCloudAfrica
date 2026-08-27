@@ -7,6 +7,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import type { UUID } from '../../api/models/core';
 import {
   addRiskAssessmentSignoff,
+  archiveRiskAssessment,
   createRiskAssessmentQna,
   createRiskAssessmentTemplate,
   deleteRiskAssessment,
@@ -153,6 +154,23 @@ export function RiskAssessmentDetailPage() {
     }
   }
 
+  async function onArchive() {
+    if (!activeCompanyId || !user?.id || !assessment) return;
+    if (!window.confirm('Archive this risk assessment? It will become read-only.')) return;
+    try {
+      await archiveRiskAssessment({
+        companyId: activeCompanyId as UUID,
+        assessmentId: assessment.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole,
+        scope
+      });
+      await load();
+    } catch (e) {
+      setError(toUserFacingError(e, 'Failed to archive assessment'));
+    }
+  }
+
   async function onSaveTemplate() {
     if (!activeCompanyId || !user?.id || !assessment) return;
     const name = window.prompt('Template name', `${assessment.title} Template`);
@@ -170,7 +188,16 @@ export function RiskAssessmentDetailPage() {
           reference: assessment.reference,
           doc_url: assessment.doc_url
         },
-        rowsJson: rows.map((r) => r.json_data)
+        rowsJson: rows.map((r) => ({
+          ...r.json_data,
+          severity: r.severity,
+          likelihood: r.likelihood,
+          residual_severity: r.residual_severity,
+          residual_likelihood: r.residual_likelihood,
+          responsible_person: r.responsible_person,
+          target_date: r.target_date,
+          completion_date: r.completion_date
+        }))
       });
       alert('Template saved.');
     } catch (e) {
@@ -277,7 +304,10 @@ export function RiskAssessmentDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             {assessment.doc_url && <a href={assessment.doc_url} target="_blank" rel="noreferrer" className="px-3 py-2 rounded border border-charcoal-300 text-sm">Open Google Doc</a>}
-            {canEdit && assessment.status !== 'closed' && <button onClick={() => navigate(`/risk-assessments/${assessment.id}/edit`)} className="px-3 py-2 rounded bg-teal text-white text-sm">Edit</button>}
+            {canEdit && assessment.status !== 'archived' && <button onClick={() => navigate(`/risk-assessments/${assessment.id}/edit`)} className="px-3 py-2 rounded bg-teal text-white text-sm">Edit</button>}
+            {canEdit && assessment.status !== 'archived' && (
+              <button onClick={() => void onArchive()} className="px-3 py-2 rounded border border-charcoal-300 text-sm">Archive</button>
+            )}
             <button onClick={() => void onSaveTemplate()} className="px-3 py-2 rounded border border-teal text-teal text-sm">Save as Template</button>
             {canDelete && <button onClick={() => void onDelete()} className="px-3 py-2 rounded border border-critical text-critical text-sm">Delete</button>}
           </div>
@@ -470,7 +500,7 @@ export function RiskAssessmentDetailPage() {
           {assessment.type === 'prework' && (
             <div className="bg-white border border-surface-300 rounded-xl p-4 shadow-card space-y-3">
               <h2 className="font-semibold text-charcoal">Pre-Work Sign-offs</h2>
-              {assessment.status !== 'closed' && (
+              {assessment.status !== 'archived' && (
                 <div className="space-y-2">
                   <input value={employeeName} onChange={(e) => setEmployeeName(e.target.value)} placeholder="Employee name" className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm" />
                   <input value={employeeSignature} onChange={(e) => setEmployeeSignature(e.target.value)} placeholder="Signature (typed initials or token)" className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm" />
@@ -486,7 +516,7 @@ export function RiskAssessmentDetailPage() {
                     {s.supervisor_signed_at ? (
                       <p className="text-xs text-success">Supervisor signed at {new Date(s.supervisor_signed_at).toLocaleString()}</p>
                     ) : (
-                      canSupervisorSign && assessment.status !== 'closed' && (
+                      canSupervisorSign && assessment.status !== 'archived' && (
                         <button onClick={() => void onSupervisorSignoff(s.id)} className="mt-1 px-2 py-1 rounded border border-teal text-teal text-xs">Supervisor Sign-off</button>
                       )
                     )}
@@ -495,8 +525,8 @@ export function RiskAssessmentDetailPage() {
                 {signoffs.length === 0 && <p className="text-sm text-charcoal-500">No employee signatures yet.</p>}
               </div>
 
-              {canSupervisorSign && assessment.status !== 'closed' && (
-                <button onClick={() => void onSupervisorSignoff()} className="px-3 py-2 rounded border border-charcoal-300 text-sm">Close Assessment (Supervisor)</button>
+              {canSupervisorSign && assessment.status !== 'archived' && (
+                <button onClick={() => void onSupervisorSignoff()} className="px-3 py-2 rounded border border-charcoal-300 text-sm">Approve as Active (Supervisor)</button>
               )}
             </div>
           )}

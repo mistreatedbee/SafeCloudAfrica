@@ -6,7 +6,7 @@ import { createActivityLog } from './activityLogService';
 import { mapTypeToLegacyAssessmentType } from '../../utils/riskAssessmentLegacy';
 
 export type RiskAssessmentType = 'baseline' | 'task' | 'critical' | 'prework';
-export type RiskAssessmentStatus = 'draft' | 'submitted' | 'closed';
+export type RiskAssessmentStatus = 'draft' | 'submitted' | 'active' | 'archived';
 export type RiskIndex = 'Low' | 'Medium' | 'High';
 
 export type MembershipScope = {
@@ -112,10 +112,20 @@ function normalizeType(raw: unknown): RiskAssessmentType {
   return 'task';
 }
 
+function generateAssessmentNumber(type: RiskAssessmentType): string {
+  const prefix =
+    type === 'baseline' ? 'RA-BL' : type === 'task' ? 'RA-TA' : type === 'critical' ? 'RA-CT' : 'RA-PW';
+  const date = new Date();
+  const yyyymm = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}`;
+  const random = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+  return `${prefix}-${yyyymm}-${random}`;
+}
+
 function normalizeStatus(raw: unknown): RiskAssessmentStatus {
   const value = String(raw ?? '').trim().toLowerCase();
-  if (value === 'closed' || value === 'archived') return 'closed';
-  if (value === 'submitted' || value === 'approved' || value === 'reviewed' || value === 'under_review') return 'submitted';
+  if (value === 'archived') return 'archived';
+  if (value === 'active' || value === 'closed' || value === 'approved' || value === 'in-progress') return 'active';
+  if (value === 'submitted' || value === 'reviewed' || value === 'under_review') return 'submitted';
   return 'draft';
 }
 
@@ -214,9 +224,13 @@ function mapAssessment(row: any): RiskAssessment {
 }
 
 function mapStatusToLegacy(status: RiskAssessmentStatus): string {
-  if (status === 'submitted') return 'approved';
-  if (status === 'closed') return 'closed';
+  if (status === 'archived') return 'archived';
+  if (status === 'active' || status === 'submitted') return 'approved';
   return 'draft';
+}
+
+function isReadOnlyStatus(status: RiskAssessmentStatus): boolean {
+  return status === 'archived';
 }
 
 export function computeRR(severity?: number | null, likelihood?: number | null): number | null {
@@ -338,6 +352,7 @@ export async function createRiskAssessment(input: {
     .from('risk_assessments')
     .insert({
       company_id: input.companyId,
+      assessment_number: generateAssessmentNumber(input.type),
       type: input.type,
       assessment_type: mapTypeToLegacyAssessmentType(input.type),
       is_critical: input.type === 'critical',
@@ -436,6 +451,9 @@ export async function updateRiskAssessment(input: {
 
   if (!canWriteAssessment(current, { userId: input.actorUserId, role: input.actorRole, scope: input.scope })) {
     throw new Error('Access denied');
+  }
+  if (isReadOnlyStatus(current.status)) {
+    throw new Error('Assessment is archived and cannot be edited.');
   }
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -587,7 +605,7 @@ export async function replaceRiskAssessmentRows(input: {
     scope: input.scope,
     logView: false
   });
-  if (current.status === 'closed') throw new Error('Assessment is closed and cannot be edited.');
+  if (isReadOnlyStatus(current.status)) throw new Error('Assessment is archived and cannot be edited.');
   if (!canWriteAssessment(current, { userId: input.actorUserId, role: input.actorRole, scope: input.scope })) {
     throw new Error('Access denied');
   }
@@ -797,7 +815,7 @@ export async function supervisorSignoffRiskAssessment(input: {
     assessmentId: input.assessmentId,
     actorUserId: input.actorUserId,
     actorRole: 'supervisor',
-    patch: { status: 'closed' }
+    patch: { status: 'active' }
   });
 
   await createActivityLog({
@@ -814,14 +832,14 @@ export async function supervisorSignoffRiskAssessment(input: {
       companyId: input.companyId,
       eventKey: `risk-assessment-supervisor-signoff:${input.assessmentId}`,
       eventType: 'risk_assessment_supervisor_signoff',
-      title: 'Risk assessment approved and closed',
-      message: `"${assessment.title}" was approved by a supervisor and closed.`,
+      title: 'Risk assessment approved',
+      message: `"${assessment.title}" was approved by a supervisor and is now active.`,
       recipientUserIds: [assessment.created_by_user_id],
       emailTemplateKey: 'risk_assessment',
       emailVariables: {
         title: assessment.title,
         reference: assessment.reference ?? input.assessmentId,
-        status: 'Supervisor Approved & Closed',
+        status: 'Active',
         dueDate: assessment.next_review_date ?? undefined
       },
       actionUrl: '/dashboard/safety/risk-assessments',
@@ -900,11 +918,60 @@ export async function deleteRiskAssessmentTemplate(input: {
   });
 }
 
+export async function archiveRiskAssessment(input: {
+  companyId: UUID;
+  assessmentId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+  scope?: MembershipScope | null;
+}): Promise<RiskAssessment> {
+  const current = await getRiskAssessment({
+    companyId: input.companyId,
+    assessmentId: input.assessmentId,
+    actorUserId: input.actorUserId,
+    actorRole: input.actorRole,
+    scope: input.scope,
+    logView: false
+  });
+
+  if (!canWriteAssessment(current, { userId: input.actorUserId, role: input.actorRole, scope: input.scope })) {
+    throw new Error('Access denied');
+  }
+  if (current.status === 'archived') return current;
+
+  const { data, error } = await insforge.database
+    .from('risk_assessments')
+    .update({
+      status_v2: 'archived',
+      status: mapStatusToLegacy('archived'),
+      archived_at: new Date().toISOString(),
+      archived_by_user_id: input.actorUserId,
+      updated_at: new Date().toISOString()
+    })
+    .eq('company_id', input.companyId)
+    .eq('id', input.assessmentId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to archive risk assessment');
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'risk_assessments.archive',
+    entityType: 'risk_assessment',
+    entityId: input.assessmentId
+  });
+
+  return mapAssessment(data);
+}
+
 export async function createRiskAssessmentFromTemplate(input: {
   companyId: UUID;
   templateId: UUID;
   actorUserId: UUID;
   actorRole: CompanyRole | null;
+  scope?: MembershipScope | null;
   title?: string;
 }): Promise<{ assessment: RiskAssessment; rows: RiskAssessmentRow[] }> {
   const { data, error } = await insforge.database
@@ -926,7 +993,9 @@ export async function createRiskAssessmentFromTemplate(input: {
     heading: (template.header_json?.heading as string | undefined) ?? null,
     area: (template.header_json?.area as string | undefined) ?? null,
     activity: (template.header_json?.activity as string | undefined) ?? null,
-    reference: (template.header_json?.reference as string | undefined) ?? null,
+    reference: null,
+    departmentId: input.scope?.departmentId ?? null,
+    siteId: input.scope?.siteId ?? null,
     status: 'draft',
     docUrl: (template.header_json?.doc_url as string | undefined) ?? null
   });
@@ -936,17 +1005,22 @@ export async function createRiskAssessmentFromTemplate(input: {
     assessmentId: assessment.id,
     actorUserId: input.actorUserId,
     actorRole: input.actorRole,
-    rows: (template.rows_json ?? []).map((r, idx) => ({
-      row_index: idx,
-      json_data: r,
-      severity: typeof r.severity === 'number' ? r.severity : null,
-      likelihood: typeof r.likelihood === 'number' ? r.likelihood : null,
-      residual_severity: typeof r.residual_severity === 'number' ? r.residual_severity : null,
-      residual_likelihood: typeof r.residual_likelihood === 'number' ? r.residual_likelihood : null,
-      responsible_person: (r.responsible_person as string | undefined) ?? null,
-      target_date: (r.target_date as string | undefined) ?? null,
-      completion_date: (r.completion_date as string | undefined) ?? null
-    }))
+    scope: input.scope,
+    rows: (template.rows_json ?? []).map((r, idx) => {
+      const row = r as Record<string, unknown>;
+      const jsonData = (row.json_data as Record<string, unknown> | undefined) ?? row;
+      return {
+        row_index: idx,
+        json_data: jsonData,
+        severity: typeof row.severity === 'number' ? row.severity : null,
+        likelihood: typeof row.likelihood === 'number' ? row.likelihood : null,
+        residual_severity: typeof row.residual_severity === 'number' ? row.residual_severity : null,
+        residual_likelihood: typeof row.residual_likelihood === 'number' ? row.residual_likelihood : null,
+        responsible_person: (row.responsible_person as string | undefined) ?? null,
+        target_date: (row.target_date as string | undefined) ?? null,
+        completion_date: (row.completion_date as string | undefined) ?? null
+      };
+    })
   });
 
   return { assessment, rows };

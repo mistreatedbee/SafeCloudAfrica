@@ -66,7 +66,8 @@ export function RiskAssessmentDashboardPage() {
   const byStatus = {
     draft: assessments.filter((a) => a.status === 'draft'),
     submitted: assessments.filter((a) => a.status === 'submitted'),
-    closed: assessments.filter((a) => a.status === 'closed')
+    active: assessments.filter((a) => a.status === 'active'),
+    archived: assessments.filter((a) => a.status === 'archived')
   };
   const byType = assessments.reduce(
     (acc, a) => {
@@ -77,7 +78,7 @@ export function RiskAssessmentDashboardPage() {
     {} as Record<string, number>
   );
   const reviewDue = assessments
-    .filter((a) => a.status !== 'closed' && a.next_review_date && a.next_review_date <= in30DaysKey)
+    .filter((a) => a.status !== 'archived' && a.next_review_date && a.next_review_date <= in30DaysKey)
     .sort((left, right) => String(left.next_review_date ?? '').localeCompare(String(right.next_review_date ?? '')));
   const overdueReview = reviewDue.filter((a) => (a.next_review_date ?? '') < todayKey);
   const dueWithin7Days = reviewDue.filter((a) => {
@@ -148,8 +149,8 @@ export function RiskAssessmentDashboardPage() {
             to="/risk-assessments"
             className="bg-white rounded-lg shadow border border-blue-200 p-4 hover:border-blue-400 transition"
           >
-            <div className="flex items-center gap-2 text-blue-700 text-sm font-medium mb-1">Closed</div>
-            <div className="text-2xl font-bold text-blue-800">{byStatus.closed.length}</div>
+            <div className="flex items-center gap-2 text-emerald-700 text-sm font-medium mb-1">Active</div>
+            <div className="text-2xl font-bold text-emerald-800">{byStatus.active.length}</div>
           </Link>
           <Link
             to="/risk-assessments"
