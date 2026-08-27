@@ -17,6 +17,7 @@ import {
   updateImprovementStatus
 } from '../api/services/improvementService';
 import { listUserProfiles } from '../api/services/profilesService';
+import { buildProfileLabelMap, resolveUserLabel } from '../utils/userDisplayNames';
 import { toCsv, downloadTextFile } from '../utils/csv';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
 import { useToast } from '../components/ui/ToastProvider';
@@ -209,13 +210,7 @@ export function ImprovementPage() {
     void runImprovementReminderSweep(activeCompanyId).catch(() => undefined);
   }, [activeCompanyId, refreshKey]);
 
-  const profileNameByUser = useMemo(() => {
-    const map = new Map<string, string>();
-    (profiles ?? []).forEach((profile) => {
-      map.set(profile.user_id, profile.full_name || profile.email || profile.user_id.slice(0, 8));
-    });
-    return map;
-  }, [profiles]);
+  const profileNameByUser = useMemo(() => buildProfileLabelMap(profiles ?? []), [profiles]);
 
   const uniqueDepartments = useMemo(() => {
     const values = new Set<string>();
@@ -360,7 +355,7 @@ export function ImprovementPage() {
       risk_level: r.risk_level,
       department_site: r.department_site ?? '',
       raised_by: profileNameByUser.get(r.raised_by_user_id) ?? r.raised_by_user_id,
-      responsible_person: r.responsible_user_id ? profileNameByUser.get(r.responsible_user_id) ?? r.responsible_user_id : '',
+      responsible_person: r.responsible_user_id ? resolveUserLabel(profileNameByUser, r.responsible_user_id) : '',
       target_date: r.target_date ?? '',
       status: IMPROVEMENT_STATUS_LABELS[r.status],
       date_raised: r.date_raised,
@@ -481,7 +476,7 @@ export function ImprovementPage() {
               <option value="">All raised-by users</option>
               {uniqueUsers.map((id) => (
                 <option key={`raised-${id}`} value={id}>
-                  {profileNameByUser.get(id) ?? id.slice(0, 8)}
+                  {profileNameByUser.get(id) ?? resolveUserLabel(profileNameByUser, id)}
                 </option>
               ))}
             </select>
@@ -489,7 +484,7 @@ export function ImprovementPage() {
               <option value="">All responsible users</option>
               {uniqueUsers.map((id) => (
                 <option key={`owner-${id}`} value={id}>
-                  {profileNameByUser.get(id) ?? id.slice(0, 8)}
+                  {profileNameByUser.get(id) ?? resolveUserLabel(profileNameByUser, id)}
                 </option>
               ))}
             </select>
@@ -541,9 +536,10 @@ export function ImprovementPage() {
               <tbody className="divide-y divide-surface-100">
                 {displayRecords.map((row) => {
                   const overdue = isImprovementOverdue(row);
-                  const raisedByName = profileNameByUser.get(row.raised_by_user_id) ?? row.raised_by_user_id.slice(0, 8);
+                  const raisedByName = resolveUserLabel(profileNameByUser, row.raised_by_user_id);
                   const responsibleName = row.responsible_user_id
-                    ? profileNameByUser.get(row.responsible_user_id) ?? row.responsible_user_id.slice(0, 8)
+                    ? resolveUserLabel(profileNameByUser, row.responsible_user_id)
+                    : '—';
                     : '-';
 
                   return (

@@ -4,6 +4,8 @@ import {
   type EmailTemplateVariables,
   renderEmailTemplate
 } from './emailTemplates';
+import { resolveEmailVariablesUserNames } from './userDisplayNameService';
+import type { UUID } from '../models/core';
 
 export interface EmailTemplate {
   type: 'overdue_task' | 'incident_created' | 'approval_request' | 'document_review' | 'training_expiry' | EmailTemplateKey;
@@ -60,10 +62,17 @@ export async function sendTemplatedNotificationEmail(input: {
   actionUrl?: string | null;
   actionLabel?: string | null;
   meta?: Record<string, unknown>;
+  companyId?: UUID;
 }): Promise<void> {
+  const companyId = input.companyId ?? (input.meta?.companyId as UUID | undefined);
+  const variables =
+    companyId && input.variables
+      ? await resolveEmailVariablesUserNames(companyId, input.variables)
+      : input.variables;
+
   const rendered = renderEmailTemplate({
     templateKey: input.templateKey,
-    variables: input.variables,
+    variables,
     actionUrl: input.actionUrl,
     actionLabel: input.actionLabel
   });

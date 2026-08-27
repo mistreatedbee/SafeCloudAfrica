@@ -1,5 +1,6 @@
 import { AlertCircleIcon, CheckCircleIcon } from 'lucide-react';
 import type { InspectionRun, InspectionRunItem, UserProfile } from '../../api/models/entities';
+import { formatUserProfileLabel } from '../../utils/userDisplayNames';
 
 export type InspectionChecklistItemHandlers = {
   onUpdateItem: (item: InspectionRunItem, patch: Record<string, unknown>) => void | Promise<void>;
@@ -123,7 +124,7 @@ export function InspectionChecklistItemTableRow(props: InspectionChecklistItemPr
           <option value="">Responsible</option>
           {userProfiles.map((p) => (
             <option key={p.user_id} value={p.user_id}>
-              {p.full_name || p.email || p.user_id}
+              {formatUserProfileLabel(p)}
             </option>
           ))}
         </select>
@@ -344,7 +345,7 @@ export function InspectionChecklistItemCard(props: InspectionChecklistItemProps)
             <option value="">Select person</option>
             {userProfiles.map((p) => (
               <option key={p.user_id} value={p.user_id}>
-                {p.full_name || p.email || p.user_id}
+                {formatUserProfileLabel(p)}
               </option>
             ))}
           </select>

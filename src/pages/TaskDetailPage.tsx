@@ -49,6 +49,8 @@ import { TASK_CATEGORY_LABELS, TASK_TIME_STATUS_LABELS, TASK_SOURCE_ENTITY_LABEL
 import type { Task, Approval, ActivityLog, EvidenceAttachment, TaskTimeLog, UUID } from '../api/models/entities';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../api/services/documentsStorageService';
 import { toUserFacingError } from '../utils/userFacingMessage';
+import { listUserProfiles } from '../api/services/profilesService';
+import { buildProfileLabelMap, resolveUserLabel } from '../utils/userDisplayNames';
 import {
   canApproveOrRejectTask,
   canCloseTask,
@@ -124,6 +126,12 @@ export function TaskDetailPage() {
     async () => (activeCompanyId && taskId ? getTaskById(activeCompanyId, taskId as UUID) : null),
     [activeCompanyId, taskId, refreshKey]
   );
+
+  const { data: profiles } = useAsync(
+    async () => (activeCompanyId ? listUserProfiles(activeCompanyId) : []),
+    [activeCompanyId]
+  );
+  const profileNameByUser = useMemo(() => buildProfileLabelMap(profiles ?? []), [profiles]);
 
   const { data: activityLogs } = useAsync<ActivityLog[]>(
     async () =>
@@ -455,7 +463,7 @@ export function TaskDetailPage() {
           </span>
           <span className="flex items-center gap-1.5">
             <UserIcon className="w-4 h-4" />
-            Assignee: {task.assignee_user_id ? `User ${shortId(task.assignee_user_id)}` : 'Unassigned'}
+            Assignee: {task.assignee_user_id ? resolveUserLabel(profileNameByUser, task.assignee_user_id) : 'Unassigned'}
           </span>
           <span className={`flex items-center gap-1.5 ${priorityColors[task.priority as string] ?? ''}`}>
             <FlagIcon className="w-4 h-4" />
@@ -578,7 +586,7 @@ export function TaskDetailPage() {
               <li key={log.id} className="flex gap-2 text-sm">
                 <span className="text-charcoal-400 shrink-0">{formatDateTime(log.created_at)}</span>
                 <span className="text-charcoal-600">
-                  User {shortId(log.actor_user_id)} — {log.action}
+                  {resolveUserLabel(profileNameByUser, log.actor_user_id)} — {log.action}
                 </span>
               </li>
             ))}
@@ -612,7 +620,7 @@ export function TaskDetailPage() {
                   <div className="min-w-0">
                     <p className="text-sm text-charcoal-700 truncate">{e.title ?? (e.storage_key.split('/').pop() ?? e.storage_key)}</p>
                     <p className="text-xs text-charcoal-400 mt-0.5">
-                      {formatDateTime(e.created_at)} â€¢ Uploaded by User {shortId(e.created_by_user_id)}
+                      {formatDateTime(e.created_at)} • Uploaded by {resolveUserLabel(profileNameByUser, e.created_by_user_id)}
                     </p>
                   </div>
                 </div>
@@ -678,7 +686,7 @@ export function TaskDetailPage() {
           <div className="space-y-2 mb-3">
             {comments.slice(0, 20).map((c, i) => (
               <div key={i} className="text-sm pl-3 border-l-2 border-surface-200">
-                <span className="text-charcoal-400">{formatDateTime(c.timestamp)} • User {shortId(c.user_id)}</span>
+                <span className="text-charcoal-400">{formatDateTime(c.timestamp)} • {resolveUserLabel(profileNameByUser, c.user_id)}</span>
                 <p className="text-charcoal-700 mt-0.5">{c.text}</p>
               </div>
             ))}

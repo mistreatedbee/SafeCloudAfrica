@@ -222,6 +222,12 @@ async function notifyImprovementTransition(input: {
 }): Promise<void> {
   const recipientUserIds = Array.from(new Set(input.userIds.filter(Boolean).map(String))) as UUID[];
   if (recipientUserIds.length === 0) return;
+
+  const { resolveUserDisplayName } = await import('./userDisplayNameService');
+  const responsibleName = input.record.responsible_user_id
+    ? await resolveUserDisplayName(input.companyId, input.record.responsible_user_id)
+    : '';
+
   const { notifyRelevantUsers } = await import('./notificationEventsService');
   await notifyRelevantUsers({
     companyId: input.companyId,
@@ -235,7 +241,7 @@ async function notifyImprovementTransition(input: {
       reference: input.record.reference_number,
       status: input.statusLabel ?? IMPROVEMENT_STATUS_LABELS[input.record.status],
       severity: input.record.risk_level,
-      owner: input.record.responsible_user_id ?? ''
+      owner: responsibleName
     },
     actionUrl: '/dashboard/management/improvements',
     metadata: { itemType: 'improvement', itemId: input.record.id }

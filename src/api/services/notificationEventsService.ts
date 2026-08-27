@@ -4,6 +4,7 @@ import { getErrorMessage } from '../insforge/errors';
 import { createNotification } from './notificationsService';
 import { sendEmail, sendTemplatedNotificationEmail } from './emailService';
 import type { EmailTemplateKey, EmailTemplateVariables } from './emailTemplates';
+import { resolveEmailVariablesUserNames } from './userDisplayNameService';
 
 export type NotificationEventChannel = 'in_app' | 'email';
 
@@ -151,14 +152,15 @@ export async function notifyRelevantUsers(input: {
             return;
           }
           if (input.emailTemplateKey) {
+            const resolvedVariables = await resolveEmailVariablesUserNames(input.companyId, {
+              title: input.title,
+              status: input.message,
+              ...(input.emailVariables ?? {})
+            });
             await sendTemplatedNotificationEmail({
               to: email,
               templateKey: input.emailTemplateKey,
-              variables: {
-                title: input.title,
-                status: input.message,
-                ...(input.emailVariables ?? {})
-              },
+              variables: resolvedVariables,
               actionUrl: input.actionUrl,
               actionLabel: input.actionLabel,
               meta: input.metadata

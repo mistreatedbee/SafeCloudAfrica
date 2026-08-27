@@ -53,6 +53,8 @@ export async function createImprovementAction(input: {
 
   if (input.ownerUserId && input.ownerUserId !== input.createdByUserId) {
     const { notifyRelevantUsers } = await import('./notificationEventsService');
+    const { resolveUserDisplayName } = await import('./userDisplayNameService');
+    const ownerName = await resolveUserDisplayName(input.companyId, input.ownerUserId);
     await notifyRelevantUsers({
       companyId: input.companyId,
       eventKey: `improvement-action-created:${(data as any).id}`,
@@ -64,7 +66,7 @@ export async function createImprovementAction(input: {
       emailVariables: {
         title: input.title,
         status: input.status ?? 'Planned',
-        owner: input.ownerUserId,
+        owner: ownerName,
         dueDate: input.targetDate ?? undefined
       },
       actionUrl: '/dashboard/management/improvements',

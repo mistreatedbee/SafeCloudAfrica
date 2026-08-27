@@ -459,6 +459,7 @@ export function TasksPage() {
     try {
       await exportCapaListPdf({
         capas: filteredCapas,
+        companyId: activeCompanyId ?? undefined,
         companyName: organisationName,
         generatedBy: fullName,
         logoUrl

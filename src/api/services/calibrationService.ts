@@ -712,7 +712,7 @@ async function notifyUsers(input: {
           owner: input.emailTemplateVariables?.owner
         },
         actionUrl: '/dashboard/operations/calibration',
-        meta: input.metadata
+        meta: { ...(input.metadata ?? {}), companyId: input.companyId }
       });
     }
   } catch (err) {

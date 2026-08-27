@@ -1,6 +1,9 @@
 import React from 'react';
 import { PlusIcon, PencilIcon, Trash2Icon } from 'lucide-react';
 import type { IncidentCorrectiveAction, UUID } from '../../api/models/entities';
+import { useAsync } from '../../api/hooks/useAsync';
+import { listUserProfiles } from '../../api/services/profilesService';
+import { buildProfileLabelMap, resolveUserLabel } from '../../utils/userDisplayNames';
 
 export type IncidentCorrectiveActionsListProps = {
   incidentId: UUID;
@@ -38,12 +41,19 @@ function formatCauseLink(action: IncidentCorrectiveAction): string {
 }
 
 export function IncidentCorrectiveActionsList({
+  companyId,
   actions,
   onAdd,
   onEdit,
   onDelete,
   disabled = false
 }: IncidentCorrectiveActionsListProps) {
+  const { data: profiles } = useAsync(
+    async () => (companyId ? listUserProfiles(companyId) : []),
+    [companyId]
+  );
+  const profileNameByUser = React.useMemo(() => buildProfileLabelMap(profiles ?? []), [profiles]);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -77,7 +87,7 @@ export function IncidentCorrectiveActionsList({
                   </div>
                   {action.action_description && <p className="text-sm text-charcoal-600 mb-2">{action.action_description}</p>}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs text-charcoal-500">
-                    <span><strong>Responsible:</strong> {action.owner_user_id ? `User ${action.owner_user_id.slice(0, 8)}` : '-'}</span>
+                    <span><strong>Responsible:</strong> {resolveUserLabel(profileNameByUser, action.owner_user_id)}</span>
                     <span><strong>Due:</strong> {formatDate(action.due_date)}</span>
                     <span className="md:col-span-2"><strong>Linked Causes:</strong> {formatCauseLink(action)}</span>
                   </div>

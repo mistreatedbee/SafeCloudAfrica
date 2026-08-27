@@ -1,7 +1,9 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import type { UUID } from '../models/core';
 import type { CorrectiveAction } from './correctiveActionsService';
 import { downloadPdfReport, drawPdfCoverWithLogo } from './reportExportService';
+import { fetchUserDisplayNameMap } from './userDisplayNameService';
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -12,6 +14,7 @@ function formatDate(iso: string | null | undefined): string {
 
 export async function exportCapaListPdf(input: {
   capas: CorrectiveAction[];
+  companyId?: UUID;
   companyName: string;
   generatedBy: string;
   logoUrl?: string | null;
@@ -25,6 +28,14 @@ export async function exportCapaListPdf(input: {
     `Generated at: ${new Date().toISOString()}`,
     `Records: ${input.capas.length}`
   ];
+
+  const nameMap = input.companyId
+    ? await fetchUserDisplayNameMap(
+        input.companyId,
+        input.capas.map((capa) => capa.assigned_to_user_id)
+      )
+    : new Map<string, string>();
+
   const rows = input.capas.map((capa) => ({
     action_number: capa.action_number,
     title: capa.title,
@@ -33,7 +44,9 @@ export async function exportCapaListPdf(input: {
     action_type: capa.action_type,
     source_type: capa.source_type,
     due_date: capa.due_date ?? '',
-    assigned_to: capa.assigned_to_user_id ?? '',
+    assigned_to: capa.assigned_to_user_id
+      ? nameMap.get(String(capa.assigned_to_user_id)) ?? capa.assigned_to_user_id
+      : '',
     completed_date: capa.completed_date ?? ''
   }));
 
