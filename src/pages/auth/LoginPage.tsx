@@ -19,6 +19,8 @@ import {
   type PendingInviteContext
 } from '../../auth/pendingAuthRedirect';
 import { acceptPendingInviteAndActivateWorkspace } from '../../auth/acceptPendingInviteWorkspace';
+import { isTransientAuthError, signInWithPasswordRetry } from '../../auth/signInWithRetry';
+import { readStoredAccessToken } from '../../api/insforge/sessionState';
 
 const LOGIN_FAILED_MESSAGE = 'Login failed. Please check your details or contact support.';
 const ACTIVE_COMPANY_KEY = 'sca_active_company_id_v3';
@@ -231,6 +233,10 @@ export function LoginPage() {
         setRedirecting(false);
         return;
       }
+      if (isTransientAuthError(error) && readStoredAccessToken()) {
+        redirectToPath('/app');
+        return;
+      }
       const message = formatAuthError(error);
       setRedirectError(message);
       setRedirecting(false);
@@ -292,7 +298,7 @@ export function LoginPage() {
 
     try {
       await insforgeReady;
-      const { data, error: signInError } = await insforge.auth.signInWithPassword({
+      const { data, error: signInError } = await signInWithPasswordRetry({
         email: normalizedEmail,
         password
       });

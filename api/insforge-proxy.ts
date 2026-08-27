@@ -16,6 +16,43 @@ import {
 
 const MODULE = 'api.insforge-proxy.api';
 const UPSTREAM_TIMEOUT_MS = 15_000;
+const AUTH_UPSTREAM_TIMEOUT_MS = 30_000;
+const AUTH_RETRY_PATHS = new Set(['auth/sessions', 'auth/sessions/current', 'auth/refresh']);
+
+function isAuthPath(path: string): boolean {
+  return AUTH_RETRY_PATHS.has(path);
+}
+
+function getUpstreamTimeoutMs(path: string): number {
+  return isAuthPath(path) ? AUTH_UPSTREAM_TIMEOUT_MS : UPSTREAM_TIMEOUT_MS;
+}
+
+async function fetchUpstream(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function fetchUpstreamWithRetry(
+  url: string,
+  init: RequestInit,
+  options: { timeoutMs: number; retryOn5xx: boolean }
+): Promise<Response> {
+  let response = await fetchUpstream(url, init, options.timeoutMs);
+  if (options.retryOn5xx && response.status >= 500) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    response = await fetchUpstream(url, init, options.timeoutMs);
+  }
+  return response;
+}
 
 export const config = {
   api: {
@@ -81,9 +118,8 @@ export default async function handler(req: any, res: any) {
   const joined = parsePath(req);
 
   const upstreamUrl = buildUpstreamUrl(started.upstreamOrigin, `/api/${joined}`, req);
-
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  const upstreamTimeoutMs = getUpstreamTimeoutMs(joined);
+  const retryAuthUpstream = isAuthPath(joined);
 
   try {
     const headers = buildForwardHeaders(req, {
@@ -91,12 +127,15 @@ export default async function handler(req: any, res: any) {
     });
     const proxyBody = getProxyBody(req) ?? await readRawProxyBody(req);
 
-    const upstreamRes = await fetch(upstreamUrl, {
-      method,
-      headers,
-      body: proxyBody as BodyInit | undefined,
-      signal: controller.signal
-    });
+    const upstreamRes = await fetchUpstreamWithRetry(
+      upstreamUrl,
+      {
+        method,
+        headers,
+        body: proxyBody as BodyInit | undefined
+      },
+      { timeoutMs: upstreamTimeoutMs, retryOn5xx: retryAuthUpstream }
+    );
 
     const legacyRoute = matchLegacyAuthRoute({
       method,
@@ -120,12 +159,15 @@ export default async function handler(req: any, res: any) {
       });
 
       const legacyUrl = buildUpstreamUrl(started.upstreamOrigin, legacyRoute.legacyPath, req);
-      const legacyRes = await fetch(legacyUrl, {
-        method: legacyRoute.legacyMethod,
-        headers,
-        body: legacyRoute.legacyMethod === 'GET' ? undefined : proxyBody as BodyInit | undefined,
-        signal: controller.signal
-      });
+      const legacyRes = await fetchUpstreamWithRetry(
+        legacyUrl,
+        {
+          method: legacyRoute.legacyMethod,
+          headers,
+          body: legacyRoute.legacyMethod === 'GET' ? undefined : proxyBody as BodyInit | undefined
+        },
+        { timeoutMs: upstreamTimeoutMs, retryOn5xx: retryAuthUpstream }
+      );
 
       if (legacyRoute.responseTransform === 'normalize-user-payload' && legacyRes.ok) {
         const contentType = legacyRes.headers.get('content-type') ?? '';
@@ -158,11 +200,14 @@ export default async function handler(req: any, res: any) {
     }
 
     if (method === 'HEAD' && upstreamRes.status === 405) {
-      const getRes = await fetch(upstreamUrl, {
-        method: 'GET',
-        headers,
-        signal: controller.signal
-      });
+      const getRes = await fetchUpstreamWithRetry(
+        upstreamUrl,
+        {
+          method: 'GET',
+          headers
+        },
+        { timeoutMs: upstreamTimeoutMs, retryOn5xx: retryAuthUpstream }
+      );
       await writeUpstreamResponse(res, getRes, 'HEAD');
       return;
     }
@@ -205,7 +250,5 @@ export default async function handler(req: any, res: any) {
       error: 'Service temporarily unavailable. Please try again.',
       requestId: started.requestId
     });
-  } finally {
-    clearTimeout(t);
   }
 }
