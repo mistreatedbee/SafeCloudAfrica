@@ -1,37 +1,40 @@
 /**
- * Maps the current route to a module id + display label, so the floating
- * assistant (a) routes to the right specialist agent by default instead of
- * always guessing 'hr', and (b) can nudge the user with a page-relevant
- * "I can help with this" hint. Longest-prefix match wins so a specific
+ * Maps the current route to a module id + display label + a page-specific
+ * "persona" name, so the floating assistant (a) routes to the right
+ * specialist agent by default instead of always guessing 'hr', and (b) can
+ * introduce itself by name on pages that share a backend agent but should
+ * still feel like a distinct specialist to the user (e.g. Incidents and
+ * Risk Assessments both run on safetyAgent, but greet as "Incidents Agent"
+ * / "Risk Manager" respectively). Longest-prefix match wins so a specific
  * sub-route (e.g. /dashboard/management/ncrs) beats a broader parent
  * (e.g. /dashboard/management).
  */
 
-type RouteModuleRule = { prefix: string; module: string; label: string };
+type RouteModuleRule = { prefix: string; module: string; label: string; persona: string };
 
 const ROUTE_MODULE_RULES: RouteModuleRule[] = [
-  { prefix: '/modules/hr/kpis', module: 'kpi', label: 'KPI Assessments' },
-  { prefix: '/dashboard/operations/training', module: 'training', label: 'Training' },
-  { prefix: '/dashboard/operations/risks', module: 'safety', label: 'Risk Assessments' },
-  { prefix: '/dashboard/operations/inspections', module: 'safety', label: 'Inspections' },
-  { prefix: '/dashboard/operations/audits', module: 'safety', label: 'Audits' },
-  { prefix: '/dashboard/operations/ppe', module: 'ppe', label: 'PPE' },
-  { prefix: '/dashboard/ppe', module: 'ppe', label: 'PPE' },
-  { prefix: '/dashboard/incidents', module: 'safety', label: 'Incidents' },
-  { prefix: '/dashboard/safety', module: 'safety', label: 'Safety' },
-  { prefix: '/dashboard/management/ncrs', module: 'quality', label: 'NCRs' },
-  { prefix: '/dashboard/management/capa', module: 'quality', label: 'CAPA' },
-  { prefix: '/dashboard/quality', module: 'quality', label: 'Quality' },
-  { prefix: '/dashboard/environment', module: 'environment', label: 'Environment' },
-  { prefix: '/dashboard/health', module: 'health', label: 'Health' },
-  { prefix: '/dashboard/legal', module: 'legal', label: 'Legal' },
-  { prefix: '/dashboard/management/objectives-targets', module: 'objectives', label: 'Objectives & Targets' },
-  { prefix: '/dashboard/sellable/contractors-visitors', module: 'contractors', label: 'Contractors & Visitors' },
-  { prefix: '/dashboard/management/reports', module: 'dashboard', label: 'Reports' },
-  { prefix: '/dashboard/hr', module: 'hr', label: 'HR' }
+  { prefix: '/modules/hr/kpis', module: 'kpi', label: 'KPI Assessments', persona: 'KPI Agent' },
+  { prefix: '/dashboard/operations/training', module: 'training', label: 'Training', persona: 'Training Agent' },
+  { prefix: '/dashboard/operations/risks', module: 'safety', label: 'Risk Assessments', persona: 'Risk Manager' },
+  { prefix: '/dashboard/operations/inspections', module: 'safety', label: 'Inspections', persona: 'Inspections Agent' },
+  { prefix: '/dashboard/operations/audits', module: 'safety', label: 'Audits', persona: 'Audit Agent' },
+  { prefix: '/dashboard/operations/ppe', module: 'ppe', label: 'PPE', persona: 'PPE Agent' },
+  { prefix: '/dashboard/ppe', module: 'ppe', label: 'PPE', persona: 'PPE Agent' },
+  { prefix: '/dashboard/incidents', module: 'safety', label: 'Incidents', persona: 'Incidents Agent' },
+  { prefix: '/dashboard/safety', module: 'safety', label: 'Safety', persona: 'Safety Agent' },
+  { prefix: '/dashboard/management/ncrs', module: 'quality', label: 'NCRs', persona: 'Quality Agent' },
+  { prefix: '/dashboard/management/capa', module: 'quality', label: 'CAPA', persona: 'Quality Agent' },
+  { prefix: '/dashboard/quality', module: 'quality', label: 'Quality', persona: 'Quality Agent' },
+  { prefix: '/dashboard/environment', module: 'environment', label: 'Environment', persona: 'Environment Agent' },
+  { prefix: '/dashboard/health', module: 'health', label: 'Health', persona: 'Health Agent' },
+  { prefix: '/dashboard/legal', module: 'legal', label: 'Legal', persona: 'Legal Agent' },
+  { prefix: '/dashboard/management/objectives-targets', module: 'objectives', label: 'Objectives & Targets', persona: 'Objectives Agent' },
+  { prefix: '/dashboard/sellable/contractors-visitors', module: 'contractors', label: 'Contractors & Visitors', persona: 'Contractors Agent' },
+  { prefix: '/dashboard/management/reports', module: 'dashboard', label: 'Reports', persona: 'Compliance Assistant' },
+  { prefix: '/dashboard/hr', module: 'hr', label: 'HR', persona: 'HR Agent' }
 ];
 
-export type RouteModuleHint = { module: string; label: string };
+export type RouteModuleHint = { module: string; label: string; persona: string };
 
 export function getModuleHintForPath(pathname: string): RouteModuleHint | null {
   let best: RouteModuleRule | null = null;
@@ -40,7 +43,7 @@ export function getModuleHintForPath(pathname: string): RouteModuleHint | null {
       best = rule;
     }
   }
-  return best ? { module: best.module, label: best.label } : null;
+  return best ? { module: best.module, label: best.label, persona: best.persona } : null;
 }
 
 /** One tailored starter question per module, used to seed the chat when the user clicks a nudge. */

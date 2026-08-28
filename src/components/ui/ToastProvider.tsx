@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { CheckCircleIcon, XCircleIcon, XIcon } from 'lucide-react';
+import { emitUserFacingError } from '../../api/liveData';
 
 export type ToastTone = 'success' | 'error';
 
@@ -42,7 +43,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 
   const showSuccess = useCallback((message: string) => show('success', message), [show]);
-  const showError = useCallback((message: string) => show('error', message), [show]);
+  const showError = useCallback(
+    (message: string) => {
+      show('error', message);
+      // Best-effort broadcast so the AI assistant can proactively offer
+      // help -- never let this affect the toast itself.
+      try {
+        emitUserFacingError({ message });
+      } catch {
+        // ignore
+      }
+    },
+    [show]
+  );
 
   return (
     <ToastContext.Provider value={{ showSuccess, showError }}>

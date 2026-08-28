@@ -160,7 +160,14 @@ A proactive **weekly email digest** was in the original spec but was deliberatel
 
 ## Route-aware nudge (HrAgentAssistant.tsx)
 
-The floating button shows a small dismissible bubble once per browser session per module (`sessionStorage`, key `sca_ai_nudge_seen_<module>`) when the user lands on a page `routeModuleHint.ts` recognises, naming what the assistant can help with there and offering a one-click starter question (`STARTER_QUESTION_BY_MODULE`). The button also gets a subtle pulse animation while an unseen nudge is pending, so it's noticeable without a page-blocking popup. This also fixes `AgentContext.currentModuleHint` to reflect the actual page instead of always defaulting to `'hr'`, which improves orchestrator routing accuracy beyond keyword matching alone.
+The floating button and panel live at `bottom-5/24 right-24` -- its own column immediately left of FloatingSupportChat's `right-5` column, so both bubbles are always visible side by side, never stacked/overlapping.
+
+Two proactive, dismissible nudges (styled distinctly, auto-dismiss after a delay, never block the page):
+
+- **Page nudge**: on landing on a page `routeModuleHint.ts` recognises, a bubble introduces the assistant by that page's **persona** (e.g. "Incidents Agent", "Risk Manager", "HR Agent" -- `STARTER_QUESTION_BY_MODULE` supplies a one-click starter question). Fires on **every navigation** to a recognised page, not gated to once-per-session, per explicit product direction that the assistant needs to stay visibly present rather than easy to miss. If this turns out too frequent in practice, the fix is re-adding a `sessionStorage`/cooldown gate in the page-nudge `useEffect` in `HrAgentAssistant.tsx` -- it was deliberately removed, not forgotten.
+- **Error nudge**: whenever `ToastProvider.showError()` fires anywhere in the app, it also calls `emitUserFacingError()` (`src/api/liveData.ts`, same `CustomEvent` pub-sub pattern as `emitBackendUnavailable`/`emitAuthRecovered`). `HrAgentAssistant.tsx` subscribes via `subscribeToUserFacingError` and shows an amber-accented "Looks like something went wrong -- want help?" bubble, rate-limited to one per 45s so a burst of errors doesn't spam multiple nudges. Clicking it opens the chat pre-seeded with a message quoting the error text.
+
+This also fixes `AgentContext.currentModuleHint` to reflect the actual page instead of always defaulting to `'hr'`, which improves orchestrator routing accuracy beyond keyword matching alone.
 
 ## Inline in-form drafting (AiDraftButton)
 

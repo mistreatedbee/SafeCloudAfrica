@@ -4,6 +4,7 @@
 const LIVE_DATA_MUTATED_EVENT = 'sca:data-mutated';
 const BACKEND_UNAVAILABLE_EVENT = 'sca:backend-unavailable';
 const AUTH_RECOVERED_EVENT = 'sca:auth-recovered';
+const USER_FACING_ERROR_EVENT = 'sca:user-facing-error';
 
 export type LiveDataMutationDetail = {
   source: 'insforge';
@@ -139,6 +140,36 @@ export function subscribeToBackendUnavailable(listener: (detail: BackendUnavaila
   };
   window.addEventListener(BACKEND_UNAVAILABLE_EVENT, handler as EventListener);
   return () => window.removeEventListener(BACKEND_UNAVAILABLE_EVENT, handler as EventListener);
+}
+
+export type UserFacingErrorDetail = {
+  message: string;
+  at: number;
+};
+
+/**
+ * Broadcast whenever an error toast is shown to the user (see
+ * ToastProvider.showError). Lets anything outside the toast's own React
+ * subtree react to "the user just saw an error" -- currently used by
+ * HrAgentAssistant.tsx to proactively offer help. Deliberately fire-and-
+ * forget/best-effort: never throw, never block the toast itself.
+ */
+export function emitUserFacingError(detail: Omit<UserFacingErrorDetail, 'at'>): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent<UserFacingErrorDetail>(USER_FACING_ERROR_EVENT, { detail: { ...detail, at: Date.now() } })
+  );
+}
+
+export function subscribeToUserFacingError(listener: (detail: UserFacingErrorDetail) => void): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+  const handler = (event: Event) => {
+    const ev = event as CustomEvent<UserFacingErrorDetail>;
+    if (!ev?.detail) return;
+    listener(ev.detail);
+  };
+  window.addEventListener(USER_FACING_ERROR_EVENT, handler as EventListener);
+  return () => window.removeEventListener(USER_FACING_ERROR_EVENT, handler as EventListener);
 }
 
 /** Signals a successful session recovery after background refresh. */
