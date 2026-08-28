@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { FloatingSupportChat } from '../support/FloatingSupportChat';
+import { HrAgentAssistant } from '../ai/HrAgentAssistant';
 import { subscribeToBackendUnavailable, type BackendUnavailableDetail } from '../../api/liveData';
 
 type LayoutProps = {
@@ -69,6 +70,7 @@ export function Layout({ children, title }: LayoutProps) {
         </main>
       </div>
       <FloatingSupportChat />
+      <HrAgentAssistant />
     </div>
   );
 
