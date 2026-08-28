@@ -1257,6 +1257,8 @@ export type PPEIssue = {
   receiver_signature?: string | null;
   /** Display name for the recipient when they are not HR/user-linked (e.g. a contractor). */
   issued_to_name?: string | null;
+  is_non_conformant?: boolean;
+  non_conformance_reason?: string | null;
 };
 
 export type PpeIssueTrackerStatus =

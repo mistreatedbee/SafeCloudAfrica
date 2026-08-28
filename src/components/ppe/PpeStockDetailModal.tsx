@@ -177,7 +177,8 @@ export function PpeStockDetailModal(props: {
           date_ordered: dateOrdered || null,
           date_stock_received: dateStockReceived || null,
           captured_by_name: capturedByName.trim() || null,
-          opening_stock_qty: openingStockQty.trim() === '' ? null : Number(openingStockQty),
+          // opening_stock_qty is intentionally not sent — it's the permanent initial
+          // quantity for this record and can't be changed after creation.
           qty_ordered: qtyOrdered.trim() === '' ? null : Number(qtyOrdered),
           qty_received: qtyReceived.trim() === '' ? null : Number(qtyReceived),
           expiry_date: expiryDate || null
@@ -299,8 +300,13 @@ export function PpeStockDetailModal(props: {
                 <input value={capturedByName} onChange={(e) => setCapturedByName(e.target.value)} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-charcoal mb-1.5">Opening stock</label>
-                <input type="number" min={0} value={openingStockQty} onChange={(e) => setOpeningStockQty(e.target.value)} className="w-full px-3 py-2 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Initial quantity (opening stock)</label>
+                <input
+                  readOnly
+                  value={openingStockQty || '—'}
+                  title="The initial quantity is set once when this stock record is created and cannot be edited afterwards."
+                  className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-lg text-xs text-charcoal-600"
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-charcoal mb-1.5">Qty ordered</label>

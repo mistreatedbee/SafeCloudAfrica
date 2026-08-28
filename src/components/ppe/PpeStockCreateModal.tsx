@@ -171,17 +171,24 @@ export function PpeStockCreateModal(props: {
         expiryDate: expiryDate || null
       };
 
+      // opening_stock_qty (the permanent "initial quantity") is set to the same value as the
+      // on-hand quantity being captured here — there is only one quantity field on this form,
+      // so nothing is typed twice, and initial_quantity locks in at whatever value on_hand_qty
+      // starts at (see createPpeStock / updatePpeStock in ppeService.ts for why it can't change
+      // after this point).
       if (hasSizes) {
         const sizesToCreate = itemSizes.filter((s) => Number(sizeQtys[s] ?? 0) > 0);
         if (sizesToCreate.length > 0) {
           for (const size of sizesToCreate) {
-            await createPpeStock({ ...basePayload, onHandQty: Number(sizeQtys[size]), size });
+            const qty = Number(sizeQtys[size]);
+            await createPpeStock({ ...basePayload, onHandQty: qty, openingStockQty: qty, size });
           }
         } else {
-          await createPpeStock({ ...basePayload, onHandQty: 0, size: null });
+          await createPpeStock({ ...basePayload, onHandQty: 0, openingStockQty: 0, size: null });
         }
       } else {
-        await createPpeStock({ ...basePayload, onHandQty: onHandQty ? Number(onHandQty) : 0, size: null });
+        const qty = onHandQty ? Number(onHandQty) : 0;
+        await createPpeStock({ ...basePayload, onHandQty: qty, openingStockQty: qty, size: null });
       }
 
       props.onCreated?.();

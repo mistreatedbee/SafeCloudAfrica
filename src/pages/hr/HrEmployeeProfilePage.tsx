@@ -13,11 +13,12 @@ import { HrEmployeeEditModal } from '../../components/hr/HrEmployeeEditModal';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { uploadFile, getPublicUrl } from '../../api/services/storageService';
 import { listEvidence, createEvidence } from '../../api/services/evidenceService';
-import type { EvidenceAttachment, HrActionSignoffRequest } from '../../api/models/entities';
+import type { EvidenceAttachment, HrActionSignoffRequest, PPEIssue } from '../../api/models/entities';
 import { listSignoffRequestsForEmployee, signOffWellnessAction } from '../../api/services/hrActionSignoffService';
+import { listPpeIssues } from '../../api/services/ppeService';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 
-const TABS = ['overview', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'tasks', 'documents', 'sign_offs', 'audit'] as const;
+const TABS = ['overview', 'leave', 'hours', 'performance', 'disciplinary', 'training', 'ppe', 'tasks', 'documents', 'sign_offs', 'audit'] as const;
 const DOC_TYPES = ['ID Copy', 'Contract', 'Certificate', 'Medical', 'Other'] as const;
 type Tab = (typeof TABS)[number];
 
@@ -86,6 +87,11 @@ export function HrEmployeeProfilePage() {
       employeeId: id as UUID
     });
   }, [activeCompanyId, activeRole, user?.id, id, docRefreshKey]);
+
+  const { data: ppeIssues } = useAsync<PPEIssue[]>(async () => {
+    if (!activeCompanyId || !id) return [];
+    return listPpeIssues({ companyId: activeCompanyId, issuedToEmployeeId: id as UUID, limit: 200 });
+  }, [activeCompanyId, id, docRefreshKey]);
 
   const [signoffRefreshKey, setSignoffRefreshKey] = useState(0);
   const [signingOffRequestId, setSigningOffRequestId] = useState<UUID | null>(null);
@@ -415,6 +421,54 @@ export function HrEmployeeProfilePage() {
         {tab === 'training' && (
           <Card title="Training status">
             <SimpleTable rows={(payload?.trainingRecords as Array<Record<string, unknown>> | undefined) ?? []} cols={['status', 'planned_date', 'completed_date', 'expiry_date']} />
+          </Card>
+        )}
+        {tab === 'ppe' && (
+          <Card title="PPE issued">
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-surface-50">
+                  <tr>
+                    <th className="text-left px-2 py-1">PPE item</th>
+                    <th className="text-left px-2 py-1">Qty</th>
+                    <th className="text-left px-2 py-1">Issue date</th>
+                    <th className="text-left px-2 py-1">Return due</th>
+                    <th className="text-left px-2 py-1">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(ppeIssues ?? []).map((issue) => {
+                    const overdue = Boolean(issue.return_due_at && !issue.returned_at && new Date(issue.return_due_at) < new Date());
+                    const status = issue.returned_at ? 'Returned' : overdue ? 'Overdue' : 'Active';
+                    const statusClass =
+                      status === 'Overdue'
+                        ? 'bg-red-100 text-red-700'
+                        : status === 'Returned'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-teal-50 text-teal-700';
+                    return (
+                      <tr key={issue.id} className="border-t border-surface-100">
+                        <td className="px-2 py-1">{issue.ppe_item_name ?? '-'}</td>
+                        <td className="px-2 py-1">{issue.quantity_issued ?? 1}</td>
+                        <td className="px-2 py-1">{issue.issue_date ?? (issue.issued_at ? issue.issued_at.slice(0, 10) : '-')}</td>
+                        <td className="px-2 py-1">{issue.return_due_at ? issue.return_due_at.slice(0, 10) : '-'}</td>
+                        <td className="px-2 py-1">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}`}>{status}</span>
+                          {issue.is_non_conformant && (
+                            <span className="ml-1.5 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-medium" title={issue.non_conformance_reason ?? undefined}>
+                              Non-conformance
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(ppeIssues ?? []).length === 0 && (
+                    <tr><td colSpan={5} className="px-2 py-2 text-charcoal-500">No PPE issued yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </Card>
         )}
         {tab === 'tasks' && (

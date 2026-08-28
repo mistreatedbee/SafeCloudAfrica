@@ -17,6 +17,7 @@ import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
 import {
   deletePpeItem,
+  flagPpeIssueNonConformance,
   listPpeIssues,
   listPpeItems,
   listPpeReorderRequests,
@@ -478,6 +479,35 @@ export function PPEPage() {
     };
   });
 
+  const [ncActingId, setNcActingId] = useState<string | null>(null);
+  const [ncError, setNcError] = useState<string | null>(null);
+
+  async function onToggleNonConformance(issue: PPEIssue) {
+    if (!activeCompanyId || !user?.id) return;
+    setNcError(null);
+    const nextValue = !issue.is_non_conformant;
+    let reason: string | null = null;
+    if (nextValue) {
+      reason = window.prompt('Reason for flagging this PPE issue as a non-conformance:');
+      if (!reason?.trim()) return;
+    }
+    setNcActingId(issue.id);
+    try {
+      await flagPpeIssueNonConformance({
+        companyId: activeCompanyId,
+        issueId: issue.id,
+        actorUserId: user.id,
+        isNonConformant: nextValue,
+        reason
+      });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      setNcError(toUserFacingError(err, 'Unable to update non-conformance flag right now.'));
+    } finally {
+      setNcActingId(null);
+    }
+  }
+
   const filteredIssueRows = useMemo(() => {
     if (!registerFilters.personName.trim()) return issueRows;
     const q = registerFilters.personName.toLowerCase();
@@ -530,6 +560,7 @@ export function PPEPage() {
       siteName: site?.name ?? '?',
       departmentName: dept?.name ?? '?',
       onHand: s.on_hand_qty,
+      openingStockQty: s.opening_stock_qty ?? null,
       reserved: s.reserved_qty,
       reorderLevel: s.reorder_level,
       reorderQty: s.reorder_qty,
@@ -1408,26 +1439,36 @@ export function PPEPage() {
                       <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
                         Total cost
                       </th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">
+                        Non-conformance
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-100">
                     {loading && (
                       <tr>
-                        <td colSpan={11} className="px-5 py-4 text-sm text-charcoal-500">
+                        <td colSpan={12} className="px-5 py-4 text-sm text-charcoal-500">
                           Loading…
                         </td>
                       </tr>
                     )}
                     {error && (
                       <tr>
-                        <td colSpan={11} className="px-5 py-4 text-sm text-critical">
+                        <td colSpan={12} className="px-5 py-4 text-sm text-critical">
                           {error.message}
+                        </td>
+                      </tr>
+                    )}
+                    {ncError && (
+                      <tr>
+                        <td colSpan={12} className="px-5 py-4 text-sm text-critical">
+                          {ncError}
                         </td>
                       </tr>
                     )}
                     {!loading && !error && filteredIssueRows.length === 0 && (
                       <tr>
-                        <td colSpan={11} className="px-5 py-4 text-sm text-charcoal-500">
+                        <td colSpan={12} className="px-5 py-4 text-sm text-charcoal-500">
                           {registerFilters.personName.trim() ? 'No issues match the person name filter.' : 'No PPE issues yet.'}
                         </td>
                       </tr>
@@ -1451,6 +1492,28 @@ export function PPEPage() {
                         <td className="px-5 py-4 text-sm text-charcoal-500">{row.issuer}</td>
                         <td className="px-5 py-4 text-sm text-charcoal-500">{row.quantity}</td>
                         <td className="px-5 py-4 text-sm text-charcoal-500">{row.totalCost}</td>
+                        <td className="px-5 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
+                          {row.raw.is_non_conformant ? (
+                            <button
+                              type="button"
+                              title={row.raw.non_conformance_reason ?? undefined}
+                              disabled={ncActingId === row.raw.id}
+                              onClick={() => void onToggleNonConformance(row.raw)}
+                              className="px-2 py-1 rounded-full bg-red-100 text-red-700 text-xs font-medium disabled:opacity-60"
+                            >
+                              {ncActingId === row.raw.id ? 'Updating…' : 'Flagged — clear'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={ncActingId === row.raw.id}
+                              onClick={() => void onToggleNonConformance(row.raw)}
+                              className="px-2 py-1 rounded-full border border-surface-300 text-charcoal-600 text-xs font-medium hover:bg-surface-50 disabled:opacity-60"
+                            >
+                              {ncActingId === row.raw.id ? 'Updating…' : 'Flag Non-Conformance'}
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1662,7 +1725,18 @@ export function PPEPage() {
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.size ?? '—'}</td>
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.siteName}</td>
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.departmentName}</td>
-                      <td className="px-5 py-4 text-sm text-charcoal-500">{row.onHand}</td>
+                      <td className="px-5 py-4 text-sm text-charcoal-500">
+                        {row.openingStockQty != null ? (
+                          <>
+                            <span className="font-medium text-charcoal">{row.onHand}</span>
+                            {' remaining of '}
+                            {row.openingStockQty}
+                            {' initial'}
+                          </>
+                        ) : (
+                          row.onHand
+                        )}
+                      </td>
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.reserved}</td>
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.reorderLevel}</td>
                       <td className="px-5 py-4 text-sm text-charcoal-500">{row.reorderQty}</td>

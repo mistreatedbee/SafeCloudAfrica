@@ -18,6 +18,7 @@ import { createActivityLog } from './activityLogService';
 import { createNotification } from './notificationsService';
 import { getMyProfile } from './profilesService';
 import { sendTemplatedNotificationEmail } from './emailService';
+import { getHrEmployeeById } from './hrService';
 
 async function getPpeEmail(companyId: UUID, userId?: UUID | null): Promise<string | null> {
   if (!userId) return null;
@@ -48,6 +49,8 @@ export type PpeIssuesFilters = {
   siteId?: UUID | null;
   departmentId?: UUID | null;
   issuedToUserId?: UUID | null;
+  /** Filter by the HR employee record PPE was issued to (matches even when the employee has no linked platform user). */
+  issuedToEmployeeId?: UUID | null;
   ppeItemId?: UUID | null;
   reasonForIssue?: string | null;
   issuedByUserId?: UUID | null;
@@ -72,6 +75,7 @@ export async function listPpeIssues(
     siteId,
     departmentId,
     issuedToUserId,
+    issuedToEmployeeId,
     ppeItemId,
     reasonForIssue,
     issuedByUserId,
@@ -93,6 +97,8 @@ export async function listPpeIssues(
   if (departmentId !== undefined && departmentId !== null) query = query.eq('department_id', departmentId);
   if (issuedToUserId !== undefined && issuedToUserId !== null)
     query = query.eq('issued_to_user_id', issuedToUserId);
+  if (issuedToEmployeeId !== undefined && issuedToEmployeeId !== null)
+    query = query.eq('issued_to_employee_id', issuedToEmployeeId);
   if (ppeItemId !== undefined && ppeItemId !== null) query = query.eq('ppe_item_id', ppeItemId);
   if (reasonForIssue) query = query.eq('reason_for_issue', reasonForIssue);
   if (issuedByUserId !== undefined && issuedByUserId !== null)
@@ -108,6 +114,7 @@ export async function listPpeIssues(
 }
 
 export async function getPpeIssueById(companyId: UUID, issueId: UUID): Promise<PPEIssue | null> {
+  return withInsforgeSession('ppe_issues:get', async () => {
   const { data, error } = await insforge.database
     .from('ppe_issues')
     .select('*')
@@ -116,6 +123,73 @@ export async function getPpeIssueById(companyId: UUID, issueId: UUID): Promise<P
     .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? null) as PPEIssue | null;
+  });
+}
+
+/** Flag (or clear) a non-conformance on a PPE issue and notify the issued-to employee's supervisor. */
+export async function flagPpeIssueNonConformance(input: {
+  companyId: UUID;
+  issueId: UUID;
+  actorUserId: UUID;
+  isNonConformant: boolean;
+  reason?: string | null;
+}): Promise<PPEIssue> {
+  return withInsforgeSession('ppe_issues:flag_non_conformance', async () => {
+  if (input.isNonConformant && !input.reason?.trim()) {
+    throw new Error('A reason is required to flag a non-conformance.');
+  }
+
+  const { data, error } = await insforge.database
+    .from('ppe_issues')
+    .update({
+      is_non_conformant: input.isNonConformant,
+      non_conformance_reason: input.isNonConformant ? input.reason!.trim() : null
+    })
+    .eq('company_id', input.companyId)
+    .eq('id', input.issueId)
+    .select('*')
+    .single();
+
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('PPE issue not found.');
+  const issue = data as PPEIssue;
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: input.isNonConformant ? 'ppe_issues.flag_non_conformance' : 'ppe_issues.clear_non_conformance',
+    entityType: 'ppe_issue',
+    entityId: input.issueId
+  });
+
+  if (input.isNonConformant && issue.issued_to_employee_id) {
+    try {
+      const employee = await getHrEmployeeById(input.companyId, issue.issued_to_employee_id);
+      const supervisorUserId = employee?.supervisor_user_id;
+      if (supervisorUserId && supervisorUserId !== input.actorUserId) {
+        const { notifyRelevantUsers } = await import('./notificationEventsService');
+        const employeeName = employee ? `${employee.first_name} ${employee.last_name}`.trim() : 'An employee';
+        const itemLabel = issue.ppe_item_name ?? 'PPE item';
+        await notifyRelevantUsers({
+          companyId: input.companyId,
+          eventKey: `ppe-non-conformance:${issue.id}`,
+          eventType: 'ppe_non_conformance_flagged',
+          title: `PPE non-conformance flagged — ${employeeName}`,
+          message: `${employeeName}'s ${itemLabel} issue was flagged as a non-conformance. Reason: ${issue.non_conformance_reason}`,
+          recipientUserIds: [supervisorUserId],
+          emailTemplateKey: 'ppe_management',
+          emailVariables: { title: itemLabel, status: 'Non-conformance flagged', employee: employeeName },
+          actionUrl: '/dashboard/safety/ppe',
+          metadata: { itemType: 'ppe_issue', itemId: issue.id }
+        }).catch((err) => console.warn('[ppe] non-conformance notification failed', err));
+      }
+    } catch (err) {
+      console.warn('[ppe] failed to resolve supervisor for non-conformance notification', err);
+    }
+  }
+
+  return issue;
+  });
 }
 
 export async function getPpeCompliance(companyId: UUID): Promise<number> {
@@ -146,6 +220,7 @@ export async function createPpeItem(input: {
   supplierName?: string | null;
   stockLocation?: string | null;
 }): Promise<PPEItem> {
+  return withInsforgeSession('ppe_items:create', async () => {
   const { data, error } = await insforge.database
     .from('ppe_items')
     .insert({
@@ -164,6 +239,7 @@ export async function createPpeItem(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create PPE item.');
   return data as PPEItem;
+  });
 }
 
 export async function updatePpeItem(input: {
@@ -180,6 +256,7 @@ export async function updatePpeItem(input: {
     stock_location: string | null;
   }>;
 }): Promise<PPEItem> {
+  return withInsforgeSession('ppe_items:update', async () => {
   const payload: Record<string, unknown> = { ...input.patch };
   if ('sizes_available' in input.patch) payload.sizes_available = input.patch.sizes_available ?? null;
   if ('sizes_with_prices' in input.patch) payload.sizes_with_prices = input.patch.sizes_with_prices ?? null;
@@ -193,6 +270,7 @@ export async function updatePpeItem(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update PPE item.');
   return data as PPEItem;
+  });
 }
 
 export async function deletePpeItem(input: {
@@ -200,6 +278,7 @@ export async function deletePpeItem(input: {
   itemId: UUID;
   actorUserId: UUID;
 }): Promise<void> {
+  return withInsforgeSession('ppe_items:delete', async () => {
   const { data: stockRefs, error: stockRefsError } = await insforge.database
     .from('ppe_stock')
     .select('id')
@@ -237,6 +316,7 @@ export async function deletePpeItem(input: {
     action: 'ppe_items.delete',
     entityType: 'ppe_item',
     entityId: input.itemId
+  });
   });
 }
 
@@ -532,7 +612,17 @@ export async function createPpeStock(input: {
       captured_by_name: capturedByName,
       date_ordered: input.dateOrdered ?? null,
       date_stock_received: input.dateStockReceived ?? null,
-      opening_stock_qty: input.openingStockQty ?? null,
+      // opening_stock_qty is the permanent "initial quantity" for this stock record — it
+      // must never change after creation (see updatePpeStock, which deliberately excludes
+      // it from the editable patch). Auto-populate from onHandQty (what the create form
+      // calls "Initial quantity") when the caller doesn't pass it explicitly, so the user
+      // never has to type the same number into two fields.
+      opening_stock_qty:
+        typeof input.openingStockQty === 'number'
+          ? input.openingStockQty
+          : typeof input.onHandQty === 'number'
+            ? input.onHandQty
+            : null,
       qty_ordered: input.qtyOrdered ?? null,
       qty_received: input.qtyReceived ?? null,
       expiry_date: input.expiryDate ?? null,
@@ -581,7 +671,8 @@ export async function updatePpeStock(input: {
       | 'date_ordered'
       | 'date_stock_received'
       | 'captured_by_name'
-      | 'opening_stock_qty'
+      // opening_stock_qty deliberately excluded — it's the permanent initial quantity for
+      // this stock record and must never change after creation (only on_hand_qty moves).
       | 'qty_ordered'
       | 'qty_received'
       | 'expiry_date'
@@ -589,6 +680,7 @@ export async function updatePpeStock(input: {
   >;
   actorUserId: UUID;
 }): Promise<PpeStock> {
+  return withInsforgeSession('ppe_stock:update', async () => {
   const nowIso = new Date().toISOString();
   const { data, error } = await insforge.database
     .from('ppe_stock')
@@ -615,6 +707,7 @@ export async function updatePpeStock(input: {
   });
 
   return data as PpeStock;
+  });
 }
 
 export async function deletePpeStock(input: {
@@ -622,6 +715,7 @@ export async function deletePpeStock(input: {
   stockId: UUID;
   actorUserId: UUID;
 }): Promise<PpeStock> {
+  return withInsforgeSession('ppe_stock:delete', async () => {
   const nowIso = new Date().toISOString();
   const { data, error } = await insforge.database
     .from('ppe_stock')
@@ -647,6 +741,7 @@ export async function deletePpeStock(input: {
   });
 
   return data as PpeStock;
+  });
 }
 
 export async function listPpeStockMovements(input: {
@@ -654,6 +749,7 @@ export async function listPpeStockMovements(input: {
   stockId: UUID;
   limit?: number;
 }): Promise<PpeStockMovement[]> {
+  return withInsforgeSession('ppe_stock_movements:list', async () => {
   const { data, error } = await insforge.database
     .from('ppe_stock_movements')
     .select('*')
@@ -664,6 +760,7 @@ export async function listPpeStockMovements(input: {
 
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as PpeStockMovement[];
+  });
 }
 
 export async function createPpeStockMovement(input: {
@@ -679,6 +776,7 @@ export async function createPpeStockMovement(input: {
   transactionDate?: string | null;
   allowNegativeStock?: boolean;
 }): Promise<{ stock: PpeStock; movement: PpeStockMovement }> {
+  return withInsforgeSession('ppe_stock_movements:create', async () => {
   if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
     throw new Error('Quantity must be a positive number.');
   }
@@ -790,6 +888,7 @@ export async function createPpeStockMovement(input: {
     stock: updatedStock,
     movement: movementRow as PpeStockMovement
   };
+  });
 }
 
 // ---------------------------
@@ -801,6 +900,7 @@ export async function listPpeReorderRequests(input: {
   status?: PpeReorderRequestStatus;
   limit?: number;
 }): Promise<PpeReorderRequest[]> {
+  return withInsforgeSession('ppe_reorder_requests:list', async () => {
   let query = insforge.database
     .from('ppe_reorder_requests')
     .select('*')
@@ -816,6 +916,7 @@ export async function listPpeReorderRequests(input: {
 
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as PpeReorderRequest[];
+  });
 }
 
 export async function createPpeReorderRequest(input: {
@@ -826,6 +927,7 @@ export async function createPpeReorderRequest(input: {
   status?: PpeReorderRequestStatus;
   requestedByUserId: UUID;
 }): Promise<PpeReorderRequest> {
+  return withInsforgeSession('ppe_reorder_requests:create', async () => {
   if (!Number.isFinite(input.requestedQty) || input.requestedQty <= 0) {
     throw new Error('Requested quantity must be a positive number.');
   }
@@ -867,6 +969,7 @@ export async function createPpeReorderRequest(input: {
   );
 
   return data as PpeReorderRequest;
+  });
 }
 
 export async function updatePpeReorderRequestStatus(input: {
@@ -875,6 +978,7 @@ export async function updatePpeReorderRequestStatus(input: {
   status: PpeReorderRequestStatus;
   actorUserId: UUID;
 }): Promise<PpeReorderRequest> {
+  return withInsforgeSession('ppe_reorder_requests:update_status', async () => {
   const nowIso = new Date().toISOString();
 
   const { data: existingRow, error: fetchError } = await insforge.database
@@ -947,6 +1051,7 @@ export async function updatePpeReorderRequestStatus(input: {
   }
 
   return reorderRequest;
+  });
 }
 
 // ---------------------------
@@ -957,6 +1062,7 @@ export async function getPpeIssueLinks(input: {
   companyId: UUID;
   issueId: UUID;
 }): Promise<{ ncrLinks: PpeIssueNcrLink[]; capaLinks: PpeIssueCapaLink[] }> {
+  return withInsforgeSession('ppe_issue_links:get', async () => {
   const [{ data: ncrData, error: ncrError }, { data: capaData, error: capaError }] = await Promise.all([
     insforge.database
       .from('ppe_issue_ncr_links')
@@ -977,6 +1083,7 @@ export async function getPpeIssueLinks(input: {
     ncrLinks: (ncrData ?? []) as PpeIssueNcrLink[],
     capaLinks: (capaData ?? []) as PpeIssueCapaLink[]
   };
+  });
 }
 
 export async function setPpeIssueLinks(input: {
@@ -986,6 +1093,7 @@ export async function setPpeIssueLinks(input: {
   correctiveActionIds?: UUID[];
   actorUserId: UUID;
 }): Promise<void> {
+  return withInsforgeSession('ppe_issue_links:set', async () => {
   const ncrIds = input.ncrIds ?? [];
   const capaIds = input.correctiveActionIds ?? [];
 
@@ -1059,5 +1167,6 @@ export async function setPpeIssueLinks(input: {
       ncrIds,
       correctiveActionIds: capaIds
     }
+  });
   });
 }
