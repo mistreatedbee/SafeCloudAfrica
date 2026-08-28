@@ -91,7 +91,7 @@ export function HrAgentAssistant() {
               <SparklesIcon className="h-5 w-5" />
               <div>
                 <p className="text-sm font-semibold leading-tight">AI Assistant</p>
-                <p className="text-xs text-teal-100 leading-tight">Ask about HR or Safety</p>
+                <p className="text-xs text-teal-100 leading-tight">HR, Safety, Quality, and more</p>
               </div>
             </div>
             <button onClick={() => setOpen(false)} className="rounded-full p-1 hover:bg-teal-800" aria-label="Close assistant">
@@ -102,8 +102,8 @@ export function HrAgentAssistant() {
           <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
             {messages.length === 0 && (
               <p className="text-sm text-charcoal-500">
-                Try: "What's my leave balance?", "Draft a performance review comment for [name]", "How many open incidents this
-                month?", or "Any risk assessments pending approval?"
+                Try: "What's my leave balance?", "How many open incidents this month?", "Any NCRs overdue?", "Outstanding
+                training?", or "Any legal requirements overdue?"
               </p>
             )}
             {messages.map((m) => (

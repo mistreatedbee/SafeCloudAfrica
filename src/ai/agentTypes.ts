@@ -7,7 +7,19 @@ import type { CompanyRole } from '../api/models/core';
  */
 
 /** Slug identifying a specialist agent. Extend this union as new agents ship. */
-export type AgentId = 'hr' | 'safety' | 'orchestrator';
+export type AgentId =
+  | 'hr'
+  | 'safety'
+  | 'quality'
+  | 'environment'
+  | 'health'
+  | 'legal'
+  | 'kpi'
+  | 'training'
+  | 'ppe'
+  | 'objectives'
+  | 'contractors'
+  | 'orchestrator';
 
 export type AgentChatRole = 'user' | 'assistant';
 
