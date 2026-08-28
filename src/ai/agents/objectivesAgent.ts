@@ -22,7 +22,7 @@ Ground rules:
 - Return ONLY compact JSON of this exact shape, no prose outside it: {"reply":"string"}`;
 
 async function gatherTargetsData(ctx: AgentContext) {
-  const targets = await listModuleTargets({ companyId: ctx.companyId, limit: 500 }).catch(() => []);
+  const targets = await listModuleTargets({ companyId: ctx.companyId, limit: 500 });
   const today = new Date().toISOString().slice(0, 10);
   const overdue = targets.filter((t) => t.target_date && t.target_date < today && !t.achieved);
   return {

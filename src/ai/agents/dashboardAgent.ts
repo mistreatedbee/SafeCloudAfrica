@@ -29,7 +29,7 @@ async function gatherDashboardData(ctx: AgentContext): Promise<{ data: unknown; 
   if (!canManage.has(ctx.role)) {
     return { data: null, note: 'The compliance dashboard is restricted to manager-tier and above roles.' };
   }
-  const dashboard = await getComplianceDashboardData(ctx.companyId).catch(() => null);
+  const dashboard = await getComplianceDashboardData(ctx.companyId);
   if (!dashboard) return { data: null, note: 'No compliance dashboard data is available yet for this company.' };
   return {
     data: {

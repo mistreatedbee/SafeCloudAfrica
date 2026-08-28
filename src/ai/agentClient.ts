@@ -13,6 +13,36 @@ const ACTION_RUNNERS: Record<string, (action: AgentProposedAction, ctx: AgentCon
 
 const GREETING_RE = /^(hi+|hey+|hello+|howzit|yo|sup|good\s?(morning|afternoon|evening))[!.? ]*$/i;
 
+/**
+ * Mirrors api/hooks/useAsync.ts's isBackendUnavailableError. Every agent's
+ * data-gathering call used to swallow its own failures into an empty
+ * result (`.catch(() => [])`), which made a genuine backend hiccup
+ * indistinguishable from "there really is no data" -- the agent would
+ * confidently answer "no matching record found" when the real story was
+ * "the database didn't respond". Those catches were removed so failures
+ * propagate here instead; this check makes sure a transient failure gets
+ * an honest "try again" message rather than a raw error string or a false
+ * "not found".
+ */
+function isTransientBackendError(error: unknown): boolean {
+  const status = Number((error as { status?: number; statusCode?: number })?.status ?? (error as { statusCode?: number })?.statusCode ?? 0);
+  if (status === 502 || status === 503) return true;
+  const message = String((error as Error)?.message ?? error ?? '').toLowerCase();
+  return (
+    message.includes('502') ||
+    message.includes('503') ||
+    message.includes('bad gateway') ||
+    message.includes('service unavailable') ||
+    message.includes('pgrst001') ||
+    message.includes('pgrst002') ||
+    message.includes('failed to fetch') ||
+    message.includes('network')
+  );
+}
+
+const TRANSIENT_BACKEND_MESSAGE =
+  "I couldn't reach the database just now -- this looks like a brief backend hiccup, not missing data. Please try again in a few seconds.";
+
 function firstName(fullName: string): string {
   return fullName.trim().split(/\s+/)[0] || '';
 }
@@ -59,7 +89,9 @@ export async function askAgent(input: {
     } catch (error) {
       return {
         agentId: 'orchestrator',
-        reply: toUserFacingError(error, "I couldn't reach the assistant right now. Please try again in a moment."),
+        reply: isTransientBackendError(error)
+          ? TRANSIENT_BACKEND_MESSAGE
+          : toUserFacingError(error, "I couldn't reach the assistant right now. Please try again in a moment."),
         source: 'fallback'
       } satisfies AgentResponse;
     }
@@ -84,7 +116,7 @@ export async function confirmAgentAction(input: {
       const message = await runner(input.action, input.context);
       return { ok: true, message };
     } catch (error) {
-      return { ok: false, message: toUserFacingError(error, "That couldn't be saved. Please try again.") };
+      return { ok: false, message: isTransientBackendError(error) ? TRANSIENT_BACKEND_MESSAGE : toUserFacingError(error, "That couldn't be saved. Please try again.") };
     }
   });
 }
@@ -106,7 +138,7 @@ export async function draftPerformanceReviewComment(
       const text = await draftManagerRemarksForEmployee(context, employeeId);
       return { ok: true, text };
     } catch (error) {
-      return { ok: false, message: toUserFacingError(error, "Couldn't draft a comment right now.") };
+      return { ok: false, message: isTransientBackendError(error) ? TRANSIENT_BACKEND_MESSAGE : toUserFacingError(error, "Couldn't draft a comment right now.") };
     }
   });
 }
@@ -120,7 +152,7 @@ export async function draftIncidentCauseNote(
       const text = await draftInvestigationNotesFromDraft(context, draft);
       return { ok: true, text };
     } catch (error) {
-      return { ok: false, message: toUserFacingError(error, "Couldn't draft a note right now.") };
+      return { ok: false, message: isTransientBackendError(error) ? TRANSIENT_BACKEND_MESSAGE : toUserFacingError(error, "Couldn't draft a note right now.") };
     }
   });
 }

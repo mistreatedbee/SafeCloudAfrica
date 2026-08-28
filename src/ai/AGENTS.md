@@ -90,6 +90,9 @@ linked record for those modules.
 - **Document acknowledgement reminder query** -- aggregate view of `hr_ack_documents` / `hr_ack_receipts` completion counts.
 - **Recruitment screening helper** -- summarises `hr_applicants` against a `hr_vacancies` row (manager/HR-admin only).
 - **Leave pattern alert** -- flags concentration of approved leave around specific weekdays from `hr_leave_requests` (manager/HR-admin only).
+- **Employee headcount query** -- "How many employees do we have?" -- total + breakdown by employment status/type from `hr_employees`.
+
+`resolveMentionedEmployee()` now resolves first-person phrasing ("what's **my** leave balance") to the asker's own linked employee record for *any* role, not just an `employee` role -- previously only the redacted/employee-role branch had a self-reference path, so a manager/owner/admin asking about themselves fell through to keyword-matching their own message text against employee *names*, which a first-person question never contains, and wrongly reported "no matching employee found".
 
 ## safetyAgent capabilities
 

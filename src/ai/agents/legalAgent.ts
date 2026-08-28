@@ -34,7 +34,7 @@ async function gatherComplianceData(ctx: AgentContext): Promise<{ data: unknown;
   if (!canManage.has(ctx.role)) {
     return { data: null, note: 'The legal register is restricted to manager/admin/consultant roles.' };
   }
-  const result = await listLegalRequirements({ companyId: ctx.companyId, pageSize: 500 }).catch(() => ({ rows: [], total: 0, page: 1, pageSize: 500 }));
+  const result = await listLegalRequirements({ companyId: ctx.companyId, pageSize: 500 });
   const today = new Date().toISOString().slice(0, 10);
   const overdue = result.rows.filter((r) => r.target_date && r.target_date < today && r.compliance_status !== 'COMPLIANT');
   return {

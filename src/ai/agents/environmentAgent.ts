@@ -32,7 +32,7 @@ function detectIntent(message: string): Intent {
 }
 
 async function gatherAspectsData(ctx: AgentContext) {
-  const aspects = await listEnvironmentAspects(ctx.companyId).catch(() => []);
+  const aspects = await listEnvironmentAspects(ctx.companyId);
   return {
     data: {
       totalCount: aspects.length,
@@ -43,7 +43,7 @@ async function gatherAspectsData(ctx: AgentContext) {
 }
 
 async function gatherMonitoringData(ctx: AgentContext) {
-  const records = await listEnvironmentMonitoring(ctx.companyId, 100).catch(() => []);
+  const records = await listEnvironmentMonitoring(ctx.companyId, 100);
   return {
     data: {
       recentCount: records.length,

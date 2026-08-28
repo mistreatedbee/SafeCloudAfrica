@@ -40,8 +40,8 @@ function detectIntent(message: string): Intent {
 }
 
 async function gatherNcrData(ctx: AgentContext) {
-  const open = await listQualityNcrs({ companyId: ctx.companyId, status: 'open', limit: 200 }).catch(() => []);
-  const all = await listQualityNcrs({ companyId: ctx.companyId, limit: 500 }).catch(() => []);
+  const open = await listQualityNcrs({ companyId: ctx.companyId, status: 'open', limit: 200 });
+  const all = await listQualityNcrs({ companyId: ctx.companyId, limit: 500 });
   return {
     data: {
       openCount: open.length,
@@ -54,7 +54,7 @@ async function gatherNcrData(ctx: AgentContext) {
 }
 
 async function gatherComplaintsData(ctx: AgentContext) {
-  const complaints = await listCustomerComplaints({ companyId: ctx.companyId, limit: 500 }).catch(() => []);
+  const complaints = await listCustomerComplaints({ companyId: ctx.companyId, limit: 500 });
   return {
     data: {
       totalCount: complaints.length,
@@ -65,7 +65,7 @@ async function gatherComplaintsData(ctx: AgentContext) {
 }
 
 async function gatherIssuesData(ctx: AgentContext) {
-  const issues = await listInternalExternalIssues({ companyId: ctx.companyId, actorRole: ctx.role, limit: 500 }).catch(() => []);
+  const issues = await listInternalExternalIssues({ companyId: ctx.companyId, actorRole: ctx.role, limit: 500 });
   return { data: { totalCount: issues.length, byNature: countBy(issues, (i) => i.nature), byStatus: countBy(issues, (i) => i.status) } };
 }
 

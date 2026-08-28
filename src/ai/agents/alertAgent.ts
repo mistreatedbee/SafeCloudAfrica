@@ -39,7 +39,7 @@ async function gatherAlertData(ctx: AgentContext): Promise<{ data: unknown; note
   if (!canManage.has(ctx.role)) {
     return { data: null, note: 'This cross-module attention summary is restricted to manager-tier and above roles.' };
   }
-  const dashboard = await getComplianceDashboardData(ctx.companyId).catch(() => null);
+  const dashboard = await getComplianceDashboardData(ctx.companyId);
   if (!dashboard) return { data: null, note: 'No alert data is available yet for this company.' };
   return {
     data: {

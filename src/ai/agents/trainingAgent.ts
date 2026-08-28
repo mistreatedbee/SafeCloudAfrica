@@ -34,11 +34,11 @@ function detectIntent(message: string): Intent {
 }
 
 async function gatherOutstandingData(ctx: AgentContext) {
-  const compliance = await getTrainingComplianceSummary(ctx.companyId).catch(() => ({ required: 0, met: 0, percent: 100 }));
+  const compliance = await getTrainingComplianceSummary(ctx.companyId);
   if (ctx.redactSensitiveFields) {
     return { data: { compliancePercent: compliance.percent, requiredCount: compliance.required, metCount: compliance.met } };
   }
-  const outstanding = await listOutstandingTraining(ctx.companyId).catch(() => []);
+  const outstanding = await listOutstandingTraining(ctx.companyId);
   return {
     data: {
       compliancePercent: compliance.percent,
@@ -55,7 +55,7 @@ async function gatherExpiringSoonData(ctx: AgentContext): Promise<{ data: unknow
   if (ctx.redactSensitiveFields) {
     return { data: null, note: 'Individual expiring-training detail is restricted to manager/HR-admin roles; check the My Training tab for your own upcoming expirations.' };
   }
-  const rows = await listExpiringSoonTraining(ctx.companyId, 60).catch(() => []);
+  const rows = await listExpiringSoonTraining(ctx.companyId, 60);
   return {
     data: {
       count: rows.length,

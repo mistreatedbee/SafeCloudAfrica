@@ -53,8 +53,8 @@ function detectIntent(message: string): Intent {
 const canManage = new Set(['owner', 'admin', 'manager', 'supervisor', 'consultant']);
 
 async function gatherOpenIncidents(ctx: AgentContext): Promise<{ data: unknown }> {
-  const open = await listIncidentsWithFilters({ companyId: ctx.companyId, status: 'open', limit: 200 }).catch(() => []);
-  const investigating = await listIncidentsWithFilters({ companyId: ctx.companyId, status: 'investigating', limit: 200 }).catch(() => []);
+  const open = await listIncidentsWithFilters({ companyId: ctx.companyId, status: 'open', limit: 200 });
+  const investigating = await listIncidentsWithFilters({ companyId: ctx.companyId, status: 'investigating', limit: 200 });
   return {
     data: {
       openCount: open.length,
@@ -78,7 +78,7 @@ function countBy<T>(rows: T[], key: (row: T) => string | null | undefined): Reco
 }
 
 async function gatherRiskAssessmentStatus(ctx: AgentContext): Promise<{ data: unknown }> {
-  const assessments = await listRiskAssessments({ companyId: ctx.companyId, actorUserId: ctx.userId, actorRole: ctx.role, limit: 500 }).catch(() => []);
+  const assessments = await listRiskAssessments({ companyId: ctx.companyId, actorUserId: ctx.userId, actorRole: ctx.role, limit: 500 });
   const today = new Date().toISOString().slice(0, 10);
   const overdueForReview = assessments.filter((a) => a.status === 'active' && a.next_review_date && a.next_review_date < today);
   const pendingApproval = assessments.filter((a) => a.status === 'submitted');
@@ -94,7 +94,7 @@ async function gatherRiskAssessmentStatus(ctx: AgentContext): Promise<{ data: un
 }
 
 async function gatherInspectionCompliance(ctx: AgentContext): Promise<{ data: unknown }> {
-  const inspections = await listInspections({ companyId: ctx.companyId, limit: 500 }).catch(() => []);
+  const inspections = await listInspections({ companyId: ctx.companyId, limit: 500 });
   const today = new Date().toISOString().slice(0, 10);
   const overdue = inspections.filter((i) => i.status === 'scheduled' && i.scheduled_at && i.scheduled_at.slice(0, 10) < today);
   const totalNcrs = inspections.reduce((sum, i) => sum + (i.nonconformances_count ?? 0), 0);
@@ -112,7 +112,7 @@ async function gatherInvestigationData(ctx: AgentContext, message: string): Prom
   if (!canManage.has(ctx.role)) {
     return { data: null, note: 'Drafting investigation notes is restricted to manager/supervisor/HR-admin roles.' };
   }
-  const all = await listIncidentsWithFilters({ companyId: ctx.companyId, limit: 300 }).catch(() => []);
+  const all = await listIncidentsWithFilters({ companyId: ctx.companyId, limit: 300 });
   const words = message.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length > 3);
   const match = all.find((i) => words.some((w) => i.title.toLowerCase().includes(w)));
   if (!match) {
@@ -136,7 +136,7 @@ async function gatherInvestigationData(ctx: AgentContext, message: string): Prom
 }
 
 async function gatherIncidentPatternData(ctx: AgentContext): Promise<{ data: unknown }> {
-  const all = await listIncidentsWithFilters({ companyId: ctx.companyId, limit: 500 }).catch(() => []);
+  const all = await listIncidentsWithFilters({ companyId: ctx.companyId, limit: 500 });
   return {
     data: {
       totalIncidents: all.length,
@@ -235,7 +235,7 @@ async function saveInvestigationNotes(payload: Record<string, unknown>, ctx: Age
 
   // Defense in depth: confirm the incident actually belongs to this company
   // before writing, even though updateIncident() itself is RLS-scoped.
-  const owned = await listIncidentsWithFilters({ companyId: ctx.companyId, limit: 500 }).catch(() => []);
+  const owned = await listIncidentsWithFilters({ companyId: ctx.companyId, limit: 500 });
   if (!owned.some((i) => i.id === incidentId)) throw new Error('Incident not found for this company.');
 
   await updateIncident(incidentId, { causeOfIncident });

@@ -36,7 +36,7 @@ async function gatherAssessmentData(ctx: AgentContext): Promise<{ data: unknown;
   if (!canManage.has(ctx.role)) {
     return { data: null, note: 'KPI assessment detail is restricted to manager/supervisor/admin roles; ask HR/your manager for your own scores.' };
   }
-  const assessments = await listKPIAssessments({ organizationId: ctx.companyId, limit: 500 }).catch(() => []);
+  const assessments = await listKPIAssessments({ organizationId: ctx.companyId, limit: 500 });
   const today = new Date().toISOString().slice(0, 10);
   const overdue = assessments.filter((a) => a.status === 'draft' && a.period_end_date < today);
   const scored = assessments.filter((a) => a.overall_score != null);

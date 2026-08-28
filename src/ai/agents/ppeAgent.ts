@@ -34,17 +34,17 @@ function detectIntent(message: string): Intent {
 }
 
 async function gatherComplianceData(ctx: AgentContext) {
-  const compliancePercent = await getPpeCompliance(ctx.companyId).catch(() => null);
+  const compliancePercent = await getPpeCompliance(ctx.companyId);
   return { data: { compliancePercent } };
 }
 
 async function gatherStockData(ctx: AgentContext) {
-  const lowStockCount = await getPpeLowStockCount(ctx.companyId).catch(() => 0);
+  const lowStockCount = await getPpeLowStockCount(ctx.companyId);
   return { data: { lowStockCount } };
 }
 
 async function gatherIssueTrackerData(ctx: AgentContext) {
-  const rows = await listPpeIssueTracker({ companyId: ctx.companyId, limit: 300 }).catch(() => []);
+  const rows = await listPpeIssueTracker({ companyId: ctx.companyId, limit: 300 });
   return {
     data: {
       totalCount: rows.length,

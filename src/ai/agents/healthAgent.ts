@@ -35,7 +35,7 @@ function detectIntent(message: string): Intent {
 }
 
 async function gatherMedicalsData(ctx: AgentContext) {
-  const medicals = await listHealthMedicals({ companyId: ctx.companyId, actorRole: ctx.role, limit: 500 }).catch(() => []);
+  const medicals = await listHealthMedicals({ companyId: ctx.companyId, actorRole: ctx.role, limit: 500 });
   if (ctx.redactSensitiveFields) {
     return { data: { totalCount: medicals.length, byFitnessStatus: countBy(medicals, (m) => m.fitness_status) } };
   }
@@ -63,12 +63,12 @@ async function gatherRestrictedDutyData(ctx: AgentContext): Promise<{ data: unkn
   if (ctx.redactSensitiveFields) {
     return { data: null, note: 'Restricted duty details are restricted to health/HR-management roles (POPIA).' };
   }
-  const rows = await listHealthRestrictedDuty({ companyId: ctx.companyId }).catch(() => []);
+  const rows = await listHealthRestrictedDuty({ companyId: ctx.companyId });
   return { data: { count: Array.isArray(rows) ? rows.length : 0 } };
 }
 
 async function gatherHygieneData(ctx: AgentContext) {
-  const records = await listHealthHygieneRecords({ companyId: ctx.companyId }).catch(() => []);
+  const records = await listHealthHygieneRecords({ companyId: ctx.companyId });
   return { data: { count: Array.isArray(records) ? records.length : 0 } };
 }
 

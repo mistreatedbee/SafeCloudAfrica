@@ -32,7 +32,7 @@ function detectIntent(message: string): Intent {
 }
 
 async function gatherContractorsData(ctx: AgentContext) {
-  const contractors = await listContractors(ctx.companyId).catch(() => []);
+  const contractors = await listContractors(ctx.companyId);
   return {
     data: {
       totalCount: contractors.length,
@@ -44,7 +44,7 @@ async function gatherContractorsData(ctx: AgentContext) {
 }
 
 async function gatherVisitorsData(ctx: AgentContext) {
-  const visitors = await listVisitors(ctx.companyId).catch(() => []);
+  const visitors = await listVisitors(ctx.companyId);
   return {
     data: {
       totalCount: visitors.length,
