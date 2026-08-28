@@ -895,14 +895,18 @@ export async function getTrainingSpendSummary(
   companyId: UUID,
   options: { fromDate?: string; toDate?: string; departmentId?: UUID | null }
 ): Promise<TrainingSpendSummary> {
+  // Filters on completed_at (when the training actually happened), not created_at (when
+  // the DB row was inserted) -- a "spend in this period" report should reflect training
+  // dates, not data-entry dates. SCHEDULED records have no completed_at yet so they never
+  // match a date range here, which is correct: money isn't "spent" until training happens.
   let q = insforge.database
     .from('training_records')
-    .select('id, course_id, provider_id, job_description_id, cost, status')
+    .select('id, course_id, provider_id, job_description_id, cost, status, completed_at')
     .eq('company_id', companyId)
     .in('status', ['COMPLETED', 'SCHEDULED'])
     .not('cost', 'is', null);
-  if (options.fromDate) q = q.gte('created_at', options.fromDate);
-  if (options.toDate) q = q.lte('created_at', options.toDate);
+  if (options.fromDate) q = q.gte('completed_at', options.fromDate);
+  if (options.toDate) q = q.lte('completed_at', options.toDate);
   const { data: records, error } = await q;
   if (error) throw new Error(getErrorMessage(error));
   const list = (records ?? []) as { id: UUID; course_id: UUID; provider_id: UUID | null; job_description_id: UUID | null; cost: number }[];
@@ -964,24 +968,57 @@ export async function getTrainingSpendSummary(
   };
 }
 
-export async function listOutstandingTraining(companyId: UUID, userId?: UUID): Promise<TrainingRecord[]> {
-  return listTrainingRecords(companyId, {
-    userId,
-    status: ['REQUIRED', 'OVERDUE'],
-    limit: 500
-  });
+export type OutstandingReason = 'not_started' | 'expired';
+export type OutstandingTrainingRow = TrainingRecord & { outstandingReason: OutstandingReason };
+
+/**
+ * "Outstanding" = required training not yet completed (status REQUIRED/OVERDUE, created by
+ * syncTrainingRequirementsForEmployee/-ForUser from the job's training matrix) OR training
+ * that WAS completed but has since expired. The previous version only looked at
+ * REQUIRED/OVERDUE, so a completed-then-expired course never showed up here even though
+ * it's exactly the "outstanding" case the client described (expired = needs renewing).
+ */
+export async function listOutstandingTraining(
+  companyId: UUID,
+  filters?: { userId?: UUID; employeeId?: UUID }
+): Promise<OutstandingTrainingRow[]> {
+  const [notStarted, completed] = await Promise.all([
+    listTrainingRecords(companyId, {
+      userId: filters?.employeeId ? undefined : filters?.userId,
+      employeeId: filters?.employeeId,
+      status: ['REQUIRED', 'OVERDUE'],
+      limit: 500
+    }),
+    listTrainingRecords(companyId, {
+      userId: filters?.employeeId ? undefined : filters?.userId,
+      employeeId: filters?.employeeId,
+      status: 'COMPLETED',
+      limit: 1000
+    })
+  ]);
+  const now = new Date();
+  const expired = completed.filter((r) => r.expires_at && new Date(r.expires_at) < now);
+  return [
+    ...notStarted.map((r) => ({ ...r, outstandingReason: 'not_started' as const })),
+    ...expired.map((r) => ({ ...r, outstandingReason: 'expired' as const }))
+  ];
 }
 
 /** Records with status COMPLETED whose expiry is within the next withinDays (and not yet expired). */
 export async function listExpiringSoonTraining(
   companyId: UUID,
   withinDays: number,
-  userId?: UUID
+  filters?: { userId?: UUID; employeeId?: UUID }
 ): Promise<TrainingRecord[]> {
   const now = new Date();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + withinDays);
-  const list = await listTrainingRecords(companyId, { userId, status: 'COMPLETED', limit: 1000 });
+  const list = await listTrainingRecords(companyId, {
+    userId: filters?.employeeId ? undefined : filters?.userId,
+    employeeId: filters?.employeeId,
+    status: 'COMPLETED',
+    limit: 1000
+  });
   return list.filter(
     (r) =>
       r.expires_at &&
@@ -991,8 +1028,40 @@ export async function listExpiringSoonTraining(
 }
 
 /** Records that are already expired (expires_at < today), for reporting. */
-export async function listExpiredTraining(companyId: UUID, userId?: UUID): Promise<TrainingRecord[]> {
-  const list = await listTrainingRecords(companyId, { userId, limit: 1000 });
+export async function listExpiredTraining(
+  companyId: UUID,
+  filters?: { userId?: UUID; employeeId?: UUID }
+): Promise<TrainingRecord[]> {
+  const list = await listTrainingRecords(companyId, {
+    userId: filters?.employeeId ? undefined : filters?.userId,
+    employeeId: filters?.employeeId,
+    limit: 1000
+  });
   const now = new Date();
   return list.filter((r) => r.expires_at && new Date(r.expires_at) < now);
+}
+
+export type TrainingComplianceSummary = {
+  required: number;
+  met: number;
+  percent: number;
+};
+
+/**
+ * Compliance = matrix-driven training_records (REQUIRED/OVERDUE/COMPLETED -- the exact
+ * set syncTrainingRequirementsForEmployee/-ForUser writes, one row per required course per
+ * employee) vs how many of those are COMPLETED and not yet expired. Matches the client's
+ * "compliance should include outstanding training to determine compliance based on expired
+ * and outstanding" -- a completed-but-expired row still counts as required, not met.
+ */
+export async function getTrainingComplianceSummary(companyId: UUID): Promise<TrainingComplianceSummary> {
+  const list = await listTrainingRecords(companyId, {
+    status: ['REQUIRED', 'OVERDUE', 'COMPLETED'],
+    limit: 5000
+  });
+  const now = new Date();
+  const required = list.length;
+  const met = list.filter((r) => r.status === 'COMPLETED' && (!r.expires_at || new Date(r.expires_at) >= now)).length;
+  const percent = required === 0 ? 100 : Math.round((met / required) * 100);
+  return { required, met, percent };
 }

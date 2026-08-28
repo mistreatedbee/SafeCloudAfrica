@@ -1,5 +1,10 @@
 import React, { useMemo, useState } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { toUserFacingError } from '../utils/userFacingMessage';
+import { drawPdfCoverWithLogo } from '../api/services/reportExportService';
+import { useIdentity } from '../hooks/useIdentity';
+import { insforge } from '../api/insforge/client';
 import { motion } from 'framer-motion';
 import {
   GraduationCapIcon,
@@ -18,6 +23,7 @@ import {
   cancelTrainingRecord,
   countExpiringTraining,
   deleteTrainingRecord,
+  listExpiringSoonTraining,
   listTrainingCourses,
   listTrainingRecords,
   listTrainingProviders
@@ -30,7 +36,7 @@ import { TrainingMatrixSetupTab } from '../components/training/TrainingMatrixSet
 import { TrainingReportsTab } from '../components/training/TrainingReportsTab';
 import { listCompanyMemberships } from '../api/services/tenantService';
 import { listUserProfiles } from '../api/services/profilesService';
-import { listHrEmployees, type HrEmployee } from '../api/services/hrService';
+import { listHrEmployees, getHrEmployeeByUserId, type HrEmployee } from '../api/services/hrService';
 import type { CompanyMembership } from '../api/models/entities';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../api/services/documentsStorageService';
 
@@ -61,7 +67,8 @@ export function TrainingPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<TrainingTab>('employees');
   const { user } = useUser();
-  const { activeCompanyId, activeRole } = useTenant();
+  const { activeCompanyId, activeRole, activeCompany } = useTenant();
+  const { fullName, organisationName } = useIdentity();
   const canManage =
     activeRole === 'owner' ||
     activeRole === 'admin' ||
@@ -116,11 +123,50 @@ export function TrainingPage() {
   );
   const employeeById = useMemo(() => new Map((employees ?? []).map((e) => [e.id, e])), [employees]);
   const employeeName = (e: HrEmployee) => `${e.last_name ?? ''}, ${e.first_name ?? ''}`.replace(/^,\s*|,\s*$/g, '').trim() || e.email || e.employee_no;
+  // Not gated on canManage -- provider names are reference data every user needs to read
+  // their own training (e.g. "My Training" shows the provider for each course).
   const { data: providers } = useAsync(
-    async () => (activeCompanyId && canManage ? listTrainingProviders(activeCompanyId) : []),
-    [activeCompanyId, canManage]
+    async () => (activeCompanyId ? listTrainingProviders(activeCompanyId) : []),
+    [activeCompanyId]
   );
+  const providerById = useMemo(() => new Map((providers ?? []).map((p) => [p.id, p])), [providers]);
   const profileByUserId = useMemo(() => new Map((profiles ?? []).map((p) => [p.user_id, p])), [profiles]);
+
+  // "My Training" needs the current user's own hr_employees row -- training_records is
+  // keyed primarily by employee_id now (most employees have no platform login at all, see
+  // training_records_hr_employee_link_2026_08_20.sql), so filtering by user_id alone (the
+  // previous behaviour) silently returned nothing for almost every real employee.
+  const { data: myEmployee } = useAsync<HrEmployee | null>(
+    async () => {
+      if (!activeCompanyId || !user?.id) return null;
+      return await getHrEmployeeByUserId(activeCompanyId, user.id as any).catch(() => null);
+    },
+    [activeCompanyId, user?.id]
+  );
+
+  const { data: myRecords, loading: myRecordsLoading } = useAsync<TrainingRecord[]>(
+    async () => {
+      if (!activeCompanyId || !user?.id) return [];
+      if (myEmployee?.id) {
+        return await listTrainingRecords(activeCompanyId, { employeeId: myEmployee.id, limit: 500 });
+      }
+      // Fall back to user_id for the (rare) case of a platform user with no HR employee
+      // record at all -- e.g. an admin/consultant who was assigned training directly.
+      return await listTrainingRecords(activeCompanyId, { userId: user.id as any, limit: 500 });
+    },
+    [activeCompanyId, user?.id, myEmployee?.id, recordsRefresh]
+  );
+
+  const { data: myExpiringSoon } = useAsync<TrainingRecord[]>(
+    async () => {
+      if (!activeCompanyId || !user?.id) return [];
+      return await listExpiringSoonTraining(activeCompanyId, 60, {
+        employeeId: myEmployee?.id as any,
+        userId: myEmployee?.id ? undefined : (user.id as any)
+      });
+    },
+    [activeCompanyId, user?.id, myEmployee?.id, recordsRefresh]
+  );
 
   const { data: memberships } = useAsync<CompanyMembership[]>(
     async () => {
@@ -644,71 +690,168 @@ export function TrainingPage() {
       )}
 
       {effectiveTab === 'my' && (() => {
-        const myRecords = (records ?? []).filter((r) => r.user_id === user?.id);
-        const myWithCourse = myRecords.map((r) => ({
+        const myWithCourse = (myRecords ?? []).map((r) => ({
           ...r,
-          courseName: courseById.get(r.course_id)?.name ?? `Course ${String(r.course_id).slice(0, 8)}`
+          courseName: courseById.get(r.course_id)?.name ?? `Course ${String(r.course_id).slice(0, 8)}`,
+          providerName: r.provider_id ? providerById.get(r.provider_id)?.name ?? null : null
         }));
         const myFiltered = searchQuery.trim()
-          ? myWithCourse.filter(
-              (r) =>
-                r.courseName.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-                String(r.user_id).includes(searchQuery)
-            )
+          ? myWithCourse.filter((r) => r.courseName.toLowerCase().includes(searchQuery.trim().toLowerCase()))
           : myWithCourse;
+        const myName = myEmployee ? employeeName(myEmployee) : (fullName || 'Me');
+
+        function myTrainingBadge(r: TrainingRecord) {
+          const now = Date.now();
+          if (r.expires_at) {
+            const expiresMs = new Date(r.expires_at).getTime();
+            if (expiresMs < now) {
+              const daysAgo = Math.floor((now - expiresMs) / (1000 * 60 * 60 * 24));
+              return { label: `Expired ${daysAgo} day${daysAgo === 1 ? '' : 's'} ago`, cls: 'bg-critical/15 text-critical' };
+            }
+            if (expiresMs <= now + 60 * 24 * 60 * 60 * 1000) {
+              const daysLeft = Math.ceil((expiresMs - now) / (1000 * 60 * 60 * 24));
+              return { label: `Expiring soon (${daysLeft}d)`, cls: 'bg-warning/15 text-warning' };
+            }
+          }
+          if (r.status === 'COMPLETED') return { label: 'Completed', cls: 'bg-success/15 text-success' };
+          return { label: r.status, cls: 'bg-surface-100 text-charcoal-600' };
+        }
+
+        async function downloadMyTrainingPdf() {
+          const logoMeta = (activeCompany?.metadata ?? {}) as Record<string, unknown>;
+          const logoBucket = logoMeta.logo_bucket as string | undefined;
+          const logoKey = logoMeta.logo_key as string | undefined;
+          let logoUrl: string | null = null;
+          if (logoBucket && logoKey) {
+            try {
+              logoUrl = insforge.storage.from(logoBucket).getPublicUrl(logoKey);
+            } catch {
+              logoUrl = null;
+            }
+          }
+          const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+          const y = await drawPdfCoverWithLogo(doc, {
+            title: 'Training Record',
+            subtitle: myName,
+            companyName: organisationName,
+            generatedBy: fullName,
+            logoUrl
+          });
+          autoTable(doc, {
+            startY: y,
+            head: [['Course', 'Provider', 'Completed', 'Expiry', 'Cost (ZAR)', 'Status']],
+            body: myWithCourse.length > 0
+              ? myWithCourse.map((r) => [
+                  r.courseName,
+                  r.providerName ?? '-',
+                  r.completed_at ? new Date(r.completed_at).toLocaleDateString('en-ZA') : '-',
+                  r.expires_at ? new Date(r.expires_at).toLocaleDateString('en-ZA') : '-',
+                  r.cost != null ? Number(r.cost).toFixed(2) : '-',
+                  myTrainingBadge(r).label
+                ])
+              : [['No training records', '', '', '', '', '']],
+            styles: { fontSize: 8, cellPadding: 5 },
+            headStyles: { fillColor: [11, 158, 117], textColor: 255 },
+            alternateRowStyles: { fillColor: [248, 250, 252] }
+          });
+          const safeName = myName.replace(/[^a-z0-9]+/gi, '_');
+          doc.save(`SCA_MyTraining_${safeName}_${new Date().toISOString().slice(0, 10)}.pdf`);
+        }
+
         return (
           <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
-            <h2 className="text-lg font-semibold text-charcoal">My Training</h2>
-            <div className="space-y-3">
-              {myFiltered.length === 0 ? (
-                <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-                  <p className="text-sm text-charcoal-500">No training records for you yet.</p>
-                </div>
-              ) : (
-                myFiltered.map((r: TrainingRecord & { courseName?: string }) => (
-                  <div key={r.id} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-                    <p className="text-sm font-semibold text-charcoal">{r.courseName ?? 'Course'}</p>
-                    <p className="text-sm text-charcoal-500 mt-1">
-                      Status: <span className="font-medium">{r.status}</span>
-                      {r.completed_at ? ` • Completed: ${new Date(r.completed_at).toLocaleDateString('en-ZA')}` : ''}
-                      {r.expires_at ? ` • Expires: ${new Date(r.expires_at).toLocaleDateString('en-ZA')}` : ''}
-                    </p>
-                    {r.certificate_bucket && r.certificate_key && (
-                      <div className="mt-3 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
-                              openBlobInNewTab(blob);
-                            } catch (err) {
-                              alert(toUserFacingError(err, 'Could not open certificate. Please try again.'));
-                            }
-                          }}
-                          className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
-                        >
-                          Open certificate
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
-                              downloadBlob(blob, r.certificate_key!.split('/').pop() ?? 'certificate');
-                            } catch (err) {
-                              alert(toUserFacingError(err, 'Could not download certificate. Please try again.'));
-                            }
-                          }}
-                          className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
-                        >
-                          Download
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <h2 className="text-lg font-semibold text-charcoal">My Training</h2>
+              <button
+                type="button"
+                onClick={() => void downloadMyTrainingPdf()}
+                className="px-3 py-2 rounded-lg border border-teal text-teal text-sm font-medium hover:bg-teal-50"
+              >
+                Download my training record
+              </button>
             </div>
+
+            {(myExpiringSoon ?? []).length > 0 && (
+              <div className="bg-warning/10 border border-warning/30 rounded-xl p-4">
+                <p className="text-sm font-semibold text-charcoal">Your upcoming expirations</p>
+                <ul className="mt-1 space-y-1">
+                  {(myExpiringSoon ?? []).map((r) => (
+                    <li key={r.id} className="text-sm text-charcoal-600">
+                      {courseById.get(r.course_id)?.name ?? 'Course'} — expires {r.expires_at ? new Date(r.expires_at).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {!myEmployee && !myRecordsLoading && (myRecords ?? []).length === 0 ? (
+              <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                <p className="text-sm text-charcoal-500">
+                  No employee profile found. Ask your HR administrator to link your account to an employee record.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {myRecordsLoading ? (
+                  <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                    <p className="text-sm text-charcoal-500">Loading…</p>
+                  </div>
+                ) : myFiltered.length === 0 ? (
+                  <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                    <p className="text-sm text-charcoal-500">No training records for you yet.</p>
+                  </div>
+                ) : (
+                  myFiltered.map((r) => {
+                    const badge = myTrainingBadge(r);
+                    return (
+                      <div key={r.id} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+                        <div className="flex items-start justify-between gap-3 flex-wrap">
+                          <p className="text-sm font-semibold text-charcoal">{r.courseName}</p>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>{badge.label}</span>
+                        </div>
+                        <p className="text-sm text-charcoal-500 mt-1">
+                          {r.providerName ? `Provider: ${r.providerName} • ` : ''}
+                          {r.completed_at ? `Completed: ${new Date(r.completed_at).toLocaleDateString('en-ZA')}` : 'Not yet completed'}
+                          {r.expires_at ? ` • Expires: ${new Date(r.expires_at).toLocaleDateString('en-ZA')}` : ''}
+                        </p>
+                        {r.certificate_bucket && r.certificate_key && (
+                          <div className="mt-3 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
+                                  openBlobInNewTab(blob);
+                                } catch (err) {
+                                  alert(toUserFacingError(err, 'Could not open certificate. Please try again.'));
+                                }
+                              }}
+                              className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                            >
+                              Open certificate
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const blob = await downloadDocumentFile({ bucket: r.certificate_bucket!, key: r.certificate_key! });
+                                  downloadBlob(blob, r.certificate_key!.split('/').pop() ?? 'certificate');
+                                } catch (err) {
+                                  alert(toUserFacingError(err, 'Could not download certificate. Please try again.'));
+                                }
+                              }}
+                              className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                            >
+                              Download
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
           </motion.div>
         );
       })()}

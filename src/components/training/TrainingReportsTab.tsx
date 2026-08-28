@@ -1,17 +1,26 @@
-import React, { useState } from 'react';
-import { DownloadIcon, CalendarIcon } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { DownloadIcon, CalendarIcon, FileTextIcon } from 'lucide-react';
 import { useAsync } from '../../api/hooks/useAsync';
 import type { TrainingRecord, UUID } from '../../api/models/entities';
 import {
   getTrainingSpendSummary,
+  getTrainingComplianceSummary,
   listOutstandingTraining,
   listExpiringSoonTraining,
   listTrainingCourses,
   listTrainingProviders,
-  listJobDescriptions
+  listJobDescriptions,
+  type OutstandingTrainingRow
 } from '../../api/services/trainingService';
 import { listUserProfiles } from '../../api/services/profilesService';
 import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
+import { useTenant } from '../../tenant/TenantContext';
+import { useIdentity } from '../../hooks/useIdentity';
+import { insforge } from '../../api/insforge/client';
+import { drawPdfCoverWithLogo } from '../../api/services/reportExportService';
+import { buildFinancialYearOptions, currentFinancialYearStartYear, financialYearForStartYear } from '../../utils/financialYear';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 
 function toCsvRows(rows: string[][]): string {
@@ -40,16 +49,40 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 export function TrainingReportsTab(props: { companyId: UUID }) {
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 12);
-    return d.toISOString().slice(0, 10);
-  });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const { activeCompany } = useTenant();
+  const { fullName, organisationName } = useIdentity();
+
+  const financialYearOptions = useMemo(() => buildFinancialYearOptions(1, 1), []);
+  const [fyStartYear, setFyStartYear] = useState(() => currentFinancialYearStartYear());
+  const currentFy = useMemo(() => financialYearForStartYear(fyStartYear), [fyStartYear]);
+
+  // Date pickers pre-fill from the selected FY but stay independently editable -- picking a
+  // new FY resets them; typing in the pickers afterwards doesn't change the FY selector back.
+  const [fromDate, setFromDate] = useState(currentFy.fromDate);
+  const [toDate, setToDate] = useState(currentFy.toDate);
   const [expiringDays, setExpiringDays] = useState(30);
+
+  function onSelectFinancialYear(startYear: number) {
+    setFyStartYear(startYear);
+    const fy = financialYearForStartYear(startYear);
+    setFromDate(fy.fromDate);
+    setToDate(fy.toDate);
+  }
 
   const fromIso = `${fromDate}T00:00:00.000Z`;
   const toIso = `${toDate}T23:59:59.999Z`;
+
+  const logoUrl = useMemo(() => {
+    const meta = (activeCompany?.metadata ?? {}) as Record<string, unknown>;
+    const bucket = meta.logo_bucket as string | undefined;
+    const key = meta.logo_key as string | undefined;
+    if (!bucket || !key) return null;
+    try {
+      return insforge.storage.from(bucket).getPublicUrl(key);
+    } catch {
+      return null;
+    }
+  }, [activeCompany?.metadata]);
 
   const { data: summary, loading: summaryLoading } = useAsync<
     Awaited<ReturnType<typeof getTrainingSpendSummary>> | { totalCost: number; byCourse: never[]; byProvider: never[]; byJob: never[]; recordCount: number }
@@ -60,7 +93,11 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
         : Promise.resolve({ totalCost: 0, byCourse: [], byProvider: [], byJob: [], recordCount: 0 }),
     [props.companyId, fromDate, toDate]
   );
-  const { data: outstanding } = useAsync<TrainingRecord[]>(
+  const { data: compliance } = useAsync<Awaited<ReturnType<typeof getTrainingComplianceSummary>>>(
+    () => (props.companyId ? getTrainingComplianceSummary(props.companyId) : Promise.resolve({ required: 0, met: 0, percent: 100 })),
+    [props.companyId]
+  );
+  const { data: outstanding } = useAsync<OutstandingTrainingRow[]>(
     () => (props.companyId ? listOutstandingTraining(props.companyId) : Promise.resolve([])),
     [props.companyId]
   );
@@ -99,6 +136,10 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
     return 'Unknown';
   }
 
+  function outstandingStatusLabel(r: OutstandingTrainingRow): string {
+    return r.outstandingReason === 'expired' ? 'Expired' : 'Not started';
+  }
+
   function exportCostSummary() {
     if (!summary) return;
     const rows = [
@@ -119,14 +160,67 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
     downloadCsv(`training-cost-summary-${fromDate}-${toDate}.csv`, rows);
   }
 
+  async function exportCostSummaryPdf() {
+    if (!summary) return;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    let y = await drawPdfCoverWithLogo(doc, {
+      title: 'Training Cost Report',
+      subtitle: `${currentFy.label} (${fromDate} to ${toDate})`,
+      companyName: organisationName,
+      generatedBy: fullName,
+      logoUrl
+    });
+
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total spend: ZAR ${summary.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })} (${summary.recordCount} records with cost)`, 40, y);
+    y += 14;
+
+    const sections: { title: string; head: string[]; rows: (string | number)[][] }[] = [
+      {
+        title: 'By course',
+        head: ['Course', 'ZAR', 'Count'],
+        rows: [...summary.byCourse].sort((a, b) => b.totalCost - a.totalCost).map((r) => [r.courseName || r.courseId, r.totalCost.toFixed(2), r.count])
+      },
+      {
+        title: 'By provider',
+        head: ['Provider', 'ZAR', 'Count'],
+        rows: [...summary.byProvider].sort((a, b) => b.totalCost - a.totalCost).map((r) => [r.providerName || r.providerId, r.totalCost.toFixed(2), r.count])
+      },
+      {
+        title: 'By job description',
+        head: ['Job', 'ZAR', 'Count'],
+        rows: [...summary.byJob].sort((a, b) => b.totalCost - a.totalCost).map((r) => [r.jobTitle || r.jobDescriptionId, r.totalCost.toFixed(2), r.count])
+      }
+    ];
+
+    for (const section of sections) {
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text(section.title, 40, y + 14);
+      autoTable(doc, {
+        startY: y + 20,
+        head: [section.head],
+        body: section.rows.length > 0 ? section.rows : [['No cost data', '', '']],
+        styles: { fontSize: 8, cellPadding: 4 },
+        headStyles: { fillColor: [11, 158, 117], textColor: 255 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        margin: { left: 40, right: 40 }
+      });
+      y = (doc as any).lastAutoTable.finalY + 24;
+    }
+
+    doc.save(`SCA_TrainingCosts_${fyStartYear}-${String(fyStartYear + 1).slice(-2)}.pdf`);
+  }
+
   function exportOutstanding() {
     const rows = [
-      ['Outstanding training', 'User', 'Course', 'Status', 'User ID', 'Record ID'],
+      ['Employee', 'Course', 'Status', 'Due date', 'User ID', 'Record ID'],
       ...(outstanding ?? []).map((r) => [
-        courseById.get(r.course_id) ?? '',
         traineeName(r),
         courseById.get(r.course_id) ?? '',
-        r.status,
+        outstandingStatusLabel(r),
+        r.expires_at ?? '',
         r.user_id ?? r.employee_id ?? '',
         r.id
       ])
@@ -153,6 +247,15 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <CalendarIcon className="w-5 h-5 text-charcoal-500" />
+          <select
+            value={fyStartYear}
+            onChange={(e) => onSelectFinancialYear(Number(e.target.value))}
+            className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
+          >
+            {financialYearOptions.map((fy) => (
+              <option key={fy.startYear} value={fy.startYear}>{fy.label}</option>
+            ))}
+          </select>
           <input
             type="date"
             value={fromDate}
@@ -177,7 +280,32 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
           <DownloadIcon className="w-4 h-4" />
           Export cost summary (CSV)
         </button>
+        <button
+          type="button"
+          onClick={() => void exportCostSummaryPdf()}
+          disabled={summaryLoading}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-teal text-teal text-sm font-medium hover:bg-teal-50 disabled:opacity-60"
+        >
+          <FileTextIcon className="w-4 h-4" />
+          Export PDF
+        </button>
       </div>
+
+      {compliance && (
+        <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium text-charcoal">
+              Training Compliance: {compliance.percent}% ({compliance.met} of {compliance.required} requirements met)
+            </p>
+          </div>
+          <div className="h-2.5 bg-surface-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full ${compliance.percent >= 80 ? 'bg-success' : compliance.percent >= 50 ? 'bg-warning' : 'bg-critical'}`}
+              style={{ width: `${Math.min(100, Math.max(0, compliance.percent))}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {summaryLoading ? (
         <div className="flex items-center gap-2 text-charcoal-500 py-8">
@@ -307,9 +435,10 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
             <table className="w-full text-sm">
               <thead className="bg-surface-100 sticky top-0">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium text-charcoal-500">User</th>
+                  <th className="px-3 py-2 text-left font-medium text-charcoal-500">Employee</th>
                   <th className="px-3 py-2 text-left font-medium text-charcoal-500">Course</th>
                   <th className="px-3 py-2 text-left font-medium text-charcoal-500">Status</th>
+                  <th className="px-3 py-2 text-left font-medium text-charcoal-500">Due date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-100">
@@ -320,13 +449,16 @@ export function TrainingReportsTab(props: { companyId: UUID }) {
                     </td>
                     <td className="px-3 py-2 text-charcoal">{courseById.get(r.course_id) ?? '—'}</td>
                     <td className="px-3 py-2">
-                      <span className="px-2 py-0.5 rounded text-xs bg-critical/15 text-critical">{r.status}</span>
+                      <span className={`px-2 py-0.5 rounded text-xs ${r.outstandingReason === 'expired' ? 'bg-critical/15 text-critical' : 'bg-warning/15 text-warning'}`}>
+                        {outstandingStatusLabel(r)}
+                      </span>
                     </td>
+                    <td className="px-3 py-2 text-charcoal-500">{r.expires_at ? new Date(r.expires_at).toLocaleDateString('en-ZA') : '—'}</td>
                   </tr>
                 ))}
                 {(outstanding ?? []).length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-3 py-4 text-charcoal-500 text-center">None</td>
+                    <td colSpan={4} className="px-3 py-4 text-charcoal-500 text-center">None</td>
                   </tr>
                 )}
               </tbody>

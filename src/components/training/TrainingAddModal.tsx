@@ -30,6 +30,7 @@ export function TrainingAddModal(props: {
   const [employeeId, setEmployeeId] = useState('');
   const [completedAt, setCompletedAt] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
+  const [cost, setCost] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,7 @@ export function TrainingAddModal(props: {
     employeeId: string;
     completedAt: string;
     expiresAt: string;
+    cost: string;
     employeeNameSnapshot: string;
   };
 
@@ -53,9 +55,9 @@ export function TrainingAddModal(props: {
   const hasDirtyDraft = useMemo(() => {
     const targetDirty = !props.defaultUserId ? userId.trim().length > 0 || employeeId.trim().length > 0 : false;
     const courseDirty = mode === 'existing' ? courseId.trim().length > 0 : newCourseName.trim().length > 2;
-    const datesDirty = !!completedAt.trim() || !!expiresAt.trim();
+    const datesDirty = !!completedAt.trim() || !!expiresAt.trim() || !!cost.trim();
     return targetDirty || courseDirty || datesDirty;
-  }, [completedAt, courseId, employeeId, expiresAt, mode, newCourseName, props.defaultUserId, userId]);
+  }, [completedAt, cost, courseId, employeeId, expiresAt, mode, newCourseName, props.defaultUserId, userId]);
 
   useDraftRegistration({
     key: draftKey,
@@ -71,6 +73,7 @@ export function TrainingAddModal(props: {
         employeeId,
         completedAt,
         expiresAt,
+        cost,
         employeeNameSnapshot
       }) satisfies TrainingAddDraftPayload
   });
@@ -101,6 +104,7 @@ export function TrainingAddModal(props: {
     setEmployeeId(restored.employeeId ?? '');
     setCompletedAt(restored.completedAt ?? '');
     setExpiresAt(restored.expiresAt ?? '');
+    setCost(restored.cost ?? '');
     setEmployeeNameSnapshot(restored.employeeNameSnapshot ?? '');
     setFile(null);
     setError(null);
@@ -167,6 +171,7 @@ export function TrainingAddModal(props: {
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
         certificateBucket,
         certificateKey,
+        cost: cost.trim() ? Number(cost) : null,
         createdByUserId: props.createdByUserId
       });
 
@@ -180,6 +185,7 @@ export function TrainingAddModal(props: {
       // multiple training records in a row.
       setCompletedAt('');
       setExpiresAt('');
+      setCost('');
       setFile(null);
       setError(null);
     } catch (err: any) {
@@ -334,6 +340,20 @@ export function TrainingAddModal(props: {
                 className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Training Cost (ZAR)</label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              placeholder="0.00"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            />
+            <p className="mt-1 text-xs text-charcoal-500">Leave blank if no cost or cost unknown.</p>
           </div>
 
           <div>
