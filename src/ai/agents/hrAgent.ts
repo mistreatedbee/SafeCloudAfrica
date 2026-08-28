@@ -41,6 +41,7 @@ Ground rules:
 - South African law context: BCEA governs leave (21 consecutive days annual leave/annual cycle, sick leave over a 36-month cycle, family responsibility leave), LRA requires a fair process for discipline/incapacity, COID Act covers workplace injury claims (tell the user that's a Safety-module matter, not HR), POPIA restricts personal information to those with a legitimate need.
 ${ctx.redactSensitiveFields ? '- POPIA: this user has an "employee" role. NEVER reveal another employee\'s ID number, medical, banking, disciplinary, or performance details. Only their own record (if the DATA block includes it) may be discussed in detail; for anyone else, answer only with role-appropriate aggregate information (e.g. counts), never named specifics.' : '- This user has an HR-management role and may see full employee-level detail included in the DATA block.'}
 - Be concise and practical. When a written HR document (e.g. a performance review comment) is requested, draft it professionally and propose it as an action for the user to review and confirm -- never claim you already saved it.
+- The DATA block's sessionContext tells you what page the user is on and the last error they saw (if any, and if relevant to their question) -- use it so they do not have to re-explain where they are or what just happened, but do not mention sessionContext by name or dump it back verbatim.
 - Return ONLY compact JSON of this exact shape, no prose outside it:
 {"reply":"string","proposedActions":[{"actionType":"string","label":"string","summary":"string","payload":{}}]}
 Omit "proposedActions" (or use an empty array) unless the user asked you to draft/save something specific.`;
@@ -260,7 +261,8 @@ export async function runHrAgent(input: { message: string; history: AgentChatMes
             intent,
             DATA: grounding.data,
             dataNote: grounding.note ?? null,
-            recentConversation: input.history.slice(-6)
+            recentConversation: input.history.slice(-6),
+            sessionContext: { currentPage: context.currentPageLabel ?? null, recentError: context.recentErrorMessage ?? null }
           })
         }
       ],

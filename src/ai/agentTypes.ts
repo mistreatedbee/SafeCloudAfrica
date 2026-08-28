@@ -80,4 +80,8 @@ export type AgentContext = {
   redactSensitiveFields: boolean;
   /** Which page/module the user was on when they opened the assistant, for lightweight routing hints. */
   currentModuleHint?: string;
+  /** Human-readable name of the current page (e.g. "Incidents"), for the assistant to reference without the user having to say where they are. */
+  currentPageLabel?: string;
+  /** The most recent error-toast message the user saw this session, if any and if recent -- lets the assistant proactively reference "the issue" instead of asking the user to re-explain. Cleared after a short window; see HrAgentAssistant.tsx. */
+  recentErrorMessage?: string | null;
 };

@@ -45,18 +45,27 @@ const PAGE_NUDGE_AUTO_DISMISS_MS = 8000;
 const ERROR_NUDGE_AUTO_DISMISS_MS = 16000;
 const ERROR_NUDGE_COOLDOWN_MS = 45000;
 
+const RECENT_ERROR_WINDOW_MS = 5 * 60 * 1000;
+
 export function HrAgentAssistant() {
   const location = useLocation();
   const routeHint = useMemo(() => getModuleHintForPath(location.pathname), [location.pathname]);
-  const { context } = useAgentContext(routeHint?.module ?? 'hr');
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [nudge, setNudge] = useState<Nudge | null>(null);
+  const [lastError, setLastError] = useState<{ message: string; at: number } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const lastErrorNudgeAtRef = useRef(0);
+
+  // Fed into every agent call as sessionContext (see agentClient.ts) so the
+  // assistant already knows what page the user is on and what just broke,
+  // instead of making them re-explain it -- this is the "context aware"
+  // piece, distinct from (and longer-lived than) the error nudge itself.
+  const recentErrorMessage = lastError && Date.now() - lastError.at <= RECENT_ERROR_WINDOW_MS ? lastError.message : null;
+  const { context } = useAgentContext(routeHint?.module ?? 'hr', { currentPageLabel: routeHint?.label, recentErrorMessage });
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
@@ -75,6 +84,7 @@ export function HrAgentAssistant() {
   // Error nudge: proactively offer help after any error toast, rate-limited.
   useEffect(() => {
     return subscribeToUserFacingError((detail) => {
+      setLastError({ message: detail.message, at: detail.at });
       if (open) return;
       const now = Date.now();
       if (now - lastErrorNudgeAtRef.current < ERROR_NUDGE_COOLDOWN_MS) return;
@@ -183,7 +193,7 @@ export function HrAgentAssistant() {
       `}</style>
 
       {nudge && !open && (
-        <div className="fixed bottom-24 right-24 z-[60] w-[calc(100vw-7rem)] max-w-[300px] sca-nudge-bubble">
+        <div className="fixed bottom-24 right-24 z-[80] w-[calc(100vw-7rem)] max-w-[300px] sca-nudge-bubble">
           <div
             className={`relative overflow-hidden rounded-2xl rounded-br-sm border bg-white p-3.5 shadow-2xl ${
               nudge.kind === 'error' ? 'border-warning/40' : 'border-teal-200'
@@ -240,7 +250,7 @@ export function HrAgentAssistant() {
       )}
 
       {open && (
-        <div className="fixed bottom-24 right-24 z-[60] flex max-h-[76vh] w-[calc(100vw-7rem)] max-w-[410px] flex-col overflow-hidden rounded-2xl border border-surface-300 bg-white shadow-2xl">
+        <div className="fixed bottom-24 right-24 z-[80] flex max-h-[76vh] w-[calc(100vw-7rem)] max-w-[410px] flex-col overflow-hidden rounded-2xl border border-surface-300 bg-white shadow-2xl">
           <div className="flex items-center justify-between bg-gradient-to-r from-teal-700 to-emerald-600 px-4 py-3 text-white">
             <div className="flex items-center gap-2.5">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15">
@@ -333,7 +343,7 @@ export function HrAgentAssistant() {
           setNudge(null);
           setOpen((v) => !v);
         }}
-        className={`fixed bottom-5 right-24 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-teal-600 to-emerald-500 text-white shadow-2xl transition hover:scale-105 hover:shadow-teal-500/30 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${
+        className={`fixed bottom-5 right-24 z-[80] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-teal-600 to-emerald-500 text-white shadow-2xl transition hover:scale-105 hover:shadow-teal-500/30 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${
           nudge && !open ? 'sca-nudge-pulse' : ''
         }`}
         aria-label="Open AI Assistant"

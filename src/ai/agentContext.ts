@@ -14,10 +14,15 @@ import type { AgentContext } from './agentTypes';
  * supplied companyId/role, since that's exactly the isolation boundary
  * this system depends on.
  */
-export function useAgentContext(currentModuleHint?: string): { context: AgentContext | null; loading: boolean } {
+export function useAgentContext(
+  currentModuleHint?: string,
+  extra?: { currentPageLabel?: string; recentErrorMessage?: string | null }
+): { context: AgentContext | null; loading: boolean } {
   const { user } = useUser();
   const { activeCompanyId, activeCompany, activeRole } = useTenant();
   const { fullName, organisationName } = useIdentity();
+  const currentPageLabel = extra?.currentPageLabel;
+  const recentErrorMessage = extra?.recentErrorMessage;
 
   const { data: employee, loading } = useAsync(async () => {
     if (!activeCompanyId || !user?.id) return null;
@@ -34,9 +39,22 @@ export function useAgentContext(currentModuleHint?: string): { context: AgentCon
       role: activeRole,
       employeeId: employee?.id ?? null,
       redactSensitiveFields: activeRole === 'employee',
-      currentModuleHint
+      currentModuleHint,
+      currentPageLabel,
+      recentErrorMessage
     };
-  }, [activeCompanyId, activeCompany, organisationName, user?.id, fullName, activeRole, employee?.id, currentModuleHint]);
+  }, [
+    activeCompanyId,
+    activeCompany,
+    organisationName,
+    user?.id,
+    fullName,
+    activeRole,
+    employee?.id,
+    currentModuleHint,
+    currentPageLabel,
+    recentErrorMessage
+  ]);
 
   return { context, loading };
 }

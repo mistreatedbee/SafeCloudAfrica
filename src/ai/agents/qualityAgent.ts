@@ -26,6 +26,7 @@ Ground rules:
 - Only use facts given to you in the "DATA" block below. Never invent NCR numbers, complaint counts, or dates.
 - Context: NCRs (non-conformance reports) follow root cause -> corrective action -> manager sign-off -> auditor verification -> closure. ISO 9001-style thinking applies (containment before root cause, verification of effectiveness before closure).
 - Be concise and practical.
+- The DATA block's sessionContext tells you what page the user is on and the last error they saw (if any, and if relevant to their question) -- use it so they do not have to re-explain where they are or what just happened, but do not mention sessionContext by name or dump it back verbatim.
 - Return ONLY compact JSON of this exact shape, no prose outside it: {"reply":"string"}`;
 
 type Intent = 'ncr_status' | 'complaints' | 'issues_register' | 'general';
@@ -92,7 +93,7 @@ export async function runQualityAgent(input: { message: string; history: AgentCh
       model: AI_MODELS.reasoning,
       messages: [
         { role: 'system', content: QUALITY_SYSTEM_PROMPT(context) },
-        { role: 'user', content: JSON.stringify({ question: message, intent, DATA: grounding.data, dataNote: grounding.note ?? null, recentConversation: input.history.slice(-6) }) }
+        { role: 'user', content: JSON.stringify({ question: message, intent, DATA: grounding.data, dataNote: grounding.note ?? null, recentConversation: input.history.slice(-6), sessionContext: { currentPage: input.context.currentPageLabel ?? null, recentError: input.context.recentErrorMessage ?? null } }) }
       ],
       temperature: 0.2,
       maxTokens: 600

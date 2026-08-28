@@ -19,6 +19,7 @@ Ground rules:
 - Only use facts given to you in the "DATA" block below. Never invent aspect names, monitoring results, or dates.
 - Context: NEMA (National Environmental Management Act) establishes a general duty of care -- significant environmental aspects (water, air, waste, spills) must be identified and managed, with monitoring evidence kept. You may point out that an aspect looks unmanaged or a monitoring result looks like a fail, but never claim compliance has been assessed or reported to a regulator.
 - Be concise and practical.
+- The DATA block's sessionContext tells you what page the user is on and the last error they saw (if any, and if relevant to their question) -- use it so they do not have to re-explain where they are or what just happened, but do not mention sessionContext by name or dump it back verbatim.
 - Return ONLY compact JSON of this exact shape, no prose outside it: {"reply":"string"}`;
 
 type Intent = 'aspects' | 'monitoring' | 'general';
@@ -72,7 +73,7 @@ export async function runEnvironmentAgent(input: { message: string; history: Age
       model: AI_MODELS.reasoning,
       messages: [
         { role: 'system', content: ENVIRONMENT_SYSTEM_PROMPT(context) },
-        { role: 'user', content: JSON.stringify({ question: message, intent, DATA: grounding.data, dataNote: grounding.note ?? null, recentConversation: input.history.slice(-6) }) }
+        { role: 'user', content: JSON.stringify({ question: message, intent, DATA: grounding.data, dataNote: grounding.note ?? null, recentConversation: input.history.slice(-6), sessionContext: { currentPage: input.context.currentPageLabel ?? null, recentError: input.context.recentErrorMessage ?? null } }) }
       ],
       temperature: 0.2,
       maxTokens: 600

@@ -11,6 +11,33 @@ const ACTION_RUNNERS: Record<string, (action: AgentProposedAction, ctx: AgentCon
   safety: runSafetyAction
 };
 
+const GREETING_RE = /^(hi+|hey+|hello+|howzit|yo|sup|good\s?(morning|afternoon|evening))[!.? ]*$/i;
+
+function firstName(fullName: string): string {
+  return fullName.trim().split(/\s+/)[0] || '';
+}
+
+/**
+ * "Hi" should get a real hi back, not a data dump -- short-circuits before
+ * spending a model call on a message that isn't actually a question. Still
+ * context-aware: references the page the user is on and, if one happened
+ * recently, the error they just saw, so the user doesn't have to re-explain
+ * what they already lived through.
+ */
+function buildGreetingResponse(ctx: AgentContext): AgentResponse {
+  const name = firstName(ctx.userFullName);
+  const persona = ctx.currentPageLabel ? `your ${ctx.currentPageLabel} assistant` : 'your assistant';
+  const parts = [`Hi${name ? ` ${name}` : ''}! I'm ${persona}.`];
+  if (ctx.recentErrorMessage) {
+    parts.push(`I noticed something went wrong just now ("${ctx.recentErrorMessage}") -- want help with that first?`);
+  } else if (ctx.currentPageLabel) {
+    parts.push(`What can I help you with on ${ctx.currentPageLabel} today?`);
+  } else {
+    parts.push('What can I help you with?');
+  }
+  return { agentId: 'orchestrator', reply: parts.join(' '), source: 'fallback' };
+}
+
 /**
  * The single entry point the UI should call. Every call is wrapped in
  * withInsforgeSession so a stale/expiring session is refreshed proactively
@@ -22,9 +49,13 @@ export async function askAgent(input: {
   history: AgentChatMessage[];
   context: AgentContext;
 }): Promise<AgentResponse> {
+  const trimmed = input.message.trim();
+  if (GREETING_RE.test(trimmed)) {
+    return buildGreetingResponse(input.context);
+  }
   return withInsforgeSession('ai-agent:ask', async () => {
     try {
-      return await runOrchestrator(input);
+      return await runOrchestrator({ ...input, message: trimmed });
     } catch (error) {
       return {
         agentId: 'orchestrator',

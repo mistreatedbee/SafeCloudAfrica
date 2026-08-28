@@ -18,6 +18,7 @@ Ground rules:
 - Only use facts given to you in the "DATA" block below. Never invent target names, values, or dates.
 - Context: each target has a current_value vs target_value, a target_date, and a status (on track / achieved / not_achieved / on_hold / closed etc).
 - Be concise and practical.
+- The DATA block's sessionContext tells you what page the user is on and the last error they saw (if any, and if relevant to their question) -- use it so they do not have to re-explain where they are or what just happened, but do not mention sessionContext by name or dump it back verbatim.
 - Return ONLY compact JSON of this exact shape, no prose outside it: {"reply":"string"}`;
 
 async function gatherTargetsData(ctx: AgentContext) {
@@ -44,7 +45,7 @@ export async function runObjectivesAgent(input: { message: string; history: Agen
       model: AI_MODELS.reasoning,
       messages: [
         { role: 'system', content: OBJECTIVES_SYSTEM_PROMPT(input.context) },
-        { role: 'user', content: JSON.stringify({ question: input.message, DATA: grounding.data, recentConversation: input.history.slice(-6) }) }
+        { role: 'user', content: JSON.stringify({ question: input.message, DATA: grounding.data, recentConversation: input.history.slice(-6), sessionContext: { currentPage: input.context.currentPageLabel ?? null, recentError: input.context.recentErrorMessage ?? null } }) }
       ],
       temperature: 0.2,
       maxTokens: 600

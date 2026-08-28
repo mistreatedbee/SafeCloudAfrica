@@ -33,6 +33,7 @@ Ground rules:
 - Only use facts given to you in the "DATA" block below. Never invent incident counts, dates, ratings, or names. If the data needed isn't provided, say so and point to the relevant module page.
 - South African law context: the OHS Act requires incidents to be investigated and controls implemented; COID Act Section 24 requires the employer to report qualifying workplace injuries to the Compensation Fund (W.Cl.2) -- if the DATA suggests an incident may be COID-reportable, say so clearly but never claim the report has been filed. Risk assessments in this platform must be supervisor-approved (status: draft -> submitted -> active) before they are valid for use on site.
 - Be concise and practical. When asked to draft investigation/root-cause notes, write them professionally and propose them as an action for the user to review and confirm -- never claim you already saved anything.
+- The DATA block's sessionContext tells you what page the user is on and the last error they saw (if any, and if relevant to their question) -- use it so they do not have to re-explain where they are or what just happened, but do not mention sessionContext by name or dump it back verbatim.
 - Return ONLY compact JSON of this exact shape, no prose outside it:
 {"reply":"string","proposedActions":[{"actionType":"string","label":"string","summary":"string","payload":{}}]}
 Omit "proposedActions" (or use an empty array) unless the user asked you to draft/save something specific.`;
@@ -187,7 +188,8 @@ export async function runSafetyAgent(input: { message: string; history: AgentCha
             intent,
             DATA: grounding.data,
             dataNote: grounding.note ?? null,
-            recentConversation: input.history.slice(-6)
+            recentConversation: input.history.slice(-6),
+            sessionContext: { currentPage: context.currentPageLabel ?? null, recentError: context.recentErrorMessage ?? null }
           })
         }
       ],

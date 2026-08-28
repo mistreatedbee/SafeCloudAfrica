@@ -169,6 +169,14 @@ Two proactive, dismissible nudges (styled distinctly, auto-dismiss after a delay
 
 This also fixes `AgentContext.currentModuleHint` to reflect the actual page instead of always defaulting to `'hr'`, which improves orchestrator routing accuracy beyond keyword matching alone.
 
+**z-index fix**: the button/panel/nudges were previously getting visually covered on desktop because `Sidebar.tsx` renders at `z-[70]` while the assistant was at `z-[60]`. Bumped to `z-[80]` so this can't recur regardless of screen position.
+
+## Context awareness (sessionContext)
+
+`AgentContext` carries two passive fields every agent receives automatically, without the user having to state them: `currentPageLabel` (from `routeModuleHint.ts`, e.g. "Incidents") and `recentErrorMessage` (the last error-toast message the user saw, if within the last 5 minutes -- tracked in `HrAgentAssistant.tsx`, fed by the same `subscribeToUserFacingError` used for the error nudge). Every agent includes these as a `sessionContext` field in the JSON payload sent to the model (see the `sessionContext: input.history.slice(-6), sessionContext: { currentPage, recentError }` pattern at the end of each agent's `chatComplete()` call), and every system prompt has one added line telling the model to use it without naming/dumping it back verbatim. **Deliberately not** injected into the raw `message` string itself -- doing that would pollute the keyword-based module routing in `orchestratorAgent.ts` and each agent's own `detectIntent()` (e.g. a "Legal" page label containing "legal" could wrongly pull in `legalAgent` for an unrelated HR question). Keeping it in a separate JSON field sidesteps that entirely.
+
+**Greeting fast-path**: `agentClient.ts`'s `askAgent()` matches a plain "hi"/"hello"/"hey"/etc. before it ever reaches the orchestrator or spends a model call, and replies instantly with a context-aware greeting (persona + page, or persona + the recent error if there is one) built from the same `sessionContext` fields. This is what makes "hi" get a real hi back instead of a data-dump attempt.
+
 ## Inline in-form drafting (AiDraftButton)
 
 `src/components/ai/AiDraftButton.tsx` is a small reusable "✨ AI draft" trigger, distinct from the floating chat, embedded directly next to a specific form field. It calls one of `agentClient.ts`'s `draft*()` wrappers and hands the returned plain text to the field's own `onChange` setter -- there is no separate confirm-to-write step, because the form's own existing Save button is already that step (the agent only ever suggests text into a field the human then chooses to save or not).

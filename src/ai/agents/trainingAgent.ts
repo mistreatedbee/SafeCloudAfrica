@@ -21,6 +21,7 @@ Ground rules:
 - Context: "outstanding" training means either required-but-never-completed OR completed-but-now-expired -- both count against compliance. The South African financial year for cost reporting runs 1 March to end of February.
 ${ctx.redactSensitiveFields ? '- This user has an "employee" role: only discuss aggregate/company-wide counts, never a named colleague\'s individual outstanding training.' : '- This user has a manager-tier role and may see individual outstanding-training detail included in the DATA block.'}
 - Be concise and practical.
+- The DATA block's sessionContext tells you what page the user is on and the last error they saw (if any, and if relevant to their question) -- use it so they do not have to re-explain where they are or what just happened, but do not mention sessionContext by name or dump it back verbatim.
 - Return ONLY compact JSON of this exact shape, no prose outside it: {"reply":"string"}`;
 
 type Intent = 'outstanding' | 'expiring_soon' | 'general';
@@ -84,7 +85,7 @@ export async function runTrainingAgent(input: { message: string; history: AgentC
       model: AI_MODELS.reasoning,
       messages: [
         { role: 'system', content: TRAINING_SYSTEM_PROMPT(context) },
-        { role: 'user', content: JSON.stringify({ question: message, intent, DATA: grounding.data, dataNote: grounding.note ?? null, recentConversation: input.history.slice(-6) }) }
+        { role: 'user', content: JSON.stringify({ question: message, intent, DATA: grounding.data, dataNote: grounding.note ?? null, recentConversation: input.history.slice(-6), sessionContext: { currentPage: input.context.currentPageLabel ?? null, recentError: input.context.recentErrorMessage ?? null } }) }
       ],
       temperature: 0.2,
       maxTokens: 600
