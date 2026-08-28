@@ -249,3 +249,40 @@ export async function runSafetyAction(action: AgentProposedAction, ctx: AgentCon
   if (!handler) throw new Error(`Unknown action type: ${action.actionType}`);
   return handler(action.payload, ctx);
 }
+
+// --- Direct in-form drafting -------------------------------------------------
+// Used by an inline "AI draft" button inside the incident create form itself
+// (IncidentCreateModal.tsx). Unlike the chat's proposedActions flow, there is
+// no saved incidentId yet at this point -- the draft is grounded in whatever
+// the user has already typed (title/description/nature), and is explicitly
+// framed to the model as preliminary and needing verification, since a
+// still-being-logged incident is inherently less-evidenced than a completed
+// investigation. The form's own Save still does the actual write.
+
+export async function draftInvestigationNotesFromDraft(
+  ctx: AgentContext,
+  draft: { title?: string; category?: string; severity?: string; location?: string; briefDescription?: string; natureOfIncident?: string }
+): Promise<string> {
+  if (!canManage.has(ctx.role)) throw new Error('Not permitted for this role.');
+  if (!draft.title?.trim() && !draft.briefDescription?.trim() && !draft.natureOfIncident?.trim()) {
+    throw new Error('Add a title or description first so there is something to draft from.');
+  }
+
+  const { content } = await chatComplete({
+    model: AI_MODELS.reasoning,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You draft a preliminary, plausible cause-of-incident note for a South African workplace incident report, grounded only in the DATA given -- never invent facts not present. Make clear in tone that this is a starting point the investigator must verify, not a conclusion. Write 2-3 plain-text sentences: no headings, no markdown, no JSON, no quotation marks around the output.'
+      },
+      { role: 'user', content: JSON.stringify({ incidentDraft: draft }) }
+    ],
+    temperature: 0.4,
+    maxTokens: 220
+  });
+
+  const text = content.trim();
+  if (!text) throw new Error('The assistant did not return any text.');
+  return text;
+}

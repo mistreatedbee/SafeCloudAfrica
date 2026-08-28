@@ -28,6 +28,9 @@ import { IncidentTimelineBuilder, type TimelineEvent } from './IncidentTimelineB
 import { UserMultiSelect } from '../ui/UserMultiSelect';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { AiDraftButton } from '../ai/AiDraftButton';
+import { useAgentContext } from '../../ai/agentContext';
+import { draftIncidentCauseNote } from '../../ai/agentClient';
 
 const EVIDENCE_BUCKET = 'sca-evidence';
 
@@ -177,6 +180,7 @@ export function IncidentCreateModal(props: {
   const editingIncident = props.incident ?? null;
   const isEditing = Boolean(editingIncident);
   const { restoreDraft, clearDraft } = useDraftManager();
+  const { context: agentContext } = useAgentContext('safety');
   const draftKey = `incident-modal:${props.companyId}:${editingIncident?.id ?? 'new'}`;
   const [module, setModule] = useState<ModuleKey>(props.defaultModule ?? 'safety');
   const [incidentTypeSelections, setIncidentTypeSelections] = useState<Record<string, boolean>>(
@@ -2126,7 +2130,26 @@ export function IncidentCreateModal(props: {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Cause of incident *</label>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <label className="block text-sm font-medium text-charcoal">Cause of incident *</label>
+                {agentContext && (
+                  <AiDraftButton
+                    disabled={!title.trim() && !briefDescription.trim() && !natureOfIncident.trim()}
+                    disabledReason="Add a title or description first"
+                    onDraft={() =>
+                      draftIncidentCauseNote(agentContext, {
+                        title,
+                        category,
+                        severity: riskCategorySimple,
+                        location,
+                        briefDescription,
+                        natureOfIncident
+                      })
+                    }
+                    onResult={setCauseOfIncident}
+                  />
+                )}
+              </div>
               <textarea
                 value={causeOfIncident}
                 onChange={(e) => setCauseOfIncident(e.target.value)}
@@ -2134,6 +2157,7 @@ export function IncidentCreateModal(props: {
                 className="w-full px-4 py-2.5 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
                 required
               />
+              <p className="mt-1 text-[11px] text-charcoal-400">AI-drafted text is a starting point -- verify before saving.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">Reported by *</label>

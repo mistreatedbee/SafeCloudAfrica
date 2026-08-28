@@ -14,6 +14,9 @@ import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import { HrExportMenu } from '../../components/hr/HrExportMenu';
+import { AiDraftButton } from '../../components/ai/AiDraftButton';
+import { useAgentContext } from '../../ai/agentContext';
+import { draftPerformanceReviewComment } from '../../ai/agentClient';
 
 type KpaRow = {
   id: string;
@@ -49,6 +52,7 @@ export function HrPerformancePage() {
   const { activeCompanyId, activeRole } = useTenant();
   const { user } = useUser();
   const canManage = ['owner', 'admin', 'manager', 'supervisor'].includes(activeRole ?? '');
+  const { context: agentContext } = useAgentContext('hr');
   const [employeeId, setEmployeeId] = useState('');
   const [cycle, setCycle] = useState('Annual');
   const [kpaRows, setKpaRows] = useState<KpaRow[]>(() => [createBlankKpaRow()]);
@@ -581,7 +585,20 @@ export function HrPerformancePage() {
             <label className="text-sm md:col-span-2"><span className="block text-xs text-charcoal-500 mb-1">Strengths</span><textarea rows={2} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={strengths} onChange={(e) => setStrengths(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Assistance required</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" autoComplete="off" value={assistanceRequired} onChange={(e) => setAssistanceRequired(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Weaknesses</span><input className="w-full border border-surface-300 rounded-lg px-3 py-2" autoComplete="off" value={weaknesses} onChange={(e) => setWeaknesses(e.target.value)} /></label>
-            <label className="text-sm md:col-span-3"><span className="block text-xs text-charcoal-500 mb-1">Manager remarks</span><textarea rows={2} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={managerRemarks} onChange={(e) => setManagerRemarks(e.target.value)} /></label>
+            <label className="text-sm md:col-span-3">
+              <span className="mb-1 flex items-center justify-between gap-2">
+                <span className="block text-xs text-charcoal-500">Manager remarks</span>
+                {canManage && (
+                  <AiDraftButton
+                    disabled={!agentContext || !employeeId}
+                    disabledReason="Select an employee first"
+                    onDraft={() => draftPerformanceReviewComment(agentContext!, employeeId as UUID)}
+                    onResult={setManagerRemarks}
+                  />
+                )}
+              </span>
+              <textarea rows={2} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={managerRemarks} onChange={(e) => setManagerRemarks(e.target.value)} />
+            </label>
             <label className="text-sm md:col-span-2"><span className="block text-xs text-charcoal-500 mb-1">Corrective actions required</span><textarea rows={2} className="w-full border border-surface-300 rounded-lg px-3 py-2" value={correctiveActionsRequired} onChange={(e) => setCorrectiveActionsRequired(e.target.value)} /></label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Responsible person</span>
               <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={responsibleUserId} onChange={(e) => setResponsibleUserId(e.target.value)}>

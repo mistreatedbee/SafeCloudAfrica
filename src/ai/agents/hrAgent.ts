@@ -2,12 +2,14 @@ import { chatComplete, AI_MODELS } from '../aiClient';
 import type { AgentChatMessage, AgentContext, AgentProposedAction, AgentResponse } from '../agentTypes';
 import {
   searchHrEmployees,
+  getHrEmployeeById,
   listHrRecords,
   updateHrRecord,
   listHrLeaveRequests,
   type HrEmployee,
   type HrLeaveRequest
 } from '../../api/services/hrService';
+import type { UUID } from '../../api/models/entities';
 
 /**
  * HR module specialist agent.
@@ -319,4 +321,55 @@ export async function runHrAction(action: AgentProposedAction, ctx: AgentContext
   const handler = ACTION_HANDLERS[action.actionType];
   if (!handler) throw new Error(`Unknown action type: ${action.actionType}`);
   return handler(action.payload, ctx);
+}
+
+// --- Direct in-form drafting -------------------------------------------------
+// Used by an inline "AI draft" button inside the Performance Review form
+// itself (HrPerformancePage.tsx), as opposed to the floating chat's
+// proposedActions flow. This is intentionally simpler: it fetches the
+// employee/review directly by id (the form already knows which one is
+// selected -- no need to guess from a chat message) and returns plain
+// drafted text for the form's own textarea/Save button to own, rather than
+// a separate confirm-to-write action. Read-then-suggest only; the form's
+// existing Save still does the actual write via its own updateHrRecord call.
+
+export async function draftManagerRemarksForEmployee(ctx: AgentContext, employeeId: UUID): Promise<string> {
+  if (ctx.redactSensitiveFields) throw new Error('Not permitted for this role.');
+  const employee = await getHrEmployeeById(ctx.companyId, employeeId);
+  if (!employee) throw new Error('Employee not found.');
+  const reviews = await listHrRecords(ctx.companyId, 'hr_performance_reviews', { employee_id: employeeId }).catch(() => []);
+  const latest = [...reviews].sort((a, b) => String(b['review_date'] ?? '').localeCompare(String(a['review_date'] ?? '')))[0];
+
+  const { content } = await chatComplete({
+    model: AI_MODELS.reasoning,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You draft a professional, constructive manager\'s remarks paragraph for a South African workplace performance review. Ground yourself only in the DATA given -- never invent ratings or facts not present. Write 2-4 plain-text sentences: no headings, no markdown, no JSON, no quotation marks around the output.'
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          employee: { name: `${employee.first_name} ${employee.last_name}`, job_title: employee.job_title },
+          latestReview: latest
+            ? {
+                cycle: latest['cycle'],
+                overall_rating: latest['overall_rating'],
+                manager_rating: latest['manager_rating'],
+                strengths: latest['strengths'],
+                weaknesses: latest['weaknesses'],
+                existing_manager_remarks: latest['manager_remarks']
+              }
+            : null
+        })
+      }
+    ],
+    temperature: 0.35,
+    maxTokens: 250
+  });
+
+  const text = content.trim();
+  if (!text) throw new Error('The assistant did not return any text.');
+  return text;
 }

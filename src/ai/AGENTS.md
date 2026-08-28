@@ -162,7 +162,17 @@ A proactive **weekly email digest** was in the original spec but was deliberatel
 
 The floating button shows a small dismissible bubble once per browser session per module (`sessionStorage`, key `sca_ai_nudge_seen_<module>`) when the user lands on a page `routeModuleHint.ts` recognises, naming what the assistant can help with there and offering a one-click starter question (`STARTER_QUESTION_BY_MODULE`). The button also gets a subtle pulse animation while an unseen nudge is pending, so it's noticeable without a page-blocking popup. This also fixes `AgentContext.currentModuleHint` to reflect the actual page instead of always defaulting to `'hr'`, which improves orchestrator routing accuracy beyond keyword matching alone.
 
-**Not built in this pass**: inline "suggestions while filling out a form" (proactive AI hints inside the HR/Safety/etc. record forms themselves, as opposed to the floating chat). That is a materially different feature -- it needs per-form design decisions (which fields warrant a suggestion, what triggers one, debounce, where the hint renders inside a form that isn't part of this component) rather than something safe to bolt onto every form in the codebase in one pass. The chat assistant already covers the closest equivalent today (ask it to draft a performance review comment or investigation note); true inline-form suggestions should be scoped form-by-form as its own ticket.
+## Inline in-form drafting (AiDraftButton)
+
+`src/components/ai/AiDraftButton.tsx` is a small reusable "✨ AI draft" trigger, distinct from the floating chat, embedded directly next to a specific form field. It calls one of `agentClient.ts`'s `draft*()` wrappers and hands the returned plain text to the field's own `onChange` setter -- there is no separate confirm-to-write step, because the form's own existing Save button is already that step (the agent only ever suggests text into a field the human then chooses to save or not).
+
+Wired up so far:
+- **HrPerformancePage.tsx** -- "Manager remarks" field. Calls `draftPerformanceReviewComment()` (in `hrAgent.ts`), grounded in the selected employee's latest review record. Visible to manager-tier roles only, disabled until an employee is selected.
+- **IncidentCreateModal.tsx** -- "Cause of incident" field. Calls `draftIncidentCauseNote()` (in `safetyAgent.ts`), grounded in whatever the user has already typed (title/description/nature/category/severity) since there's no saved incident yet at create time -- the draft is explicitly framed to the model as preliminary and needing verification, and the field carries a "verify before saving" caption. Disabled until some title/description text exists.
+
+Each of the above has a matching `draft*ForEmployee`/`draft*FromDraft` export in its owning agent file (`hrAgent.ts`, `safetyAgent.ts`) that fetches grounding data directly by id/draft-state rather than going through the chat's keyword-intent detection -- the form already knows exactly which record it means, so there's no need to guess from a message.
+
+**Not built in this pass**: extending `AiDraftButton` to every other free-text field across every module's forms. Each additional one is a scoped, low-risk addition once picked (add a `draft*()` export to the owning agent + one `AiDraftButton` in the form), but doing all of them at once risks touching forms without verifying each field/state-shape carefully. Natural next candidates given what each agent already knows how to draft: NCR root cause/corrective action (`qualityAgent`), legal requirement `actions_needed` (`legalAgent`).
 
 ## Adding the next module agent
 

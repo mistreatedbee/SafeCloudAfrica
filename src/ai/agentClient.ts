@@ -1,9 +1,10 @@
 import { withInsforgeSession } from '../api/insforge/ensureSession';
 import { toUserFacingError } from '../utils/userFacingMessage';
 import type { AgentChatMessage, AgentContext, AgentProposedAction, AgentResponse } from './agentTypes';
+import type { UUID } from '../api/models/entities';
 import { runOrchestrator } from './agents/orchestratorAgent';
-import { runHrAction } from './agents/hrAgent';
-import { runSafetyAction } from './agents/safetyAgent';
+import { runHrAction, draftManagerRemarksForEmployee } from './agents/hrAgent';
+import { runSafetyAction, draftInvestigationNotesFromDraft } from './agents/safetyAgent';
 
 const ACTION_RUNNERS: Record<string, (action: AgentProposedAction, ctx: AgentContext) => Promise<string>> = {
   hr: runHrAction,
@@ -53,6 +54,42 @@ export async function confirmAgentAction(input: {
       return { ok: true, message };
     } catch (error) {
       return { ok: false, message: toUserFacingError(error, "That couldn't be saved. Please try again.") };
+    }
+  });
+}
+
+/**
+ * In-form drafting entry points, used by an inline "AI draft" button inside
+ * a record form itself rather than the floating chat. Same session-wrapper
+ * discipline as the two entry points above; unlike askAgent/confirmAgentAction
+ * these return plain drafted text for the form's own field/Save button to
+ * own -- there is no separate confirm-to-write step because the form's
+ * existing save action already is that step.
+ */
+export async function draftPerformanceReviewComment(
+  context: AgentContext,
+  employeeId: UUID
+): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+  return withInsforgeSession('ai-agent:draft-hr-review-comment', async () => {
+    try {
+      const text = await draftManagerRemarksForEmployee(context, employeeId);
+      return { ok: true, text };
+    } catch (error) {
+      return { ok: false, message: toUserFacingError(error, "Couldn't draft a comment right now.") };
+    }
+  });
+}
+
+export async function draftIncidentCauseNote(
+  context: AgentContext,
+  draft: { title?: string; category?: string; severity?: string; location?: string; briefDescription?: string; natureOfIncident?: string }
+): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+  return withInsforgeSession('ai-agent:draft-safety-cause-note', async () => {
+    try {
+      const text = await draftInvestigationNotesFromDraft(context, draft);
+      return { ok: true, text };
+    } catch (error) {
+      return { ok: false, message: toUserFacingError(error, "Couldn't draft a note right now.") };
     }
   });
 }
