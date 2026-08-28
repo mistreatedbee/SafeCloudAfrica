@@ -3,10 +3,11 @@ import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import { toUserFacingError } from '../../utils/userFacingMessage';
-import type { TrainingCourse, UUID } from '../../api/models/entities';
-import { createTrainingCourse, createTrainingRecord } from '../../api/services/trainingService';
+import type { TrainingCourse, TrainingProvider, UUID } from '../../api/models/entities';
+import { createTrainingCourse, createTrainingRecord, listTrainingProviders } from '../../api/services/trainingService';
 import { uploadFile, type StorageBucket } from '../../api/services/storageService';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
+import { useAsync } from '../../api/hooks/useAsync';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 
@@ -28,6 +29,9 @@ export function TrainingAddModal(props: {
   const [newCourseValidMonths, setNewCourseValidMonths] = useState<string>('12');
   const [userId, setUserId] = useState(props.defaultUserId ?? '');
   const [employeeId, setEmployeeId] = useState('');
+  const [providerId, setProviderId] = useState('');
+  const [jobDescriptionId, setJobDescriptionId] = useState<string>('');
+  const [jobDescriptionLabel, setJobDescriptionLabel] = useState<string>('');
   const [completedAt, setCompletedAt] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [cost, setCost] = useState('');
@@ -36,6 +40,11 @@ export function TrainingAddModal(props: {
   const [error, setError] = useState<string | null>(null);
   const [employeeNameSnapshot, setEmployeeNameSnapshot] = useState<string>('');
 
+  const { data: providers } = useAsync<TrainingProvider[]>(
+    () => (props.companyId ? listTrainingProviders(props.companyId) : Promise.resolve([])),
+    [props.companyId]
+  );
+
   type TrainingAddDraftPayload = {
     mode: 'existing' | 'new';
     courseId: string;
@@ -43,6 +52,9 @@ export function TrainingAddModal(props: {
     newCourseValidMonths: string;
     userId: string;
     employeeId: string;
+    providerId: string;
+    jobDescriptionId: string;
+    jobDescriptionLabel: string;
     completedAt: string;
     expiresAt: string;
     cost: string;
@@ -71,6 +83,9 @@ export function TrainingAddModal(props: {
         newCourseValidMonths,
         userId,
         employeeId,
+        providerId,
+        jobDescriptionId,
+        jobDescriptionLabel,
         completedAt,
         expiresAt,
         cost,
@@ -88,6 +103,9 @@ export function TrainingAddModal(props: {
       setNewCourseValidMonths('12');
       setUserId(props.defaultUserId ?? '');
       setEmployeeId('');
+      setProviderId('');
+      setJobDescriptionId('');
+      setJobDescriptionLabel('');
       setCompletedAt('');
       setExpiresAt('');
       setEmployeeNameSnapshot('');
@@ -102,6 +120,9 @@ export function TrainingAddModal(props: {
     setNewCourseValidMonths(restored.newCourseValidMonths ?? '12');
     setUserId(restored.userId ?? '');
     setEmployeeId(restored.employeeId ?? '');
+    setProviderId(restored.providerId ?? '');
+    setJobDescriptionId(restored.jobDescriptionId ?? '');
+    setJobDescriptionLabel(restored.jobDescriptionLabel ?? '');
     setCompletedAt(restored.completedAt ?? '');
     setExpiresAt(restored.expiresAt ?? '');
     setCost(restored.cost ?? '');
@@ -166,6 +187,8 @@ export function TrainingAddModal(props: {
         userId: userId ? (userId as UUID) : null,
         employeeId: employeeId ? (employeeId as UUID) : null,
         courseId: finalCourseId as UUID,
+        jobDescriptionId: jobDescriptionId ? (jobDescriptionId as UUID) : null,
+        providerId: providerId ? (providerId as UUID) : null,
         status: hasCompleted ? 'COMPLETED' : 'REQUIRED',
         completedAt: completedAt ? new Date(completedAt).toISOString() : null,
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
@@ -180,9 +203,11 @@ export function TrainingAddModal(props: {
       props.onClose();
       setCourseId('');
       setNewCourseName('');
-      // Deliberately not resetting userId/employeeId/employeeNameSnapshot here (same as
-      // before employee_id existed) -- lets the same employee stay selected for adding
-      // multiple training records in a row.
+      // Deliberately not resetting userId/employeeId/employeeNameSnapshot/jobDescriptionId
+      // here (same as before employee_id existed) -- lets the same employee stay selected
+      // for adding multiple training records in a row. Provider does reset since it's more
+      // often course-specific than employee-specific.
+      setProviderId('');
       setCompletedAt('');
       setExpiresAt('');
       setCost('');
@@ -247,11 +272,24 @@ export function TrainingAddModal(props: {
                   setUserId(meta.userId ?? '');
                   setEmployeeNameSnapshot(meta.nameSnapshot);
                 }}
+                onEmployeeChange={(employee) => {
+                  // Job description auto-derives from the selected employee's linked
+                  // Training Matrix job description, rather than a separate manual picker --
+                  // this is what feeds the "By job description" cost breakdown on the
+                  // Reports & Costs tab, so a record without an employee that has a linked
+                  // job description will still show under "Unknown" there rather than
+                  // silently disappearing.
+                  setJobDescriptionId(employee?.job_description_id ?? '');
+                  setJobDescriptionLabel(employee?.job_title ?? '');
+                }}
                 label="Employee"
                 placeholder="Search HR employees..."
               />
               {employeeNameSnapshot && (
-                <p className="text-xs text-charcoal-500 mt-1">Recording training for: {employeeNameSnapshot}</p>
+                <p className="text-xs text-charcoal-500 mt-1">
+                  Recording training for: {employeeNameSnapshot}
+                  {jobDescriptionLabel ? ` (${jobDescriptionLabel})` : ''}
+                </p>
               )}
             </div>
           )}
@@ -320,6 +358,23 @@ export function TrainingAddModal(props: {
               </div>
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Provider (optional)</label>
+            <select
+              value={providerId}
+              onChange={(e) => setProviderId(e.target.value)}
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            >
+              <option value="">No provider selected</option>
+              {(providers ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-charcoal-500">Feeds the "By provider" cost breakdown on Reports &amp; Costs.</p>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

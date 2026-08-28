@@ -16,6 +16,7 @@
     "@insforge/sdk": "latest",
     "@paaq/server-sdk": "^1.0.1",
     "@paaq/web-sdk": "^1.2.4",
+    "exceljs": "^4.4.0",
     "framer-motion": "^11.5.4",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",

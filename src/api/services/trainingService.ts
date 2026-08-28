@@ -923,6 +923,14 @@ export async function getTrainingSpendSummary(
   const byProvider = new Map<UUID, { totalCost: number; count: number }>();
   const byJob = new Map<UUID, { totalCost: number; count: number }>();
 
+  // Sentinel keys for records with no provider/job linked, so they still show up
+  // in the breakdown (as "No provider" / "Unknown") instead of silently
+  // disappearing from the totals -- a record missing that link is still real
+  // spend that happened, so excluding it made the by-provider/by-job totals
+  // undercount versus the overall total.
+  const UNASSIGNED_PROVIDER = 'unassigned' as UUID;
+  const UNASSIGNED_JOB = 'unassigned' as UUID;
+
   for (const r of list) {
     const cost = Number(r.cost) || 0;
     totalCost += cost;
@@ -930,18 +938,18 @@ export async function getTrainingSpendSummary(
     c.totalCost += cost;
     c.count += 1;
     byCourse.set(r.course_id, c);
-    if (r.provider_id) {
-      const p = byProvider.get(r.provider_id) ?? { totalCost: 0, count: 0 };
-      p.totalCost += cost;
-      p.count += 1;
-      byProvider.set(r.provider_id, p);
-    }
-    if (r.job_description_id) {
-      const j = byJob.get(r.job_description_id) ?? { totalCost: 0, count: 0 };
-      j.totalCost += cost;
-      j.count += 1;
-      byJob.set(r.job_description_id, j);
-    }
+
+    const providerKey = r.provider_id ?? UNASSIGNED_PROVIDER;
+    const p = byProvider.get(providerKey) ?? { totalCost: 0, count: 0 };
+    p.totalCost += cost;
+    p.count += 1;
+    byProvider.set(providerKey, p);
+
+    const jobKey = r.job_description_id ?? UNASSIGNED_JOB;
+    const j = byJob.get(jobKey) ?? { totalCost: 0, count: 0 };
+    j.totalCost += cost;
+    j.count += 1;
+    byJob.set(jobKey, j);
   }
 
   return {
@@ -955,13 +963,13 @@ export async function getTrainingSpendSummary(
     })),
     byProvider: Array.from(byProvider.entries()).map(([providerId, v]) => ({
       providerId,
-      providerName: providerById.get(providerId) ?? '',
+      providerName: providerId === UNASSIGNED_PROVIDER ? 'No provider' : (providerById.get(providerId) ?? ''),
       totalCost: v.totalCost,
       count: v.count
     })),
     byJob: Array.from(byJob.entries()).map(([jobDescriptionId, v]) => ({
       jobDescriptionId,
-      jobTitle: jobById.get(jobDescriptionId) ?? '',
+      jobTitle: jobDescriptionId === UNASSIGNED_JOB ? 'Unknown' : (jobById.get(jobDescriptionId) ?? ''),
       totalCost: v.totalCost,
       count: v.count
     }))
