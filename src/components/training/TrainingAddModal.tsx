@@ -5,7 +5,7 @@ import { formatAuthError } from '../../auth/authMessages';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { TrainingCourse, UUID } from '../../api/models/entities';
 import { createTrainingCourse, createTrainingRecord } from '../../api/services/trainingService';
-import { insforge } from '../../api/insforge/client';
+import { uploadFile, type StorageBucket } from '../../api/services/storageService';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
@@ -136,7 +136,7 @@ export function TrainingAddModal(props: {
         finalCourseId = course.id;
       }
 
-      let certificateBucket: string | null = null;
+      let certificateBucket: StorageBucket | null = null;
       let certificateKey: string | null = null;
       if (file) {
         // Basic client-side file type validation for certificates
@@ -148,9 +148,12 @@ export function TrainingAddModal(props: {
         }
         certificateBucket = TRAINING_CERT_BUCKET;
         const key = `${props.companyId}/${userId || employeeId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-        const { data, error: upErr } = await insforge.storage.from(certificateBucket).upload(key, file);
-        if (upErr) throw upErr;
-        certificateKey = data?.key ?? key;
+        // Route through the shared uploadFile() helper (not a raw insforge.storage call) so this
+        // upload gets the same proactive session refresh every other upload in the app already
+        // gets — a direct SDK call here could silently 401 on a stale session (this is what was
+        // causing "Request failed" on the training certificate upload).
+        const uploadResult = await uploadFile(certificateBucket, file, { key });
+        certificateKey = uploadResult.key;
       }
 
       const hasCompleted = !!(completedAt && certificateBucket && certificateKey);

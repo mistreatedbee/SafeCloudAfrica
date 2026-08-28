@@ -5,7 +5,7 @@ import { formatAuthError } from '../../auth/authMessages';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { TrainingRecord, TrainingCourse, UUID } from '../../api/models/entities';
 import { updateTrainingRecord } from '../../api/services/trainingService';
-import { insforge } from '../../api/insforge/client';
+import { uploadFile } from '../../api/services/storageService';
 import { TRAINING_CERT_BUCKET } from './TrainingAddModal';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
@@ -121,10 +121,12 @@ export function TrainingCompleteModal(props: {
           return;
         }
         const key = `${props.companyId}/${props.record.user_id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-        const { data: uploadData, error: upErr } = await insforge.storage.from(TRAINING_CERT_BUCKET).upload(key, file);
-        if (upErr) throw upErr;
+        // Route through the shared uploadFile() helper (proactive session refresh) — see
+        // TrainingAddModal.tsx for the same fix and why the raw insforge.storage call was
+        // causing "Request failed" on a stale session.
+        const uploadResult = await uploadFile(TRAINING_CERT_BUCKET, file, { key });
         certificateBucket = TRAINING_CERT_BUCKET;
-        certificateKey = uploadData?.key ?? key;
+        certificateKey = uploadResult.key;
       }
 
       await updateTrainingRecord({
