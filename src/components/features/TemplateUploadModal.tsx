@@ -4,7 +4,7 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { UUID } from '../../api/models/entities';
 import { createTemplateLibraryItem, TEMPLATES_BUCKET } from '../../api/services/templateLibraryService';
-import { insforge } from '../../api/insforge/client';
+import { uploadFile } from '../../api/services/storageService';
 
 export function TemplateUploadModal(props: {
   open: boolean;
@@ -32,10 +32,9 @@ export function TemplateUploadModal(props: {
       let storageKey: string | null = null;
       if (file) {
         const key = `${props.companyId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-        const { data, error: upErr } = await insforge.storage.from(TEMPLATES_BUCKET).upload(key, file);
-        if (upErr) throw upErr;
+        const uploadResult = await uploadFile(TEMPLATES_BUCKET, file, { key });
         storageBucket = TEMPLATES_BUCKET;
-        storageKey = data?.key ?? key;
+        storageKey = uploadResult.key;
       }
 
       await createTemplateLibraryItem({

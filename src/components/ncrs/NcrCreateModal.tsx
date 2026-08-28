@@ -5,7 +5,7 @@ import { formatAuthError } from '../../auth/authMessages';
 import type { UUID, Severity } from '../../api/models/core';
 import { createQualityNcr, syncNcrEvidenceFromAttachments } from '../../api/services/qualityNcrsService';
 import { createEvidence } from '../../api/services/evidenceService';
-import { insforge } from '../../api/insforge/client';
+import { uploadFile } from '../../api/services/storageService';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 import { useToast } from '../ui/ToastProvider';
@@ -247,14 +247,13 @@ export function NcrCreateModal(props: {
   async function uploadEvidenceFiles(ncrId: UUID, files: File[], kind: 'BEFORE' | 'AFTER') {
     for (const file of files) {
       const key = `${props.companyId}/ncr/${ncrId}/${kind.toLowerCase()}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-      const { data: uploaded, error: uploadError } = await insforge.storage.from(EVIDENCE_BUCKET).upload(key, file);
-      if (uploadError) throw uploadError;
+      const uploaded = await uploadFile(EVIDENCE_BUCKET, file, { key });
       await createEvidence({
         companyId: props.companyId,
         entityType: 'ncr',
         entityId: ncrId,
         storageBucket: EVIDENCE_BUCKET,
-        storageKey: uploaded?.key ?? key,
+        storageKey: uploaded.key,
         createdByUserId: props.createdByUserId,
         originalFilename: file.name,
         displayTitle: file.name,

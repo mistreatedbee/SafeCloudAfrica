@@ -4,7 +4,7 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { MedicalCertificate, UUID } from '../../api/models/entities';
 import { createMedicalCertificate } from '../../api/services/healthService';
-import { insforge } from '../../api/insforge/client';
+import { uploadFile, type StorageBucket } from '../../api/services/storageService';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 
@@ -105,14 +105,13 @@ export function MedicalCertificateUploadModal(props: {
     setError(null);
     try {
       setLoading(true);
-      let bucket: string | null = null;
+      let bucket: StorageBucket | null = null;
       let key: string | null = null;
       if (file) {
         bucket = MEDICAL_CERT_BUCKET;
         key = `${props.companyId}/${userId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-        const { data, error: upErr } = await insforge.storage.from(bucket).upload(key, file);
-        if (upErr) throw upErr;
-        key = data?.key ?? key;
+        const uploadResult = await uploadFile(bucket, file, { key });
+        key = uploadResult.key;
       }
 
       await createMedicalCertificate({

@@ -15,6 +15,7 @@ import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { updateCompanyProfile } from '../api/services/tenantService';
 import { insforge } from '../api/insforge/client';
+import { uploadFile } from '../api/services/storageService';
 import { formatAuthError } from '../auth/authMessages';
 const settingsSections = [
 {
@@ -159,14 +160,13 @@ export function SettingsPage() {
     setSaveError(null);
     try {
       setSaving(true);
-      const bucket = 'sca-logos';
+      const bucket = 'sca-logos' as const;
       const key = `${activeCompanyId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-      const { data, error } = await insforge.storage.from(bucket).upload(key, file);
-      if (error) throw error;
+      const uploaded = await uploadFile(bucket, file, { key });
       const nextMeta = {
         ...(meta ?? {}),
         logo_bucket: bucket,
-        logo_key: data?.key ?? key
+        logo_key: uploaded.key
       };
       await save({ metadata: nextMeta }, 'Logo updated');
     } finally {

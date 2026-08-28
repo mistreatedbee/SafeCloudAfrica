@@ -14,11 +14,14 @@ import {
 } from '../../api/services/incidentCorrectiveActionsService';
 import { UserMultiSelect } from '../ui/UserMultiSelect';
 import { createEvidence } from '../../api/services/evidenceService';
-import { insforge } from '../../api/insforge/client';
+import { uploadFile } from '../../api/services/storageService';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 
-const EVIDENCE_BUCKET = 'evidence';
+// Was 'evidence' — that bucket doesn't exist on the backend (the real one is
+// 'sca-evidence', same as everywhere else evidence is uploaded), so every
+// upload through this modal failed outright. Fixed 2026-08-28.
+const EVIDENCE_BUCKET = 'sca-evidence';
 
 type CauseLinkType = 'unsafe_act' | 'unsafe_condition' | 'root_cause' | 'system_failure';
 
@@ -308,8 +311,7 @@ export function IncidentCorrectiveActionModal({
         const evidenceUrls: string[] = [...(initial.evidence_document_urls || [])];
         for (const file of evidenceFiles) {
           const key = `${companyId}/incident_corrective_action/${updated.id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-          const { error: uploadError } = await insforge.storage.from(EVIDENCE_BUCKET).upload(key, file);
-          if (uploadError) throw uploadError;
+          await uploadFile(EVIDENCE_BUCKET, file, { key });
 
           await createEvidence({
             companyId,
@@ -344,8 +346,7 @@ export function IncidentCorrectiveActionModal({
         const evidenceUrls: string[] = [];
         for (const file of evidenceFiles) {
           const key = `${companyId}/incident_corrective_action/${created.id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-          const { error: uploadError } = await insforge.storage.from(EVIDENCE_BUCKET).upload(key, file);
-          if (uploadError) throw uploadError;
+          await uploadFile(EVIDENCE_BUCKET, file, { key });
 
           await createEvidence({
             companyId,

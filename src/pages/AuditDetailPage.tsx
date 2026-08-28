@@ -55,7 +55,7 @@ import {
 } from '../api/services/auditReportService';
 import { updateAudit } from '../api/services/auditsService';
 import { useUser } from '@insforge/react';
-import { insforge } from '../api/insforge/client';
+import { uploadFile } from '../api/services/storageService';
 import { EVIDENCE_BUCKET } from '../components/evidence/EvidenceModal';
 import { useIdentity } from '../hooks/useIdentity';
 import { useDraftManager } from '../session/DraftManagerProvider';
@@ -728,8 +728,7 @@ export function AuditDetailPage() {
                     setPreAuditUploadingFor(preAuditUploadingFor);
                     try {
                       const key = `${activeCompanyId}/audit_pre_submission/${auditId}/${encodeURIComponent(preAuditUploadingFor)}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-                      const { error: upErr } = await insforge.storage.from(EVIDENCE_BUCKET).upload(key, file);
-                      if (upErr) throw upErr;
+                      await uploadFile(EVIDENCE_BUCKET, file, { key });
                       await addPreAuditUploadedDoc(
                         auditId as UUID,
                         activeCompanyId,
@@ -1186,8 +1185,7 @@ export function AuditDetailPage() {
                   const currentFiles = (existing as any)?.evidence_files ?? [];
                   try {
                     const key = `${activeCompanyId}/audit_response/${auditId}/${q.id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-                    const { error: upErr } = await insforge.storage.from(EVIDENCE_BUCKET).upload(key, file);
-                    if (upErr) throw upErr;
+                    await uploadFile(EVIDENCE_BUCKET, file, { key });
                     const newFiles = [...currentFiles, { storageBucket: EVIDENCE_BUCKET, storageKey: key, fileName: file.name }];
                     await handleSubmitResponse(q, { evidence_files: newFiles } as any);
                   } finally {

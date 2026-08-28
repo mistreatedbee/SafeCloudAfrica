@@ -18,7 +18,7 @@ import { getUserProfile, resolveUserProfileAvatarUrl, updateUserProfile } from '
 import type { UserProfile } from '../api/models/entities';
 import { useIdentity } from '../hooks/useIdentity';
 import { getErrorMessage } from '../api/insforge/errors';
-import { insforge } from '../api/insforge/client';
+import { uploadFile } from '../api/services/storageService';
 
 const AVATAR_BUCKET = 'sca-logos';
 const MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024;
@@ -168,8 +168,7 @@ export function ProfilePage() {
       setMessage(null);
 
       const key = `${activeCompanyId}/profiles/${user.id}/avatar-${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-      const { data, error } = await insforge.storage.from(AVATAR_BUCKET).upload(key, file);
-      if (error) throw error;
+      const uploaded = await uploadFile(AVATAR_BUCKET, file, { key });
 
       const updated = await updateUserProfile(activeCompanyId, user.id as any, {
         full_name: formData.fullName,
@@ -178,7 +177,7 @@ export function ProfilePage() {
         department: formData.department,
         site: formData.site,
         avatar_bucket: AVATAR_BUCKET,
-        avatar_key: data?.key ?? key
+        avatar_key: uploaded.key
       });
 
       await applyUpdatedProfile(
