@@ -17,6 +17,7 @@ import {
 import { uploadFile } from '../../api/services/storageService';
 import { columnsForType, typeLabel } from './riskTemplates';
 import { RiskAssessmentRowsEditor } from '../../components/risks/RiskAssessmentRowsEditor';
+import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 
@@ -109,6 +110,8 @@ export function RiskAssessmentEditPage() {
     reference: ''
   });
   const [docUrl, setDocUrl] = useState('');
+  const [supervisorId, setSupervisorId] = useState('');
+  const [supervisorNameSnapshot, setSupervisorNameSnapshot] = useState('');
   const [baselineFile, setBaselineFile] = useState<File | null>(null);
   const [rows, setRows] = useState<DraftRow[]>([]);
   const { restoreDraft, clearDraft } = useDraftManager();
@@ -147,6 +150,8 @@ export function RiskAssessmentEditPage() {
           reference: assessment.reference ?? ''
         });
         setDocUrl(assessment.doc_url ?? '');
+        setSupervisorId(assessment.supervisor_id ?? '');
+        setSupervisorNameSnapshot(assessment.supervisor_name_snapshot ?? '');
 
         const mapped = rowData.map((r) => ({
           localId: r.id,
@@ -189,12 +194,14 @@ export function RiskAssessmentEditPage() {
 
   useEffect(() => {
     if (!loaded || !user?.id) return;
-    const restored = restoreDraft<{ header: Record<string, string>; rows: DraftRow[]; docUrl: string; status: RiskAssessmentStatus }>(draftKey);
+    const restored = restoreDraft<{ header: Record<string, string>; rows: DraftRow[]; docUrl: string; status: RiskAssessmentStatus; supervisorId?: string; supervisorNameSnapshot?: string }>(draftKey);
     if (!restored) return;
     if (Object.keys(restored.header ?? {}).length > 0) setHeader(restored.header);
     if (Array.isArray(restored.rows) && restored.rows.length > 0) setRows(restored.rows);
     if (typeof restored.docUrl === 'string') setDocUrl(restored.docUrl);
     if (restored.status) setStatus(restored.status);
+    if (typeof restored.supervisorId === 'string') setSupervisorId(restored.supervisorId);
+    if (typeof restored.supervisorNameSnapshot === 'string') setSupervisorNameSnapshot(restored.supervisorNameSnapshot);
   }, [draftKey, loaded, restoreDraft, user?.id]);
 
   function updateRow(rowId: string, patch: Partial<DraftRow>) {
@@ -262,6 +269,7 @@ export function RiskAssessmentEditPage() {
     if (msg.includes('archived')) return 'This risk assessment is archived and cannot be edited.';
     if (msg.includes('network')) return 'Network error. Please check your connection and try again.';
     if (msg.includes('duplicate') || msg.includes('unique')) return 'A record with these details already exists.';
+    if (msg.includes('supervisor') || msg.includes('approver')) return raw;
     return 'Failed to save risk assessment. Please try again.';
   }
 
@@ -279,11 +287,16 @@ export function RiskAssessmentEditPage() {
       manualSavingRef.current = false;
       return;
     }
+    const appliedStatus = nextStatus ?? status;
+    if (appliedStatus === 'submitted' && type !== 'prework' && !supervisorId) {
+      setError('Select a supervisor/approver before submitting this risk assessment.');
+      manualSavingRef.current = false;
+      return;
+    }
 
     setSaving(true);
     setError(null);
     try {
-      const appliedStatus = nextStatus ?? status;
       const flash = appliedStatus === 'draft' ? 'Draft saved successfully.' : 'Risk assessment submitted successfully.';
       await updateRiskAssessment({
         companyId: activeCompanyId as UUID,
@@ -302,6 +315,8 @@ export function RiskAssessmentEditPage() {
           next_review_date: header.nextReviewDate || null,
           reference: header.reference?.trim() || null,
           doc_url: docUrl.trim() || null,
+          supervisor_id: (supervisorId || null) as UUID | null,
+          supervisor_name_snapshot: supervisorNameSnapshot || null,
           status: appliedStatus
         }
       });
@@ -371,7 +386,7 @@ export function RiskAssessmentEditPage() {
       linkedRecordId: id ?? null
     },
     isDirty: () => hasDirtyDraft,
-    serialize: () => ({ header, rows, docUrl, status }),
+    serialize: () => ({ header, rows, docUrl, status, supervisorId, supervisorNameSnapshot }),
     flush: async () => {
       if (!activeCompanyId || !user?.id || !activeRole) return;
       if (!header.title?.trim()) return;
@@ -398,7 +413,9 @@ export function RiskAssessmentEditPage() {
             reference: header.reference?.trim() || null,
             doc_url: docUrl.trim() || null,
             department_id: scope?.departmentId ?? null,
-            site_id: scope?.siteId ?? null
+            site_id: scope?.siteId ?? null,
+            supervisor_id: (supervisorId || null) as UUID | null,
+            supervisor_name_snapshot: supervisorNameSnapshot || null
           }
         });
 
@@ -481,7 +498,34 @@ export function RiskAssessmentEditPage() {
               </span>
             </label>
             <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Google Doc URL</span><input disabled={readOnly} value={docUrl} onChange={(e) => setDocUrl(e.target.value)} className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
-            <label className="text-sm"><span className="block text-xs text-charcoal-500 mb-1">Status</span><select disabled={readOnly} value={status} onChange={(e) => setStatus(e.target.value as RiskAssessmentStatus)} className="w-full px-3 py-2 border border-surface-300 rounded-lg"><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="active">Active</option></select></label>
+            <label className="text-sm">
+              <span className="block text-xs text-charcoal-500 mb-1">Status</span>
+              <input readOnly value={status} className="w-full px-3 py-2 border border-surface-200 rounded-lg bg-surface-50 text-charcoal-600 capitalize" />
+              <span className="mt-1 block text-[11px] text-charcoal-400">
+                Use the Save as Draft / Submit buttons below to change status. Only the assigned supervisor/approver can activate this assessment (from the assessment detail page).
+              </span>
+            </label>
+            {type !== 'prework' && (
+              <div>
+                <HrEmployeeSelect
+                  companyId={activeCompanyId ?? null}
+                  value={supervisorId as any}
+                  valueField="id"
+                  includeUnlinked={true}
+                  onChange={(id, meta) => {
+                    setSupervisorId(id);
+                    setSupervisorNameSnapshot(meta.nameSnapshot);
+                  }}
+                  label="Supervisor / Approver *"
+                  placeholder="Select supervisor / approver"
+                  disabled={readOnly}
+                  formatOptionLabel={(e) => {
+                    const name = `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || e.email;
+                    return e.employee_no ? `${name} (${e.employee_no})` : name;
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {type === 'baseline' && !readOnly && (

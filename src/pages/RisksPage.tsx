@@ -16,6 +16,7 @@ import {
   type RiskAssessmentTemplate,
   type RiskAssessmentType
 } from '../api/services/riskAssessmentsService';
+import { getHrEmployeeByUserId } from '../api/services/hrService';
 
 function getScopeForActiveMembership(
   memberships: Array<{ company_id: UUID; site_id?: UUID | null; department_id?: UUID | null; consultant_scope?: any }> | undefined,
@@ -45,7 +46,10 @@ const STATUS_LABEL: Record<RiskAssessmentStatus, string> = {
   archived: 'Archived'
 };
 
-function StatusPill({ status }: { status: RiskAssessmentStatus }) {
+function StatusPill({ status, rejected }: { status: RiskAssessmentStatus; rejected?: boolean }) {
+  if (rejected && status === 'draft') {
+    return <span className="inline-flex rounded-full px-2 py-1 text-xs font-semibold bg-red-100 text-red-700">Rejected</span>;
+  }
   const cls =
     status === 'archived'
       ? 'bg-gray-200 text-gray-700'
@@ -67,8 +71,10 @@ export function RisksPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | RiskAssessmentType>('all');
+  const [myHrEmployeeId, setMyHrEmployeeId] = useState<UUID | null>(null);
 
   const scope = useMemo(() => getScopeForActiveMembership(memberships as any, activeCompanyId as UUID | null), [activeCompanyId, memberships]);
+  const isAdminOrManager = ['owner', 'admin', 'manager'].includes(String(activeRole));
 
   async function load() {
     if (!activeCompanyId || !user?.id) return;
@@ -97,6 +103,21 @@ export function RisksPage() {
   useEffect(() => {
     void load();
   }, [activeCompanyId, activeRole, user?.id]);
+
+  useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    getHrEmployeeByUserId(activeCompanyId as UUID, user.id as UUID)
+      .then((emp) => setMyHrEmployeeId(emp?.id ?? null))
+      .catch(() => setMyHrEmployeeId(null));
+  }, [activeCompanyId, user?.id]);
+
+  const awaitingMyApproval = useMemo(() => {
+    return rows.filter((row) => {
+      if (row.status !== 'submitted') return false;
+      if (isAdminOrManager) return true;
+      return Boolean(row.supervisor_id && myHrEmployeeId && String(row.supervisor_id) === String(myHrEmployeeId));
+    });
+  }, [rows, isAdminOrManager, myHrEmployeeId]);
 
   const filtered = useMemo(() => {
     return rows.filter((row) => {
@@ -169,6 +190,30 @@ export function RisksPage() {
           {error && <p className="text-sm text-critical mt-3">{error}</p>}
         </div>
 
+        {awaitingMyApproval.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden shadow-card">
+            <div className="px-4 py-3 border-b border-amber-200 font-semibold text-charcoal flex items-center justify-between">
+              <span>Awaiting my approval</span>
+              <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-800 text-xs font-semibold">{awaitingMyApproval.length}</span>
+            </div>
+            <div className="divide-y divide-amber-100">
+              {awaitingMyApproval.map((row) => (
+                <button
+                  key={row.id}
+                  onClick={() => navigate(`/risk-assessments/${row.id}`)}
+                  className="w-full text-left px-4 py-3 hover:bg-amber-100/60 flex items-center justify-between gap-3"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-charcoal">{row.title}</p>
+                    <p className="text-xs text-charcoal-500">{TYPE_LABEL[row.type]}{row.reference ? ` · ${row.reference}` : ''}</p>
+                  </div>
+                  <span className="text-xs text-teal font-medium shrink-0">Review →</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="bg-white border border-surface-300 rounded-xl overflow-hidden shadow-card">
           <div className="px-4 py-3 border-b border-surface-200 font-semibold text-charcoal">Assessments</div>
           {loading ? (
@@ -200,7 +245,7 @@ export function RisksPage() {
                       <td className="px-4 py-2 text-sm text-charcoal">{row.area || '-'} / {row.activity || '-'}</td>
                       <td className="px-4 py-2 text-sm text-charcoal">{row.reference || '-'}</td>
                       <td className="px-4 py-2 text-sm text-charcoal">{row.assessment_date || '-'}</td>
-                      <td className="px-4 py-2"><StatusPill status={row.status} /></td>
+                      <td className="px-4 py-2"><StatusPill status={row.status} rejected={row.rejected_at != null} /></td>
                     </tr>
                   ))}
                 </tbody>

@@ -7,6 +7,7 @@ import { useTenant } from '../../tenant/TenantContext';
 import type { UUID } from '../../api/models/core';
 import {
   addRiskAssessmentSignoff,
+  approveRiskAssessment,
   archiveRiskAssessment,
   createRiskAssessmentQna,
   createRiskAssessmentTemplate,
@@ -16,13 +17,16 @@ import {
   listRiskAssessmentQna,
   listRiskAssessmentRows,
   listRiskAssessmentSignoffs,
+  rejectRiskAssessment,
   supervisorSignoffRiskAssessment,
+  updateRiskAssessment,
   type MembershipScope,
   type RiskAssessment,
   type RiskAssessmentQna,
   type RiskAssessmentRow,
   type RiskAssessmentSignoff
 } from '../../api/services/riskAssessmentsService';
+import { getHrEmployeeByUserId } from '../../api/services/hrService';
 import { listQualityNcrs } from '../../api/services/qualityNcrsService';
 import { listLegalRequirementsForLinkedRecord } from '../../api/services/legalRequirementsService';
 import type { LegalRequirement, QualityNcr } from '../../api/models/entities';
@@ -32,6 +36,34 @@ import { buildRiskTableLayout } from '../../utils/riskTableLayout';
 
 const tableHeaderCell = 'px-3 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase align-top whitespace-normal min-w-[120px]';
 const tableDataCell = 'px-3 py-3 align-top whitespace-normal';
+
+/**
+ * status_v2 only has draft/submitted/active/archived (rejection sends a document back to
+ * 'draft' rather than a separate value — see risk_assessment_active_archive_2026_08_27.sql),
+ * so a rejected-but-not-yet-resubmitted draft is distinguished by the `rejected` flag.
+ */
+function RiskAssessmentStatusBadge({ status, rejected }: { status: string; rejected: boolean }) {
+  if (rejected) {
+    return <span className="px-2.5 py-1 rounded-full bg-red-100 text-red-700 text-xs font-semibold">Rejected</span>;
+  }
+  const styles: Record<string, string> = {
+    draft: 'bg-surface-200 text-charcoal-600',
+    submitted: 'bg-amber-100 text-amber-700',
+    active: 'bg-emerald-100 text-emerald-700',
+    archived: 'bg-charcoal-100 text-charcoal-500'
+  };
+  const labels: Record<string, string> = {
+    draft: 'Draft',
+    submitted: 'Submitted',
+    active: 'Active',
+    archived: 'Archived'
+  };
+  return (
+    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${styles[status] ?? 'bg-surface-200 text-charcoal-600'}`}>
+      {labels[status] ?? status}
+    </span>
+  );
+}
 
 function getScopeForActiveMembership(
   memberships: Array<{ company_id: UUID; site_id?: UUID | null; department_id?: UUID | null; consultant_scope?: any }> | undefined,
@@ -70,6 +102,11 @@ export function RiskAssessmentDetailPage() {
   const [employeeName, setEmployeeName] = useState('');
   const [employeeSignature, setEmployeeSignature] = useState('');
   const [flash, setFlash] = useState<string | null>(null);
+  const [myHrEmployeeId, setMyHrEmployeeId] = useState<UUID | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
 
   const columns = useMemo(() => (assessment ? columnsForType(assessment.type) : []), [assessment]);
   const tableLayout = useMemo(() => (assessment ? buildRiskTableLayout(assessment.type, columns) : []), [assessment, columns]);
@@ -79,6 +116,13 @@ export function RiskAssessmentDetailPage() {
   const canEdit = ['owner', 'admin', 'manager', 'supervisor', 'consultant'].includes(String(activeRole));
   const canDelete = ['owner', 'admin'].includes(String(activeRole));
   const canSupervisorSign = ['owner', 'admin', 'manager', 'supervisor'].includes(String(activeRole));
+
+  const isAdminOrManager = ['owner', 'admin', 'manager'].includes(String(activeRole));
+  const isAssignedSupervisor = Boolean(
+    assessment?.supervisor_id && myHrEmployeeId && String(assessment.supervisor_id) === String(myHrEmployeeId)
+  );
+  const canApproveOrReject = assessment?.status === 'submitted' && (isAdminOrManager || isAssignedSupervisor);
+  const canResubmit = assessment?.status === 'draft' && assessment.rejected_at != null && assessment.created_by_user_id === user?.id;
 
   async function load() {
     if (!activeCompanyId || !user?.id || !id) return;
@@ -130,6 +174,13 @@ export function RiskAssessmentDetailPage() {
   }, [activeCompanyId, activeRole, id, user?.id]);
 
   useEffect(() => {
+    if (!activeCompanyId || !user?.id) return;
+    getHrEmployeeByUserId(activeCompanyId as UUID, user.id as UUID)
+      .then((emp) => setMyHrEmployeeId(emp?.id ?? null))
+      .catch(() => setMyHrEmployeeId(null));
+  }, [activeCompanyId, user?.id]);
+
+  useEffect(() => {
     const msg = (location.state as any)?.flash;
     if (typeof msg === 'string' && msg.trim()) {
       setFlash(msg.trim());
@@ -151,6 +202,72 @@ export function RiskAssessmentDetailPage() {
       navigate('/risk-assessments');
     } catch (e) {
       setError(toUserFacingError(e, 'Failed to delete assessment'));
+    }
+  }
+
+  async function onApprove() {
+    if (!activeCompanyId || !user?.id || !assessment) return;
+    if (!window.confirm('Approve this risk assessment? It will become the ACTIVE version.')) return;
+    setError(null);
+    setApproving(true);
+    try {
+      await approveRiskAssessment({
+        companyId: activeCompanyId as UUID,
+        assessmentId: assessment.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole,
+        scope
+      });
+      await load();
+    } catch (e) {
+      console.error('Risk assessment approval failed', e);
+      setError(toUserFacingError(e, 'Failed to approve this risk assessment.'));
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  async function onReject() {
+    if (!activeCompanyId || !user?.id || !assessment) return;
+    if (!rejectReason.trim()) return;
+    setError(null);
+    setRejecting(true);
+    try {
+      await rejectRiskAssessment({
+        companyId: activeCompanyId as UUID,
+        assessmentId: assessment.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole,
+        scope,
+        reason: rejectReason.trim()
+      });
+      setShowRejectForm(false);
+      setRejectReason('');
+      await load();
+    } catch (e) {
+      console.error('Risk assessment rejection failed', e);
+      setError(toUserFacingError(e, 'Failed to reject this risk assessment.'));
+    } finally {
+      setRejecting(false);
+    }
+  }
+
+  async function onResubmit() {
+    if (!activeCompanyId || !user?.id || !assessment) return;
+    setError(null);
+    try {
+      await updateRiskAssessment({
+        companyId: activeCompanyId as UUID,
+        assessmentId: assessment.id,
+        actorUserId: user.id as UUID,
+        actorRole: activeRole,
+        scope,
+        patch: { status: 'submitted' }
+      });
+      await load();
+    } catch (e) {
+      console.error('Risk assessment resubmit failed', e);
+      setError(toUserFacingError(e, 'Failed to resubmit this risk assessment.'));
     }
   }
 
@@ -263,7 +380,10 @@ export function RiskAssessmentDetailPage() {
       });
       await load();
     } catch (e) {
-      setError(toUserFacingError(e, 'Failed supervisor sign-off'));
+      // Log the raw error so the real cause (RLS denial, missing/invalid signoff row,
+      // etc.) is visible in the console instead of only ever showing the generic fallback.
+      console.error('Supervisor sign-off failed', e);
+      setError(toUserFacingError(e, 'Supervisor sign-off failed. See console for details, or contact your administrator.'));
     }
   }
 
@@ -296,13 +416,19 @@ export function RiskAssessmentDetailPage() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <Link to="/risk-assessments" className="text-sm text-charcoal-500 hover:underline">Back to list</Link>
-            <h1 className="text-2xl font-bold text-charcoal">{assessment.title}</h1>
-            <p className="text-sm text-charcoal-500">{typeLabel(assessment.type)} | {assessment.status}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold text-charcoal">{assessment.title}</h1>
+              <RiskAssessmentStatusBadge status={assessment.status} rejected={assessment.status === 'draft' && assessment.rejected_at != null} />
+            </div>
+            <p className="text-sm text-charcoal-500">{typeLabel(assessment.type)}</p>
             <p className="text-xs text-charcoal-500 mt-0.5">
               Reference: <span className="font-mono text-charcoal">{assessment.reference || '-'}</span>
             </p>
+            {assessment.supervisor_name_snapshot && (
+              <p className="text-xs text-charcoal-500 mt-0.5">Supervisor / Approver: <span className="text-charcoal">{assessment.supervisor_name_snapshot}</span></p>
+            )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {assessment.doc_url && <a href={assessment.doc_url} target="_blank" rel="noreferrer" className="px-3 py-2 rounded border border-charcoal-300 text-sm">Open Google Doc</a>}
             {canEdit && assessment.status !== 'archived' && <button onClick={() => navigate(`/risk-assessments/${assessment.id}/edit`)} className="px-3 py-2 rounded bg-teal text-white text-sm">Edit</button>}
             {canEdit && assessment.status !== 'archived' && (
@@ -312,6 +438,53 @@ export function RiskAssessmentDetailPage() {
             {canDelete && <button onClick={() => void onDelete()} className="px-3 py-2 rounded border border-critical text-critical text-sm">Delete</button>}
           </div>
         </div>
+
+        {canApproveOrReject && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+            <p className="text-sm font-semibold text-charcoal">Awaiting your approval</p>
+            <div className="flex flex-wrap gap-2">
+              <button disabled={approving} onClick={() => void onApprove()} className="px-4 py-2 rounded-lg bg-success text-white text-sm font-semibold disabled:opacity-60">
+                {approving ? 'Approving...' : 'Approve'}
+              </button>
+              <button onClick={() => setShowRejectForm((v) => !v)} className="px-4 py-2 rounded-lg border border-critical text-critical text-sm font-semibold">
+                Reject
+              </button>
+            </div>
+            {showRejectForm && (
+              <div className="space-y-2 pt-1">
+                <label className="text-sm block">
+                  <span className="block text-xs text-charcoal-500 mb-1">Reason for rejection *</span>
+                  <textarea
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                    placeholder="Explain what needs to change before this can be approved."
+                  />
+                </label>
+                <button
+                  disabled={rejecting || !rejectReason.trim()}
+                  onClick={() => void onReject()}
+                  className="px-4 py-2 rounded-lg bg-critical text-white text-sm font-semibold disabled:opacity-60"
+                >
+                  {rejecting ? 'Rejecting...' : 'Submit rejection'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {assessment.status === 'draft' && assessment.rejected_at != null && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-2">
+            <p className="text-sm font-semibold text-critical">This risk assessment was rejected</p>
+            <p className="text-sm text-charcoal-600">Reason: {assessment.rejection_reason || 'No reason given.'}</p>
+            {canResubmit && (
+              <button onClick={() => void onResubmit()} className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold">
+                Resubmit
+              </button>
+            )}
+          </div>
+        )}
 
         {error && <div className="text-sm text-critical">{error}</div>}
         {flash && (

@@ -40,6 +40,14 @@ export type RiskAssessment = {
   doc_id: string | null;
   baseline_spreadsheet_bucket: string | null;
   baseline_spreadsheet_key: string | null;
+  /** HR employee assigned to approve/reject this assessment. Required before it can be submitted. */
+  supervisor_id: UUID | null;
+  supervisor_name_snapshot: string | null;
+  approved_by_user_id: UUID | null;
+  approved_at: string | null;
+  rejected_by_user_id: UUID | null;
+  rejected_at: string | null;
+  rejection_reason: string | null;
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;
@@ -217,6 +225,13 @@ function mapAssessment(row: any): RiskAssessment {
     doc_id: parseDocId(row.doc_url ?? null),
     baseline_spreadsheet_bucket: row.baseline_spreadsheet_bucket ?? null,
     baseline_spreadsheet_key: row.baseline_spreadsheet_key ?? null,
+    supervisor_id: row.supervisor_id ?? null,
+    supervisor_name_snapshot: row.supervisor_name_snapshot ?? null,
+    approved_by_user_id: row.approved_by_user_id ?? null,
+    approved_at: row.approved_at ?? null,
+    rejected_by_user_id: row.rejected_by_user_id ?? null,
+    rejected_at: row.rejected_at ?? null,
+    rejection_reason: row.rejection_reason ?? null,
     created_by_user_id: row.created_by_user_id,
     created_at: row.created_at,
     updated_at: row.updated_at
@@ -231,6 +246,37 @@ function mapStatusToLegacy(status: RiskAssessmentStatus): string {
 
 function isReadOnlyStatus(status: RiskAssessmentStatus): boolean {
   return status === 'archived';
+}
+
+/** Notify the assigned supervisor that a risk assessment is awaiting their approval. Shared by create and update (first submit + resubmit). */
+async function notifySupervisorOfSubmission(assessment: RiskAssessment, actorUserId: UUID): Promise<void> {
+  if (!assessment.supervisor_id) return;
+  try {
+    const { getHrEmployeeById } = await import('./hrService');
+    const supervisor = await getHrEmployeeById(assessment.company_id, assessment.supervisor_id);
+    const supervisorUserId = supervisor?.user_id;
+    if (!supervisorUserId || supervisorUserId === actorUserId) return;
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: assessment.company_id,
+      eventKey: `risk-assessment-pending-approval:${assessment.id}:${assessment.updated_at}`,
+      eventType: 'risk_assessment_pending_approval',
+      title: `Risk Assessment pending your approval: ${assessment.title}`,
+      message: `"${assessment.title}" (${assessment.type}) was submitted for your approval.`,
+      recipientUserIds: [supervisorUserId],
+      emailTemplateKey: 'risk_assessment',
+      emailVariables: {
+        title: assessment.title,
+        reference: assessment.reference ?? assessment.id,
+        status: 'Pending your approval',
+        dueDate: assessment.next_review_date ?? undefined
+      },
+      actionUrl: `/risk-assessments/${assessment.id}`,
+      metadata: { itemType: 'risk_assessment', itemId: assessment.id }
+    }).catch((err) => console.warn('[risk-assessments] supervisor pending-approval notification failed', err));
+  } catch (err) {
+    console.warn('[risk-assessments] failed to resolve supervisor for submission notification', err);
+  }
 }
 
 export function computeRR(severity?: number | null, likelihood?: number | null): number | null {
@@ -341,12 +387,19 @@ export async function createRiskAssessment(input: {
   reference?: string | null;
   status?: RiskAssessmentStatus;
   docUrl?: string | null;
+  /** HR employee assigned to approve/reject this assessment. Not required for type 'prework' (uses its own per-shift employee/supervisor signoff instead). */
+  supervisorId?: UUID | null;
+  supervisorNameSnapshot?: string | null;
 }): Promise<RiskAssessment> {
+  return withInsforgeSession('risk_assessments:create', async () => {
   if (!['owner', 'admin', 'manager', 'supervisor', 'consultant', 'employee'].includes(String(input.actorRole))) {
     throw new Error('Access denied');
   }
 
   const status = input.status ?? 'draft';
+  if (status === 'submitted' && input.type !== 'prework' && !input.supervisorId) {
+    throw new Error('Select a supervisor/approver before submitting this risk assessment.');
+  }
 
   const { data, error } = await insforge.database
     .from('risk_assessments')
@@ -373,6 +426,8 @@ export async function createRiskAssessment(input: {
       status_v2: status,
       status: mapStatusToLegacy(status),
       doc_url: input.docUrl ?? null,
+      supervisor_id: input.supervisorId ?? null,
+      supervisor_name_snapshot: input.supervisorNameSnapshot ?? null,
       created_by_user_id: input.actorUserId
     })
     .select('*')
@@ -412,7 +467,12 @@ export async function createRiskAssessment(input: {
     }).catch(() => undefined);
   }
 
+  if (status === 'submitted') {
+    await notifySupervisorOfSubmission(created, input.actorUserId);
+  }
+
   return created;
+  });
 }
 
 export async function updateRiskAssessment(input: {
@@ -438,8 +498,11 @@ export async function updateRiskAssessment(input: {
     doc_url: string | null;
     baseline_spreadsheet_bucket: string | null;
     baseline_spreadsheet_key: string | null;
+    supervisor_id: UUID | null;
+    supervisor_name_snapshot: string | null;
   }>;
 }): Promise<RiskAssessment> {
+  return withInsforgeSession('risk_assessments:update', async () => {
   const current = await getRiskAssessment({
     companyId: input.companyId,
     assessmentId: input.assessmentId,
@@ -454,6 +517,17 @@ export async function updateRiskAssessment(input: {
   }
   if (isReadOnlyStatus(current.status)) {
     throw new Error('Assessment is archived and cannot be edited.');
+  }
+
+  const nextSupervisorId = input.patch.supervisor_id !== undefined ? input.patch.supervisor_id : current.supervisor_id;
+  if (input.patch.status === 'submitted' && current.type !== 'prework' && !nextSupervisorId) {
+    throw new Error('Select a supervisor/approver before submitting this risk assessment.');
+  }
+  // A plain edit/submit save must never set status to 'active' directly -- that would let
+  // anyone with write access skip approval entirely. Only approveRiskAssessment() (which
+  // enforces the assigned-supervisor-or-admin/manager check) may activate an assessment.
+  if (input.patch.status === 'active' && current.status !== 'active') {
+    throw new Error('Use the Approve action to activate this risk assessment -- it cannot be set to active directly.');
   }
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -487,10 +561,17 @@ export async function updateRiskAssessment(input: {
     if (input.patch.status === 'submitted') {
       patch.submitted_at = new Date().toISOString();
       patch.submitted_by_user_id = input.actorUserId;
+      // Resubmitting after a rejection clears the previous rejection so the badge/UI
+      // reflects the new pending-approval state, not the stale rejection.
+      patch.rejected_by_user_id = null;
+      patch.rejected_at = null;
+      patch.rejection_reason = null;
     }
   }
   if (input.patch.baseline_spreadsheet_bucket !== undefined) patch.baseline_spreadsheet_bucket = input.patch.baseline_spreadsheet_bucket;
   if (input.patch.baseline_spreadsheet_key !== undefined) patch.baseline_spreadsheet_key = input.patch.baseline_spreadsheet_key;
+  if (input.patch.supervisor_id !== undefined) patch.supervisor_id = input.patch.supervisor_id;
+  if (input.patch.supervisor_name_snapshot !== undefined) patch.supervisor_name_snapshot = input.patch.supervisor_name_snapshot;
 
   const { data, error } = await insforge.database
     .from('risk_assessments')
@@ -535,7 +616,182 @@ export async function updateRiskAssessment(input: {
     });
   }
 
+  if (input.patch.status === 'submitted') {
+    await notifySupervisorOfSubmission(updated, input.actorUserId);
+  }
+
   return updated;
+  });
+}
+
+/** True when the actor is the specific HR employee assigned as this assessment's supervisor/approver (not just "someone with a supervisor-ish role"). */
+async function isAssignedSupervisor(assessment: RiskAssessment, actorUserId: UUID): Promise<boolean> {
+  if (!assessment.supervisor_id) return false;
+  const { getHrEmployeeById } = await import('./hrService');
+  const supervisor = await getHrEmployeeById(assessment.company_id, assessment.supervisor_id).catch(() => null);
+  return Boolean(supervisor?.user_id && supervisor.user_id === actorUserId);
+}
+
+export async function approveRiskAssessment(input: {
+  companyId: UUID;
+  assessmentId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+  scope?: MembershipScope | null;
+}): Promise<RiskAssessment> {
+  return withInsforgeSession('risk_assessments:approve', async () => {
+  const current = await getRiskAssessment({
+    companyId: input.companyId,
+    assessmentId: input.assessmentId,
+    actorUserId: input.actorUserId,
+    actorRole: input.actorRole,
+    scope: input.scope,
+    logView: false
+  });
+
+  const isAdminOrManager = ['owner', 'admin', 'manager'].includes(String(input.actorRole));
+  if (!isAdminOrManager && !(await isAssignedSupervisor(current, input.actorUserId))) {
+    throw new Error('Only the assigned supervisor or an admin/manager can approve this risk assessment.');
+  }
+  if (current.status !== 'submitted') {
+    throw new Error(`This risk assessment is not awaiting approval (current status: ${current.status}).`);
+  }
+
+  const nowIso = new Date().toISOString();
+  const { data, error } = await insforge.database
+    .from('risk_assessments')
+    .update({
+      status_v2: 'active',
+      status: mapStatusToLegacy('active'),
+      approved_by_user_id: input.actorUserId,
+      approved_at: nowIso,
+      updated_at: nowIso
+    })
+    .eq('id', input.assessmentId)
+    .eq('company_id', input.companyId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to approve risk assessment.');
+  const updated = mapAssessment(data);
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'risk_assessments.approve',
+    entityType: 'risk_assessment',
+    entityId: input.assessmentId
+  });
+
+  if (updated.created_by_user_id !== input.actorUserId) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `risk-assessment-approved:${input.assessmentId}:${nowIso}`,
+      eventType: 'risk_assessment_approved',
+      title: 'Risk assessment approved',
+      message: `"${updated.title}" was approved and is now active.`,
+      recipientUserIds: [updated.created_by_user_id],
+      emailTemplateKey: 'risk_assessment',
+      emailVariables: {
+        title: updated.title,
+        reference: updated.reference ?? input.assessmentId,
+        status: 'Active',
+        dueDate: updated.next_review_date ?? undefined
+      },
+      actionUrl: `/risk-assessments/${input.assessmentId}`,
+      metadata: { itemType: 'risk_assessment', itemId: input.assessmentId }
+    }).catch((err) => console.warn('[risk-assessments] approval notification failed', err));
+  }
+
+  return updated;
+  });
+}
+
+export async function rejectRiskAssessment(input: {
+  companyId: UUID;
+  assessmentId: UUID;
+  actorUserId: UUID;
+  actorRole: CompanyRole | null;
+  scope?: MembershipScope | null;
+  reason: string;
+}): Promise<RiskAssessment> {
+  return withInsforgeSession('risk_assessments:reject', async () => {
+  if (!input.reason.trim()) {
+    throw new Error('A reason is required to reject this risk assessment.');
+  }
+
+  const current = await getRiskAssessment({
+    companyId: input.companyId,
+    assessmentId: input.assessmentId,
+    actorUserId: input.actorUserId,
+    actorRole: input.actorRole,
+    scope: input.scope,
+    logView: false
+  });
+
+  const isAdminOrManager = ['owner', 'admin', 'manager'].includes(String(input.actorRole));
+  if (!isAdminOrManager && !(await isAssignedSupervisor(current, input.actorUserId))) {
+    throw new Error('Only the assigned supervisor or an admin/manager can reject this risk assessment.');
+  }
+  if (current.status !== 'submitted') {
+    throw new Error(`This risk assessment is not awaiting approval (current status: ${current.status}).`);
+  }
+
+  const nowIso = new Date().toISOString();
+  // Rejection sends the document back to draft (status_v2 has no separate 'rejected' value —
+  // see risk_assessment_active_archive_2026_08_27.sql) with rejected_* fields populated so the
+  // UI can show a distinct "Rejected" badge instead of a plain "Draft" one.
+  const { data, error } = await insforge.database
+    .from('risk_assessments')
+    .update({
+      status_v2: 'draft',
+      status: mapStatusToLegacy('draft'),
+      rejected_by_user_id: input.actorUserId,
+      rejected_at: nowIso,
+      rejection_reason: input.reason.trim(),
+      updated_at: nowIso
+    })
+    .eq('id', input.assessmentId)
+    .eq('company_id', input.companyId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to reject risk assessment.');
+  const updated = mapAssessment(data);
+
+  await createActivityLog({
+    companyId: input.companyId,
+    actorUserId: input.actorUserId,
+    action: 'risk_assessments.reject',
+    entityType: 'risk_assessment',
+    entityId: input.assessmentId,
+    metadata: { reason: input.reason.trim() }
+  });
+
+  if (updated.created_by_user_id !== input.actorUserId) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.companyId,
+      eventKey: `risk-assessment-rejected:${input.assessmentId}:${nowIso}`,
+      eventType: 'risk_assessment_rejected',
+      title: 'Risk assessment rejected',
+      message: `"${updated.title}" was rejected. Reason: ${updated.rejection_reason}`,
+      recipientUserIds: [updated.created_by_user_id],
+      emailTemplateKey: 'risk_assessment',
+      emailVariables: {
+        title: updated.title,
+        reference: updated.reference ?? input.assessmentId,
+        status: 'Rejected',
+        dueDate: updated.next_review_date ?? undefined
+      },
+      actionUrl: `/risk-assessments/${input.assessmentId}`,
+      metadata: { itemType: 'risk_assessment', itemId: input.assessmentId }
+    }).catch((err) => console.warn('[risk-assessments] rejection notification failed', err));
+  }
+
+  return updated;
+  });
 }
 
 export async function deleteRiskAssessment(input: {
@@ -545,6 +801,7 @@ export async function deleteRiskAssessment(input: {
   actorRole: CompanyRole | null;
   scope?: MembershipScope | null;
 }): Promise<void> {
+  return withInsforgeSession('risk_assessments:delete', async () => {
   const current = await getRiskAssessment({
     companyId: input.companyId,
     assessmentId: input.assessmentId,
@@ -570,6 +827,7 @@ export async function deleteRiskAssessment(input: {
     action: 'risk_assessments.delete',
     entityType: 'risk_assessment',
     entityId: input.assessmentId
+  });
   });
 }
 
@@ -597,6 +855,7 @@ export async function replaceRiskAssessmentRows(input: {
   scope?: MembershipScope | null;
   rows: Array<Partial<RiskAssessmentRow> & { json_data: Record<string, unknown> }>;
 }): Promise<RiskAssessmentRow[]> {
+  return withInsforgeSession('risk_assessment_rows:replace', async () => {
   const current = await getRiskAssessment({
     companyId: input.companyId,
     assessmentId: input.assessmentId,
@@ -674,6 +933,7 @@ export async function replaceRiskAssessmentRows(input: {
   });
 
   return ((data ?? []) as RiskAssessmentRow[]).sort((a, b) => a.row_index - b.row_index);
+  });
 }
 
 export async function listRiskAssessmentQna(input: { companyId: UUID; assessmentId: UUID }): Promise<RiskAssessmentQna[]> {
@@ -696,6 +956,7 @@ export async function createRiskAssessmentQna(input: {
   question: string;
   answer?: string | null;
 }): Promise<RiskAssessmentQna> {
+  return withInsforgeSession('risk_assessment_qna:create', async () => {
   const { data, error } = await insforge.database
     .from('risk_assessment_qna')
     .insert({
@@ -719,6 +980,7 @@ export async function createRiskAssessmentQna(input: {
   });
 
   return data as RiskAssessmentQna;
+  });
 }
 
 export async function deleteRiskAssessmentQna(input: {
@@ -726,6 +988,7 @@ export async function deleteRiskAssessmentQna(input: {
   qnaId: UUID;
   actorUserId: UUID;
 }): Promise<void> {
+  return withInsforgeSession('risk_assessment_qna:delete', async () => {
   const { error } = await insforge.database.from('risk_assessment_qna').delete().eq('company_id', input.companyId).eq('id', input.qnaId);
   if (error) throw new Error(getErrorMessage(error));
 
@@ -735,6 +998,7 @@ export async function deleteRiskAssessmentQna(input: {
     action: 'risk_assessment_qna.delete',
     entityType: 'risk_assessment_qna',
     entityId: input.qnaId
+  });
   });
 }
 
@@ -761,6 +1025,7 @@ export async function addRiskAssessmentSignoff(input: {
   employeeName: string;
   signature?: string | null;
 }): Promise<RiskAssessmentSignoff> {
+  return withInsforgeSession('risk_assessment_signoffs:employee_sign', async () => {
   const { data, error } = await insforge.database
     .from('risk_assessment_signoffs')
     .insert({
@@ -785,6 +1050,7 @@ export async function addRiskAssessmentSignoff(input: {
   });
 
   return data as RiskAssessmentSignoff;
+  });
 }
 
 export async function supervisorSignoffRiskAssessment(input: {
@@ -793,6 +1059,7 @@ export async function supervisorSignoffRiskAssessment(input: {
   signoffId?: UUID;
   actorUserId: UUID;
 }): Promise<void> {
+  return withInsforgeSession('risk_assessment_signoffs:supervisor_sign', async () => {
   const assessment = await getRiskAssessment({
     companyId: input.companyId,
     assessmentId: input.assessmentId,
@@ -810,13 +1077,18 @@ export async function supervisorSignoffRiskAssessment(input: {
     if (error) throw new Error(getErrorMessage(error));
   }
 
-  await updateRiskAssessment({
-    companyId: input.companyId,
-    assessmentId: input.assessmentId,
-    actorUserId: input.actorUserId,
-    actorRole: 'supervisor',
-    patch: { status: 'active' }
-  });
+  // Writes directly rather than going through updateRiskAssessment() -- that function
+  // deliberately rejects patch.status:'active' from a plain edit save (only
+  // approveRiskAssessment() may activate a document). This is the prework module's own
+  // sign-off action, gated separately by canSupervisorSign in the UI.
+  {
+    const { error: activateError } = await insforge.database
+      .from('risk_assessments')
+      .update({ status_v2: 'active', status: mapStatusToLegacy('active'), updated_at: new Date().toISOString() })
+      .eq('id', input.assessmentId)
+      .eq('company_id', input.companyId);
+    if (activateError) throw new Error(getErrorMessage(activateError));
+  }
 
   await createActivityLog({
     companyId: input.companyId,
@@ -848,6 +1120,7 @@ export async function supervisorSignoffRiskAssessment(input: {
       console.warn('[risk-assessments] supervisor signoff notification failed', err);
     });
   }
+  });
 }
 
 export async function listRiskAssessmentTemplates(input: {
@@ -871,6 +1144,7 @@ export async function createRiskAssessmentTemplate(input: {
   headerJson?: Record<string, unknown>;
   rowsJson?: Array<Record<string, unknown>>;
 }): Promise<RiskAssessmentTemplate> {
+  return withInsforgeSession('risk_assessment_templates:create', async () => {
   const { data, error } = await insforge.database
     .from('risk_assessment_templates')
     .insert({
@@ -895,6 +1169,7 @@ export async function createRiskAssessmentTemplate(input: {
   });
 
   return data as RiskAssessmentTemplate;
+  });
 }
 
 export async function deleteRiskAssessmentTemplate(input: {
@@ -902,6 +1177,7 @@ export async function deleteRiskAssessmentTemplate(input: {
   templateId: UUID;
   actorUserId: UUID;
 }): Promise<void> {
+  return withInsforgeSession('risk_assessment_templates:delete', async () => {
   const { error } = await insforge.database
     .from('risk_assessment_templates')
     .delete()
@@ -916,6 +1192,7 @@ export async function deleteRiskAssessmentTemplate(input: {
     entityType: 'risk_assessment_template',
     entityId: input.templateId
   });
+  });
 }
 
 export async function archiveRiskAssessment(input: {
@@ -925,6 +1202,7 @@ export async function archiveRiskAssessment(input: {
   actorRole: CompanyRole | null;
   scope?: MembershipScope | null;
 }): Promise<RiskAssessment> {
+  return withInsforgeSession('risk_assessments:archive', async () => {
   const current = await getRiskAssessment({
     companyId: input.companyId,
     assessmentId: input.assessmentId,
@@ -964,6 +1242,7 @@ export async function archiveRiskAssessment(input: {
   });
 
   return mapAssessment(data);
+  });
 }
 
 export async function createRiskAssessmentFromTemplate(input: {
@@ -974,6 +1253,7 @@ export async function createRiskAssessmentFromTemplate(input: {
   scope?: MembershipScope | null;
   title?: string;
 }): Promise<{ assessment: RiskAssessment; rows: RiskAssessmentRow[] }> {
+  return withInsforgeSession('risk_assessments:create_from_template', async () => {
   const { data, error } = await insforge.database
     .from('risk_assessment_templates')
     .select('*')
@@ -1024,4 +1304,5 @@ export async function createRiskAssessmentFromTemplate(input: {
   });
 
   return { assessment, rows };
+  });
 }

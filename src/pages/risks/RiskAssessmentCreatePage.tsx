@@ -16,6 +16,7 @@ import {
 import { uploadFile } from '../../api/services/storageService';
 import { columnsForType, defaultHeaderForType, typeLabel } from './riskTemplates';
 import { RiskAssessmentRowsEditor } from '../../components/risks/RiskAssessmentRowsEditor';
+import { HrEmployeeSelect } from '../../components/ui/HrEmployeeSelect';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 import { useToast } from '../../components/ui/ToastProvider';
@@ -100,6 +101,8 @@ export function RiskAssessmentCreatePage() {
   const [header, setHeader] = useState<Record<string, string>>(defaultHeaderForType(normalizeType(searchParams.get('type'))));
   const [rows, setRows] = useState<DraftRow[]>([emptyRow(normalizeType(searchParams.get('type')))]);
   const [docUrl, setDocUrl] = useState('');
+  const [supervisorId, setSupervisorId] = useState('');
+  const [supervisorNameSnapshot, setSupervisorNameSnapshot] = useState('');
   const [baselineFile, setBaselineFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,11 +138,13 @@ export function RiskAssessmentCreatePage() {
 
   useEffect(() => {
     if (!user?.id) return;
-    const restored = restoreDraft<{ header: Record<string, string>; rows: DraftRow[]; docUrl: string }>(draftKey);
+    const restored = restoreDraft<{ header: Record<string, string>; rows: DraftRow[]; docUrl: string; supervisorId?: string; supervisorNameSnapshot?: string }>(draftKey);
     if (!restored) return;
     if (Object.keys(restored.header ?? {}).length > 0) setHeader(restored.header);
     if (Array.isArray(restored.rows) && restored.rows.length > 0) setRows(restored.rows);
     if (typeof restored.docUrl === 'string') setDocUrl(restored.docUrl);
+    if (typeof restored.supervisorId === 'string') setSupervisorId(restored.supervisorId);
+    if (typeof restored.supervisorNameSnapshot === 'string') setSupervisorNameSnapshot(restored.supervisorNameSnapshot);
   }, [draftKey, restoreDraft, user?.id]);
 
   const columns = useMemo(() => columnsForType(type), [type]);
@@ -160,7 +165,7 @@ export function RiskAssessmentCreatePage() {
       linkedRecordId: serverDraftAssessmentIdRef.current
     },
     isDirty: () => hasDirtyDraft,
-    serialize: () => ({ header, rows, docUrl }),
+    serialize: () => ({ header, rows, docUrl, supervisorId, supervisorNameSnapshot }),
     flush: async () => {
       if (!activeCompanyId || !user?.id || !activeRole) return;
       if (!header.title?.trim()) return;
@@ -186,7 +191,9 @@ export function RiskAssessmentCreatePage() {
             status: 'draft',
             docUrl: docUrl.trim() || null,
             departmentId: scope?.departmentId ?? null,
-            siteId: scope?.siteId ?? null
+            siteId: scope?.siteId ?? null,
+            supervisorId: (supervisorId || null) as UUID | null,
+            supervisorNameSnapshot: supervisorNameSnapshot || null
           });
 
 	          await replaceRiskAssessmentRows({
@@ -235,6 +242,8 @@ export function RiskAssessmentCreatePage() {
               next_review_date: header.nextReviewDate || null,
               reference: header.reference?.trim() || null,
               doc_url: docUrl.trim() || null,
+              supervisor_id: (supervisorId || null) as UUID | null,
+              supervisor_name_snapshot: supervisorNameSnapshot || null,
               status: 'draft'
             }
           });
@@ -368,6 +377,7 @@ export function RiskAssessmentCreatePage() {
     if (msg.includes('archived')) return 'This risk assessment is archived and cannot be edited.';
     if (msg.includes('network')) return 'Network error. Please check your connection and try again.';
     if (msg.includes('duplicate') || msg.includes('unique')) return 'A record with these details already exists.';
+    if (msg.includes('supervisor') || msg.includes('approver')) return raw;
     return 'Failed to save risk assessment. Please try again.';
   }
 
@@ -382,6 +392,11 @@ export function RiskAssessmentCreatePage() {
     }
     if (!header.title?.trim()) {
       setError('Title is required.');
+      manualSavingRef.current = false;
+      return;
+    }
+    if (status === 'submitted' && type !== 'prework' && !supervisorId) {
+      setError('Select a supervisor/approver before submitting this risk assessment.');
       manualSavingRef.current = false;
       return;
     }
@@ -420,6 +435,8 @@ export function RiskAssessmentCreatePage() {
             doc_url: docUrl.trim() || null,
             department_id: scope?.departmentId ?? null,
             site_id: scope?.siteId ?? null,
+            supervisor_id: (supervisorId || null) as UUID | null,
+            supervisor_name_snapshot: supervisorNameSnapshot || null,
             status
           }
         });
@@ -478,7 +495,9 @@ export function RiskAssessmentCreatePage() {
           status,
           docUrl: docUrl.trim() || null,
           departmentId: scope?.departmentId ?? null,
-          siteId: scope?.siteId ?? null
+          siteId: scope?.siteId ?? null,
+          supervisorId: (supervisorId || null) as UUID | null,
+          supervisorNameSnapshot: supervisorNameSnapshot || null
         });
 
         await replaceRiskAssessmentRows({
@@ -582,6 +601,27 @@ export function RiskAssessmentCreatePage() {
               </span>
             </label>
             <label className="text-sm md:col-span-1"><span className="block text-xs text-charcoal-500 mb-1">Google Doc URL</span><input value={docUrl} onChange={(e) => setDocUrl(e.target.value)} placeholder="https://docs.google.com/..." className="w-full px-3 py-2 border border-surface-300 rounded-lg" /></label>
+            {type !== 'prework' && (
+              <div>
+                <HrEmployeeSelect
+                  companyId={activeCompanyId ?? null}
+                  value={supervisorId as any}
+                  valueField="id"
+                  includeUnlinked={true}
+                  onChange={(id, meta) => {
+                    setSupervisorId(id);
+                    setSupervisorNameSnapshot(meta.nameSnapshot);
+                  }}
+                  label="Supervisor / Approver *"
+                  placeholder="Select supervisor / approver"
+                  formatOptionLabel={(e) => {
+                    const name = `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || e.email;
+                    return e.employee_no ? `${name} (${e.employee_no})` : name;
+                  }}
+                />
+                <p className="mt-1 text-[11px] text-charcoal-400">Required before you can submit — they will approve/reject this assessment and sign off to make it active.</p>
+              </div>
+            )}
           </div>
 
           {type === 'baseline' && (
