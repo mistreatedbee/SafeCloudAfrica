@@ -539,6 +539,38 @@ export async function listPpeStock(input: {
   });
 }
 
+export type PpeItemStockSummary = {
+  /** Sum of on_hand_qty across every active stock record for this item (all sites/departments/sizes). */
+  onHandTotal: number;
+  reorderLevel: number | null;
+  lastReceivedAt: string | null;
+  /** on_hand_qty summed per size, for items that track sizes -- only sizes with an existing record appear. */
+  bySize: Record<string, number>;
+};
+
+/**
+ * Current stock-on-hand context for one PPE item, used by the Add PPE Stock
+ * form so the user can see what's already in store before capturing a new
+ * delivery. Reuses listPpeStock rather than a new query -- this is exactly
+ * the same "SUM(on_hand_qty) WHERE ppe_item_id = ..." the caller would
+ * otherwise run by hand, just computed from data already fetched.
+ */
+export async function getPpeItemStockSummary(companyId: UUID, ppeItemId: UUID): Promise<PpeItemStockSummary> {
+  const rows = await listPpeStock({ companyId, ppeItemId, includeInactive: false });
+  const onHandTotal = rows.reduce((sum, r) => sum + (r.on_hand_qty ?? 0), 0);
+  const reorderLevel = rows.find((r) => (r.reorder_level ?? 0) > 0)?.reorder_level ?? null;
+  const lastReceivedAt = rows.reduce<string | null>((latest, r) => {
+    if (!r.date_stock_received) return latest;
+    return !latest || r.date_stock_received > latest ? r.date_stock_received : latest;
+  }, null);
+  const bySize: Record<string, number> = {};
+  for (const r of rows) {
+    if (!r.size) continue;
+    bySize[r.size] = (bySize[r.size] ?? 0) + (r.on_hand_qty ?? 0);
+  }
+  return { onHandTotal, reorderLevel, lastReceivedAt, bySize };
+}
+
 /** Resolve a stock record by location, item, and optional size (e.g. for issuing). Returns first match. */
 export async function getPpeStockByLocation(input: {
   companyId: UUID;

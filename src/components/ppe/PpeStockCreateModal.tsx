@@ -3,7 +3,7 @@ import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { Department, PPEItem, Site, UUID } from '../../api/models/entities';
-import { createPpeStock } from '../../api/services/ppeService';
+import { createPpeStock, getPpeItemStockSummary, type PpeItemStockSummary } from '../../api/services/ppeService';
 import { getMyProfile } from '../../api/services/profilesService';
 import { useAsync } from '../../api/hooks/useAsync';
 import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
@@ -45,6 +45,14 @@ export function PpeStockCreateModal(props: {
     return fromPrices.length > 0 ? fromPrices : fromAvail;
   }, [selectedItem]);
   const hasSizes = itemSizes.length > 0;
+
+  const { data: stockSummary, loading: stockSummaryLoading } = useAsync<PpeItemStockSummary | null>(
+    async () => {
+      if (!props.open || !props.companyId || !ppeItemId) return null;
+      return await getPpeItemStockSummary(props.companyId, ppeItemId as UUID);
+    },
+    [props.open, props.companyId, ppeItemId]
+  );
 
   type PpeStockCreateDraft = {
     ppeItemId: string;
@@ -357,11 +365,28 @@ export function PpeStockCreateModal(props: {
             </div>
           </div>
 
+          {ppeItemId && (
+            <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+              <p className="text-sm font-semibold text-charcoal">{selectedItem?.name ?? 'Item'} — Current stock summary</p>
+              {stockSummaryLoading ? (
+                <p className="text-xs text-charcoal-500 mt-1">Loading...</p>
+              ) : stockSummary && (stockSummary.onHandTotal > 0 || stockSummary.reorderLevel != null || stockSummary.lastReceivedAt) ? (
+                <div className="text-xs text-charcoal-600 mt-1 space-y-0.5">
+                  <p>On hand: {stockSummary.onHandTotal} units</p>
+                  <p>Reorder level: {stockSummary.reorderLevel != null ? `${stockSummary.reorderLevel} units` : '—'}</p>
+                  <p>Last received: {stockSummary.lastReceivedAt ? new Date(stockSummary.lastReceivedAt).toLocaleDateString('en-ZA') : '—'}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-charcoal-500 mt-1">No stock records yet — this will be the first delivery captured for this item.</p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {hasSizes ? (
               <div className="sm:col-span-3">
                 <label className="block text-sm font-medium text-charcoal mb-1.5">
-                  Initial quantity per size
+                  Quantity received per size
                 </label>
                 <div className="space-y-2">
                   {itemSizes.map((size) => (
@@ -375,14 +400,17 @@ export function PpeStockCreateModal(props: {
                         placeholder="0"
                         className="w-32 px-3 py-2 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                       />
+                      {(stockSummary?.bySize?.[size] ?? 0) > 0 && (
+                        <span className="text-xs text-charcoal-400">already {stockSummary?.bySize?.[size]} in store</span>
+                      )}
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-charcoal-400 mt-1">Each size creates a separate stock record tracked independently.</p>
+                <p className="text-xs text-charcoal-400 mt-1">Each size creates a separate stock record tracked independently. New stock is added on top of what's already in store.</p>
               </div>
             ) : (
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Initial quantity</label>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Quantity received</label>
                 <input
                   type="number"
                   min={0}
@@ -391,6 +419,11 @@ export function PpeStockCreateModal(props: {
                   placeholder="0"
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                 />
+                {ppeItemId && (
+                  <p className="mt-1 text-xs text-charcoal-500">
+                    Current stock in store: {stockSummaryLoading ? '...' : (stockSummary?.onHandTotal ?? 0)} units. New stock will be added on top of this.
+                  </p>
+                )}
               </div>
             )}
             <div>
