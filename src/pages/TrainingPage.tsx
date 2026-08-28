@@ -36,9 +36,14 @@ import { TrainingMatrixSetupTab } from '../components/training/TrainingMatrixSet
 import { TrainingReportsTab } from '../components/training/TrainingReportsTab';
 import { listCompanyMemberships } from '../api/services/tenantService';
 import { listUserProfiles } from '../api/services/profilesService';
-import { listHrEmployees, getHrEmployeeByUserId, type HrEmployee } from '../api/services/hrService';
+import { listHrEmployees, getHrEmployeeByUserId, findHrEmployeeByEmail, linkHrEmployeeToUser, type HrEmployee } from '../api/services/hrService';
 import type { CompanyMembership } from '../api/models/entities';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../api/services/documentsStorageService';
+import { downloadStyledExcelWorkbook, type ExcelSheetSpec } from '../api/services/excelExportService';
+import { HrEmployeeSelect } from '../components/ui/HrEmployeeSelect';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { useToast } from '../components/ui/ToastProvider';
+import { Link } from 'react-router-dom';
 
 const containerVariants = {
   hidden: {
@@ -136,23 +141,53 @@ export function TrainingPage() {
   // keyed primarily by employee_id now (most employees have no platform login at all, see
   // training_records_hr_employee_link_2026_08_20.sql), so filtering by user_id alone (the
   // previous behaviour) silently returned nothing for almost every real employee.
+  //
+  // Two-tier resolution:
+  //   Tier 1: hr_employees.user_id = this user's id (the normal, already-linked case).
+  //   Tier 2: no linked row found -- try an email match against unlinked hr_employees rows.
+  //     Exactly one match is auto-linked silently (a toast confirms it) so the user never
+  //     has to go find an admin for what's an unambiguous match; more than one match is left
+  //     for an admin to resolve deliberately rather than guessing.
+  // Manual linking (the "Link my account now" flow below) bumps linkVersion to force this to
+  // refetch and pick up the row it just linked.
+  const [linkVersion, setLinkVersion] = useState(0);
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const { showSuccess } = useToast();
   const { data: myEmployee } = useAsync<HrEmployee | null>(
     async () => {
       if (!activeCompanyId || !user?.id) return null;
-      return await getHrEmployeeByUserId(activeCompanyId, user.id as any).catch(() => null);
+      const tier1 = await getHrEmployeeByUserId(activeCompanyId, user.id as any).catch(() => null);
+      if (tier1) return tier1;
+      if (!user.email) return null;
+      const candidates = await findHrEmployeeByEmail(activeCompanyId, user.email).catch(() => []);
+      if (candidates.length !== 1) return null;
+      try {
+        const linked = await linkHrEmployeeToUser(activeCompanyId, candidates[0].id, user.id as any);
+        showSuccess(`We linked your account to ${employeeName(linked)}'s profile.`);
+        return linked;
+      } catch {
+        return null;
+      }
     },
-    [activeCompanyId, user?.id]
+    [activeCompanyId, user?.id, user?.email, linkVersion]
   );
 
   const { data: myRecords, loading: myRecordsLoading } = useAsync<TrainingRecord[]>(
     async () => {
       if (!activeCompanyId || !user?.id) return [];
-      if (myEmployee?.id) {
-        return await listTrainingRecords(activeCompanyId, { employeeId: myEmployee.id, limit: 500 });
-      }
-      // Fall back to user_id for the (rare) case of a platform user with no HR employee
-      // record at all -- e.g. an admin/consultant who was assigned training directly.
-      return await listTrainingRecords(activeCompanyId, { userId: user.id as any, limit: 500 });
+      // Tier 3: some older records were linked by raw user_id rather than via an HR
+      // employee row at all (e.g. training assigned directly to a platform login before
+      // employee_id linking existed). Always check this alongside the employee-linked set
+      // and de-duplicate by id, rather than only falling back to it when no employee is
+      // resolved -- an employee CAN be linked today while older stray user_id-linked
+      // records from before that link existed still exist and would otherwise be missed.
+      const [byEmployee, byUser] = await Promise.all([
+        myEmployee?.id ? listTrainingRecords(activeCompanyId, { employeeId: myEmployee.id, limit: 500 }) : Promise.resolve([]),
+        listTrainingRecords(activeCompanyId, { userId: user.id as any, limit: 500 })
+      ]);
+      const byId = new Map<string, TrainingRecord>();
+      for (const r of [...byEmployee, ...byUser]) byId.set(r.id, r);
+      return Array.from(byId.values());
     },
     [activeCompanyId, user?.id, myEmployee?.id, recordsRefresh]
   );
@@ -526,9 +561,10 @@ export function TrainingPage() {
               const canDelete = canManage;
               const actionIsLoading = actionLoadingRecordId === r.id;
               const linkedEmployee = r.employee_id ? employeeById.get(r.employee_id) : null;
+              const linkedProfile = r.user_id ? profileByUserId.get(r.user_id) : null;
               const userName =
                 (linkedEmployee && employeeName(linkedEmployee)) ||
-                (r.user_id && (profileByUserId.get(r.user_id)?.full_name || profileByUserId.get(r.user_id)?.email)) ||
+                (linkedProfile && (linkedProfile.full_name || linkedProfile.email)) ||
                 (r.user_id ? String(r.user_id).slice(0, 8) : 'Unknown employee');
               const uploaderProfile = profileByUserId.get(r.created_by_user_id);
               const uploaderName =
@@ -539,8 +575,20 @@ export function TrainingPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-charcoal">{r.courseName}</p>
+                      {canManage && (
+                        <p className="text-xs mt-1">
+                          {linkedEmployee ? (
+                            <Link to={`/dashboard/hr/employees/${linkedEmployee.id}`} className="text-teal hover:underline">
+                              {employeeName(linkedEmployee)} — {linkedEmployee.employee_no}
+                            </Link>
+                          ) : r.user_id ? (
+                            <span className="text-warning">⚠ {userName} — not linked to HR profile</span>
+                          ) : (
+                            <span className="text-critical font-medium">Unknown employee</span>
+                          )}
+                        </p>
+                      )}
                       <p className="text-sm text-charcoal-500 mt-1">
-                        {canManage && <span>{userName} • </span>}
                         <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${statusBadge}`}>
                           {r.status}
                         </span>
@@ -717,6 +765,54 @@ export function TrainingPage() {
           return { label: r.status, cls: 'bg-surface-100 text-charcoal-600' };
         }
 
+        // Short, fixed-vocabulary status text for the PDF/Excel exports (Completed /
+        // Expiring soon / Expired / In progress) -- distinct from myTrainingBadge()'s
+        // richer on-screen label (which includes day counts), per the export spec.
+        function exportStatusLabel(r: TrainingRecord): string {
+          const now = Date.now();
+          if (r.expires_at) {
+            const expiresMs = new Date(r.expires_at).getTime();
+            if (expiresMs < now) return 'Expired';
+            if (expiresMs <= now + 60 * 24 * 60 * 60 * 1000) return 'Expiring soon';
+          }
+          if (r.status === 'COMPLETED') return 'Completed';
+          return 'In progress';
+        }
+
+        const totalTrainingCost = myWithCourse.reduce((sum, r) => sum + (r.cost != null ? Number(r.cost) : 0), 0);
+        const completedCount = myWithCourse.filter((r) => exportStatusLabel(r) === 'Completed').length;
+
+        function buildMyTrainingExportRows(): Array<[string, string, string, string, number | string, string]> {
+          return myWithCourse.map((r) => [
+            r.courseName,
+            r.providerName ?? '-',
+            r.completed_at ? new Date(r.completed_at).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+            r.expires_at ? new Date(r.expires_at).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No expiry',
+            r.cost != null ? Number(r.cost) : '-',
+            exportStatusLabel(r)
+          ]);
+        }
+
+        async function exportMyTrainingExcel() {
+          const generatedAt = new Date().toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
+          const sheet: ExcelSheetSpec = {
+            name: 'My Training',
+            titleLines: [`${organisationName} — Training Record`, `Employee: ${myName}`, `Generated: ${generatedAt} by ${fullName}`],
+            columns: [
+              { header: 'Course', width: 30 },
+              { header: 'Provider', width: 22 },
+              { header: 'Completed Date', width: 16 },
+              { header: 'Expiry Date', width: 16 },
+              { header: 'Cost (ZAR)', width: 14, numberFormat: '#,##0.00' },
+              { header: 'Status', width: 16 }
+            ],
+            rows: buildMyTrainingExportRows(),
+            totalsRow: ['TOTAL', '', '', `${completedCount} of ${myWithCourse.length} completed`, totalTrainingCost, '']
+          };
+          const safeName = myName.replace(/[^a-z0-9]+/gi, '_');
+          await downloadStyledExcelWorkbook([sheet], `SCA_TrainingRecord_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        }
+
         async function downloadMyTrainingPdf() {
           const logoMeta = (activeCompany?.metadata ?? {}) as Record<string, unknown>;
           const logoBucket = logoMeta.logo_bucket as string | undefined;
@@ -737,19 +833,31 @@ export function TrainingPage() {
             generatedBy: fullName,
             logoUrl
           });
+          function formatZarPdf(n: number): string {
+            const [intPart, dec] = n.toFixed(2).split('.');
+            return `${intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')},${dec}`;
+          }
           autoTable(doc, {
             startY: y,
-            head: [['Course', 'Provider', 'Completed', 'Expiry', 'Cost (ZAR)', 'Status']],
+            head: [['Course', 'Provider', 'Completed Date', 'Expiry Date', 'Cost (ZAR)', 'Status']],
             body: myWithCourse.length > 0
               ? myWithCourse.map((r) => [
                   r.courseName,
                   r.providerName ?? '-',
-                  r.completed_at ? new Date(r.completed_at).toLocaleDateString('en-ZA') : '-',
-                  r.expires_at ? new Date(r.expires_at).toLocaleDateString('en-ZA') : '-',
-                  r.cost != null ? Number(r.cost).toFixed(2) : '-',
-                  myTrainingBadge(r).label
+                  r.completed_at ? new Date(r.completed_at).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+                  r.expires_at ? new Date(r.expires_at).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No expiry',
+                  r.cost != null ? formatZarPdf(Number(r.cost)) : '—',
+                  exportStatusLabel(r)
                 ])
               : [['No training records', '', '', '', '', '']],
+            foot: myWithCourse.length > 0
+              ? [[
+                  { content: `Total training cost: ZAR ${formatZarPdf(totalTrainingCost)}`, colSpan: 3 },
+                  { content: `Total courses: ${myWithCourse.length}`, colSpan: 1 },
+                  { content: `Compliance: ${completedCount} of ${myWithCourse.length} required courses completed`, colSpan: 2 }
+                ]]
+              : undefined,
+            footStyles: { fillColor: [225, 245, 238], textColor: [30, 41, 59], fontStyle: 'bold' },
             styles: { fontSize: 8, cellPadding: 5 },
             headStyles: { fillColor: [11, 158, 117], textColor: 255 },
             alternateRowStyles: { fillColor: [248, 250, 252] }
@@ -762,13 +870,22 @@ export function TrainingPage() {
           <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <h2 className="text-lg font-semibold text-charcoal">My Training</h2>
-              <button
-                type="button"
-                onClick={() => void downloadMyTrainingPdf()}
-                className="px-3 py-2 rounded-lg border border-teal text-teal text-sm font-medium hover:bg-teal-50"
-              >
-                Download my training record
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void downloadMyTrainingPdf()}
+                  className="px-3 py-2 rounded-lg border border-teal text-teal text-sm font-medium hover:bg-teal-50"
+                >
+                  Download my training record
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void exportMyTrainingExcel()}
+                  className="px-3 py-2 rounded-lg border border-teal text-teal text-sm font-medium hover:bg-teal-50"
+                >
+                  Export Excel
+                </button>
+              </div>
             </div>
 
             {(myExpiringSoon ?? []).length > 0 && (
@@ -785,10 +902,30 @@ export function TrainingPage() {
             )}
 
             {!myEmployee && !myRecordsLoading && (myRecords ?? []).length === 0 ? (
-              <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
-                <p className="text-sm text-charcoal-500">
-                  No employee profile found. Ask your HR administrator to link your account to an employee record.
-                </p>
+              <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-charcoal">Your account is not yet linked to an employee profile.</p>
+                  <p className="text-sm text-charcoal-500 mt-1">
+                    To see your training records, an HR administrator needs to link your user account to your employee record in HR Settings.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    to="/dashboard/hr/settings"
+                    className="px-3 py-2 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
+                  >
+                    Go to HR Settings
+                  </Link>
+                  {(activeRole === 'admin' || activeRole === 'owner') && (
+                    <button
+                      type="button"
+                      onClick={() => setLinkModalOpen(true)}
+                      className="px-3 py-2 rounded-lg border border-teal text-teal text-sm font-medium hover:bg-teal-50"
+                    >
+                      Link my account now
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -852,9 +989,90 @@ export function TrainingPage() {
                 )}
               </div>
             )}
+
+            {linkModalOpen && (
+              <LinkMyAccountModal
+                companyId={activeCompanyId}
+                userId={user?.id as any}
+                onClose={() => setLinkModalOpen(false)}
+                onLinked={(linked) => {
+                  showSuccess(`Linked your account to ${employeeName(linked)}'s profile.`);
+                  setLinkModalOpen(false);
+                  setLinkVersion((v) => v + 1);
+                }}
+              />
+            )}
           </motion.div>
         );
       })()}
     </Layout>);
 
+}
+
+function LinkMyAccountModal(props: {
+  companyId: string | null;
+  userId: string;
+  onClose: () => void;
+  onLinked: (employee: HrEmployee) => void;
+}) {
+  const [employeeId, setEmployeeId] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onConfirm() {
+    if (!props.companyId || !employeeId) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const linked = await linkHrEmployeeToUser(props.companyId, employeeId as any, props.userId);
+      props.onLinked(linked);
+    } catch (err) {
+      setError(toUserFacingError(err, 'Could not link your account right now. Please try again.'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl border border-surface-200 p-5">
+        <p className="text-sm font-semibold text-charcoal">Link my account</p>
+        <p className="text-sm text-charcoal-500 mt-1">Select your employee record:</p>
+        {error && (
+          <div className="mt-3 bg-critical/5 border border-critical/20 rounded-xl p-3">
+            <p className="text-sm text-charcoal-600">{error}</p>
+          </div>
+        )}
+        <div className="mt-3">
+          <HrEmployeeSelect
+            companyId={props.companyId as any}
+            value={employeeId as any}
+            valueField="id"
+            includeUnlinked
+            onChange={(selected) => setEmployeeId(selected || '')}
+            placeholder="Search HR employees..."
+          />
+        </div>
+        <div className="flex items-center justify-end gap-3 pt-4">
+          <button
+            type="button"
+            onClick={props.onClose}
+            className="px-4 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void onConfirm()}
+            disabled={!employeeId || saving}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60"
+          >
+            {saving && <LoadingSpinner size={16} />}
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

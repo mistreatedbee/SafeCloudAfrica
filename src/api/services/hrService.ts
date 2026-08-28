@@ -350,6 +350,46 @@ export async function getHrEmployeeByUserId(companyId: UUID, userId: UUID): Prom
   });
 }
 
+/**
+ * Find an HR employee by email, for auto-matching a signed-in user to their
+ * employee record when hr_employees.user_id was never set (e.g. the
+ * employee row was created before the user accepted their invite, or by
+ * direct HR data entry). Only returns employees not already linked to a
+ * *different* user -- this is a matching aid, not a way to steal an
+ * already-claimed profile.
+ */
+export async function findHrEmployeeByEmail(companyId: UUID, email: string): Promise<HrEmployee[]> {
+  const trimmed = email.trim();
+  if (!trimmed) return [];
+  return withHrSession('employees:find-by-email', async () => {
+  const { data, error } = await insforge.database
+    .from('hr_employees')
+    .select('*')
+    .eq('company_id', companyId)
+    .ilike('email', trimmed)
+    .is('user_id', null)
+    .in('employment_status', ['ONBOARDING', 'ACTIVE', 'ON_LEAVE', 'SUSPENDED']);
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as HrEmployee[];
+  });
+}
+
+/** Links a platform user account to an HR employee record (sets hr_employees.user_id). */
+export async function linkHrEmployeeToUser(companyId: UUID, hrEmployeeId: UUID, userId: UUID): Promise<HrEmployee> {
+  return withHrSession('employees:link-to-user', async () => {
+  const { data, error } = await insforge.database
+    .from('hr_employees')
+    .update({ user_id: userId, updated_at: new Date().toISOString() })
+    .eq('company_id', companyId)
+    .eq('id', hrEmployeeId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to link employee to user account.');
+  return data as HrEmployee;
+  });
+}
+
 export async function upsertHrEmployee(input: Partial<HrEmployee> & {
   company_id: UUID;
   created_by_user_id: UUID;
