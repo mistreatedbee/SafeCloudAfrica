@@ -90,8 +90,8 @@ export function HrAgentAssistant() {
             <div className="flex items-center gap-2">
               <SparklesIcon className="h-5 w-5" />
               <div>
-                <p className="text-sm font-semibold leading-tight">HR Assistant</p>
-                <p className="text-xs text-teal-100 leading-tight">Ask about leave, reviews, and more</p>
+                <p className="text-sm font-semibold leading-tight">AI Assistant</p>
+                <p className="text-xs text-teal-100 leading-tight">Ask about HR or Safety</p>
               </div>
             </div>
             <button onClick={() => setOpen(false)} className="rounded-full p-1 hover:bg-teal-800" aria-label="Close assistant">
@@ -102,8 +102,8 @@ export function HrAgentAssistant() {
           <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
             {messages.length === 0 && (
               <p className="text-sm text-charcoal-500">
-                Try: "What's my leave balance?", "Draft a performance review comment for [name]", or "Any outstanding document
-                acknowledgements?"
+                Try: "What's my leave balance?", "Draft a performance review comment for [name]", "How many open incidents this
+                month?", or "Any risk assessments pending approval?"
               </p>
             )}
             {messages.map((m) => (
@@ -156,7 +156,7 @@ export function HrAgentAssistant() {
                   send();
                 }
               }}
-              placeholder="Ask the HR assistant..."
+              placeholder="Ask the assistant..."
               className="flex-1 rounded-full border border-surface-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
             />
             <button
@@ -174,7 +174,7 @@ export function HrAgentAssistant() {
       <button
         onClick={() => setOpen((v) => !v)}
         className="fixed bottom-5 left-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-teal-700 text-white shadow-elevated transition hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-        aria-label="Open HR Assistant"
+        aria-label="Open AI Assistant"
       >
         <SparklesIcon className="h-6 w-6" />
       </button>

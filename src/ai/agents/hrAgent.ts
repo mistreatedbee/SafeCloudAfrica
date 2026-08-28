@@ -274,6 +274,7 @@ export async function runHrAgent(input: { message: string; history: AgentChatMes
         typeof a?.actionType === 'string' && typeof a?.label === 'string' && typeof a?.summary === 'string')
       .map((a, i) => ({
         id: `${Date.now()}-${i}`,
+        agentId: 'hr' as const,
         actionType: a.actionType!,
         label: a.label!,
         summary: a.summary!,

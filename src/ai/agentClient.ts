@@ -3,6 +3,12 @@ import { toUserFacingError } from '../utils/userFacingMessage';
 import type { AgentChatMessage, AgentContext, AgentProposedAction, AgentResponse } from './agentTypes';
 import { runOrchestrator } from './agents/orchestratorAgent';
 import { runHrAction } from './agents/hrAgent';
+import { runSafetyAction } from './agents/safetyAgent';
+
+const ACTION_RUNNERS: Record<string, (action: AgentProposedAction, ctx: AgentContext) => Promise<string>> = {
+  hr: runHrAction,
+  safety: runSafetyAction
+};
 
 /**
  * The single entry point the UI should call. Every call is wrapped in
@@ -41,7 +47,9 @@ export async function confirmAgentAction(input: {
 }): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
   return withInsforgeSession('ai-agent:confirm-action', async () => {
     try {
-      const message = await runHrAction(input.action, input.context);
+      const runner = ACTION_RUNNERS[input.action.agentId];
+      if (!runner) throw new Error(`No action runner wired for agent: ${input.action.agentId}`);
+      const message = await runner(input.action, input.context);
       return { ok: true, message };
     } catch (error) {
       return { ok: false, message: toUserFacingError(error, "That couldn't be saved. Please try again.") };

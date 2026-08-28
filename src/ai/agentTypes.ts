@@ -7,7 +7,7 @@ import type { CompanyRole } from '../api/models/core';
  */
 
 /** Slug identifying a specialist agent. Extend this union as new agents ship. */
-export type AgentId = 'hr' | 'orchestrator';
+export type AgentId = 'hr' | 'safety' | 'orchestrator';
 
 export type AgentChatRole = 'user' | 'assistant';
 
@@ -26,6 +26,8 @@ export type AgentChatMessage = {
 export type AgentProposedAction = {
   /** Unique id for this proposal within the conversation turn, e.g. crypto.randomUUID(). */
   id: string;
+  /** Which agent owns actionType's handler -- set by the agent itself, used by agentClient to route confirmAgentAction(). */
+  agentId: AgentId;
   /** Which handler in the owning agent's ACTION_HANDLERS map performs this write. */
   actionType: string;
   /** Short human label shown on the confirm button, e.g. "Save draft comment to review". */
