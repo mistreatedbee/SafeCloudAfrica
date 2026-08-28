@@ -19,6 +19,8 @@ export type AgentId =
   | 'ppe'
   | 'objectives'
   | 'contractors'
+  | 'dashboard'
+  | 'alert'
   | 'orchestrator';
 
 export type AgentChatRole = 'user' | 'assistant';

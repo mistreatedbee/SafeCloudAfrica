@@ -1,8 +1,8 @@
 # Module Agent System
 
-Multi-agent AI assistant: shared infra + orchestrator + eleven module
-specialist agents (hr, safety, quality, environment, health, legal, kpi,
-training, ppe, objectives, contractors).
+Multi-agent AI assistant: shared infra + orchestrator + thirteen specialist
+agents (hr, safety, quality, environment, health, legal, kpi, training, ppe,
+objectives, contractors, dashboard, alert).
 
 ## Why this calls `insforge.ai` directly instead of an OpenRouter edge function
 
@@ -42,6 +42,9 @@ unaffected.
 | `agents/ppeAgent.ts` | PPE specialist (compliance %, low stock, issue tracker). Read-only. |
 | `agents/objectivesAgent.ts` | Objectives & Targets specialist (cross-module `module_targets`). Read-only. |
 | `agents/contractorsAgent.ts` | Contractors & Visitors specialist. Read-only. |
+| `agents/dashboardAgent.ts` | Cross-module "big picture" specialist, sourced from `getComplianceDashboardData()` (the same rollup the Compliance Dashboard page uses). Read-only, manager-tier+. |
+| `agents/alertAgent.ts` | Cross-module "what needs my attention" specialist, sourced from the same rollup's `overdueActions`/`topRisks`/`aiInsight`. Read-only, manager-tier+, interactive/on-demand only (see note below on why no new cron was added). |
+| `routeModuleHint.ts` | Maps the current route to a module id + label. Used both to default `AgentContext.currentModuleHint` to the page the user is actually on (instead of always guessing `hr`) and to drive the floating assistant's page-relevant nudge -- see `HrAgentAssistant.tsx`. |
 
 ## Not wired up (no real backing service yet)
 
@@ -144,6 +147,22 @@ NEMA note: the agent may flag an unmanaged aspect or a fail-looking result, but 
 
 - **Contractor status** -- breakdown by status, documents status, induction status.
 - **Visitor status** -- breakdown by status, pending-briefing count.
+
+## dashboardAgent capabilities
+
+- **Overall compliance score / RAG status** and per-domain breakdown, trend history, and the pre-computed AI insight (next-month risk flag, top gaps).
+
+## alertAgent capabilities
+
+- **"What needs my attention"** -- prioritised cross-module overdue actions, top risks, and red-status domains, all sourced from the compliance dashboard rollup (no separate aggregation logic).
+
+A proactive **weekly email digest** was in the original spec but was deliberately not built: this codebase already runs `cronDailyComplianceReminders.js` (document review, expiring training/medical, upcoming audits) and `cronOverdueEscalations.js` (overdue CAPA, NCR, missing pre-audit docs) as InsForge Edge Function crons (see `scripts/insforge-functions/README.md`) -- a new weekly digest would overlap heavily with what those two already send daily. If a distinct weekly roll-up email is wanted, scope it as its own ticket (recipients, cadence, subject format) rather than guessing at the shape here.
+
+## Route-aware nudge (HrAgentAssistant.tsx)
+
+The floating button shows a small dismissible bubble once per browser session per module (`sessionStorage`, key `sca_ai_nudge_seen_<module>`) when the user lands on a page `routeModuleHint.ts` recognises, naming what the assistant can help with there and offering a one-click starter question (`STARTER_QUESTION_BY_MODULE`). The button also gets a subtle pulse animation while an unseen nudge is pending, so it's noticeable without a page-blocking popup. This also fixes `AgentContext.currentModuleHint` to reflect the actual page instead of always defaulting to `'hr'`, which improves orchestrator routing accuracy beyond keyword matching alone.
+
+**Not built in this pass**: inline "suggestions while filling out a form" (proactive AI hints inside the HR/Safety/etc. record forms themselves, as opposed to the floating chat). That is a materially different feature -- it needs per-form design decisions (which fields warrant a suggestion, what triggers one, debounce, where the hint renders inside a form that isn't part of this component) rather than something safe to bolt onto every form in the codebase in one pass. The chat assistant already covers the closest equivalent today (ask it to draft a performance review comment or investigation note); true inline-form suggestions should be scoped form-by-form as its own ticket.
 
 ## Adding the next module agent
 

@@ -10,6 +10,8 @@ import { runTrainingAgent } from './trainingAgent';
 import { runPpeAgent } from './ppeAgent';
 import { runObjectivesAgent } from './objectivesAgent';
 import { runContractorsAgent } from './contractorsAgent';
+import { runDashboardAgent } from './dashboardAgent';
+import { runAlertAgent } from './alertAgent';
 
 /**
  * Routes a user turn to the right module agent(s) and merges their replies.
@@ -25,7 +27,7 @@ import { runContractorsAgent } from './contractorsAgent';
  * replies -- see the merge branch below.
  */
 
-type ModuleGuess = 'hr' | 'safety' | 'quality' | 'environment' | 'health' | 'legal' | 'kpi' | 'training' | 'ppe' | 'objectives' | 'contractors';
+type ModuleGuess = 'hr' | 'safety' | 'quality' | 'environment' | 'health' | 'legal' | 'kpi' | 'training' | 'ppe' | 'objectives' | 'contractors' | 'dashboard' | 'alert';
 
 const MODULE_KEYWORDS: Array<{ module: ModuleGuess; pattern: RegExp }> = [
   { module: 'hr', pattern: /(leave|employee|staff|performance review|disciplinary|recruit|applicant|vacanc|acknowledg|payroll|timesheet|hr\b)/i },
@@ -38,7 +40,9 @@ const MODULE_KEYWORDS: Array<{ module: ModuleGuess; pattern: RegExp }> = [
   { module: 'training', pattern: /(training|course|certificat|outstanding training)/i },
   { module: 'ppe', pattern: /(\bppe\b|personal protective equipment|reorder|low stock)/i },
   { module: 'objectives', pattern: /(objective|target)/i },
-  { module: 'contractors', pattern: /(contractor|visitor|induction|briefing)/i }
+  { module: 'contractors', pattern: /(contractor|visitor|induction|briefing)/i },
+  { module: 'alert', pattern: /(what needs (my )?attention|what.?s overdue|top risks?|urgent|priorit(y|ies)|attention.*(needed|required))/i },
+  { module: 'dashboard', pattern: /(overall (compliance|score)|compliance dashboard|big picture|across (the|all) modules|company.?wide)/i }
 ];
 
 function guessModules(message: string, hint?: string): ModuleGuess[] {
@@ -61,7 +65,9 @@ const RUNNERS: Record<ModuleGuess, (input: { message: string; history: AgentChat
   training: runTrainingAgent,
   ppe: runPpeAgent,
   objectives: runObjectivesAgent,
-  contractors: runContractorsAgent
+  contractors: runContractorsAgent,
+  dashboard: runDashboardAgent,
+  alert: runAlertAgent
 };
 
 export async function runOrchestrator(input: { message: string; history: AgentChatMessage[]; context: AgentContext }): Promise<AgentResponse> {
