@@ -172,10 +172,11 @@ export function CapaDetailPage() {
   useEffect(() => {
     if (!user?.id) return;
     if (!isCreate && !record) return;
+    if (isCreate && searchParams.get('sourceId')) return;
     const restored = restoreDraft<FormState>(draftKey);
     if (!restored) return;
     setForm((prev) => ({ ...prev, ...restored }));
-  }, [draftKey, isCreate, record, restoreDraft, user?.id]);
+  }, [draftKey, isCreate, record, restoreDraft, user?.id, searchParams]);
 
   const canClose = Boolean(record && record.status !== 'closed' && editable && activeCompanyId && user?.id);
   const evidenceCount = evidence?.length ?? 0;
@@ -185,7 +186,14 @@ export function CapaDetailPage() {
   }
 
   async function onSave() {
-    if (!activeCompanyId || !user?.id || !editable) return;
+    if (!activeCompanyId || !user?.id) {
+      setError('Your organisation session is still loading. Please wait a moment and try again.');
+      return;
+    }
+    if (!editable) {
+      setError('You do not have permission to create or edit CAPAs with your current role.');
+      return;
+    }
     setError(null);
     setSuccess(null);
     if (!form.title.trim()) {

@@ -52,6 +52,7 @@ type FormState = {
   measuringRange: string;
   calibrationType: string;
   calibrationFrequency: string;
+  calibrationProvider: string;
   calibrationDate: string;
   result: CalibrationResult;
   nextCalibrationDate: string;
@@ -85,6 +86,7 @@ function toForm(defaultModuleTag?: CalibrationModuleTag, row?: CalibrationRecord
     measuringRange: row?.measuring_range ?? '',
     calibrationType: row?.calibration_type ?? '',
     calibrationFrequency: row?.calibration_frequency ?? '',
+    calibrationProvider: row?.calibration_provider ?? '',
     calibrationDate: row?.calibration_date?.slice(0, 10) ?? todayDateOnly(),
     result: row?.result ?? 'PASS',
     nextCalibrationDate: row?.next_calibration_date?.slice(0, 10) ?? todayDateOnly(),
@@ -99,7 +101,7 @@ function toForm(defaultModuleTag?: CalibrationModuleTag, row?: CalibrationRecord
 }
 
 function roleCanWrite(role: CompanyRole | null): boolean {
-  return role === 'admin' || role === 'manager' || role === 'supervisor';
+  return role === 'owner' || role === 'admin' || role === 'manager' || role === 'supervisor';
 }
 
 export function CalibrationPage(props: { title?: string; defaultModuleTag?: CalibrationModuleTag; forceReadOnly?: boolean }) {
@@ -213,6 +215,7 @@ export function CalibrationPage(props: { title?: string; defaultModuleTag?: Cali
           measuringRange: form.measuringRange || null,
           calibrationType: form.calibrationType || null,
           calibrationFrequency: form.calibrationFrequency || null,
+          calibrationProvider: form.calibrationProvider || null,
           calibrationDate: form.calibrationDate,
           result: form.result,
           nextCalibrationDate: form.nextCalibrationDate,
@@ -239,6 +242,7 @@ export function CalibrationPage(props: { title?: string; defaultModuleTag?: Cali
             measuring_range: form.measuringRange || null,
             calibration_type: form.calibrationType || null,
             calibration_frequency: form.calibrationFrequency || null,
+            calibration_provider: form.calibrationProvider || null,
             calibration_date: form.calibrationDate,
             result: form.result,
             next_calibration_date: form.nextCalibrationDate,
@@ -418,6 +422,7 @@ export function CalibrationPage(props: { title?: string; defaultModuleTag?: Cali
                 <input value={form.measuringRange} disabled={formMode === 'view'} onChange={(e) => setForm((s) => ({ ...s, measuringRange: e.target.value }))} placeholder="Measuring Range" className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
                 <input list="calibration-types" value={form.calibrationType} disabled={formMode === 'view'} onChange={(e) => setForm((s) => ({ ...s, calibrationType: e.target.value }))} placeholder="Calibration Type" className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
                 <input list="calibration-freqs" value={form.calibrationFrequency} disabled={formMode === 'view'} onChange={(e) => setForm((s) => ({ ...s, calibrationFrequency: e.target.value }))} placeholder="Frequency of Calibration" className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
+                <input value={form.calibrationProvider} disabled={formMode === 'view'} onChange={(e) => setForm((s) => ({ ...s, calibrationProvider: e.target.value }))} placeholder="Calibration Provider" className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
                 <input type="date" value={form.calibrationDate} disabled={formMode === 'view'} onChange={(e) => setForm((s) => ({ ...s, calibrationDate: e.target.value }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />
                 <select value={form.result} disabled={formMode === 'view'} onChange={(e) => setForm((s) => ({ ...s, result: e.target.value as CalibrationResult }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm">{RESULT_OPTIONS.map((v) => <option key={v} value={v}>{CALIBRATION_RESULT_LABELS[v]}</option>)}</select>
                 <input type="date" value={form.nextCalibrationDate} disabled={formMode === 'view'} onChange={(e) => setForm((s) => ({ ...s, nextCalibrationDate: e.target.value }))} className="px-3 py-2 border border-surface-300 rounded-lg text-sm" />

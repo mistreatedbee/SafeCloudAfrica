@@ -10,6 +10,7 @@ import { getMyProfile } from './profilesService';
 import { sendTemplatedNotificationEmail } from './emailService';
 import { resolveComplaintClosureFields } from './customerComplaintsService.helpers';
 import { MANAGEMENT_ROLES } from '../../constants/roles';
+import { ensureCounterRow } from '../utils/counterSequence';
 
 export const CUSTOMER_COMPLAINT_STATUS_LABELS: Record<CustomerComplaintStatus, string> = {
   CLOSED: 'Closed',
@@ -78,9 +79,11 @@ async function getOrCreateNextComplaintRef(companyId: UUID): Promise<string> {
   const year = new Date().getFullYear();
   const nowIso = new Date().toISOString();
 
-  await insforge.database
-    .from('quality_customer_complaint_counter')
-    .upsert({ company_id: companyId, year, last_number: 0, updated_at: nowIso }, { onConflict: 'company_id,year' });
+  await ensureCounterRow(
+    'quality_customer_complaint_counter',
+    { company_id: companyId, year },
+    { last_number: 0, updated_at: nowIso }
+  );
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const { data: counter, error: readError } = await insforge.database

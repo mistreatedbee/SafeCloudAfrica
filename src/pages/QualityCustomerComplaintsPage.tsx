@@ -74,6 +74,7 @@ function toForm(row?: QualityCustomerComplaint): ComplaintFormState {
     complaintRefNo: row?.complaint_ref_no ?? '',
     customerName: row?.customer_name ?? '',
     personHandlingUserId: (row?.person_handling_user_id as UUID | null) ?? '',
+    personHandlingEmployeeId: '',
     personHandlingNameSnapshot: row?.person_handling_name_snapshot ?? '',
     dateReceived: row?.date_received?.slice(0, 10) ?? dateOnly(new Date()),
     description: row?.description ?? '',
@@ -532,16 +533,19 @@ export default function QualityCustomerComplaintsPage() {
                   <label className="block text-sm font-medium text-charcoal mb-1.5">Person Handling Complaint</label>
                   <HrEmployeeSelect
                     companyId={activeCompanyId}
-                    value={form.personHandlingUserId}
+                    value={form.personHandlingEmployeeId}
+                    valueField="id"
+                    includeUnlinked
                     disabled={readOnly}
                     label={undefined}
-                    placeholder="Select linked HR employee"
+                    placeholder="Select HR employee"
                     onChange={(selectedValue, meta) => {
                       setForm((s) => ({
                         ...s,
-                        personHandlingUserId: selectedValue,
+                        personHandlingEmployeeId: selectedValue,
+                        personHandlingUserId: (meta.userId ?? '') as UUID | '',
                         personHandlingNameSnapshot: meta.nameSnapshot || s.personHandlingNameSnapshot,
-                        linkedTaskAssigneeUserId: selectedValue || s.linkedTaskAssigneeUserId
+                        linkedTaskAssigneeUserId: meta.userId || s.linkedTaskAssigneeUserId
                       }));
                     }}
                   />

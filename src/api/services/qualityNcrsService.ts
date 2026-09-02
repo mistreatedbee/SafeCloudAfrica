@@ -780,7 +780,8 @@ function normalizeNcrSourceType(source: string | null | undefined): string | nul
   if (s === 'inspection_item' || s === 'inspection') return 'inspection';
   if (s === 'customer_complaint' || s === 'complaint') return 'complaint';
   if (s === 'risk_assessment' || s === 'risk') return 'risk';
-  if (s === 'audit_finding' || s === 'program_audit_finding' || s === 'audit') return s;
+  if (s === 'audit_finding' || s === 'program_audit_finding') return 'audit';
+  if (s === 'audit') return 'audit';
   if (s === 'incident' || s === 'pjo') return s;
   return s;
 }

@@ -5,6 +5,7 @@ export type ComplaintFormDraft = {
   complaintRefNo: string;
   customerName: string;
   personHandlingUserId: UUID | '';
+  personHandlingEmployeeId: UUID | '';
   personHandlingNameSnapshot: string;
   dateReceived: string;
   description: string;
@@ -22,6 +23,7 @@ export function serializeComplaintFormState(form: ComplaintFormDraft): string {
     complaintRefNo: form.complaintRefNo,
     customerName: form.customerName,
     personHandlingUserId: form.personHandlingUserId,
+    personHandlingEmployeeId: form.personHandlingEmployeeId,
     personHandlingNameSnapshot: form.personHandlingNameSnapshot,
     dateReceived: form.dateReceived,
     description: form.description,

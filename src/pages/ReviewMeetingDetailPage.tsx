@@ -256,7 +256,7 @@ export function ReviewMeetingDetailPage() {
     if (typeof restored.autoEmailOnCreate === 'boolean') setAutoEmailOnCreate(restored.autoEmailOnCreate);
     if (typeof restored.autoEmailOnUpdate === 'boolean') setAutoEmailOnUpdate(restored.autoEmailOnUpdate);
     if (typeof restored.autoCreateTasksFromItems === 'boolean') setAutoCreateTasksFromItems(restored.autoCreateTasksFromItems);
-    if (Array.isArray(restored.items) && restored.items.length > 0) setItems(restored.items);
+    if (Array.isArray(restored.items) && restored.items.length > 0 && isCreate) setItems(restored.items);
     if (restored.statusLabel) setStatusLabel(restored.statusLabel);
     if (restored.meetingStatus) setMeetingStatus(restored.meetingStatus);
     if (restored.signatureStatus) setSignatureStatus(restored.signatureStatus);

@@ -11,6 +11,7 @@ import { createActivityLog } from './activityLogService';
 import { getMyProfile } from './profilesService';
 import { listQualityNcrs } from './qualityNcrsService';
 import { sendTemplatedNotificationEmail } from './emailService';
+import { ensureCounterRow } from '../utils/counterSequence';
 
 export const IE_DOC_NO_DEFAULT = 'XYZ-IEIRA-F-002';
 export const IE_SCOPE_OPTIONS = ['Internal', 'External'] as const;
@@ -187,9 +188,11 @@ async function notifyHighSeriousIssue(input: {
 
 async function getNextIssueNo(companyId: UUID, year: number): Promise<string> {
   const nowIso = new Date().toISOString();
-  await insforge.database
-    .from('quality_internal_external_issues_register_counters')
-    .upsert({ company_id: companyId, year, last_number: 0, updated_at: nowIso }, { onConflict: 'company_id,year' });
+  await ensureCounterRow(
+    'quality_internal_external_issues_register_counters',
+    { company_id: companyId, year },
+    { last_number: 0, updated_at: nowIso }
+  );
 
   for (let i = 0; i < 8; i += 1) {
     const { data: counter, error: readError } = await insforge.database

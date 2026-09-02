@@ -793,6 +793,7 @@ export type CalibrationRecord = {
   measuring_range: string | null;
   calibration_type: string | null;
   calibration_frequency: string | null;
+  calibration_provider: string | null;
   calibration_date: string;
   result: CalibrationResult;
   next_calibration_date: string;

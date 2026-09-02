@@ -91,8 +91,8 @@ function toDbItem(companyId: UUID, meetingId: UUID, item: ReviewMeetingItemInput
     resources_required: item.resourcesRequired?.trim() || null,
     status: item.status,
     completion_date: item.status === 'COMPLETED' ? item.completionDate || new Date().toISOString() : null,
-    evidence_file_ids: item.evidenceFileIds?.length ? item.evidenceFileIds : null,
-    linked_document_ids: item.linkedDocumentIds?.length ? item.linkedDocumentIds : null,
+    evidence_file_ids: item.evidenceFileIds ?? [],
+    linked_document_ids: item.linkedDocumentIds ?? [],
     linked_task_id: item.linkedTaskId ?? null,
     updates_log: (item.updatesLog ?? []).map((u) => ({ timestamp: u.timestamp, note: u.note, user_id: u.userId }))
   };
@@ -585,7 +585,14 @@ export async function createReviewMeeting(input: ReviewMeetingInput): Promise<Re
     .from('review_meeting_items')
     .insert(itemPayload)
     .select('*');
-  if (itemsError) throw new Error(getErrorMessage(itemsError));
+  if (itemsError) {
+    await insforge.database
+      .from('review_meetings')
+      .delete()
+      .eq('company_id', input.companyId)
+      .eq('id', meeting.id);
+    throw new Error(getErrorMessage(itemsError));
+  }
   const items = (createdItems ?? []) as ReviewMeetingItem[];
 
   await createActivityLog({
@@ -659,16 +666,7 @@ export async function updateReviewMeeting(input: ReviewMeetingInput & { meetingI
 
   const existingById = new Map(existing.items.map((item) => [item.id, item]));
   const inputIds = new Set(input.items.map((item) => item.id).filter(Boolean) as UUID[]);
-
-  for (const item of existing.items) {
-    if (!inputIds.has(item.id)) {
-      await insforge.database
-        .from('review_meeting_items')
-        .delete()
-        .eq('company_id', input.companyId)
-        .eq('id', item.id);
-    }
-  }
+  const itemsToDelete = existing.items.filter((item) => !inputIds.has(item.id));
 
   for (const item of input.items) {
     if (item.id && existingById.has(item.id)) {
@@ -696,6 +694,14 @@ export async function updateReviewMeeting(input: ReviewMeetingInput & { meetingI
         .insert(toDbItem(input.companyId, input.meetingId, item));
       if (insertItemError) throw new Error(getErrorMessage(insertItemError));
     }
+  }
+
+  for (const item of itemsToDelete) {
+    await insforge.database
+      .from('review_meeting_items')
+      .delete()
+      .eq('company_id', input.companyId)
+      .eq('id', item.id);
   }
 
   const refreshed = await getReviewMeeting(input.companyId, input.meetingId);

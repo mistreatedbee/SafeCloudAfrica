@@ -6,6 +6,7 @@ import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { listEvidence } from './evidenceService';
 import { sendTemplatedNotificationEmail } from './emailService';
+import { createTaskFromCorrectiveAction } from './tasksService';
 
 async function getProfileEmail(companyId: UUID, userId: UUID): Promise<string | null> {
   const { data } = await insforge.database
@@ -94,7 +95,23 @@ export async function createCorrectiveAction(input: CreateCorrectiveActionInput)
   
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create corrective action');
-  
+
+  const created = data as CorrectiveAction;
+
+  try {
+    const task = await createTaskFromCorrectiveAction(created, input.createdByUserId);
+    if (task) {
+      await insforge.database
+        .from('corrective_actions')
+        .update({ linked_task_id: task.id, updated_at: new Date().toISOString() })
+        .eq('company_id', input.companyId)
+        .eq('id', created.id);
+      (created as CorrectiveAction).linked_task_id = task.id;
+    }
+  } catch (err) {
+    console.warn('[corrective-actions] linked task creation failed', err);
+  }
+
   await createActivityLog({
     companyId: input.companyId,
     actorUserId: input.createdByUserId,
@@ -127,7 +144,7 @@ export async function createCorrectiveAction(input: CreateCorrectiveActionInput)
     }
   }
 
-  return data as CorrectiveAction;
+  return created;
   });
 }
 

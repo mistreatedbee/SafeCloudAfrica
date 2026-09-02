@@ -12,12 +12,13 @@ import type {
 import { createActivityLog } from './activityLogService';
 import { createNotification } from './notificationsService';
 import { createQualityNcr } from './qualityNcrsService';
+import { ensureCounterRow } from '../utils/counterSequence';
 import { createEvidence } from './evidenceService';
 import { getMyProfile } from './profilesService';
 import { sendTemplatedNotificationEmail } from './emailService';
 
 const ALLOWED_MODULE_TAGS: CalibrationModuleTag[] = ['Quality', 'Health', 'Safety', 'Environment', 'General'];
-const WRITE_ROLES: CompanyRole[] = ['admin', 'manager', 'supervisor'];
+const WRITE_ROLES: CompanyRole[] = ['owner', 'admin', 'manager', 'supervisor'];
 const READ_ONLY_ROLES: CompanyRole[] = ['owner', 'consultant', 'auditor'];
 
 export const CALIBRATION_CRITICALITY_LABELS: Record<CalibrationCriticality, string> = {
@@ -156,9 +157,11 @@ function canViewRecord(
 
 async function getOrCreateNextSrNo(companyId: UUID): Promise<number> {
   const nowIso = new Date().toISOString();
-  await insforge.database
-    .from('calibration_record_counter')
-    .upsert({ company_id: companyId, last_number: 0, updated_at: nowIso }, { onConflict: 'company_id' });
+  await ensureCounterRow(
+    'calibration_record_counter',
+    { company_id: companyId },
+    { last_number: 0, updated_at: nowIso }
+  );
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const { data: current, error: readError } = await insforge.database
@@ -272,6 +275,7 @@ export async function createCalibrationRecord(input: {
   measuringRange?: string | null;
   calibrationType?: string | null;
   calibrationFrequency?: string | null;
+  calibrationProvider?: string | null;
   calibrationDate: string;
   result: CalibrationResult;
   nextCalibrationDate: string;
@@ -288,18 +292,6 @@ export async function createCalibrationRecord(input: {
   if (!canWrite(input.actorRole)) throw new Error('You do not have permission to create calibration records.');
   ensureRequired(input);
   return withInsforgeSession('calibration:create-record', async () => {
-
-  // Duplication check: prevent duplicate active equipment
-  const { data: existingDup } = await insforge.database
-    .from('calibration_records')
-    .select('id')
-    .eq('company_id', input.companyId)
-    .ilike('equipment_name', input.equipmentName.trim())
-    .limit(1)
-    .maybeSingle();
-  if (existingDup) {
-    throw new Error(`A calibration record for equipment "${input.equipmentName.trim()}" already exists for this company. Please edit the existing record or use a distinct equipment name.`);
-  }
 
   const profile = await getMyProfile(input.companyId, input.actorUserId);
   const profileRow = profile as Record<string, unknown> | null;
@@ -340,6 +332,7 @@ export async function createCalibrationRecord(input: {
       measuring_range: input.measuringRange?.trim() || null,
       calibration_type: input.calibrationType?.trim() || null,
       calibration_frequency: input.calibrationFrequency?.trim() || null,
+      calibration_provider: input.calibrationProvider?.trim() || null,
       calibration_date: normalizeDateOnly(input.calibrationDate),
       result: input.result,
       next_calibration_date: normalizeDateOnly(input.nextCalibrationDate),

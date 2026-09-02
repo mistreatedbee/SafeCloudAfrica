@@ -217,16 +217,37 @@ export function QualityPage() {
 
         </motion.div>
 
-        {/* Quality Metrics */}
+        {/* Task & CAPA metrics (derived from live registers — manage work in Tasks/CAPA) */}
         <motion.div
           variants={itemVariants}
           className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           <div className="bg-white rounded-xl border border-surface-300 shadow-card p-5">
-            <h3 className="font-semibold text-charcoal mb-4 flex items-center gap-2">
-              <TrendingUpIcon className="w-5 h-5 text-blue-500" />
-              Quality Metrics
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-charcoal flex items-center gap-2">
+                <TrendingUpIcon className="w-5 h-5 text-blue-500" />
+                Task & CAPA Metrics
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/dashboard/management/tasks')}
+                  className="text-xs font-medium text-teal hover:text-teal-700 inline-flex items-center gap-1"
+                >
+                  Tasks <ArrowRightIcon className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/dashboard/management/tasks?view=capa')}
+                  className="text-xs font-medium text-teal hover:text-teal-700 inline-flex items-center gap-1"
+                >
+                  CAPA <ArrowRightIcon className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-charcoal-500 mb-4">
+              Metrics are calculated from your Tasks and CAPA registers. Create and track corrective work there.
+            </p>
             <div className="space-y-4">
               {qualityMetrics.map((metric, index) => {
                 const isOnTarget = metric.inverse ?

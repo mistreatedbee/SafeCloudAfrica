@@ -456,35 +456,46 @@ export async function createInspectionRunFromTemplate(input: {
   const trackingPeriodKey = getInspectionPeriodKey(runFrequency, inspectionDate);
   const trackingPeriodLabel = formatInspectionPeriod(runFrequency, inspectionDate);
 
-  // Create run
-  const { data: runData, error: runError } = await insforge.database
-    .from('inspection_runs')
-    .insert({
-      company_id: input.companyId,
-      inspection_id: input.inspectionId,
-      template_id: input.templateId,
-      module: template.module,
-      site_id: template.site_id ?? null,
-      department_id: template.department_id ?? null,
-      run_number: nextRunNumber,
-      started_at: nowIso,
-      status: 'in-progress',
-      inspector_user_id: input.inspectorUserId ?? null,
-      auditor_user_id:
-        input.auditorUserId ?? inspection.auditor_user_id ?? template.default_auditor_user_id ?? null,
-      auditee_user_id: input.auditeeUserId ?? null,
-      sector: inspection.sector ?? template.default_sector ?? null,
-      location: inspection.location ?? template.default_area ?? null,
-      frequency: runFrequency,
-      tracking_period_key: trackingPeriodKey,
-      tracking_period_label: trackingPeriodLabel,
-      inspection_date_stamp: inspectionDate,
-      items_total: templateItems.length,
-      items_nc: 0,
-      ncrs_created_count: 0
-    })
-    .select('*')
-    .single();
+  const runInsertBase: Record<string, unknown> = {
+    company_id: input.companyId,
+    inspection_id: input.inspectionId,
+    template_id: input.templateId,
+    module: template.module,
+    site_id: template.site_id ?? null,
+    department_id: template.department_id ?? null,
+    run_number: nextRunNumber,
+    started_at: nowIso,
+    status: 'in-progress',
+    inspector_user_id: input.inspectorUserId ?? null,
+    auditor_user_id:
+      input.auditorUserId ?? inspection.auditor_user_id ?? template.default_auditor_user_id ?? null,
+    auditee_user_id: input.auditeeUserId ?? null,
+    sector: inspection.sector ?? template.default_sector ?? null,
+    location: inspection.location ?? template.default_area ?? null,
+    frequency: runFrequency,
+    tracking_period_key: trackingPeriodKey,
+    tracking_period_label: trackingPeriodLabel,
+    inspection_date_stamp: inspectionDate,
+    items_total: templateItems.length,
+    items_nc: 0,
+    ncrs_created_count: 0
+  };
+
+  let runPayload: Record<string, unknown> = { ...runInsertBase };
+  let runData: unknown = null;
+  let runError: { message?: string } | null = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = await insforge.database.from('inspection_runs').insert(runPayload).select('*').single();
+    runData = result.data;
+    runError = result.error;
+    if (!runError) break;
+    const message = String(runError.message ?? '').toLowerCase();
+    if (!message.includes('column')) throw new Error(getErrorMessage(runError));
+    if (message.includes('tracking_period_key')) delete runPayload.tracking_period_key;
+    else if (message.includes('tracking_period_label')) delete runPayload.tracking_period_label;
+    else if (message.includes('inspection_date_stamp')) delete runPayload.inspection_date_stamp;
+    else throw new Error(getErrorMessage(runError));
+  }
   if (runError) throw new Error(getErrorMessage(runError));
   const run = runData as unknown as InspectionRun;
 

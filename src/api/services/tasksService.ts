@@ -1205,6 +1205,43 @@ export async function createTaskFromNcr(
   }
 }
 
+export async function createTaskFromCorrectiveAction(
+  capa: {
+    id: UUID;
+    company_id: UUID;
+    action_number: string;
+    title: string;
+    description: string | null;
+    priority: 'low' | 'medium' | 'high' | 'urgent';
+    due_date: string;
+    assigned_to_user_id: UUID | null;
+    action_type: 'corrective' | 'preventive';
+  },
+  createdByUserId: UUID,
+  options: { module?: ModuleKey } = {}
+): Promise<Task | null> {
+  const priority = (capa.priority === 'urgent' ? 'critical' : capa.priority) as Severity;
+  const riskLevel = (capa.priority === 'urgent' || capa.priority === 'high' ? 'high' : capa.priority === 'low' ? 'low' : 'medium') as CreateTaskInput['riskLevel'];
+  try {
+    return await createTask({
+      companyId: capa.company_id,
+      module: options.module ?? 'quality',
+      title: `CAPA ${capa.action_number}: ${capa.title}`,
+      description: capa.description ?? undefined,
+      category: 'capa',
+      riskLevel,
+      priority,
+      dueAt: String(capa.due_date).slice(0, 10),
+      assigneeUserId: capa.assigned_to_user_id ?? undefined,
+      sourceEntityType: 'corrective_action',
+      sourceEntityId: capa.id,
+      createdByUserId
+    });
+  } catch {
+    return null;
+  }
+}
+
 type InspectionRunItemLike = {
   id: UUID;
   company_id: UUID;

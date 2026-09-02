@@ -127,42 +127,59 @@ export async function createAudit(input: {
 }): Promise<Audit> {
   return withInsforgeSession('audits:create', async () => {
   const auditNumber = generateAuditNumber();
-  const { data, error } = await insforge.database
-    .from('audits')
-    .insert({
-      company_id: input.companyId,
-      module: input.module,
-      audit_number: auditNumber,
-      title: input.title?.trim() || input.objectives.trim(),
-      description: input.description ?? null,
-      audit_type: input.auditType,
-      objectives: input.objectives,
-      audit_criteria: input.auditCriteria,
-      scope_of_audit: input.scopeOfAudit,
-      location: input.location ?? null,
-      auditor_user_ids: input.auditorUserIds,
-      proposed_dates: input.proposedDates,
-      status: 'draft',
-      findings_count: 0,
-      nonconformances_count: 0,
-      observations_count: 0,
-      related_ncr_ids: [],
-      required_document_list: input.requiredDocumentList ?? null,
-      document_submission_deadline: input.documentSubmissionDeadline ?? null,
-      departments_auditee_ids: input.departmentsAuditeeIds ?? null,
-      company_representative_user_ids: input.companyRepresentativeUserIds ?? null,
-      lead_auditor_user_id: input.leadAuditorUserId ?? null,
-      checklist_template_id: input.checklistTemplateId ?? null,
-      date_approval_status: 'pending',
-      invitee_email: input.inviteeEmail ?? null,
-      created_by_user_id: input.createdByUserId
-    })
-    .select('*')
-    .single();
+  const fullPayload = {
+    company_id: input.companyId,
+    module: input.module,
+    audit_number: auditNumber,
+    title: input.title?.trim() || input.objectives.trim(),
+    description: input.description ?? null,
+    audit_type: input.auditType,
+    objectives: input.objectives,
+    audit_criteria: input.auditCriteria,
+    scope_of_audit: input.scopeOfAudit,
+    location: input.location ?? null,
+    auditor_user_ids: input.auditorUserIds,
+    proposed_dates: input.proposedDates,
+    status: 'draft',
+    findings_count: 0,
+    nonconformances_count: 0,
+    observations_count: 0,
+    related_ncr_ids: [],
+    required_document_list: input.requiredDocumentList ?? null,
+    document_submission_deadline: input.documentSubmissionDeadline ?? null,
+    departments_auditee_ids: input.departmentsAuditeeIds ?? null,
+    company_representative_user_ids: input.companyRepresentativeUserIds ?? null,
+    lead_auditor_user_id: input.leadAuditorUserId ?? null,
+    checklist_template_id: input.checklistTemplateId ?? null,
+    date_approval_status: 'pending',
+    invitee_email: input.inviteeEmail ?? null,
+    created_by_user_id: input.createdByUserId
+  };
+
+  let payload: Record<string, unknown> = { ...fullPayload };
+  let data: Audit | null = null;
+  let error: { message?: string } | null = null;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const result = await insforge.database.from('audits').insert(payload).select('*').single();
+    data = (result.data as Audit | null) ?? null;
+    error = result.error;
+    if (!error) break;
+    const message = String(error.message ?? '').toLowerCase();
+    if (!message.includes('column')) throw new Error(getErrorMessage(error));
+    if (message.includes('required_document_list')) delete payload.required_document_list;
+    else if (message.includes('departments_auditee_ids')) delete payload.departments_auditee_ids;
+    else if (message.includes('company_representative_user_ids')) delete payload.company_representative_user_ids;
+    else if (message.includes('checklist_template_id')) delete payload.checklist_template_id;
+    else if (message.includes('invitee_email')) delete payload.invitee_email;
+    else if (message.includes('date_approval_status')) delete payload.date_approval_status;
+    else if (message.includes('lead_auditor_user_id')) delete payload.lead_auditor_user_id;
+    else throw new Error(getErrorMessage(error));
+  }
 
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create audit.');
-  const audit = data as Audit;
+  const audit = data;
 
   await createActivityLog({
     companyId: input.companyId,
