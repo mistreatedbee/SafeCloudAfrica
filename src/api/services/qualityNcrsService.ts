@@ -4,11 +4,12 @@ import type { NcrEvidenceReference, QualityNcr, UUID } from '../models/entities'
 import type { CompanyRole } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
-import { listEvidence } from './evidenceService';
-import { getPublicUrl } from './storageService';
+import { listEvidence, createEvidence } from './evidenceService';
+import { uploadFile } from './storageService';
 import { evaluateNcrTrigger } from './riskAssessmentTriggersService';
 import { sendTemplatedNotificationEmail } from './emailService';
-import { canCloseQualityNcr } from '../permissions/ncrPermissions';
+import { canCloseQualityNcr, ncrRequiresAuditorVerification } from '../permissions/ncrPermissions';
+import { getAudit } from './auditsService';
 
 async function getNcrProfileEmails(companyId: UUID, userIds: Array<UUID | null | undefined>): Promise<string[]> {
   const ids = [...new Set(userIds.filter(Boolean).map(String))];
@@ -107,19 +108,21 @@ export async function countOpenQualityNcrs(companyId: UUID): Promise<number> {
 }
 
 export async function getQualityNcr(ncrId: UUID, companyId?: UUID): Promise<QualityNcr | null> {
-  const query = insforge.database
-    .from('quality_ncrs')
-    .select('*')
-    .eq('id', ncrId);
+  return withInsforgeSession('quality-ncrs:get', async () => {
+    const query = insforge.database
+      .from('quality_ncrs')
+      .select('*')
+      .eq('id', ncrId);
 
-  if (companyId) query.eq('company_id', companyId);
+    if (companyId) query.eq('company_id', companyId);
 
-  const { data, error } = await query.single();
+    const { data, error } = await query.single();
 
-  if (error && error.code !== 'PGRST116') {
-    throw new Error(getErrorMessage(error));
-  }
-  return (data as QualityNcr) || null;
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(getErrorMessage(error));
+    }
+    return (data as QualityNcr) || null;
+  });
 }
 
 export async function createQualityNcr(input: {
@@ -392,6 +395,7 @@ export async function closeQualityNcr(
   actorUserId: UUID,
   actorRole?: CompanyRole | null
 ): Promise<QualityNcr | null> {
+  return withInsforgeSession('quality-ncrs:close', async () => {
   const current = await getQualityNcr(ncrId, companyId);
   if (!current) throw new Error('NCR not found.');
 
@@ -401,13 +405,17 @@ export async function closeQualityNcr(
 
   const { evidenceAfter } = await listNcrEvidence(companyId, ncrId);
   if (evidenceAfter.length < 1) {
-    throw new Error('Evidence of Closure is required before closing this NCR.');
+    throw new Error('Evidence of Closure is required before closing this NCR. Upload files under "Evidence of Closure" and click Upload files.');
   }
   if (!current.manager_signoff_user_id || !current.manager_signoff_at) {
     throw new Error('Department manager sign-off is required before closing this NCR.');
   }
-  if (!current.auditor_verify_user_id || !current.auditor_verify_at) {
-    throw new Error('Auditor verification is required before closing this NCR.');
+  const linkedAuditType = await resolveNcrLinkedAuditType(current);
+  if (
+    ncrRequiresAuditorVerification(current, linkedAuditType) &&
+    (!current.auditor_verify_user_id || !current.auditor_verify_at)
+  ) {
+    throw new Error('Auditor verification is required before closing external audit NCRs.');
   }
 
   const closedAt = new Date().toISOString();
@@ -467,6 +475,7 @@ export async function closeQualityNcr(
   }
 
   return updated;
+  });
 }
 
 type EvidenceRow = {
@@ -494,21 +503,61 @@ function mapEvidenceRef(row: EvidenceRow): NcrEvidenceReference {
 }
 
 function isFileKind(row: EvidenceRow, kind: 'BEFORE' | 'AFTER'): boolean {
-  return String(row.file_kind ?? '').toUpperCase() === kind;
+  const normalized = String(row.file_kind ?? '').trim().toUpperCase();
+  if (normalized === kind) return true;
+  // Legacy rows without file_kind: infer from storage path when possible.
+  const key = String(row.storage_key ?? '').toLowerCase();
+  if (!normalized && key.includes(`/${kind.toLowerCase()}/`)) return true;
+  return false;
 }
 
 export async function listNcrEvidence(companyId: UUID, ncrId: UUID): Promise<{
   evidenceBefore: NcrEvidenceReference[];
   evidenceAfter: NcrEvidenceReference[];
 }> {
-  const evidence = await listEvidence(companyId, { entityType: 'ncr', entityId: ncrId, limit: 500 });
-  const evidenceRows = evidence as unknown as EvidenceRow[];
-  const evidenceBefore = evidenceRows.filter((row) => isFileKind(row, 'BEFORE')).map(mapEvidenceRef);
-  const evidenceAfter = evidenceRows.filter((row) => isFileKind(row, 'AFTER')).map(mapEvidenceRef);
-  return { evidenceBefore, evidenceAfter };
+  return withInsforgeSession('quality-ncrs:list-evidence', async () => {
+    const evidence = await listEvidence(companyId, { entityType: 'ncr', entityId: ncrId, limit: 500 });
+    const evidenceRows = evidence as unknown as EvidenceRow[];
+    const evidenceBefore = evidenceRows.filter((row) => isFileKind(row, 'BEFORE')).map(mapEvidenceRef);
+    const evidenceAfter = evidenceRows.filter((row) => isFileKind(row, 'AFTER')).map(mapEvidenceRef);
+    return { evidenceBefore, evidenceAfter };
+  });
+}
+
+const NCR_EVIDENCE_BUCKET = 'sca-evidence' as const;
+
+export async function uploadNcrEvidenceFiles(input: {
+  companyId: UUID;
+  ncrId: UUID;
+  actorUserId: UUID;
+  files: File[];
+  kind: 'BEFORE' | 'AFTER';
+}): Promise<QualityNcr> {
+  return withInsforgeSession('quality-ncrs:upload-evidence', async () => {
+    if (input.files.length < 1) throw new Error('Select at least one file to upload.');
+
+    for (const file of input.files) {
+      const key = `${input.companyId}/ncr/${input.ncrId}/${input.kind.toLowerCase()}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
+      const uploaded = await uploadFile(NCR_EVIDENCE_BUCKET, file, { key });
+      await createEvidence({
+        companyId: input.companyId,
+        entityType: 'ncr',
+        entityId: input.ncrId,
+        storageBucket: NCR_EVIDENCE_BUCKET,
+        storageKey: uploaded.key,
+        createdByUserId: input.actorUserId,
+        originalFilename: file.name,
+        displayTitle: file.name,
+        fileKind: input.kind
+      });
+    }
+
+    return await syncNcrEvidenceFromAttachments(input.companyId, input.ncrId);
+  });
 }
 
 export async function syncNcrEvidenceFromAttachments(companyId: UUID, ncrId: UUID): Promise<QualityNcr> {
+  return withInsforgeSession('quality-ncrs:sync-evidence', async () => {
   const { evidenceBefore, evidenceAfter } = await listNcrEvidence(companyId, ncrId);
   const { data, error } = await insforge.database
     .from('quality_ncrs')
@@ -524,6 +573,47 @@ export async function syncNcrEvidenceFromAttachments(companyId: UUID, ncrId: UUI
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to sync NCR evidence.');
   return data as QualityNcr;
+  });
+}
+
+export async function resolveNcrLinkedAuditType(ncr: QualityNcr): Promise<string | null> {
+  return withInsforgeSession('quality-ncrs:resolve-audit-type', async () => {
+    const metadata = (ncr.metadata ?? {}) as Record<string, unknown>;
+    const metadataAuditId = String(metadata.auditId ?? metadata.audit_id ?? '').trim();
+    const source = String(ncr.source_entity_type ?? '').toLowerCase();
+    const sourceId = ncr.source_entity_id;
+
+    if (source === 'audit' && sourceId) {
+      const audit = await getAudit(sourceId);
+      return audit?.audit_type ?? null;
+    }
+
+    let auditId: UUID | null = null;
+    if (metadataAuditId) {
+      auditId = metadataAuditId as UUID;
+    } else if (sourceId && (source === 'audit_finding' || source === 'program_audit_finding')) {
+      const table = source === 'program_audit_finding' ? 'program_audit_findings' : 'audit_findings';
+      const { data: finding } = await insforge.database
+        .from(table)
+        .select('audit_id, inspection_id')
+        .eq('id', sourceId)
+        .maybeSingle();
+      const row = finding as { audit_id?: UUID | null; inspection_id?: UUID | null } | null;
+      auditId = row?.audit_id ?? null;
+      if (!auditId && row?.inspection_id) {
+        const { data: inspection } = await insforge.database
+          .from('inspections')
+          .select('audit_id')
+          .eq('id', row.inspection_id)
+          .maybeSingle();
+        auditId = (inspection as { audit_id?: UUID | null } | null)?.audit_id ?? null;
+      }
+    }
+
+    if (!auditId) return null;
+    const audit = await getAudit(auditId);
+    return audit?.audit_type ?? null;
+  });
 }
 
 export async function createQualityNcrFromInspectionItem(input: {
@@ -839,8 +929,11 @@ async function applyNcrRoleFilter(
     if (!membership.site_id && !membership.department_id) return rows;
     return rows.filter((ncr) => inScope(ncr) || assigned(ncr));
   }
-  if (actorRole === 'consultant' || actorRole === 'auditor') {
+  if (actorRole === 'consultant') {
     return rows.filter((ncr) => assigned(ncr));
+  }
+  if (actorRole === 'auditor') {
+    return rows;
   }
   if (actorRole === 'employee') {
     return rows.filter((ncr) => assigned(ncr));

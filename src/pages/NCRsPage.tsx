@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { listQualityNcrs, createQualityNcr, closeQualityNcr, deleteQualityNcr } from '../api/services/qualityNcrsService';
-import { canCloseQualityNcr } from '../api/permissions/ncrPermissions';
+import { canCloseQualityNcr, isNcrAssignedUser } from '../api/permissions/ncrPermissions';
 import { toUserFacingError } from '../utils/userFacingMessage';
 import type { QualityNcr, UUID } from '../api/models/entities';
 import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
@@ -104,14 +104,14 @@ export default function NCRsPage() {
 
   const canUploadEvidenceForNcr = (ncr: QualityNcr): boolean => {
     if (!user?.id) return false;
-    if (activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor') return true;
-    if (activeRole === 'employee') return false;
-    if (activeRole === 'consultant' || activeRole === 'auditor') {
-      const isAssigned =
-        ncr.auditor_user_id === user.id ||
-        ncr.auditee_user_id === user.id ||
-        ncr.corrective_action_owner_user_id === user.id;
-      return isAssigned;
+    if (activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'auditor') {
+      return true;
+    }
+    if (activeRole === 'consultant') {
+      return isNcrAssignedUser(ncr, user.id as UUID);
+    }
+    if (activeRole === 'employee') {
+      return isNcrAssignedUser(ncr, user.id as UUID);
     }
     return false;
   };

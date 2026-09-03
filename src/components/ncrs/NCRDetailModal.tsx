@@ -6,23 +6,27 @@ import type { CompanyRole } from '../../api/models/core';
 import { getRiskAssessment } from '../../api/services/riskAssessmentsService';
 import { listLegalRequirementsForLinkedRecord } from '../../api/services/legalRequirementsService';
 import { formatAuthError } from '../../auth/authMessages';
-import { createEvidence } from '../../api/services/evidenceService';
 import {
   auditorVerifyQualityNcr,
   getQualityNcr,
   listNcrEvidence,
   managerSignOffQualityNcr,
   rejectQualityNcrClosure,
+  resolveNcrLinkedAuditType,
   sendQualityNcrForReview,
   syncNcrEvidenceFromAttachments,
-  updateQualityNcr
+  updateQualityNcr,
+  uploadNcrEvidenceFiles
 } from '../../api/services/qualityNcrsService';
 import {
   canCloseQualityNcr,
+  canAuditorVerifyNcr,
+  canManagerSignOffNcr,
   canRejectNcrClosure,
-  canSendNcrForReview
+  canSendNcrForReview,
+  ncrClosureSignoffMessage,
+  ncrRequiresAuditorVerification
 } from '../../api/permissions/ncrPermissions';
-import { uploadFile } from '../../api/services/storageService';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/services/documentsStorageService';
 import { downloadFile } from '../../api/services/exportService';
 import { exportNcrDetailPdf } from '../../api/services/ncrReportExportService';
@@ -31,8 +35,6 @@ import { useTenant } from '../../tenant/TenantContext';
 import { getCompanyLogoUrl } from '../../utils/companyLogo';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useToast } from '../ui/ToastProvider';
-
-const EVIDENCE_BUCKET = 'sca-evidence';
 
 type EvidenceKind = 'BEFORE' | 'AFTER';
 
@@ -69,6 +71,10 @@ export default function NCRDetailModal({
     [activeCompany?.metadata]
   );
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [linkedAuditType, setLinkedAuditType] = useState<string | null>(null);
+  const requiresAuditorVerification = ncrRequiresAuditorVerification(ncr, linkedAuditType);
+  const canManagerSignOff = canManagerSignOffNcr(actorRole);
+  const canAuditorVerify = canAuditorVerifyNcr({ ncr, actorUserId, actorRole });
   const canCloseNcr = canCloseQualityNcr({ ncr, actorUserId, actorRole });
   const canSendForReview = canSendNcrForReview({ ncr, actorUserId, actorRole });
   const canRejectClosure = canRejectNcrClosure(actorRole);
@@ -104,8 +110,25 @@ export default function NCRDetailModal({
 
   useEffect(() => {
     let cancelled = false;
+    const loadAuditType = async () => {
+      try {
+        const auditType = await resolveNcrLinkedAuditType(ncr);
+        if (!cancelled) setLinkedAuditType(auditType);
+      } catch {
+        if (!cancelled) setLinkedAuditType(null);
+      }
+    };
+    void loadAuditType();
+    return () => {
+      cancelled = true;
+    };
+  }, [ncr]);
+
+  useEffect(() => {
+    let cancelled = false;
     const load = async () => {
       try {
+        await syncNcrEvidenceFromAttachments(companyId, ncr.id);
         const latest = await listNcrEvidence(companyId, ncr.id);
         if (!cancelled) {
           setLoadedBefore(latest.evidenceBefore);
@@ -218,30 +241,23 @@ export default function NCRDetailModal({
     setError(null);
     setUploadingKind(kind);
     try {
-      for (const file of queue) {
-        const key = `${companyId}/ncr/${ncr.id}/${kind.toLowerCase()}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-        const uploaded = await uploadFile(EVIDENCE_BUCKET, file, { key });
-
-        await createEvidence({
-          companyId,
-          entityType: 'ncr',
-          entityId: ncr.id,
-          storageBucket: EVIDENCE_BUCKET,
-          storageKey: uploaded.key,
-          createdByUserId: actorUserId,
-          originalFilename: file.name,
-          displayTitle: file.name,
-          fileKind: kind
-        });
-      }
-
-      const synced = await syncNcrEvidenceFromAttachments(companyId, ncr.id);
+      const synced = await uploadNcrEvidenceFiles({
+        companyId,
+        ncrId: ncr.id,
+        actorUserId,
+        files: queue,
+        kind
+      });
       onNcrUpdated(synced);
       setLoadedBefore((synced.evidence_before ?? []) as NcrEvidenceReference[]);
       setLoadedAfter((synced.evidence_after ?? []) as NcrEvidenceReference[]);
       if (kind === 'BEFORE') setFilesBefore([]);
       if (kind === 'AFTER') setFilesAfter([]);
-      showSuccess(`Evidence uploaded and saved to ${ncr.nc_number}.`);
+      showSuccess(
+        kind === 'AFTER'
+          ? `Closure evidence uploaded for ${ncr.nc_number}. You can now close the NCR after sign-offs are complete.`
+          : `Evidence uploaded and saved to ${ncr.nc_number}.`
+      );
     } catch (err: any) {
       const message = formatAuthError(err);
       setError(message);
@@ -261,14 +277,21 @@ export default function NCRDetailModal({
     setClosing(true);
     try {
       const latestNcr = (await getQualityNcr(ncr.id, companyId)) ?? ncr;
-      if (!latestNcr.manager_signoff_user_id || !latestNcr.auditor_verify_user_id) {
-        throw new Error('Manager sign-off and auditor verification are required before closing this NCR.');
+      if (!latestNcr.manager_signoff_user_id) {
+        throw new Error('Manager sign-off is required before closing this NCR.');
+      }
+      const auditType = await resolveNcrLinkedAuditType(latestNcr);
+      if (
+        ncrRequiresAuditorVerification(latestNcr, auditType) &&
+        !latestNcr.auditor_verify_user_id
+      ) {
+        throw new Error('Auditor verification is required for external audit NCRs before closing.');
       }
 
       const latestEvidence = await listNcrEvidence(companyId, ncr.id);
       setLoadedAfter(latestEvidence.evidenceAfter);
       if (latestEvidence.evidenceAfter.length < 1) {
-        throw new Error('Evidence of Closure is required before closing this NCR.');
+        throw new Error('Evidence of Closure is required. Upload files under "Evidence of Closure" (not "Evidence of Non-Conformance"), then click Upload files.');
       }
       await onCloseNCR(ncr.id);
       showSuccess(`${ncr.nc_number} closed successfully.`);
@@ -600,7 +623,7 @@ export default function NCRDetailModal({
                 {deleting ? 'Deleting...' : 'Delete NCR'}
               </button>
             )}
-            {ncr.status !== 'closed' && !ncr.manager_signoff_user_id && (
+            {ncr.status !== 'closed' && !ncr.manager_signoff_user_id && canManagerSignOff && (
               <button
                 onClick={async () => {
                   setError(null);
@@ -612,7 +635,11 @@ export default function NCRDetailModal({
                       managerUserId: actorUserId
                     });
                     onNcrUpdated(updated);
-                    showSuccess(`${ncr.nc_number} signed off. Awaiting auditor verification.`);
+                    showSuccess(
+                      ncrRequiresAuditorVerification(updated, linkedAuditType)
+                        ? `${ncr.nc_number} signed off. Awaiting auditor verification (external audit).`
+                        : ncrClosureSignoffMessage(updated, linkedAuditType)
+                    );
                   } catch (err: any) {
                     const message = formatAuthError(err);
                     setError(message);
@@ -627,7 +654,11 @@ export default function NCRDetailModal({
                 {workflowSaving === 'manager' ? 'Signing...' : 'Manager Sign-Off'}
               </button>
             )}
-            {ncr.status !== 'closed' && ncr.manager_signoff_user_id && !ncr.auditor_verify_user_id && (
+            {ncr.status !== 'closed' &&
+              requiresAuditorVerification &&
+              ncr.manager_signoff_user_id &&
+              !ncr.auditor_verify_user_id &&
+              canAuditorVerify && (
               <button
                 onClick={async () => {
                   setError(null);

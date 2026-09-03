@@ -87,6 +87,7 @@ export function CapaDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [evidenceRefreshKey, setEvidenceRefreshKey] = useState(0);
 
   const [form, setForm] = useState<FormState>({
     title: searchParams.get('title') ?? '',
@@ -148,7 +149,7 @@ export function CapaDetailPage() {
       const { listEvidence } = await import('../api/services/evidenceService');
       return await listEvidence(activeCompanyId, { entityType: 'corrective_action', entityId: capaId as UUID, limit: 50 });
     },
-    [activeCompanyId, isCreate, capaId, evidenceOpen]
+    [activeCompanyId, isCreate, capaId, evidenceOpen, evidenceRefreshKey]
   );
 
   useEffect(() => {
@@ -470,6 +471,7 @@ export function CapaDetailPage() {
           entityType="corrective_action"
           entityId={capaId as UUID}
           title="CAPA Evidence"
+          onUploaded={() => setEvidenceRefreshKey((k) => k + 1)}
         />
       )}
     </Layout>

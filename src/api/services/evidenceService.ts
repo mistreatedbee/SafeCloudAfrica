@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { EvidenceAttachment, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
@@ -9,28 +10,32 @@ function isMissingObjectError(error: unknown): boolean {
 }
 
 export async function listEvidence(companyId: UUID, input: { entityType: string; entityId: UUID; limit?: number }): Promise<EvidenceAttachment[]> {
-  const { data, error } = await insforge.database
-    .from('evidence_attachments')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('entity_type', input.entityType)
-    .eq('entity_id', input.entityId)
-    .order('created_at', { ascending: false })
-    .limit(input.limit ?? 200);
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as EvidenceAttachment[];
+  return withInsforgeSession('evidence:list', async () => {
+    const { data, error } = await insforge.database
+      .from('evidence_attachments')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('entity_type', input.entityType)
+      .eq('entity_id', input.entityId)
+      .order('created_at', { ascending: false })
+      .limit(input.limit ?? 200);
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as EvidenceAttachment[];
+  });
 }
 
 export async function listEvidenceForEntityType(companyId: UUID, entityType: string, limit = 2000): Promise<EvidenceAttachment[]> {
-  const { data, error } = await insforge.database
-    .from('evidence_attachments')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('entity_type', entityType)
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (error) throw new Error(getErrorMessage(error));
-  return (data ?? []) as EvidenceAttachment[];
+  return withInsforgeSession('evidence:list-by-type', async () => {
+    const { data, error } = await insforge.database
+      .from('evidence_attachments')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('entity_type', entityType)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as EvidenceAttachment[];
+  });
 }
 
 export async function createEvidence(input: {
@@ -45,9 +50,8 @@ export async function createEvidence(input: {
   displayTitle?: string;
   fileKind?: 'image' | 'document' | string;
 }): Promise<EvidenceAttachment> {
-  const { data, error } = await insforge.database
-    .from('evidence_attachments')
-    .insert({
+  return withInsforgeSession('evidence:create', async () => {
+    const insertPayload: Record<string, unknown> = {
       company_id: input.companyId,
       entity_type: input.entityType,
       entity_id: input.entityId,
@@ -58,74 +62,92 @@ export async function createEvidence(input: {
       original_filename: input.originalFilename ?? null,
       display_title: input.displayTitle ?? null,
       file_kind: input.fileKind ?? null
-    })
-    .select('*')
-    .single();
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to create evidence.');
+    };
 
-  await createActivityLog({
-    companyId: input.companyId,
-    actorUserId: input.createdByUserId,
-    action: 'evidence_attachments.create',
-    entityType: 'evidence_attachment',
-    entityId: (data as any).id as UUID,
-    metadata: { entityType: input.entityType }
+    let data: EvidenceAttachment | null = null;
+    let error: { message?: string } | null = null;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const result = await insforge.database.from('evidence_attachments').insert(insertPayload).select('*').single();
+      data = (result.data as EvidenceAttachment | null) ?? null;
+      error = result.error;
+      if (!error) break;
+      const message = String(error.message ?? '').toLowerCase();
+      if (message.includes('file_kind')) delete insertPayload.file_kind;
+      else if (message.includes('original_filename')) delete insertPayload.original_filename;
+      else if (message.includes('display_title')) delete insertPayload.display_title;
+      else throw new Error(getErrorMessage(error));
+    }
+
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to create evidence.');
+
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.createdByUserId,
+      action: 'evidence_attachments.create',
+      entityType: 'evidence_attachment',
+      entityId: data.id,
+      metadata: { entityType: input.entityType, fileKind: input.fileKind ?? null }
+    });
+
+    return data;
   });
-
-  return data as EvidenceAttachment;
 }
 
 export async function updateEvidence(
   evidenceId: UUID,
   patch: { displayTitle?: string | null }
 ): Promise<EvidenceAttachment> {
-  const updateData: Record<string, unknown> = {};
-  if (patch.displayTitle !== undefined) updateData.display_title = patch.displayTitle;
+  return withInsforgeSession('evidence:update', async () => {
+    const updateData: Record<string, unknown> = {};
+    if (patch.displayTitle !== undefined) updateData.display_title = patch.displayTitle;
 
-  if (Object.keys(updateData).length === 0) {
+    if (Object.keys(updateData).length === 0) {
+      const { data, error } = await insforge.database
+        .from('evidence_attachments')
+        .select('*')
+        .eq('id', evidenceId)
+        .single();
+      if (error) throw new Error(getErrorMessage(error));
+      if (!data) throw new Error('Evidence not found.');
+      return data as EvidenceAttachment;
+    }
+
     const { data, error } = await insforge.database
       .from('evidence_attachments')
-      .select('*')
+      .update(updateData)
       .eq('id', evidenceId)
+      .select('*')
       .single();
     if (error) throw new Error(getErrorMessage(error));
-    if (!data) throw new Error('Evidence not found.');
+    if (!data) throw new Error('Failed to update evidence.');
     return data as EvidenceAttachment;
-  }
-
-  const { data, error } = await insforge.database
-    .from('evidence_attachments')
-    .update(updateData)
-    .eq('id', evidenceId)
-    .select('*')
-    .single();
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Failed to update evidence.');
-  return data as EvidenceAttachment;
+  });
 }
 
 export async function deleteEvidence(
   evidenceId: UUID,
   input: { companyId: UUID; actorUserId: UUID; storageBucket: string; storageKey: string; entityType?: string }
 ): Promise<void> {
-  const { error: removeError } = await insforge.storage.from(input.storageBucket).remove(input.storageKey);
-  if (removeError && !isMissingObjectError(removeError)) throw new Error(getErrorMessage(removeError));
+  return withInsforgeSession('evidence:delete', async () => {
+    const { error: removeError } = await insforge.storage.from(input.storageBucket).remove(input.storageKey);
+    if (removeError && !isMissingObjectError(removeError)) throw new Error(getErrorMessage(removeError));
 
-  const { error } = await insforge.database
-    .from('evidence_attachments')
-    .delete()
-    .eq('id', evidenceId)
-    .eq('company_id', input.companyId);
-  if (error) throw new Error(getErrorMessage(error));
+    const { error } = await insforge.database
+      .from('evidence_attachments')
+      .delete()
+      .eq('id', evidenceId)
+      .eq('company_id', input.companyId);
+    if (error) throw new Error(getErrorMessage(error));
 
-  await createActivityLog({
-    companyId: input.companyId,
-    actorUserId: input.actorUserId,
-    action: 'evidence_attachments.delete',
-    entityType: 'evidence_attachment',
-    entityId: evidenceId,
-    metadata: input.entityType ? { entityType: input.entityType } : undefined
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.actorUserId,
+      action: 'evidence_attachments.delete',
+      entityType: 'evidence_attachment',
+      entityId: evidenceId,
+      metadata: input.entityType ? { entityType: input.entityType } : undefined
+    });
   });
 }
-
