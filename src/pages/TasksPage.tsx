@@ -49,8 +49,14 @@ import { TaskCreateModal } from '../components/tasks/TaskCreateModal';
 import { listCorrectiveActions, closeCorrectiveAction, deleteCorrectiveAction } from '../api/services/correctiveActionsService';
 import { toCsv, downloadTextFile } from '../utils/csv';
 import { useIdentity } from '../hooks/useIdentity';
-import { TASK_CATEGORY_LABELS, TASK_TIME_STATUS_LABELS, TASK_SOURCE_ENTITY_LABELS } from '../api/constants/taskLabels';
-import { getMyProfile } from '../api/services/profilesService';
+import {
+  getTaskAssignerUserId,
+  TASK_CATEGORY_LABELS,
+  TASK_TIME_STATUS_LABELS,
+  TASK_SOURCE_ENTITY_LABELS
+} from '../api/constants/taskLabels';
+import { getMyProfile, listUserProfiles } from '../api/services/profilesService';
+import { buildProfileLabelMap, resolveUserLabel } from '../utils/userDisplayNames';
 import { canApproveOrRejectTask, canCloseTask, canManageTasks, canSubmitTaskForReview } from '../api/permissions/taskPermissions';
 import { toUserFacingError } from '../utils/userFacingMessage';
 import { exportCapaListPdf } from '../api/services/capaReportExportService';
@@ -151,6 +157,12 @@ export function TasksPage() {
     },
     [activeCompanyId, user?.id, taskScope, activeRole]
   );
+
+  const { data: profiles } = useAsync(
+    async () => (activeCompanyId ? listUserProfiles(activeCompanyId) : []),
+    [activeCompanyId, refreshKey]
+  );
+  const profileNameByUser = useMemo(() => buildProfileLabelMap(profiles ?? []), [profiles]);
 
   const { data: tasksData, loading, error } = useAsync<Task[]>(
     async () => {
@@ -979,7 +991,16 @@ export function TasksPage() {
             filteredTasks.map((task) => (
               <div
                 key={task.id}
-                className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all"
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate(`/dashboard/management/tasks/${task.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(`/dashboard/management/tasks/${task.id}`);
+                  }
+                }}
+                className="bg-white rounded-xl border border-surface-300 p-4 shadow-card hover:shadow-card-hover transition-all cursor-pointer"
               >
                 <div className="flex items-start gap-4">
                   <div
@@ -1006,7 +1027,10 @@ export function TasksPage() {
                       <div className="min-w-0">
                         <button
                           type="button"
-                          onClick={() => navigate(`/dashboard/management/tasks/${task.id}`)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/dashboard/management/tasks/${task.id}`);
+                          }}
                           className="text-left font-medium text-charcoal hover:text-teal hover:underline truncate block"
                         >
                           {task.title}
@@ -1026,7 +1050,15 @@ export function TasksPage() {
                       </span>
                       <span className="flex items-center gap-1.5">
                         <UserIcon className="w-4 h-4" />
-                        {task.assignee_user_id ? `User ${shortId(task.assignee_user_id)}` : 'Unassigned'}
+                        Assigner:{' '}
+                        {getTaskAssignerUserId(task)
+                          ? resolveUserLabel(profileNameByUser, getTaskAssignerUserId(task))
+                          : '—'}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <UserIcon className="w-4 h-4" />
+                        Assignee:{' '}
+                        {task.assignee_user_id ? resolveUserLabel(profileNameByUser, task.assignee_user_id) : 'Unassigned'}
                       </span>
                       <span
                         className={`flex items-center gap-1.5 ${
@@ -1058,7 +1090,7 @@ export function TasksPage() {
                       )}
                     </div>
                     {activeCompanyId && user?.id && (
-                      <div className="flex flex-wrap gap-2 mt-3">
+                      <div className="flex flex-wrap gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
                         {task.status === 'assigned' && task.assignee_user_id === user.id && (
                           <button
                             type="button"
@@ -1137,6 +1169,27 @@ export function TasksPage() {
                         )}
                       </div>
                     )}
+                    <div
+                      className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-surface-200 text-sm"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/dashboard/management/tasks/${task.id}`)}
+                        className="text-teal font-medium hover:underline"
+                      >
+                        View record
+                      </button>
+                      {canCreate && task.status !== 'closed' && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/dashboard/management/tasks/${task.id}?edit=1`)}
+                          className="text-teal font-medium hover:underline"
+                        >
+                          Edit task
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

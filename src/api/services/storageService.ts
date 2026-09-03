@@ -1,5 +1,6 @@
 import { insforge } from '../insforge/client';
 import { ensureInsforgeSession } from '../insforge/ensureSession';
+import { getErrorMessage } from '../insforge/errors';
 import { getInsforgeStoragePublicUrl, uploadInsforgeStorageFile } from './insforgeStorageUpload';
 
 export type StorageBucket =
@@ -21,6 +22,31 @@ export interface UploadResult {
 /**
  * Upload a file to InsForge storage
  */
+async function uploadFileViaSdk(
+  bucket: StorageBucket,
+  file: File,
+  key: string
+): Promise<UploadResult> {
+  await ensureInsforgeSession({ reason: `storage-upload:sdk:${bucket}` });
+
+  const { data, error } = await insforge.storage.from(bucket).upload(key, file);
+  if (error) throw new Error(`Storage upload failed: ${getErrorMessage(error)}`);
+
+  const uploadedKey = String(
+    (data as Record<string, unknown> | null)?.path ??
+      (data as Record<string, unknown> | null)?.key ??
+      key
+  );
+
+  return {
+    bucket,
+    key: uploadedKey,
+    url: getPublicUrl(bucket, uploadedKey),
+    size: file.size,
+    mimeType: file.type || 'application/octet-stream'
+  };
+}
+
 export async function uploadFile(
   bucket: StorageBucket,
   file: File,
@@ -29,8 +55,13 @@ export async function uploadFile(
     metadata?: Record<string, string>;
   }
 ): Promise<UploadResult> {
-  // Generate key if not provided
   const key = options?.key || `${Date.now()}-${file.name}`;
+
+  // Evidence uploads must work for every company role (assignees, employees, auditors).
+  // The custom upload-strategy HTTP path is restricted for some non-admin users on InsForge.
+  if (bucket === 'sca-evidence') {
+    return uploadFileViaSdk(bucket, file, key);
+  }
 
   const result = await uploadInsforgeStorageFile({
     bucket,

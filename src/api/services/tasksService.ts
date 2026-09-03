@@ -431,6 +431,73 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   });
 }
 
+export async function updateTask(input: {
+  companyId: UUID;
+  taskId: UUID;
+  actorUserId: UUID;
+  patch: {
+    title?: string;
+    description?: string | null;
+    priority?: Task['priority'];
+    risk_level?: Task['risk_level'] | null;
+    due_at?: string | null;
+    assignee_user_id?: UUID | null;
+    task_owner_user_id?: UUID | null;
+  };
+}): Promise<Task> {
+  return withInsforgeSession('tasks:update', async () => {
+    const current = await getTaskById(input.companyId, input.taskId);
+    if (!current) throw new Error('Task not found.');
+    if (current.status === 'closed') throw new Error('Closed tasks cannot be edited.');
+
+    const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+    if (input.patch.title !== undefined) {
+      const title = input.patch.title.trim();
+      if (!title) throw new Error('Title is required.');
+      updatePayload.title = title;
+    }
+    if (input.patch.description !== undefined) updatePayload.description = input.patch.description;
+    if (input.patch.priority !== undefined) updatePayload.priority = input.patch.priority;
+    if (input.patch.risk_level !== undefined) updatePayload.risk_level = input.patch.risk_level;
+    if (input.patch.due_at !== undefined) updatePayload.due_at = input.patch.due_at;
+    if (input.patch.task_owner_user_id !== undefined) {
+      updatePayload.task_owner_user_id = input.patch.task_owner_user_id;
+    }
+
+    if (input.patch.assignee_user_id !== undefined) {
+      updatePayload.assignee_user_id = input.patch.assignee_user_id;
+      if (input.patch.assignee_user_id && current.status === 'draft') {
+        updatePayload.status = 'assigned';
+      } else if (!input.patch.assignee_user_id && current.status === 'assigned') {
+        updatePayload.status = 'draft';
+      }
+    }
+
+    const { data, error } = await insforge.database
+      .from('tasks')
+      .update(updatePayload)
+      .eq('company_id', input.companyId)
+      .eq('id', input.taskId)
+      .select('*')
+      .single();
+
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to update task.');
+
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.actorUserId,
+      action: 'tasks.update',
+      entityType: 'task',
+      entityId: input.taskId,
+      metadata: { fields: Object.keys(input.patch) }
+    });
+
+    return applyTimeStatusIndicator(data as Task);
+  });
+}
+
 async function notifyTaskTransition(input: {
   companyId: UUID;
   task: Task;

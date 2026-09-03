@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useUser } from '@insforge/react';
 import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
@@ -724,7 +725,22 @@ export function HrPerformancePage() {
                   <td className="px-3 py-2">{String(r['cycle'] ?? '')}</td>
                   <td className="px-3 py-2">{r['overall_rating'] != null ? String(r['overall_rating']) : '—'}</td>
                   <td className="px-3 py-2">{String(r['corrective_actions_required'] ?? '-')}<br /><span className="text-xs text-charcoal-500">Due: {String(r['corrective_due_date'] ?? '-')}</span></td>
-                  <td className="px-3 py-2">{r['linked_task_id'] ? <a className="text-teal underline" href={`/dashboard/management/tasks/${String(r['linked_task_id'])}`}>Open task</a> : '-'}</td>
+                  <td className="px-3 py-2">
+                    {r['linked_task_id'] ? (
+                      <div className="flex flex-col gap-1">
+                        <Link className="text-teal underline" to={`/dashboard/management/tasks/${String(r['linked_task_id'])}`}>
+                          Open task
+                        </Link>
+                        {canManage && (
+                          <Link className="text-teal underline text-xs" to={`/dashboard/management/tasks/${String(r['linked_task_id'])}?edit=1`}>
+                            Edit task
+                          </Link>
+                        )}
+                      </div>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
                   <td className="px-3 py-2">{r['created_at'] ? new Date(String(r['created_at'])).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
                   <td className="px-3 py-2">{String(r['status'] ?? '')}</td>
                   <td className="px-3 py-2">

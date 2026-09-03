@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeftIcon,
   CalendarIcon,
@@ -39,17 +39,24 @@ import {
   stopTimeEntry,
   logTaskTimeIncrement,
   requestTaskSignOff,
-  setTaskEffectivenessCheck
+  setTaskEffectivenessCheck,
+  updateTask
 } from '../api/services/tasksService';
 import { listActivityLogsByEntity } from '../api/services/activityLogService';
 import { listApprovals } from '../api/services/approvalsService';
 import { ApprovalDecisionModal } from '../components/approvals/ApprovalDecisionModal';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
-import { TASK_CATEGORY_LABELS, TASK_TIME_STATUS_LABELS, TASK_SOURCE_ENTITY_LABELS } from '../api/constants/taskLabels';
+import {
+  getTaskAssignerUserId,
+  TASK_CATEGORY_LABELS,
+  TASK_TIME_STATUS_LABELS,
+  TASK_SOURCE_ENTITY_LABELS
+} from '../api/constants/taskLabels';
 import type { Task, Approval, ActivityLog, EvidenceAttachment, TaskTimeLog, UUID } from '../api/models/entities';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../api/services/documentsStorageService';
 import { toUserFacingError } from '../utils/userFacingMessage';
 import { listUserProfiles } from '../api/services/profilesService';
+import { listCompanyMemberships } from '../api/services/tenantService';
 import { buildProfileLabelMap, resolveUserLabel } from '../utils/userDisplayNames';
 import {
   canApproveOrRejectTask,
@@ -115,6 +122,18 @@ export function TaskDetailPage() {
   const [pageSuccess, setPageSuccess] = useState<string | null>(null);
   const [approvalModal, setApprovalModal] = useState<{ approval: Approval; decision: 'approved' | 'rejected' } | null>(null);
   const [rejectComment, setRejectComment] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [editing, setEditing] = useState(searchParams.get('edit') === '1');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    description: '',
+    priority: 'medium' as Task['priority'],
+    riskLevel: '' as string,
+    dueAt: '',
+    assigneeUserId: '' as UUID | '',
+    taskOwnerUserId: '' as UUID | ''
+  });
 
   const backTo = useMemo(() => {
     if (location.pathname.startsWith('/tasks')) return '/tasks';
@@ -132,6 +151,21 @@ export function TaskDetailPage() {
     [activeCompanyId]
   );
   const profileNameByUser = useMemo(() => buildProfileLabelMap(profiles ?? []), [profiles]);
+
+  const { data: companyUsers } = useAsync(
+    async () => {
+      if (!activeCompanyId) return [];
+      const memberships = await listCompanyMemberships(activeCompanyId);
+      const nameMap = buildProfileLabelMap(profiles ?? []);
+      return (memberships ?? [])
+        .map((m) => ({
+          userId: m.user_id as UUID,
+          name: resolveUserLabel(nameMap, m.user_id)
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    },
+    [activeCompanyId, profiles]
+  );
 
   const { data: activityLogs } = useAsync<ActivityLog[]>(
     async () =>
@@ -161,6 +195,66 @@ export function TaskDetailPage() {
   );
 
   const activeTimeEntry = (timeLogs ?? []).find((l) => l.started_at && !l.ended_at);
+
+  function syncEditFormFromTask(t: Task) {
+    setEditForm({
+      title: t.title,
+      description: t.description ?? '',
+      priority: t.priority,
+      riskLevel: t.risk_level ?? '',
+      dueAt: t.due_at ? t.due_at.slice(0, 10) : '',
+      assigneeUserId: (t.assignee_user_id ?? '') as UUID | '',
+      taskOwnerUserId: (t.task_owner_user_id ?? '') as UUID | ''
+    });
+  }
+
+  useEffect(() => {
+    if (task) syncEditFormFromTask(task);
+  }, [task?.id, task?.updated_at]);
+
+  useEffect(() => {
+    if (searchParams.get('edit') === '1' && canManage) setEditing(true);
+  }, [searchParams, canManage]);
+
+  function exitEditMode() {
+    setEditing(false);
+    if (searchParams.get('edit')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('edit');
+      setSearchParams(next, { replace: true });
+    }
+    if (task) syncEditFormFromTask(task);
+  }
+
+  async function handleSaveEdits() {
+    if (!activeCompanyId || !taskId || !user?.id) return;
+    setPageError(null);
+    setPageSuccess(null);
+    setEditSaving(true);
+    try {
+      await updateTask({
+        companyId: activeCompanyId,
+        taskId: taskId as UUID,
+        actorUserId: user.id,
+        patch: {
+          title: editForm.title,
+          description: editForm.description.trim() || null,
+          priority: editForm.priority,
+          risk_level: editForm.riskLevel ? (editForm.riskLevel as Task['risk_level']) : null,
+          due_at: editForm.dueAt || null,
+          assignee_user_id: editForm.assigneeUserId || null,
+          task_owner_user_id: editForm.taskOwnerUserId || null
+        }
+      });
+      setPageSuccess('Task updated successfully.');
+      exitEditMode();
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Unable to save task changes.'));
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   async function refresh() {
     setRefreshKey((k) => k + 1);
@@ -425,6 +519,7 @@ export function TaskDetailPage() {
   }
 
   const isAssignee = user?.id === task.assignee_user_id;
+  const assignerUserId = getTaskAssignerUserId(task);
   const canSubmitReview =
     !!user?.id && canSubmitTaskForReview({ task, actorUserId: user.id, actorRole: activeRole });
   const canClose =
@@ -450,6 +545,15 @@ export function TaskDetailPage() {
             </p>
           </div>
           <StatusBadge status={task.status as any} size="sm" />
+          {canManage && task.status !== 'closed' && !editing && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="px-3 py-1.5 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+            >
+              Edit
+            </button>
+          )}
         </div>
 
         {pageError && <div className="bg-critical/10 border border-critical/30 rounded-xl p-3 text-sm text-critical">{pageError}</div>}
@@ -460,6 +564,10 @@ export function TaskDetailPage() {
           <span className="flex items-center gap-1.5">
             <CalendarIcon className="w-4 h-4" />
             Due {formatDateZA(task.due_at)}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <UserIcon className="w-4 h-4" />
+            Assigner: {assignerUserId ? resolveUserLabel(profileNameByUser, assignerUserId) : '—'}
           </span>
           <span className="flex items-center gap-1.5">
             <UserIcon className="w-4 h-4" />
@@ -571,7 +679,98 @@ export function TaskDetailPage() {
           </div>
         )}
 
-        {task.description && (
+        {editing && canManage && task.status !== 'closed' && (
+          <div className="bg-white rounded-xl border border-teal/30 p-4 space-y-4">
+            <h2 className="text-sm font-semibold text-charcoal">Edit task</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Title</label>
+                <input
+                  value={editForm.title}
+                  onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Description</label>
+                <textarea
+                  rows={4}
+                  value={editForm.description}
+                  onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Due date</label>
+                <input
+                  type="date"
+                  value={editForm.dueAt}
+                  onChange={(e) => setEditForm((f) => ({ ...f, dueAt: e.target.value }))}
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Priority</label>
+                <select
+                  value={editForm.priority}
+                  onChange={(e) => setEditForm((f) => ({ ...f, priority: e.target.value as Task['priority'] }))}
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Risk level</label>
+                <select
+                  value={editForm.riskLevel}
+                  onChange={(e) => setEditForm((f) => ({ ...f, riskLevel: e.target.value }))}
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                >
+                  <option value="">Not set</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Assignee</label>
+                <select
+                  value={editForm.assigneeUserId}
+                  onChange={(e) => setEditForm((f) => ({ ...f, assigneeUserId: (e.target.value || '') as UUID | '' }))}
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                >
+                  <option value="">Unassigned</option>
+                  {(companyUsers ?? []).map((u) => (
+                    <option key={u.userId} value={u.userId}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Task owner</label>
+                <select
+                  value={editForm.taskOwnerUserId}
+                  onChange={(e) => setEditForm((f) => ({ ...f, taskOwnerUserId: (e.target.value || '') as UUID | '' }))}
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                >
+                  <option value="">Not set</option>
+                  {(companyUsers ?? []).map((u) => (
+                    <option key={u.userId} value={u.userId}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {task.description && !editing && (
           <div className="bg-white rounded-xl border border-surface-300 p-4">
             <h2 className="text-sm font-semibold text-charcoal mb-2">Description</h2>
             <p className="text-sm text-charcoal-600 whitespace-pre-wrap">{task.description}</p>
@@ -915,6 +1114,39 @@ export function TaskDetailPage() {
             >
               {link.label} — View source
             </button>
+          </div>
+        )}
+
+        {canManage && task.status !== 'closed' && (
+          <div className="sticky bottom-0 bg-white border border-surface-300 rounded-xl p-4 flex flex-wrap justify-end gap-2 shadow-lg z-10">
+            {editing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={exitEditMode}
+                  disabled={editSaving}
+                  className="px-4 py-2 rounded-lg border border-surface-300 text-charcoal text-sm font-semibold hover:bg-surface-50 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveEdits()}
+                  disabled={editSaving || !editForm.title.trim()}
+                  className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60"
+                >
+                  {editSaving ? 'Saving…' : 'Save changes'}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600"
+              >
+                Edit task
+              </button>
+            )}
           </div>
         )}
       </div>

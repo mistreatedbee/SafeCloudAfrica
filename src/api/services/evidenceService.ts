@@ -119,24 +119,34 @@ export async function uploadEntityEvidenceFiles(input: {
 
     for (const file of input.files) {
       const key = `${input.companyId}/${input.entityType}/${input.entityId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-      const uploaded = await uploadFile(EVIDENCE_STORAGE_BUCKET, file, { key });
+      let uploaded: { bucket: string; key: string };
+      try {
+        uploaded = await uploadFile(EVIDENCE_STORAGE_BUCKET, file, { key });
+      } catch (err: unknown) {
+        throw new Error(`Failed to upload "${file.name}" to storage: ${getErrorMessage(err)}`);
+      }
+
       const displayTitle =
         input.files.length === 1 && input.title?.trim() ? input.title.trim() : file.name;
 
-      created.push(
-        await createEvidence({
-          companyId: input.companyId,
-          entityType: input.entityType,
-          entityId: input.entityId,
-          title: displayTitle,
-          displayTitle,
-          originalFilename: file.name,
-          fileKind: input.fileKind ?? (file.type.startsWith('image/') ? 'image' : 'document'),
-          storageBucket: uploaded.bucket,
-          storageKey: uploaded.key,
-          createdByUserId
-        })
-      );
+      try {
+        created.push(
+          await createEvidence({
+            companyId: input.companyId,
+            entityType: input.entityType,
+            entityId: input.entityId,
+            title: displayTitle,
+            displayTitle,
+            originalFilename: file.name,
+            fileKind: input.fileKind ?? (file.type.startsWith('image/') ? 'image' : 'document'),
+            storageBucket: uploaded.bucket,
+            storageKey: uploaded.key,
+            createdByUserId
+          })
+        );
+      } catch (err: unknown) {
+        throw new Error(`Failed to save evidence record for "${file.name}": ${getErrorMessage(err)}`);
+      }
     }
 
     return created;

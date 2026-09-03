@@ -1,4 +1,9 @@
-import type { TaskCategory, TaskTimeStatusIndicator } from '../models/entities';
+import type { Task, TaskCategory, TaskTimeStatusIndicator, UUID } from '../models/entities';
+
+/** Person who allocated/assigned the task (falls back to creator when not set). */
+export function getTaskAssignerUserId(task: Pick<Task, 'allocated_by_user_id' | 'created_by_user_id'>): UUID | null {
+  return task.allocated_by_user_id ?? task.created_by_user_id ?? null;
+}
 
 export const TASK_CATEGORY_LABELS: Record<TaskCategory, string> = {
   audit_action: 'Audit Action',
