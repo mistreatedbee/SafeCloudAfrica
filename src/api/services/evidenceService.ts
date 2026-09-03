@@ -1,8 +1,11 @@
 import { insforge } from '../insforge/client';
-import { withInsforgeSession } from '../insforge/ensureSession';
+import { ensureInsforgeSession, withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type { EvidenceAttachment, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
+import { uploadFile, type StorageBucket } from './storageService';
+
+export const EVIDENCE_STORAGE_BUCKET: StorageBucket = 'sca-evidence';
 
 function isMissingObjectError(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();
@@ -51,6 +54,9 @@ export async function createEvidence(input: {
   fileKind?: 'image' | 'document' | string;
 }): Promise<EvidenceAttachment> {
   return withInsforgeSession('evidence:create', async () => {
+    const { userId } = await ensureInsforgeSession({ reason: 'evidence:create' });
+    const createdByUserId = (userId ?? input.createdByUserId) as UUID;
+
     const insertPayload: Record<string, unknown> = {
       company_id: input.companyId,
       entity_type: input.entityType,
@@ -58,7 +64,7 @@ export async function createEvidence(input: {
       title: input.displayTitle ?? input.title ?? input.originalFilename ?? null,
       storage_bucket: input.storageBucket,
       storage_key: input.storageKey,
-      created_by_user_id: input.createdByUserId,
+      created_by_user_id: createdByUserId,
       original_filename: input.originalFilename ?? null,
       display_title: input.displayTitle ?? null,
       file_kind: input.fileKind ?? null
@@ -68,7 +74,7 @@ export async function createEvidence(input: {
     let error: { message?: string } | null = null;
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const result = await insforge.database.from('evidence_attachments').insert(insertPayload).select('*').single();
+      const result = await insforge.database.from('evidence_attachments').insert([insertPayload]).select('*').single();
       data = (result.data as EvidenceAttachment | null) ?? null;
       error = result.error;
       if (!error) break;
@@ -84,7 +90,7 @@ export async function createEvidence(input: {
 
     await createActivityLog({
       companyId: input.companyId,
-      actorUserId: input.createdByUserId,
+      actorUserId: createdByUserId,
       action: 'evidence_attachments.create',
       entityType: 'evidence_attachment',
       entityId: data.id,
@@ -92,6 +98,48 @@ export async function createEvidence(input: {
     });
 
     return data;
+  });
+}
+
+export async function uploadEntityEvidenceFiles(input: {
+  companyId: UUID;
+  entityType: string;
+  entityId: UUID;
+  actorUserId: UUID;
+  files: File[];
+  title?: string;
+  fileKind?: string;
+}): Promise<EvidenceAttachment[]> {
+  if (input.files.length < 1) return [];
+
+  return withInsforgeSession('evidence:upload-files', async () => {
+    const { userId } = await ensureInsforgeSession({ reason: 'evidence:upload-files' });
+    const createdByUserId = (userId ?? input.actorUserId) as UUID;
+    const created: EvidenceAttachment[] = [];
+
+    for (const file of input.files) {
+      const key = `${input.companyId}/${input.entityType}/${input.entityId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
+      const uploaded = await uploadFile(EVIDENCE_STORAGE_BUCKET, file, { key });
+      const displayTitle =
+        input.files.length === 1 && input.title?.trim() ? input.title.trim() : file.name;
+
+      created.push(
+        await createEvidence({
+          companyId: input.companyId,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          title: displayTitle,
+          displayTitle,
+          originalFilename: file.name,
+          fileKind: input.fileKind ?? (file.type.startsWith('image/') ? 'image' : 'document'),
+          storageBucket: uploaded.bucket,
+          storageKey: uploaded.key,
+          createdByUserId
+        })
+      );
+    }
+
+    return created;
   });
 }
 

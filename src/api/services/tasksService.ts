@@ -7,6 +7,7 @@ import type {
   TaskComment,
   TaskProgressUpdate,
   TaskTimeLog,
+  EvidenceAttachment,
   UUID
 } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
@@ -1061,6 +1062,24 @@ export async function addTaskEvidenceFromUpload(input: {
     storageBucket: input.storageBucket,
     storageKey: input.storageKey,
     createdByUserId: input.actorUserId
+  });
+}
+
+export async function uploadTaskEvidenceFiles(input: {
+  companyId: UUID;
+  taskId: UUID;
+  actorUserId: UUID;
+  files: File[];
+  title?: string;
+}): Promise<EvidenceAttachment[]> {
+  const { uploadEntityEvidenceFiles } = await import('./evidenceService');
+  return uploadEntityEvidenceFiles({
+    companyId: input.companyId,
+    entityType: 'task',
+    entityId: input.taskId,
+    actorUserId: input.actorUserId,
+    files: input.files,
+    title: input.title
   });
 }
 

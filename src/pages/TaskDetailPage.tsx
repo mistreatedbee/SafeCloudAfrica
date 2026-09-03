@@ -674,6 +674,7 @@ export function TaskDetailPage() {
             entityType="task"
             entityId={taskId as UUID}
             title="Task evidence"
+            onUploaded={() => setRefreshKey((k) => k + 1)}
           />
         )}
 

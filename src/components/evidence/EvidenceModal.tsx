@@ -1,15 +1,13 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { XIcon, UploadIcon, EyeIcon, DownloadIcon, Trash2Icon, CheckCircleIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { formatAuthError } from '../../auth/authMessages';
 import type { EvidenceAttachment, UUID } from '../../api/models/entities';
-import { createEvidence, deleteEvidence, listEvidence } from '../../api/services/evidenceService';
+import { deleteEvidence, listEvidence, uploadEntityEvidenceFiles } from '../../api/services/evidenceService';
 import { downloadBlob, downloadDocumentFile, openBlobInNewTab } from '../../api/services/documentsStorageService';
-import { insforge } from '../../api/insforge/client';
-import { uploadFile } from '../../api/services/storageService';
 import { useAsync } from '../../api/hooks/useAsync';
 import { ListEmptyState } from '../ui/ListEmptyState';
 import { useToast } from '../ui/ToastProvider';
+import { toUserFacingError } from '../../utils/userFacingMessage';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -28,12 +26,12 @@ export function EvidenceModal(props: {
   onUploaded?: (items: EvidenceAttachment[]) => void;
 }) {
   const { showSuccess, showError } = useToast();
-  const [files, setFiles] = useState<File[]>([]);
   const [uploadTitle, setUploadTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [removingId, setRemovingId] = useState<UUID | null>(null);
+  const [pendingFileNames, setPendingFileNames] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const hasEntityContext = Boolean(props.open && props.companyId && props.entityType && props.entityId);
 
@@ -46,44 +44,43 @@ export function EvidenceModal(props: {
   );
   const evidence = data ?? [];
 
-  const canUpload = useMemo(() => hasEntityContext && files.length > 0, [files, hasEntityContext]);
-
-  async function upload() {
-    if (files.length === 0 || !hasEntityContext) return;
+  async function uploadFiles(selected: File[]) {
+    if (selected.length === 0 || !hasEntityContext || loading) return;
     setError(null);
+    setPendingFileNames(selected.map((file) => file.name));
     try {
       setLoading(true);
-      const createdItems: EvidenceAttachment[] = [];
-      for (const file of files) {
-        const key = `${props.companyId}/${props.entityType}/${props.entityId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
-        const uploaded = await uploadFile(EVIDENCE_BUCKET as any, file, { key });
-        const created = await createEvidence({
-          companyId: props.companyId,
-          entityType: props.entityType,
-          entityId: props.entityId,
-          title: files.length === 1 ? uploadTitle.trim() || file.name : file.name,
-          displayTitle: files.length === 1 ? uploadTitle.trim() || file.name : file.name,
-          originalFilename: file.name,
-          fileKind: file.type.startsWith('image/') ? 'image' : 'document',
-          storageBucket: uploaded.bucket,
-          storageKey: uploaded.key,
-          createdByUserId: props.actorUserId
-        });
-        createdItems.push(created);
-      }
-      setFiles([]);
+      const createdItems = await uploadEntityEvidenceFiles({
+        companyId: props.companyId,
+        entityType: props.entityType,
+        entityId: props.entityId,
+        actorUserId: props.actorUserId,
+        files: selected,
+        title: uploadTitle
+      });
       if (fileInputRef.current) fileInputRef.current.value = '';
       setUploadTitle('');
+      setPendingFileNames([]);
       setRefreshKey((k) => k + 1);
       props.onUploaded?.(createdItems);
       showSuccess(`${createdItems.length} file${createdItems.length === 1 ? '' : 's'} uploaded successfully.`);
-    } catch (err: any) {
-      const message = formatAuthError(err);
+    } catch (err: unknown) {
+      const message = toUserFacingError(err, 'Unable to upload evidence. Check your connection and try again.');
       setError(message);
       showError(message);
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleClose() {
+    if (pendingFileNames.length > 0 && !loading) {
+      const proceed = window.confirm('A file is still uploading or was not saved. Close anyway?');
+      if (!proceed) return;
+    }
+    setPendingFileNames([]);
+    setError(null);
+    props.onClose();
   }
 
   async function remove(item: EvidenceAttachment) {
@@ -100,8 +97,8 @@ export function EvidenceModal(props: {
       });
       setRefreshKey((k) => k + 1);
       showSuccess('Evidence file removed.');
-    } catch (err: any) {
-      const message = formatAuthError(err);
+    } catch (err: unknown) {
+      const message = toUserFacingError(err, 'Unable to remove this evidence file.');
       setError(message);
       showError(message);
     } finally {
@@ -111,20 +108,20 @@ export function EvidenceModal(props: {
 
   if (!props.open) return null;
 
-  const selectedFileNames = files.map((item) => item.name);
-
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
-      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
       <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
             <p className="text-sm font-semibold text-charcoal">{props.title ?? 'Evidence'}</p>
-            <p className="text-xs text-charcoal-500 mt-0.5">Upload and view evidence files linked to this record.</p>
+            <p className="text-xs text-charcoal-500 mt-0.5">
+              Choose a file to upload it immediately. It will appear in the list below once saved.
+            </p>
           </div>
           <button
             type="button"
-            onClick={props.onClose}
+            onClick={handleClose}
             className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg hover:bg-surface-100 text-charcoal-500 shrink-0"
             aria-label="Close"
           >
@@ -147,7 +144,8 @@ export function EvidenceModal(props: {
                 value={uploadTitle}
                 onChange={(e) => setUploadTitle(e.target.value)}
                 placeholder="e.g. Compliance certificate, photo, signed document"
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                disabled={loading}
+                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent disabled:opacity-60"
               />
             </div>
             <div>
@@ -157,31 +155,36 @@ export function EvidenceModal(props: {
                 type="file"
                 accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp,.gif"
                 multiple
-                onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-                className="w-full text-sm"
+                disabled={loading}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.files ?? []);
+                  if (selected.length > 0) void uploadFiles(selected);
+                }}
+                className="w-full text-sm disabled:opacity-60"
               />
             </div>
             <div className="sm:col-span-3 flex justify-end gap-2">
               <button
                 type="button"
-                disabled={!canUpload || loading}
-                onClick={() => void upload()}
+                disabled={loading}
+                onClick={() => fileInputRef.current?.click()}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {loading ? <LoadingSpinner size={16} /> : <UploadIcon className="w-4 h-4" />}
-                Upload evidence
+                {loading ? 'Uploading…' : 'Choose file to upload'}
               </button>
               <button
                 type="button"
-                onClick={props.onClose}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-surface-300 text-charcoal text-sm font-semibold hover:bg-surface-50"
+                onClick={handleClose}
+                disabled={loading}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-surface-300 text-charcoal text-sm font-semibold hover:bg-surface-50 disabled:opacity-60"
               >
                 Done
               </button>
             </div>
-            {selectedFileNames.length > 0 && (
+            {pendingFileNames.length > 0 && loading && (
               <div className="sm:col-span-3 rounded-lg border border-teal/20 bg-teal/5 px-3 py-2 text-xs text-teal-800">
-                Selected files: {selectedFileNames.join(', ')}
+                Uploading: {pendingFileNames.join(', ')}
               </div>
             )}
             {evidence.length > 0 && (
