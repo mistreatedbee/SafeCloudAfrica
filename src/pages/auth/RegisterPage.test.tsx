@@ -99,7 +99,7 @@ describe('RegisterPage', () => {
       email: 'test@example.com',
       password: 'password-1',
       name: 'Test User',
-      redirectTo: 'http://localhost/login'
+      options: { emailRedirectTo: 'http://localhost/login' }
     });
     expect(replaceMock).toHaveBeenCalledWith('/app');
   });

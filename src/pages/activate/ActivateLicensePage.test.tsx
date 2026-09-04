@@ -157,7 +157,7 @@ describe('ActivateLicensePage', () => {
       email: 'owner@example.com',
       password: 'password-1',
       name: 'Test Owner',
-      redirectTo: 'http://localhost/login'
+      options: { emailRedirectTo: 'http://localhost/login' }
     });
     expect(signInWithPasswordMock).toHaveBeenCalledWith({
       email: 'owner@example.com',

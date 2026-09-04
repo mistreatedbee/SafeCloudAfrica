@@ -1,4 +1,5 @@
 import { insforge } from '../api/insforge/client';
+import { InsForgeError } from '@insforge/sdk';
 
 const TRANSIENT_STATUS_CODES = new Set([429, 502, 503, 504]);
 
@@ -42,5 +43,5 @@ export async function signInWithPasswordRetry(
     if (!isTransientAuthError(result.error)) return result;
   }
 
-  return lastResult ?? { data: null, error: new Error('Sign-in failed.') };
+  return lastResult ?? { data: null, error: new InsForgeError('Sign-in failed.', 500, 'sign_in_failed') };
 }

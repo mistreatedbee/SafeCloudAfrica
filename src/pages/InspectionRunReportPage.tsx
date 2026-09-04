@@ -10,6 +10,7 @@ import { useIdentity } from '../hooks/useIdentity';
 import { downloadWorkbook } from '../api/services/reportExportService';
 import { getCompanyLogoUrl } from '../utils/companyLogo';
 import { ArrowLeftIcon, DownloadIcon } from 'lucide-react';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
 export function InspectionRunReportPage() {
   const { runId } = useParams<{ runId: string }>();

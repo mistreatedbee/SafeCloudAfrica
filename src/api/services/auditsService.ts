@@ -4,6 +4,7 @@ import type { Audit, AuditInvitationToken, UUID } from '../models/entities';
 import { getErrorMessage } from '../insforge/errors';
 import { getAuditChecklistTemplate } from './auditChecklistTemplatesService';
 import { sendTemplatedNotificationEmail } from './emailService';
+import { createActivityLog } from './activityLogService';
 
 export interface AuditQuestion {
   id: UUID;

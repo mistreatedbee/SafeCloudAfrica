@@ -215,7 +215,7 @@ export default function NCRsPage() {
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
       return (
-        ncr.nc_number.toLowerCase().includes(q) ||
+        (ncr.nc_number ?? '').toLowerCase().includes(q) ||
         ncr.title.toLowerCase().includes(q) ||
         String(ncr.location ?? '').toLowerCase().includes(q) ||
         String(ncr.process_involved ?? '').toLowerCase().includes(q)

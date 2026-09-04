@@ -7,6 +7,7 @@ import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { useDraftRegistration } from '../session/useDraftRegistration';
 import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
 import type { UUID, Audit, QualityNcr } from '../api/models/entities';

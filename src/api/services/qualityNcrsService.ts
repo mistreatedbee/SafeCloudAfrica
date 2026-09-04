@@ -5,7 +5,7 @@ import type { CompanyRole } from '../models/core';
 import { getErrorMessage } from '../insforge/errors';
 import { createActivityLog } from './activityLogService';
 import { listEvidence, createEvidence } from './evidenceService';
-import { uploadFile } from './storageService';
+import { uploadFile, getPublicUrl } from './storageService';
 import { evaluateNcrTrigger } from './riskAssessmentTriggersService';
 import { sendTemplatedNotificationEmail } from './emailService';
 import { canCloseQualityNcr, ncrRequiresAuditorVerification } from '../permissions/ncrPermissions';

@@ -13,6 +13,7 @@ function makeForm(): ComplaintFormDraft {
     complaintRefNo: 'CCL-2026-0001',
     customerName: 'Acme Foods',
     personHandlingUserId: 'user-1',
+    personHandlingEmployeeId: '',
     personHandlingNameSnapshot: 'Lerato Sithole',
     dateReceived: '2026-04-20',
     description: 'Damaged goods',
