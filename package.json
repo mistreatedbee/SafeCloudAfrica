@@ -15,7 +15,7 @@
     "@insforge/react": "^1.1.8",
     "@insforge/sdk": "latest",
     "@paaq/server-sdk": "^1.0.1",
-    "@paaq/web-sdk": "^1.2.6",
+    "@paaq/web-sdk": "^1.2.9",
     "exceljs": "^4.4.0",
     "framer-motion": "^11.5.4",
     "jspdf": "^4.2.1",
