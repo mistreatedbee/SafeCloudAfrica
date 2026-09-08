@@ -1,10 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Building2Icon, SearchIcon, ShieldCheckIcon } from 'lucide-react';
+import { Building2Icon, RefreshCwIcon, SearchIcon, ShieldCheckIcon } from 'lucide-react';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../../api/hooks/useAsync';
+import { getErrorMessage } from '../../../api/insforge/errors';
+import { getErrorMessage } from '../../../api/insforge/errors';
 import { insforge } from '../../../api/insforge/client';
 import { suspendOrgSubscription } from '../../../api/services/licensesService';
+import {
+  listPlatformCompaniesSummary,
+  type CompanyWithCount
+} from '../../../api/services/superAdminPlatformService';
 import { logPlatformAdminAction } from '../../../api/services/platformAdminAuditService';
 import {
   getSellableFeaturesConfig,
@@ -37,31 +43,6 @@ function formatLicence(license: string): string {
   return license;
 }
 
-type CompanyWithCount = Company & { user_count?: number };
-
-async function fetchCompaniesWithCounts(): Promise<CompanyWithCount[]> {
-  const { data: companies, error: companiesError } = await insforge.database
-    .from('companies')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(500);
-  if (companiesError) throw companiesError;
-  const list = (companies ?? []) as Company[];
-
-  const { data: counts } = await insforge.database
-    .from('company_memberships')
-    .select('company_id');
-  const countByCompany: Record<string, number> = {};
-  (counts ?? []).forEach((r: { company_id: string }) => {
-    countByCompany[r.company_id] = (countByCompany[r.company_id] ?? 0) + 1;
-  });
-
-  return list.map((c) => ({
-    ...c,
-    user_count: countByCompany[c.id] ?? 0
-  }));
-}
-
 export function SuperAdminOrganisationsPage() {
   const { user } = useUser();
   const [query, setQuery] = useState('');
@@ -72,7 +53,10 @@ export function SuperAdminOrganisationsPage() {
   const [sellableOverrides, setSellableOverrides] = useState<Record<string, SellableFeaturesConfig>>({});
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const { data, loading, error } = useAsync(fetchCompaniesWithCounts, [refresh]);
+  const { data, loading, error, retry, isBackendUnavailable } = useAsync(
+    () => listPlatformCompaniesSummary(),
+    [refresh]
+  );
 
   const companies = data ?? [];
   const filtered = useMemo(() => {
@@ -149,7 +133,7 @@ export function SuperAdminOrganisationsPage() {
       });
       setRefresh((r) => r + 1);
     } catch (err) {
-      setMessage({ type: 'error', text: String((err as Error)?.message ?? err) });
+      setMessage({ type: 'error', text: getErrorMessage(err) });
     } finally {
       setSavingLockKey(null);
     }
@@ -201,7 +185,23 @@ export function SuperAdminOrganisationsPage() {
       {error && (
         <div className="bg-white rounded-xl border border-critical/30 shadow-card p-5">
           <p className="text-sm font-semibold text-critical">Unable to load organisations</p>
-          <p className="text-sm text-charcoal-500 mt-1">{String((error as Error)?.message ?? error)}</p>
+          <p className="text-sm text-charcoal-500 mt-1">{error.message}</p>
+          {isBackendUnavailable && (
+            <>
+              <p className="text-sm text-charcoal-500 mt-2">
+                The InsForge database REST API is not responding. Your organisations are still in Postgres, but this
+                dashboard cannot read them until the API recovers.
+              </p>
+              <button
+                type="button"
+                onClick={retry}
+                className="mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
+              >
+                <RefreshCwIcon className="w-4 h-4" />
+                Retry
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -232,7 +232,7 @@ export function SuperAdminOrganisationsPage() {
                   </td>
                 </tr>
               )}
-              {!loading && filtered.length === 0 && (
+              {!loading && !error && filtered.length === 0 && (
                 <ListEmptyState
                   tableColSpan={7}
                   icon={Building2Icon}

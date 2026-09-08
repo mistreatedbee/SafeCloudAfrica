@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getErrorMessage, isTransientBackendError } from '../insforge/errors';
 import { subscribeToAuthRecovered, subscribeToLiveDataMutations } from '../liveData';
 
 export type AsyncState<T> = {
@@ -27,16 +28,14 @@ export type UseAsyncOptions = {
 const noop = () => undefined;
 
 function isBackendUnavailableError(error: unknown): boolean {
-  if (!error) return false;
-  const message = String((error as any)?.message ?? error).toLowerCase();
-  return (
-    message.includes('502') ||
-    message.includes('503') ||
-    message.includes('bad gateway') ||
-    message.includes('service unavailable') ||
-    message.includes('pgrst001') ||
-    message.includes('pgrst002')
-  );
+  return isTransientBackendError(error);
+}
+
+function normalizeAsyncError(error: unknown): Error {
+  if (error instanceof Error && error.message && error.message !== '[object Object]') {
+    return error;
+  }
+  return new Error(getErrorMessage(error));
 }
 
 function isAuthFailureError(error: unknown): boolean {
@@ -118,10 +117,11 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
             authFailureEmittedRef.current = true;
           }
         }
+        const normalizedError = normalizeAsyncError(error);
         setState((prev) => ({
           // Preserve last-known-good data so dashboards/forms don’t clear during an outage.
           data: prev.data,
-          error: error as Error,
+          error: normalizedError,
           loading: false,
           retry,
           refetch: retry,

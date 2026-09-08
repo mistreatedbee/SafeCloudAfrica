@@ -17,14 +17,25 @@ import {
 const MODULE = 'api.insforge-proxy.api';
 const UPSTREAM_TIMEOUT_MS = 15_000;
 const AUTH_UPSTREAM_TIMEOUT_MS = 30_000;
+const DATABASE_UPSTREAM_TIMEOUT_MS = 45_000;
 const AUTH_RETRY_PATHS = new Set(['auth/sessions', 'auth/sessions/current', 'auth/refresh']);
 
 function isAuthPath(path: string): boolean {
   return AUTH_RETRY_PATHS.has(path);
 }
 
+function isDatabasePath(path: string): boolean {
+  return path.startsWith('database/');
+}
+
 function getUpstreamTimeoutMs(path: string): number {
-  return isAuthPath(path) ? AUTH_UPSTREAM_TIMEOUT_MS : UPSTREAM_TIMEOUT_MS;
+  if (isAuthPath(path)) return AUTH_UPSTREAM_TIMEOUT_MS;
+  if (isDatabasePath(path)) return DATABASE_UPSTREAM_TIMEOUT_MS;
+  return UPSTREAM_TIMEOUT_MS;
+}
+
+function shouldRetryUpstream(path: string): boolean {
+  return isAuthPath(path) || isDatabasePath(path);
 }
 
 async function fetchUpstream(
@@ -119,7 +130,7 @@ export default async function handler(req: any, res: any) {
 
   const upstreamUrl = buildUpstreamUrl(started.upstreamOrigin, `/api/${joined}`, req);
   const upstreamTimeoutMs = getUpstreamTimeoutMs(joined);
-  const retryAuthUpstream = isAuthPath(joined);
+  const retryUpstream = shouldRetryUpstream(joined);
 
   try {
     const headers = buildForwardHeaders(req, {
@@ -134,7 +145,7 @@ export default async function handler(req: any, res: any) {
         headers,
         body: proxyBody as BodyInit | undefined
       },
-      { timeoutMs: upstreamTimeoutMs, retryOn5xx: retryAuthUpstream }
+      { timeoutMs: upstreamTimeoutMs, retryOn5xx: retryUpstream }
     );
 
     const legacyRoute = matchLegacyAuthRoute({
@@ -166,7 +177,7 @@ export default async function handler(req: any, res: any) {
           headers,
           body: legacyRoute.legacyMethod === 'GET' ? undefined : proxyBody as BodyInit | undefined
         },
-        { timeoutMs: upstreamTimeoutMs, retryOn5xx: retryAuthUpstream }
+        { timeoutMs: upstreamTimeoutMs, retryOn5xx: retryUpstream }
       );
 
       if (legacyRoute.responseTransform === 'normalize-user-payload' && legacyRes.ok) {
@@ -206,7 +217,7 @@ export default async function handler(req: any, res: any) {
           method: 'GET',
           headers
         },
-        { timeoutMs: upstreamTimeoutMs, retryOn5xx: retryAuthUpstream }
+        { timeoutMs: upstreamTimeoutMs, retryOn5xx: retryUpstream }
       );
       await writeUpstreamResponse(res, getRes, 'HEAD');
       return;

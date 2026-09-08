@@ -72,7 +72,7 @@ export function UserMenu() {
           <p className="text-sm font-medium text-charcoal">
             {displayName}
           </p>
-          <p className="text-xs text-charcoal-400">{formatRole(activeRole, isPlatformAdmin)}</p>
+          <p className="text-xs text-charcoal-400">{formatRole(activeRole, isPlatformAdmin || onSuperAdminRoute)}</p>
         </div>
         <ChevronDownIcon
           className={`w-4 h-4 text-charcoal-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />

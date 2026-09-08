@@ -64,7 +64,7 @@ export function SuperAdminChatbotLogsPage() {
     try {
       const [rows, companyResult] = await Promise.all([
         listChatbotConversationsForSuperAdmin(filters),
-        insforge.database.from('companies').select('*').order('name').limit(300)
+        insforge.database.from('companies').select('id,name').order('name').limit(300)
       ]);
       setConversations(rows);
       setStats(buildDashboardStats(rows));

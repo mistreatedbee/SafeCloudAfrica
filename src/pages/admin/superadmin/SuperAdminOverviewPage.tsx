@@ -1,51 +1,11 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Building2Icon, UsersIcon, CreditCardIcon, ClockIcon, ShieldCheckIcon } from 'lucide-react';
+import { Building2Icon, RefreshCwIcon, UsersIcon, CreditCardIcon, ClockIcon, ShieldCheckIcon } from 'lucide-react';
 import { useAsync } from '../../../api/hooks/useAsync';
-import { insforge } from '../../../api/insforge/client';
-
-type OverviewStats = {
-  totalOrgs: number;
-  totalUsers: number;
-  activeLicenses: number;
-  expiringSoon: number;
-};
-
-async function fetchOverviewStats(): Promise<OverviewStats> {
-  const [companiesRes, membershipsRes] = await Promise.all([
-    // IMPORTANT: Avoid `count: 'exact'` on large tables in production.
-    // Exact counts translate to COUNT(*) queries that can be expensive and, under tight DB resource limits,
-    // have caused Postgres processes to be killed (signal 9) and trigger a cascading 503 outage.
-    insforge.database.from('companies').select('id', { count: 'planned', head: true }),
-    insforge.database.from('company_memberships').select('user_id', { count: 'planned', head: true })
-  ]);
-
-  const totalOrgs = companiesRes.count ?? 0;
-  const totalUsers = membershipsRes.count ?? 0;
-
-  // Active licenses and expiring soon will come from org_licenses once that table exists
-  let activeLicenses = 0;
-  let expiringSoon = 0;
-  try {
-    const { data: licenses } = await insforge.database
-      .from('org_licenses')
-      .select('id, end_date, status')
-      .eq('status', 'active');
-    activeLicenses = licenses?.length ?? 0;
-    const now = new Date();
-    const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    expiringSoon =
-      licenses?.filter((l: { end_date: string }) => l.end_date && new Date(l.end_date) <= in30Days && new Date(l.end_date) >= now)
-        .length ?? 0;
-  } catch {
-    // org_licenses may not exist yet
-  }
-
-  return { totalOrgs, totalUsers, activeLicenses, expiringSoon };
-}
+import { getPlatformOverviewStats } from '../../../api/services/superAdminPlatformService';
 
 export function SuperAdminOverviewPage() {
-  const { data, loading, error } = useAsync(fetchOverviewStats, []);
+  const { data, loading, error, retry, isBackendUnavailable } = useAsync(() => getPlatformOverviewStats(), []);
 
   const stats = data ?? {
     totalOrgs: 0,
@@ -73,9 +33,20 @@ export function SuperAdminOverviewPage() {
         </p>
 
         {error && (
-          <p className="text-sm text-critical">
-            {String((error as Error)?.message ?? error)}
-          </p>
+          <div className="rounded-lg border border-critical/30 bg-critical/5 p-4 mb-4">
+            <p className="text-sm font-semibold text-critical">Unable to load platform analytics</p>
+            <p className="text-sm text-charcoal-500 mt-1">{error.message}</p>
+            {isBackendUnavailable && (
+              <button
+                type="button"
+                onClick={retry}
+                className="mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-teal text-white text-sm font-medium hover:bg-teal-600"
+              >
+                <RefreshCwIcon className="w-4 h-4" />
+                Retry
+              </button>
+            )}
+          </div>
         )}
 
         {loading ? (

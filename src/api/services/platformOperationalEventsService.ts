@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { getErrorMessage } from '../insforge/errors';
 import type { PlatformOperationalEventRow } from '../models/entities';
 
 export async function listPlatformOperationalEvents(limit = 500): Promise<PlatformOperationalEventRow[]> {
@@ -62,10 +63,20 @@ export async function getJourneyCompletionMetrics(): Promise<{ completedJourneys
 /** Lightweight query to confirm API + RLS for the signed-in super-admin. */
 export async function checkInsforgeReachable(): Promise<{ ok: boolean; error?: string }> {
   try {
-    const { error } = await insforge.database.from('companies').select('id').limit(1);
-    if (error) return { ok: false, error: error.message };
+    const { data, error } = await insforge.database.rpc('ping_database');
+    if (!error && data && typeof data === 'object' && (data as { ok?: boolean }).ok) {
+      return { ok: true };
+    }
+    if (error) {
+      const msg = getErrorMessage(error).toLowerCase();
+      if (!msg.includes('does not exist') && !msg.includes('could not find the function')) {
+        return { ok: false, error: getErrorMessage(error) };
+      }
+    }
+    const { error: fallbackError } = await insforge.database.from('companies').select('id').limit(1);
+    if (fallbackError) return { ok: false, error: fallbackError.message };
     return { ok: true };
   } catch (e: unknown) {
-    return { ok: false, error: String((e as Error)?.message || e) };
+    return { ok: false, error: getErrorMessage(e) };
   }
 }

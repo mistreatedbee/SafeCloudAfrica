@@ -1,11 +1,22 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { MenuIcon } from 'lucide-react';
 import { SuperAdminSidebar } from './SuperAdminSidebar';
 import { UserMenu } from '../ui/UserMenu';
+import { subscribeToBackendUnavailable, type BackendUnavailableDetail } from '../../api/liveData';
 
 export function SuperAdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [backendIssue, setBackendIssue] = useState<BackendUnavailableDetail | null>(null);
+  const [backendIssueDismissedAt, setBackendIssueDismissedAt] = useState(0);
+
+  useEffect(() => {
+    return subscribeToBackendUnavailable((detail) => {
+      const now = Date.now();
+      if (now - backendIssueDismissedAt < 10_000) return;
+      setBackendIssue(detail);
+    });
+  }, [backendIssueDismissedAt]);
 
   return (
     <div className="flex h-screen bg-surface overflow-hidden">
@@ -31,6 +42,29 @@ export function SuperAdminLayout() {
         </header>
 
         <main className="flex-1 min-h-0 overflow-y-auto relative z-0">
+          {backendIssue && (
+            <div className="px-4 lg:px-6 pt-4">
+              <div className="bg-warning/10 border border-warning/30 rounded-xl px-4 py-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-charcoal">Database API temporarily unavailable</p>
+                  <p className="text-sm text-charcoal-600 mt-0.5">
+                    Organisation lists and platform metrics may show zero until the InsForge REST API recovers. Use Retry
+                    on each page after a minute.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBackendIssue(null);
+                    setBackendIssueDismissedAt(Date.now());
+                  }}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-white border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
           <div className="p-4 lg:p-6">
             <Outlet />
           </div>

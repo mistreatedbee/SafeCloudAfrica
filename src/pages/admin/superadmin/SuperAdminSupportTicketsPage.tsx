@@ -7,6 +7,7 @@ import {
   RefreshCwIcon,
   SendIcon
 } from 'lucide-react';
+import { getErrorMessage } from '../../../api/insforge/errors';
 import { insforge } from '../../../api/insforge/client';
 import type { Company, UUID } from '../../../api/models/entities';
 import {
@@ -62,7 +63,7 @@ export function SuperAdminSupportTicketsPage() {
       const [ticketRows, statRows, companyResult] = await Promise.all([
         listAllSupportTicketsForSuperAdmin(filters),
         getSupportDashboardStats(filters),
-        insforge.database.from('companies').select('*').order('name').limit(300)
+        insforge.database.from('companies').select('id,name').order('name').limit(300)
       ]);
       setTickets(ticketRows);
       setStats(statRows);
@@ -72,7 +73,7 @@ export function SuperAdminSupportTicketsPage() {
         setSelected(await getSupportTicketWithThread(selected.ticket.id));
       }
     } catch (err) {
-      setError((err as Error)?.message ?? 'Failed to load support tickets.');
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
