@@ -24,7 +24,13 @@ describe('emailTemplates', () => {
       'improvements',
       'approvals',
       'billing_pricing',
-      'software_license_expiry'
+      'software_license_expiry',
+      'corrective_actions',
+      'quality_ncr',
+      'training_assigned',
+      'permit_to_work',
+      'calibration',
+      'risk_assessment'
     ]);
   });
 

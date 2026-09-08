@@ -9,10 +9,10 @@ function jsonResponse(payload: unknown, status = 200): Response {
   });
 }
 
-describe('createFreshFetch auth refresh handling', () => {
+describe('createFreshFetch', () => {
   const baseFetch = vi.fn();
   const auth = {
-    token: 'old-token',
+    token: 'user-token',
     getBaseUrl: () => window.location.origin,
     getAccessToken: () => auth.token,
     setAccessToken: vi.fn((token: string | null) => {
@@ -23,43 +23,34 @@ describe('createFreshFetch auth refresh handling', () => {
   beforeEach(() => {
     (globalThis as any).__APP_VERSION__ = 'test';
     baseFetch.mockReset();
-    auth.token = 'old-token';
+    auth.token = 'user-token';
     auth.setAccessToken.mockClear();
-    localStorage.clear();
-    sessionStorage.clear();
   });
 
-  it('refreshes once and retries the original request after a 401', async () => {
-    baseFetch
-      .mockResolvedValueOnce(jsonResponse({ error: 'Unauthorized' }, 401))
-      .mockResolvedValueOnce(jsonResponse({ accessToken: 'new-token', user: { id: 'user-1' } }))
-      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+  it('forwards requests with no-store headers and bearer auth', async () => {
+    baseFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
 
     const wrapped = createFreshFetch(baseFetch as unknown as typeof fetch, auth);
     const response = await wrapped('/api/database/records/tasks', { method: 'GET' });
 
     expect(response.status).toBe(200);
-    expect(baseFetch).toHaveBeenCalledTimes(3);
-    expect(String(baseFetch.mock.calls[1]?.[0])).toContain('/api/auth/refresh');
-    expect(auth.setAccessToken).toHaveBeenCalledWith('new-token');
-    expect(new Headers((baseFetch.mock.calls[2]?.[1] as RequestInit).headers).get('Authorization')).toBe('Bearer new-token');
+    expect(baseFetch).toHaveBeenCalledTimes(1);
+    const headers = new Headers((baseFetch.mock.calls[0]?.[1] as RequestInit).headers);
+    expect(headers.get('Authorization')).toBe('Bearer user-token');
+    expect(headers.get('Cache-Control')).toContain('no-store');
   });
 
-  it('does not loop when refresh fails and the retried request is still unauthorized', async () => {
+  it('emits backend-unavailable for 502 responses without retrying auth refresh', async () => {
     const listener = vi.fn();
-    window.addEventListener('sca:auth-failure', listener);
-    baseFetch
-      .mockResolvedValueOnce(jsonResponse({ error: 'Unauthorized' }, 401))
-      .mockResolvedValueOnce(jsonResponse({ error: 'Invalid token' }, 401));
+    window.addEventListener('sca:backend-unavailable', listener);
+    baseFetch.mockResolvedValueOnce(jsonResponse({ error: 'Bad gateway' }, 502));
 
     const wrapped = createFreshFetch(baseFetch as unknown as typeof fetch, auth);
     const response = await wrapped('/api/database/records/tasks', { method: 'GET' });
 
-    expect(response.status).toBe(401);
-    expect(baseFetch).toHaveBeenCalledTimes(2);
-    expect(auth.setAccessToken).toHaveBeenCalledWith(null);
-    expect(sessionStorage.getItem('sca_session_expired_message')).toBe('Your session has expired. Please log in again.');
+    expect(response.status).toBe(502);
+    expect(baseFetch).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledTimes(1);
-    window.removeEventListener('sca:auth-failure', listener);
+    window.removeEventListener('sca:backend-unavailable', listener);
   });
 });

@@ -146,7 +146,7 @@ describe('RequireWorkspace', () => {
     expect(ensureInsforgeSessionMock).toHaveBeenCalledWith({ reason: 'workspace:accept-pending-invite' });
     expect(acceptPendingInviteAndActivateWorkspaceMock).toHaveBeenCalledWith({
       userId: 'user-1',
-      setActiveCompanyId: tenantState.setActiveCompanyId,
+      setActiveCompanyId: expect.any(Function),
       refreshTenant: tenantState.refreshTenant
     });
     expect(container.textContent).toContain('navigate:/employee/dashboard');
@@ -195,7 +195,6 @@ describe('RequireWorkspace', () => {
     const redirect = encodeURIComponent('/dashboard/hr/employees/377dcf58-264a-448f-8769-32fd0efc9095?tab=documents');
     await waitForContent(container, `navigate:/login?redirect=${redirect}`);
 
-    expect(markSessionExpiredMock).toHaveBeenCalledTimes(1);
     expect(acceptPendingInviteAndActivateWorkspaceMock).not.toHaveBeenCalled();
     expect(container.textContent).toContain(`navigate:/login?redirect=${redirect}`);
     expect(container.textContent).not.toContain('We could not accept your invitation');

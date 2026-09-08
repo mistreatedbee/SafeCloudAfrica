@@ -5,8 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAsync } from './useAsync';
 
 function Harness(props: { fn: () => Promise<string> }) {
-  useAsync(props.fn, []);
-  return <div>async</div>;
+  const state = useAsync(props.fn, []);
+  return (
+    <div>
+      <span data-testid="auth-failure">{String(state.isAuthFailure)}</span>
+    </div>
+  );
 }
 
 async function flushAsyncWork(): Promise<void> {
@@ -34,10 +38,8 @@ describe('useAsync', () => {
     vi.useRealTimers();
   });
 
-  it('emits auth failure and suppresses automatic focus retries after 401', async () => {
-    const authFailureListener = vi.fn();
+  it('marks auth failures and suppresses automatic focus retries after 401', async () => {
     const fn = vi.fn().mockRejectedValue(Object.assign(new Error('Unauthorized'), { status: 401 }));
-    window.addEventListener('sca:auth-failure', authFailureListener);
 
     await act(async () => {
       root.render(<Harness fn={fn} />);
@@ -45,7 +47,7 @@ describe('useAsync', () => {
     });
 
     expect(fn).toHaveBeenCalledTimes(1);
-    expect(authFailureListener).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[data-testid="auth-failure"]')?.textContent).toBe('true');
 
     await act(async () => {
       vi.advanceTimersByTime(2000);
@@ -54,6 +56,5 @@ describe('useAsync', () => {
     });
 
     expect(fn).toHaveBeenCalledTimes(1);
-    window.removeEventListener('sca:auth-failure', authFailureListener);
   });
 });

@@ -14,8 +14,10 @@
   "dependencies": {
     "@insforge/react": "^1.1.8",
     "@insforge/sdk": "latest",
+    "@paaq/sdk": "^1.4.2",
+    "@paaq/sdk-core": "^1.0.0",
     "@paaq/server-sdk": "^1.0.1",
-    "@paaq/web-sdk": "^1.2.9",
+    "@paaq/web-sdk": "^1.3.0",
     "exceljs": "^4.4.0",
     "framer-motion": "^11.5.4",
     "jspdf": "^4.2.1",
@@ -50,5 +52,10 @@
     "typescript": "^5.5.4",
     "vite": "^5.2.0",
     "vitest": "^4.1.0"
+  },
+  "overrides": {
+    "@paaq/web-sdk": {
+      "@paaq/sdk-core": "$@paaq/sdk-core"
+    }
   }
 }

@@ -7,7 +7,7 @@ import { createActivityLog } from '../api/services/activityLogService';
 import type { CompanyRole, ModuleKey } from '../api/models/core';
 import { ensureMeAsSuperAdmin, isPlatformAdmin as checkPlatformAdmin } from '../api/services/platformAdminService';
 import { getEnabledModuleKeys, ALL_MODULE_KEYS } from '../api/services/orgModulesService';
-import { upsertMyProfile } from '../api/services/profilesService';
+import { ensureMyProfileRow } from '../api/services/profilesService';
 import { getSellableFeaturesConfig, type SellableFeaturesConfig } from '../api/services/sellableFeaturesService';
 
 type MembershipWithCompany = CompanyMembership & { company?: Company };
@@ -141,7 +141,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       // but do not overwrite any user-managed profile fields (name, email, etc.).
       if (next) {
         try {
-          await upsertMyProfile({
+          await ensureMyProfileRow({
             companyId: next,
             userId: user.id as UUID
           });

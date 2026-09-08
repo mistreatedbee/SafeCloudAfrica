@@ -37,6 +37,21 @@ export function PpeIssueTrackerDetailModal(props: {
   const [error, setError] = useState<string | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
 
+  useEffect(() => {
+    if (props.open) {
+      setLocalIssue(props.issue);
+    }
+  }, [props.open, props.issue]);
+
+  useEffect(() => {
+    if (!props.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') props.onClose();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.open, props.onClose]);
+
   if (!props.open) return null;
 
   const riskBadgeClass =
@@ -172,14 +187,6 @@ export function PpeIssueTrackerDetailModal(props: {
       setSaving(false);
     }
   }
-
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') props.onClose();
-    }
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [props.onClose]);
 
   return (
     <>

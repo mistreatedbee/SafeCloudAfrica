@@ -25,6 +25,15 @@ export function PpeIssueDetailModal(props: {
     [props.companyId, props.issue?.id, props.open]
   );
 
+  React.useEffect(() => {
+    if (!props.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') props.onClose();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [props.open, props.onClose]);
+
   if (!props.open) return null;
 
   const issue = props.issue;
@@ -40,15 +49,6 @@ export function PpeIssueDetailModal(props: {
       : '';
   const nextIssueDate =
     issue.next_issue_at ? issue.next_issue_at.slice(0, 10) : '—';
-
-  React.useEffect(() => {
-    if (!props.open) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') props.onClose();
-    }
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [props.open, props.onClose]);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="PPE Issue detail">

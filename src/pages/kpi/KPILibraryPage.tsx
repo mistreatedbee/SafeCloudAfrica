@@ -159,7 +159,7 @@ export function KPILibraryPage() {
     }
   }
 
-  function useTemplate(item: KPIItem) {
+  function applyTemplate(item: KPIItem) {
     navigate(`/modules/hr/kpis/assessments/new?template=${item.kpi_item_id}`);
   }
 
@@ -225,7 +225,7 @@ export function KPILibraryPage() {
                   <td className="py-3 px-4">
                     <div className="flex flex-wrap gap-3 text-xs">
                       {lineCount > 0 && (
-                        <button type="button" className="text-teal underline font-medium" onClick={() => useTemplate(item)}>
+                        <button type="button" className="text-teal underline font-medium" onClick={() => applyTemplate(item)}>
                           Use template
                         </button>
                       )}

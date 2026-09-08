@@ -57,15 +57,50 @@ export async function upsertMyProfile(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to save profile.');
 
-  await createActivityLog({
-    companyId: input.companyId,
-    actorUserId: input.userId,
-    action: 'user_profiles.upsert',
-    entityType: 'user_profile',
-    entityId: (data as any).id as UUID
-  });
+  const hasProfileFieldUpdates =
+    'fullName' in input ||
+    'email' in input ||
+    'phone' in input ||
+    'department' in input ||
+    'site' in input ||
+    'avatarBucket' in input ||
+    'avatarKey' in input;
+
+  if (hasProfileFieldUpdates) {
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.userId,
+      action: 'user_profiles.upsert',
+      entityType: 'user_profile',
+      entityId: (data as UserProfile).id
+    });
+  }
 
   return data as UserProfile;
+}
+
+/** Create a profile row once per user/company; no-op when it already exists. */
+export async function ensureMyProfileRow(input: {
+  companyId: UUID;
+  userId: UUID;
+}): Promise<void> {
+  const existing = await getUserProfile(input.companyId, input.userId);
+  if (existing) return;
+
+  const { error } = await insforge.database.from('user_profiles').insert([
+    {
+      company_id: input.companyId,
+      user_id: input.userId,
+      updated_at: new Date().toISOString()
+    }
+  ]);
+  if (error) {
+    const message = getErrorMessage(error).toLowerCase();
+    if (message.includes('duplicate') || message.includes('unique') || message.includes('already exists')) {
+      return;
+    }
+    throw new Error(getErrorMessage(error));
+  }
 }
 
 export async function upsertUserProfileAsManager(input: {
