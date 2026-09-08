@@ -12,6 +12,31 @@ function isAuthDeniedError(error: unknown): boolean {
   return msg.includes('unauthorized') || msg.includes('not authorised') || msg.includes('forbidden');
 }
 
+function isTransientBackendError(error: unknown): boolean {
+  const status = Number((error as any)?.status ?? (error as any)?.statusCode ?? 0);
+  if (status === 502 || status === 503 || status === 504 || status === 429) return true;
+  const msg = getErrorMessage(error).toLowerCase();
+  return (
+    msg.includes('502') ||
+    msg.includes('503') ||
+    msg.includes('504') ||
+    msg.includes('bad gateway') ||
+    msg.includes('service unavailable') ||
+    msg.includes('timeout') ||
+    msg.includes('pgrst001') ||
+    msg.includes('pgrst002') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('network')
+  );
+}
+
+export class PlatformAdminCheckUnavailableError extends Error {
+  constructor(message = 'Could not verify Super Admin access because the backend is temporarily unavailable.') {
+    super(message);
+    this.name = 'PlatformAdminCheckUnavailableError';
+  }
+}
+
 /** Single source of truth: role -> dashboard path. Use for login, activation, and app boot. */
 export const ROLE_PATH_MAP: Record<string, string> = {
   owner: '/org/dashboard',
@@ -195,6 +220,9 @@ export async function isPlatformAdmin(userId: UUID): Promise<boolean> {
   } catch (err) {
     if (err instanceof InsforgeAuthBootstrapError) {
       throw err;
+    }
+    if (isTransientBackendError(err)) {
+      throw new PlatformAdminCheckUnavailableError(getErrorMessage(err));
     }
     const msg = getErrorMessage(err);
     // If the table doesn't exist yet, treat as not a platform admin.

@@ -10,6 +10,8 @@ import {
   getSellableFeaturesConfig,
   type SellableFeatureKey,
 } from '../../../api/services/sellableFeaturesService';
+
+const SUPER_ADMIN_SELLABLE_FEATURES = SELLABLE_FEATURES_ORDER.filter((key) => key !== 'unknown');
 import { logPlatformAdminAction } from '../../../api/services/platformAdminAuditService';
 import type { Company, UUID } from '../../../api/models/entities';
 import { ListEmptyState } from '../../../components/ui/ListEmptyState';
@@ -121,7 +123,7 @@ export function SuperAdminSellableFeaturesPage() {
               <thead className="bg-surface-50">
                 <tr>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase">Organisation</th>
-                  {SELLABLE_FEATURES_ORDER.map((featureKey) => (
+                  {SUPER_ADMIN_SELLABLE_FEATURES.map((featureKey) => (
                     <th key={featureKey} className="px-3 py-3 text-center text-xs font-semibold text-charcoal-500 uppercase">
                       {SELLABLE_FEATURE_LABELS[featureKey]}
                     </th>
@@ -132,7 +134,7 @@ export function SuperAdminSellableFeaturesPage() {
                 {rows.map(({ company, config }) => (
                   <tr key={company.id} className="hover:bg-surface-50">
                     <td className="px-5 py-3 text-sm font-medium text-charcoal">{company.name}</td>
-                    {SELLABLE_FEATURES_ORDER.map((featureKey) => {
+                    {SUPER_ADMIN_SELLABLE_FEATURES.map((featureKey) => {
                       const isLocked = config[featureKey].locked;
                       const isSaving = saving === `${company.id}:${featureKey}`;
                       return (

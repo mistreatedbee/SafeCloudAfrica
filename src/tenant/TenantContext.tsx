@@ -5,7 +5,7 @@ import { ensureInsforgeSession, InsforgeAuthBootstrapError } from '../api/insfor
 import type { Company, CompanyMembership, UUID } from '../api/models/entities';
 import { createActivityLog } from '../api/services/activityLogService';
 import type { CompanyRole, ModuleKey } from '../api/models/core';
-import { ensureMeAsSuperAdmin, isPlatformAdmin as checkPlatformAdmin } from '../api/services/platformAdminService';
+import { ensureMeAsSuperAdmin, isPlatformAdmin as checkPlatformAdmin, PlatformAdminCheckUnavailableError } from '../api/services/platformAdminService';
 import { getEnabledModuleKeys, ALL_MODULE_KEYS } from '../api/services/orgModulesService';
 import { ensureMyProfileRow } from '../api/services/profilesService';
 import { getSellableFeaturesConfig, type SellableFeaturesConfig } from '../api/services/sellableFeaturesService';
@@ -176,8 +176,21 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         await ensureInsforgeSession({ reason: 'tenant:refresh-fallback-is-platform-admin' });
         const dbIsAdmin = await checkPlatformAdmin(user.id as UUID);
         setIsPlatformAdmin(dbIsAdmin);
-      } catch {
-        setIsPlatformAdmin(false);
+      } catch (fallbackError) {
+        const msg = String((fallbackError as Error)?.message ?? fallbackError ?? '').toLowerCase();
+        const transient =
+          msg.includes('502') ||
+          msg.includes('503') ||
+          msg.includes('504') ||
+          msg.includes('timeout') ||
+          msg.includes('bad gateway') ||
+          msg.includes('service unavailable') ||
+          msg.includes('pgrst001') ||
+          msg.includes('pgrst002') ||
+          fallbackError instanceof PlatformAdminCheckUnavailableError;
+        if (!transient) {
+          setIsPlatformAdmin(false);
+        }
       }
     } finally {
       debugTenant('setIsTenantLoaded(true) (tenant refreshed)');
