@@ -103,8 +103,8 @@ type CompanyLike = {
   metadata?: Record<string, unknown> | null;
 };
 
-function normalizeFeatureState(value: unknown): SellableFeatureState {
-  if (!value || typeof value !== 'object') return { ...DEFAULT_FEATURE_STATE };
+function normalizeFeatureState(value: unknown, key: SellableFeatureKey): SellableFeatureState {
+  if (!value || typeof value !== 'object') return { ...DEFAULT_SELLABLE_FEATURES_CONFIG[key] };
   const input = value as Record<string, unknown>;
   return {
     enabled: input.enabled === false ? false : true,
@@ -118,13 +118,13 @@ export function getSellableFeaturesConfig(company: CompanyLike | null): Sellable
   const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
 
   return {
-    bbs: normalizeFeatureState(obj.bbs),
-    contractorsVisitors: normalizeFeatureState(obj.contractorsVisitors),
-    emergencyPreparedness: normalizeFeatureState(obj.emergencyPreparedness),
-    templateLibrary: normalizeFeatureState(obj.templateLibrary),
-    assetManagement: normalizeFeatureState(obj.assetManagement),
-    hazardousChemicals: normalizeFeatureState(obj.hazardousChemicals),
-    unknown: normalizeFeatureState(obj.unknown)
+    bbs: normalizeFeatureState(obj.bbs, 'bbs'),
+    contractorsVisitors: normalizeFeatureState(obj.contractorsVisitors, 'contractorsVisitors'),
+    emergencyPreparedness: normalizeFeatureState(obj.emergencyPreparedness, 'emergencyPreparedness'),
+    templateLibrary: normalizeFeatureState(obj.templateLibrary, 'templateLibrary'),
+    assetManagement: normalizeFeatureState(obj.assetManagement, 'assetManagement'),
+    hazardousChemicals: normalizeFeatureState(obj.hazardousChemicals, 'hazardousChemicals'),
+    unknown: normalizeFeatureState(obj.unknown, 'unknown')
   };
 }
 

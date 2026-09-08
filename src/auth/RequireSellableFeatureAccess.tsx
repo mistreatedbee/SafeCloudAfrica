@@ -1,5 +1,4 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
 import { useTenant } from '../tenant/TenantContext';
 import type { SellableFeatureKey } from '../api/services/sellableFeaturesService';
 import { SellableFeatureLockedPage } from '../pages/features/SellableFeatureLockedPage';

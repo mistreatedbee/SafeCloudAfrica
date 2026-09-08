@@ -2154,6 +2154,43 @@ export type TemplateLibraryItem = {
   created_at: string;
 };
 
+export type AssetStatus = 'active' | 'inactive' | 'under_maintenance' | 'disposed';
+export type Asset = {
+  id: UUID;
+  company_id: UUID;
+  asset_tag: string | null;
+  name: string;
+  category: string | null;
+  status: AssetStatus;
+  location: string | null;
+  assigned_user_id: UUID | null;
+  maintenance_due_date: string | null;
+  inspection_due_date: string | null;
+  last_maintenance_at: string | null;
+  notes: string | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HazardousChemicalSdsStatus = 'missing' | 'on_file' | 'expired';
+export type HazardousChemicalApprovalStatus = 'pending' | 'approved' | 'restricted';
+export type HazardousChemical = {
+  id: UUID;
+  company_id: UUID;
+  chemical_name: string;
+  cas_number: string | null;
+  storage_location: string | null;
+  quantity: string | null;
+  hazard_class: string | null;
+  sds_status: HazardousChemicalSdsStatus;
+  approval_status: HazardousChemicalApprovalStatus;
+  notes: string | null;
+  created_by_user_id: UUID;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ComplianceDomainKey = 'documents' | 'training' | 'risks' | 'incidents' | 'audits';
 
 export type ComplianceScoreRun = {
