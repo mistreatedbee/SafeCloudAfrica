@@ -90,6 +90,11 @@ function readCsrfTokenCookie(): string | null {
   return raw ? decodeURIComponent(raw) : null;
 }
 
+/** True when the browser likely has a prior session worth refreshing proactively. */
+export function hasLikelyStoredSession(): boolean {
+  return !!readStoredAccessToken() || !!readCsrfTokenCookie();
+}
+
 export function clearAuthStorage(): void {
   try {
     const localKeysToClear: string[] = [];

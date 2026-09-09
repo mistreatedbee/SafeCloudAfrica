@@ -2,6 +2,7 @@ import { insforge } from '../api/insforge/client';
 import { InsForgeError } from '@insforge/sdk';
 
 const TRANSIENT_STATUS_CODES = new Set([429, 502, 503, 504]);
+const TRANSIENT_RETRY_DELAYS_MS = [0, 1500, 3500];
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -32,8 +33,9 @@ export async function signInWithPasswordRetry(
   let lastResult: SignInResult | null = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    if (attempt > 0) {
-      await wait(500 * attempt);
+    const retryDelayMs = TRANSIENT_RETRY_DELAYS_MS[attempt] ?? TRANSIENT_RETRY_DELAYS_MS.at(-1) ?? 3500;
+    if (retryDelayMs > 0) {
+      await wait(retryDelayMs);
     }
 
     const result = await insforge.auth.signInWithPassword(input);

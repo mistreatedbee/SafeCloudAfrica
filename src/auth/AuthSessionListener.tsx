@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { hasLikelyStoredSession } from '../api/insforge/sessionState';
 import {
   startProactiveSessionRefresh,
   stopProactiveSessionRefresh
@@ -12,6 +13,8 @@ export const USER_SIGNED_OUT_KEY = 'sca_user_signed_out';
  */
 export function AuthSessionListener() {
   useEffect(() => {
+    // Anonymous visitors on /login should not trigger auth/refresh on every page load.
+    if (!hasLikelyStoredSession()) return;
     startProactiveSessionRefresh();
     return () => stopProactiveSessionRefresh();
   }, []);

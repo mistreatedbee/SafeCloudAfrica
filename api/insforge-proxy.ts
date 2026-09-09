@@ -57,12 +57,27 @@ async function fetchUpstreamWithRetry(
   init: RequestInit,
   options: { timeoutMs: number; retryOn5xx: boolean }
 ): Promise<Response> {
-  let response = await fetchUpstream(url, init, options.timeoutMs);
-  if (options.retryOn5xx && response.status >= 500) {
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    response = await fetchUpstream(url, init, options.timeoutMs);
+  const retryDelaysMs = options.retryOn5xx ? [0, 500, 1500] : [0];
+  let lastResponse: Response | null = null;
+  let lastError: unknown = null;
+
+  for (const delayMs of retryDelaysMs) {
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    try {
+      const response = await fetchUpstream(url, init, options.timeoutMs);
+      lastResponse = response;
+      if (!options.retryOn5xx || response.status < 500) {
+        return response;
+      }
+    } catch (error) {
+      lastError = error;
+    }
   }
-  return response;
+
+  if (lastResponse) return lastResponse;
+  throw lastError ?? new Error('Upstream request failed');
 }
 
 export const config = {
