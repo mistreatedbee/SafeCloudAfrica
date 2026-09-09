@@ -6,6 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const startProactiveSessionRefreshMock = vi.fn();
 const stopProactiveSessionRefreshMock = vi.fn();
+const hasLikelyStoredSessionMock = vi.fn(() => true);
+
+vi.mock('../api/insforge/sessionState', () => ({
+  hasLikelyStoredSession: () => hasLikelyStoredSessionMock()
+}));
 
 vi.mock('../api/insforge/ensureSession', () => ({
   startProactiveSessionRefresh: () => startProactiveSessionRefreshMock(),
@@ -29,6 +34,8 @@ describe('AuthSessionListener', () => {
     root = createRoot(container);
     startProactiveSessionRefreshMock.mockReset();
     stopProactiveSessionRefreshMock.mockReset();
+    hasLikelyStoredSessionMock.mockReset();
+    hasLikelyStoredSessionMock.mockReturnValue(true);
 
     await act(async () => {
       root.render(<AuthSessionListener />);
@@ -46,6 +53,19 @@ describe('AuthSessionListener', () => {
 
   it('starts proactive session refresh on mount', () => {
     expect(startProactiveSessionRefreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips proactive refresh when no stored session exists', async () => {
+    hasLikelyStoredSessionMock.mockReturnValue(false);
+    startProactiveSessionRefreshMock.mockClear();
+    stopProactiveSessionRefreshMock.mockClear();
+
+    await act(async () => {
+      root.render(<AuthSessionListener />);
+      await flushAsyncWork();
+    });
+
+    expect(startProactiveSessionRefreshMock).not.toHaveBeenCalled();
   });
 
   it('does not render a reconnect banner', () => {

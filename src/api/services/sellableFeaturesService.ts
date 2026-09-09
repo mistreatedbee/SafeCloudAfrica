@@ -146,6 +146,33 @@ export function mergeSellableFeaturesConfig(
   return next;
 }
 
+/** Patch one feature's lock flag inside company metadata (client-side optimistic updates). */
+export function patchSellableFeatureLockInMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+  featureKey: SellableFeatureKey,
+  locked: boolean
+): Record<string, unknown> {
+  const base = (metadata && typeof metadata === 'object' ? metadata : {}) as Record<string, unknown>;
+  const currentRaw = base['sellable_features'];
+  const current =
+    currentRaw && typeof currentRaw === 'object' ? (currentRaw as Record<string, unknown>) : {};
+  const featureRaw = current[featureKey];
+  const feature =
+    featureRaw && typeof featureRaw === 'object'
+      ? (featureRaw as Record<string, unknown>)
+      : { enabled: true, locked: true };
+  return {
+    ...base,
+    sellable_features: {
+      ...current,
+      [featureKey]: {
+        enabled: feature.enabled === false ? false : true,
+        locked
+      }
+    }
+  };
+}
+
 export class SellableFeatureAccessError extends Error {
   readonly status = 403;
   readonly code: 'FEATURE_LOCKED' | 'FEATURE_DISABLED';

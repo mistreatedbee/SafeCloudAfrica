@@ -2,6 +2,12 @@ import { insforge } from '../insforge/client';
 import { getErrorMessage } from '../insforge/errors';
 import type { Company, LicenseKey } from '../models/entities';
 import type { OrgLicenseRow } from './licensesService';
+import {
+  patchSellableFeatureLockInMetadata,
+  type SellableFeatureKey
+} from './sellableFeaturesService';
+import { logPlatformAdminAction } from './platformAdminAuditService';
+import type { UUID } from '../models/entities';
 
 export type CompanyWithCount = Company & { user_count?: number };
 
@@ -179,4 +185,51 @@ export async function listPlatformOrgLicenses(): Promise<OrgLicenseRow[]> {
     .limit(200);
   if (fallbackError) throw new Error(getErrorMessage(fallbackError));
   return (fallback ?? []) as OrgLicenseRow[];
+}
+
+export async function setPlatformSellableFeatureLock(input: {
+  companyId: UUID;
+  featureKey: SellableFeatureKey;
+  locked: boolean;
+  actorUserId?: UUID | null;
+  /** Current metadata for REST fallback when RPC is not deployed yet. */
+  currentMetadata?: Record<string, unknown> | null;
+}): Promise<Record<string, unknown>> {
+  const { data, error } = await insforge.database.rpc('set_platform_sellable_feature_lock', {
+    p_company_id: input.companyId,
+    p_feature_key: input.featureKey,
+    p_locked: input.locked
+  });
+
+  if (!error && data && typeof data === 'object') {
+    const payload = data as { metadata?: Record<string, unknown> };
+    if (payload.metadata && typeof payload.metadata === 'object') {
+      return payload.metadata;
+    }
+  }
+
+  if (error && !isMissingRpcError(error)) {
+    throw new Error(getErrorMessage(error));
+  }
+
+  const nextMetadata = patchSellableFeatureLockInMetadata(
+    input.currentMetadata ?? null,
+    input.featureKey,
+    input.locked
+  );
+  const { error: updateError } = await insforge.database
+    .from('companies')
+    .update({ metadata: nextMetadata })
+    .eq('id', input.companyId);
+  if (updateError) throw new Error(getErrorMessage(updateError));
+
+  if (input.actorUserId) {
+    void logPlatformAdminAction(input.actorUserId, {
+      action: input.locked ? 'sellable_feature_locked' : 'sellable_feature_unlocked',
+      target_company_id: input.companyId,
+      details: { feature_key: input.featureKey, locked: input.locked }
+    });
+  }
+
+  return nextMetadata;
 }

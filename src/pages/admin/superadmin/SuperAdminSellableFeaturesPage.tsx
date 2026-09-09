@@ -1,24 +1,28 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { LockIcon } from 'lucide-react';
 import { useUser } from '@insforge/react';
-import { insforge } from '../../../api/insforge/client';
 import { useAsync } from '../../../api/hooks/useAsync';
-import { listPlatformCompaniesForAdminPicklist } from '../../../api/services/superAdminPlatformService';
+import {
+  listPlatformCompaniesForAdminPicklist,
+  setPlatformSellableFeatureLock,
+  type CompanyWithCount
+} from '../../../api/services/superAdminPlatformService';
 import {
   SELLABLE_FEATURES_ORDER,
   SELLABLE_FEATURE_LABELS,
   getSellableFeaturesConfig,
+  patchSellableFeatureLockInMetadata,
   type SellableFeatureKey,
 } from '../../../api/services/sellableFeaturesService';
-
-const SUPER_ADMIN_SELLABLE_FEATURES = SELLABLE_FEATURES_ORDER.filter((key) => key !== 'unknown');
-import { logPlatformAdminAction } from '../../../api/services/platformAdminAuditService';
 import type { Company, UUID } from '../../../api/models/entities';
 import { ListEmptyState } from '../../../components/ui/ListEmptyState';
 
+const SUPER_ADMIN_SELLABLE_FEATURES = SELLABLE_FEATURES_ORDER.filter((key) => key !== 'unknown');
+
 export function SuperAdminSellableFeaturesPage() {
   const { user } = useUser();
+  const [companies, setCompanies] = useState<CompanyWithCount[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [version, setVersion] = useState(0);
@@ -28,7 +32,10 @@ export function SuperAdminSellableFeaturesPage() {
     [version]
   );
 
-  const companies = data ?? [];
+  useEffect(() => {
+    if (data) setCompanies(data);
+  }, [data]);
+
   const rows = useMemo(
     () =>
       companies.map((company) => ({
@@ -40,45 +47,48 @@ export function SuperAdminSellableFeaturesPage() {
 
   const setFeatureLocked = async (company: Company, featureKey: SellableFeatureKey, locked: boolean) => {
     const companyId = company.id;
-    setSaving(`${companyId}:${featureKey}`);
+    const saveKey = `${companyId}:${featureKey}`;
+    const previousMetadata = (company.metadata as Record<string, unknown> | null) ?? null;
+
+    setSaving(saveKey);
     setMessage(null);
+    setCompanies((current) =>
+      current.map((row) =>
+        row.id === companyId
+          ? {
+              ...row,
+              metadata: patchSellableFeatureLockInMetadata(
+                row.metadata as Record<string, unknown> | null,
+                featureKey,
+                locked
+              )
+            }
+          : row
+      )
+    );
+
     try {
-      const metadata = (company.metadata as Record<string, unknown> | null) ?? {};
-      const currentRaw = metadata['sellable_features'];
-      const current = currentRaw && typeof currentRaw === 'object' ? (currentRaw as Record<string, unknown>) : {};
-      const featureRaw = current[featureKey];
-      const feature =
-        featureRaw && typeof featureRaw === 'object'
-          ? (featureRaw as Record<string, unknown>)
-          : { enabled: true, locked: true };
-      const next = {
-        ...metadata,
-        sellable_features: {
-          ...current,
-          [featureKey]: {
-            enabled: feature.enabled === false ? false : true,
-            locked,
-          },
-        },
-      };
+      const nextMetadata = await setPlatformSellableFeatureLock({
+        companyId: companyId as UUID,
+        featureKey,
+        locked,
+        actorUserId: user?.id ? (user.id as UUID) : null,
+        currentMetadata: previousMetadata
+      });
 
-      const { error } = await insforge.database.from('companies').update({ metadata: next }).eq('id', companyId);
-      if (error) throw error;
-
-      if (user?.id) {
-        await logPlatformAdminAction(user.id as UUID, {
-          action: locked ? 'sellable_feature_locked' : 'sellable_feature_unlocked',
-          target_company_id: companyId as UUID,
-          details: { feature_key: featureKey, locked },
-        });
-      }
-
+      setCompanies((current) =>
+        current.map((row) => (row.id === companyId ? { ...row, metadata: nextMetadata } : row))
+      );
       setMessage({
         type: 'success',
         text: `${SELLABLE_FEATURE_LABELS[featureKey]} ${locked ? 'locked' : 'unlocked'} for ${company.name}.`,
       });
-      setVersion((v) => v + 1);
     } catch (err) {
+      setCompanies((current) =>
+        current.map((row) =>
+          row.id === companyId ? { ...row, metadata: previousMetadata } : row
+        )
+      );
       setMessage({ type: 'error', text: String((err as Error)?.message ?? err) });
     } finally {
       setSaving(null);
@@ -94,6 +104,9 @@ export function SuperAdminSellableFeaturesPage() {
         <p className="text-sm text-charcoal-500 mt-1">
           Lock or unlock paid features per organisation. All changes are audited.
         </p>
+        <p className="text-xs text-charcoal-400 mt-2">
+          Amber = locked (tenant sees upgrade screen). Teal = unlocked (full access). View history under Platform Audit Logs.
+        </p>
       </div>
 
       {message && (
@@ -107,7 +120,9 @@ export function SuperAdminSellableFeaturesPage() {
       )}
 
       {error && <p className="text-sm text-critical">{String((error as Error)?.message)}</p>}
-      {loading && <p className="text-sm text-charcoal-500">Loading organisations...</p>}
+      {loading && companies.length === 0 && (
+        <p className="text-sm text-charcoal-500">Loading organisations...</p>
+      )}
 
       {!loading && rows.length > 0 && (
         <div className="bg-white rounded-xl border border-surface-300 shadow-card overflow-hidden">
