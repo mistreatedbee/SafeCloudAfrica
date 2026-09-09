@@ -8,7 +8,7 @@ import {
   SendIcon
 } from 'lucide-react';
 import { getErrorMessage } from '../../../api/insforge/errors';
-import { insforge } from '../../../api/insforge/client';
+import { listPlatformCompaniesForAdminPicklist } from '../../../api/services/superAdminPlatformService';
 import type { Company, UUID } from '../../../api/models/entities';
 import {
   assignSupportTicket,
@@ -63,7 +63,9 @@ export function SuperAdminSupportTicketsPage() {
       const [ticketRows, statRows, companyResult] = await Promise.all([
         listAllSupportTicketsForSuperAdmin(filters),
         getSupportDashboardStats(filters),
-        insforge.database.from('companies').select('id,name').order('name').limit(300)
+        listPlatformCompaniesForAdminPicklist().then((rows) =>
+          rows.map(({ id, name }) => ({ id, name }) as Company)
+        )
       ]);
       setTickets(ticketRows);
       setStats(statRows);

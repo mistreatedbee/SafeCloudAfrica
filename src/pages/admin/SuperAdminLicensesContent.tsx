@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { insforge } from '../../api/insforge/client';
 import type { Company, LicenseKey } from '../../api/models/entities';
 import type { UUID } from '../../api/models/entities';
 import {
-  listLicenses,
+  listPlatformCompaniesForAdminPicklist,
+  listPlatformLicenseKeys,
+  listPlatformOrgLicenses,
+  memberCountsFromCompanySummary
+} from '../../api/services/superAdminPlatformService';
+import {
   createLicense,
-  listLicenseKeys,
   createLicenseKey,
   revokeLicenseKey,
   remainingDays,
@@ -40,19 +43,12 @@ const PLAN_KEY_OPTIONS: { value: CreateLicenseKeyInput['plan_name']; label: stri
   { value: 'hr_only', label: 'HR-only' }
 ];
 
-async function fetchCompanies(): Promise<Company[]> {
-  const { data, error } = await insforge.database.from('companies').select('id, name').order('name').limit(500);
-  if (error) throw error;
-  return (data ?? []) as Company[];
-}
-
-async function fetchMemberCounts(): Promise<Record<string, number>> {
-  const { data } = await insforge.database.from('company_memberships').select('company_id');
-  const out: Record<string, number> = {};
-  (data ?? []).forEach((r: { company_id: string }) => {
-    out[r.company_id] = (out[r.company_id] ?? 0) + 1;
-  });
-  return out;
+async function fetchCompanyAdminData() {
+  const companies = await listPlatformCompaniesForAdminPicklist();
+  return {
+    companies: companies.map(({ id, name }) => ({ id, name }) as Company),
+    memberCounts: memberCountsFromCompanySummary(companies)
+  };
 }
 
 export function SuperAdminLicensesContent() {
@@ -75,7 +71,7 @@ export function SuperAdminLicensesContent() {
     issued_to: ''
   });
 
-  const { data: keysList, loading: keysLoading } = useAsync(listLicenseKeys, [created]);
+  const { data: keysList, loading: keysLoading } = useAsync(listPlatformLicenseKeys, [created]);
 
   const [form, setForm] = useState<{
     company_id: string;
@@ -91,13 +87,12 @@ export function SuperAdminLicensesContent() {
     start_date: new Date().toISOString().slice(0, 10)
   });
 
-  const { data: licenses, loading, error } = useAsync(listLicenses, [created]);
-  const { data: companies } = useAsync(fetchCompanies, []);
-  const { data: memberCounts } = useAsync(fetchMemberCounts, [created]);
+  const { data: licenses, loading, error } = useAsync(listPlatformOrgLicenses, [created]);
+  const { data: companyAdminData } = useAsync(fetchCompanyAdminData, [created]);
 
   const list = licenses ?? [];
-  const companyList = companies ?? [];
-  const counts = memberCounts ?? {};
+  const companyList = companyAdminData?.companies ?? [];
+  const counts = companyAdminData?.memberCounts ?? {};
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();

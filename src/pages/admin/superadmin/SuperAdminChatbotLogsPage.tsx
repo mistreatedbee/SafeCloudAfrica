@@ -10,7 +10,7 @@ import {
   SearchIcon
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { insforge } from '../../../api/insforge/client';
+import { listPlatformCompaniesForAdminPicklist } from '../../../api/services/superAdminPlatformService';
 import type { Company, UUID } from '../../../api/models/entities';
 import {
   isChatbotLogsSchemaMissingError,
@@ -64,7 +64,9 @@ export function SuperAdminChatbotLogsPage() {
     try {
       const [rows, companyResult] = await Promise.all([
         listChatbotConversationsForSuperAdmin(filters),
-        insforge.database.from('companies').select('id,name').order('name').limit(300)
+        listPlatformCompaniesForAdminPicklist().then((rows) =>
+          rows.map(({ id, name }) => ({ id, name }) as Company)
+        )
       ]);
       setConversations(rows);
       setStats(buildDashboardStats(rows));

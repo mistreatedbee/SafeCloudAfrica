@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { LockIcon } from 'lucide-react';
 import { useUser } from '@insforge/react';
-import { useAsync } from '../../../api/hooks/useAsync';
 import { insforge } from '../../../api/insforge/client';
+import { useAsync } from '../../../api/hooks/useAsync';
+import { listPlatformCompaniesForAdminPicklist } from '../../../api/services/superAdminPlatformService';
 import {
   SELLABLE_FEATURES_ORDER,
   SELLABLE_FEATURE_LABELS,
@@ -23,15 +24,7 @@ export function SuperAdminSellableFeaturesPage() {
   const [version, setVersion] = useState(0);
 
   const { data, loading, error } = useAsync(
-    async () => {
-      const { data, error } = await insforge.database
-        .from('companies')
-        .select('id, name, metadata')
-        .order('name')
-        .limit(300);
-      if (error) throw error;
-      return (data ?? []) as Company[];
-    },
+    () => listPlatformCompaniesForAdminPicklist(),
     [version]
   );
 

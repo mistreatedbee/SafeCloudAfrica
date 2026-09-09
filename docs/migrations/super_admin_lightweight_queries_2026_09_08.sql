@@ -100,3 +100,68 @@ grant execute on function public.ping_database() to anon;
 grant execute on function public.ping_database() to authenticated;
 
 NOTIFY pgrst, 'reload schema';
+
+create or replace function public.list_platform_license_keys()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_platform_admin() then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  return (
+    select coalesce(jsonb_agg(row_to_json(k)), '[]'::jsonb)
+    from (
+      select
+        id,
+        key,
+        plan_name,
+        billing_cycle_months,
+        seat_limit,
+        modules_enabled,
+        status,
+        issued_to,
+        expires_at,
+        created_by_super_admin_id,
+        created_at,
+        used_at,
+        used_by_organization_id
+      from public.license_keys
+      order by created_at desc
+      limit 200
+    ) k
+  );
+end;
+$$;
+
+grant execute on function public.list_platform_license_keys() to authenticated;
+
+create or replace function public.list_platform_org_licenses()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_platform_admin() then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  return (
+    select coalesce(jsonb_agg(row_to_json(l)), '[]'::jsonb)
+    from (
+      select *
+      from public.org_licenses
+      order by created_at desc
+      limit 200
+    ) l
+  );
+end;
+$$;
+
+grant execute on function public.list_platform_org_licenses() to authenticated;
+
+NOTIFY pgrst, 'reload schema';

@@ -1,6 +1,7 @@
 import { insforge } from '../insforge/client';
 import { getErrorMessage } from '../insforge/errors';
-import type { Company } from '../models/entities';
+import type { Company, LicenseKey } from '../models/entities';
+import type { OrgLicenseRow } from './licensesService';
 
 export type CompanyWithCount = Company & { user_count?: number };
 
@@ -13,17 +14,21 @@ export type PlatformOverviewStats = {
 
 const COMPANY_LIST_COLUMNS = 'id,name,code,license_type,employee_limit,metadata,status,created_at';
 
-function normalizeRpcCompanyRows(data: unknown): CompanyWithCount[] | null {
-  if (Array.isArray(data)) return data as CompanyWithCount[];
+function normalizeRpcRows<T>(data: unknown): T[] | null {
+  if (Array.isArray(data)) return data as T[];
   if (typeof data === 'string') {
     try {
       const parsed = JSON.parse(data) as unknown;
-      return Array.isArray(parsed) ? (parsed as CompanyWithCount[]) : null;
+      return Array.isArray(parsed) ? (parsed as T[]) : null;
     } catch {
       return null;
     }
   }
   return null;
+}
+
+function normalizeRpcCompanyRows(data: unknown): CompanyWithCount[] | null {
+  return normalizeRpcRows<CompanyWithCount>(data);
 }
 
 function isMissingRpcError(error: unknown): boolean {
@@ -117,4 +122,61 @@ export async function getPlatformOverviewStats(): Promise<PlatformOverviewStats>
     activeLicenses,
     expiringSoon
   };
+}
+
+/** Company picklists for Super Admin pages — prefer RPC over PostgREST table scans. */
+export async function listPlatformCompaniesForAdminPicklist(): Promise<CompanyWithCount[]> {
+  const rows = await listPlatformCompaniesSummary();
+  return [...rows].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function memberCountsFromCompanySummary(rows: CompanyWithCount[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  rows.forEach((row) => {
+    out[row.id] = row.user_count ?? 0;
+  });
+  return out;
+}
+
+export async function listPlatformLicenseKeys(): Promise<LicenseKey[]> {
+  const { data, error } = await insforge.database.rpc('list_platform_license_keys');
+  const rows = normalizeRpcRows<LicenseKey>(data);
+  if (!error && rows) {
+    return rows.map((row) => ({
+      ...row,
+      modules_enabled: Array.isArray(row.modules_enabled)
+        ? row.modules_enabled
+        : row.modules_enabled && typeof row.modules_enabled === 'object'
+          ? Object.keys(row.modules_enabled as Record<string, unknown>)
+          : []
+    }));
+  }
+  if (error && !isMissingRpcError(error)) {
+    throw new Error(getErrorMessage(error));
+  }
+
+  const { data: fallback, error: fallbackError } = await insforge.database
+    .from('license_keys')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (fallbackError) throw new Error(getErrorMessage(fallbackError));
+  return (fallback ?? []) as LicenseKey[];
+}
+
+export async function listPlatformOrgLicenses(): Promise<OrgLicenseRow[]> {
+  const { data, error } = await insforge.database.rpc('list_platform_org_licenses');
+  const rows = normalizeRpcRows<OrgLicenseRow>(data);
+  if (!error && rows) return rows;
+  if (error && !isMissingRpcError(error)) {
+    throw new Error(getErrorMessage(error));
+  }
+
+  const { data: fallback, error: fallbackError } = await insforge.database
+    .from('org_licenses')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (fallbackError) throw new Error(getErrorMessage(fallbackError));
+  return (fallback ?? []) as OrgLicenseRow[];
 }

@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ToggleLeftIcon } from 'lucide-react';
 import { useUser } from '@insforge/react';
-import { useAsync } from '../../../api/hooks/useAsync';
 import { insforge } from '../../../api/insforge/client';
+import { useAsync } from '../../../api/hooks/useAsync';
+import { listPlatformCompaniesForAdminPicklist } from '../../../api/services/superAdminPlatformService';
 import { logPlatformAdminAction } from '../../../api/services/platformAdminAuditService';
 import type { Company } from '../../../api/models/entities';
 import type { ModuleKey } from '../../../api/models/core';
@@ -36,11 +37,7 @@ export function SuperAdminModuleControlPage() {
   const [version, setVersion] = useState(0);
 
   const { data: companies, loading, error } = useAsync(
-    async () => {
-      const { data, error: e } = await insforge.database.from('companies').select('id, name, metadata').order('name').limit(300);
-      if (e) throw e;
-      return (data ?? []) as Company[];
-    },
+    () => listPlatformCompaniesForAdminPicklist(),
     [version]
   );
 
