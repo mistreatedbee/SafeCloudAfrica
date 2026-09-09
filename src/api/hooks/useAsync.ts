@@ -110,7 +110,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
         const unavailable = isBackendUnavailableError(error);
         const authFailure = isAuthFailureError(error);
         // Back off auto-refresh for a short period when the backend is unavailable to avoid spamming requests.
-        if (unavailable) backendUnavailableUntilRef.current = Date.now() + 15_000;
+        if (unavailable) backendUnavailableUntilRef.current = Date.now() + 60_000;
         if (authFailure) {
           authFailureRef.current = true;
           if (!authFailureEmittedRef.current) {
@@ -143,7 +143,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
       if (authFailureRef.current) return;
       const now = Date.now();
       if (now < backendUnavailableUntilRef.current) return;
-      if (now - lastRefreshAtRef.current < 1500) return;
+      if (now - lastRefreshAtRef.current < 5000) return;
       retry();
     };
 

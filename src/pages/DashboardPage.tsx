@@ -83,9 +83,13 @@ export function DashboardPage() {
   const firstName = String(fullName || user?.email || 'there').split(' ')[0];
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Lightweight real-time refresh (poll)
+  // Lightweight dashboard refresh (poll only while tab is visible).
   useEffect(() => {
-    const t = window.setInterval(() => setRefreshKey((k) => k + 1), 30_000);
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      setRefreshKey((k) => k + 1);
+    };
+    const t = window.setInterval(tick, 60_000);
     return () => window.clearInterval(t);
   }, []);
 

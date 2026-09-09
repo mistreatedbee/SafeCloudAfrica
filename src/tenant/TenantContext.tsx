@@ -92,6 +92,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const lastTenantRefreshAtRef = useRef(0);
   /** Avoid duplicate session.workspace.active rows on periodic refresh; key = userId:companyId. */
   const workspaceSessionLoggedRef = useRef<string | null>(null);
+  const ensureSuperAdminBootstrappedRef = useRef(false);
 
   const refreshTenant = useCallback(async () => {
     if (!isLoaded) return;
@@ -108,6 +109,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       storeActiveCompanyId(null);
       setIsPlatformAdmin(false);
       workspaceSessionLoggedRef.current = null;
+      ensureSuperAdminBootstrappedRef.current = false;
       debugTenant('setIsTenantLoaded(true) (no user)');
       setIsTenantLoaded(true);
       didInitialTenantLoadRef.current = true;
@@ -124,9 +126,12 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     try {
       await insforgeReady;
       const session = await ensureInsforgeSession({ reason: 'tenant:refresh' });
-      const ensureSaResult = await ensureMeAsSuperAdmin();
-      if (ensureSaResult.status === 'auth_failed') {
-        throw ensureSaResult.error;
+      if (!ensureSuperAdminBootstrappedRef.current) {
+        ensureSuperAdminBootstrappedRef.current = true;
+        const ensureSaResult = await ensureMeAsSuperAdmin();
+        if (ensureSaResult.status === 'auth_failed') {
+          throw ensureSaResult.error;
+        }
       }
       const rows = await fetchMemberships(user.id as UUID);
       setMemberships(rows);
@@ -215,11 +220,9 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       if (document.visibilityState === 'visible') void refreshTenant();
     };
     window.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('focus', onVisibility);
     return () => {
       window.clearInterval(interval);
       window.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('focus', onVisibility);
     };
   }, [refreshTenant, user?.id]);
 

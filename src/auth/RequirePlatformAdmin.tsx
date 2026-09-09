@@ -20,9 +20,9 @@ export function RequirePlatformAdmin({ children }: { children: React.ReactElemen
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user?.id || isPlatformAdmin) return;
-    if (recheckResult !== null && !backendUnavailable) return;
+    // Stop after first result, or after a backend-unavailable outcome (retry only via recheckAttempt).
+    if (recheckResult !== null || backendUnavailable) return;
     let cancelled = false;
-    setBackendUnavailable(null);
     checkPlatformAdmin(user.id as UUID)
       .then((ok) => {
         if (!cancelled) {
@@ -46,7 +46,7 @@ export function RequirePlatformAdmin({ children }: { children: React.ReactElemen
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, user?.id, isPlatformAdmin, recheckResult, refreshTenant, backendUnavailable, recheckAttempt]);
+  }, [isLoaded, isSignedIn, user?.id, isPlatformAdmin, recheckResult, refreshTenant, recheckAttempt]);
 
   if (!isLoaded) return null;
   if (!isSignedIn || authFailed) return <Navigate to="/login" replace />;

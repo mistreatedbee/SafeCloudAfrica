@@ -150,7 +150,7 @@ describe('TenantProvider', () => {
     expect(callOrder).toContain('ensureMeAsSuperAdmin');
   });
 
-  it('rehydrates auth again before background refresh queries', async () => {
+  it('rehydrates auth again before background refresh queries without repeating super-admin bootstrap', async () => {
     await act(async () => {
       root.render(
         <TenantProvider>
@@ -161,14 +161,15 @@ describe('TenantProvider', () => {
     });
 
     callOrder.length = 0;
+    ensureMeAsSuperAdminMock.mockClear();
 
     await act(async () => {
-      vi.setSystemTime(new Date('2026-04-22T08:00:06.000Z'));
-      window.dispatchEvent(new Event('focus'));
+      vi.advanceTimersByTime(61_000);
       await flushAsyncWork();
     });
 
     expect(callOrder[0]).toBe('ensureSession');
     expect(callOrder).toContain('from');
+    expect(ensureMeAsSuperAdminMock).not.toHaveBeenCalled();
   });
 });

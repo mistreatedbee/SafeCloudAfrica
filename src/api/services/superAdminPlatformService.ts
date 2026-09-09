@@ -11,22 +11,36 @@ export type PlatformOverviewStats = {
   expiringSoon: number;
 };
 
-const COMPANY_LIST_COLUMNS =
-  'id,name,code,license_type,employee_limit,modules_enabled,metadata,status,subscription_status,created_at';
+const COMPANY_LIST_COLUMNS = 'id,name,code,license_type,employee_limit,metadata,status,created_at';
+
+function normalizeRpcCompanyRows(data: unknown): CompanyWithCount[] | null {
+  if (Array.isArray(data)) return data as CompanyWithCount[];
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data) as unknown;
+      return Array.isArray(parsed) ? (parsed as CompanyWithCount[]) : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 function isMissingRpcError(error: unknown): boolean {
   const msg = getErrorMessage(error).toLowerCase();
   return (
     msg.includes('does not exist') ||
     msg.includes('could not find the function') ||
-    msg.includes('schema cache')
+    msg.includes('schema cache') ||
+    (msg.includes('column') && msg.includes('does not exist'))
   );
 }
 
 export async function listPlatformCompaniesSummary(): Promise<CompanyWithCount[]> {
   const { data, error } = await insforge.database.rpc('list_platform_companies_summary');
-  if (!error && Array.isArray(data)) {
-    return data as CompanyWithCount[];
+  const rows = normalizeRpcCompanyRows(data);
+  if (!error && rows) {
+    return rows;
   }
   if (error && !isMissingRpcError(error)) {
     throw new Error(getErrorMessage(error));

@@ -21,10 +21,8 @@ begin
         c.code,
         c.license_type,
         c.employee_limit,
-        c.modules_enabled,
         c.metadata,
         c.status,
-        c.subscription_status,
         c.created_at,
         coalesce(mc.member_count, 0)::int as user_count
       from public.companies c
