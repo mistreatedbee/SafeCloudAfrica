@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { XIcon } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { XIcon, PaperclipIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import type { PjoObservation, PjoResponse, UUID } from '../../api/models/entities';
@@ -8,6 +8,8 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { createQualityNcr, closeQualityNcr } from '../../api/services/qualityNcrsService';
 import { createCorrectiveAction } from '../../api/services/correctiveActionsService';
 import { useNavigate } from 'react-router-dom';
+import { uploadFile } from '../../api/services/storageService';
+import { EVIDENCE_BUCKET } from '../evidence/EvidenceModal';
 
 function severityForResponse(r: { yes_no: boolean | null; rating: number | null }): 'low' | 'medium' | 'high' | 'critical' {
   if (r.rating === 1 || r.yes_no === false) return 'high';
@@ -294,6 +296,7 @@ export function PjoDetailModal(props: {
                       <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Corrective action</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Responsible</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Sign-off</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Evidence</th>
                       <th className="px-5 py-3 text-right text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Save</th>
                     </tr>
                   </thead>
@@ -302,6 +305,8 @@ export function PjoDetailModal(props: {
                       <PjoResponseRow
                         key={r.id}
                         row={r}
+                        companyId={props.companyId}
+                        pjoId={localPjo.id}
                         canEdit={canManage}
                         canSignOff={canSignOff}
                         saving={savingId === r.id}
@@ -321,12 +326,15 @@ export function PjoDetailModal(props: {
 
 function PjoResponseRow(props: {
   row: PjoResponse;
+  companyId: UUID;
+  pjoId: UUID;
   canEdit: boolean;
   canSignOff: boolean;
   saving: boolean;
   onSave: (patch: Partial<PjoResponse>) => void;
 }) {
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [yesNo, setYesNo] = useState<string>(props.row.yes_no === null ? '' : props.row.yes_no ? 'yes' : 'no');
   const [rating, setRating] = useState<string>(props.row.rating === null ? '' : String(props.row.rating));
   const [deviation, setDeviation] = useState(props.row.deviation ?? '');
@@ -336,6 +344,7 @@ function PjoResponseRow(props: {
   const [implemented, setImplemented] = useState<boolean>(props.row.corrective_action_implemented);
   const [implementedAt, setImplementedAt] = useState<string>(props.row.implemented_at ?? '');
   const [closed, setClosed] = useState(Boolean(props.row.closed));
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
 
   const hasNcr = Boolean(props.row.ncr_id);
 
@@ -463,6 +472,48 @@ function PjoResponseRow(props: {
       </td>
       <td className="px-5 py-4 text-xs text-charcoal-500">
         {props.row.manager_signoff_at ? 'Signed' : '—'}
+      </td>
+      <td className="px-5 py-4">
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            setUploadingEvidence(true);
+            try {
+              const key = `${props.companyId}/pjo_response/${props.pjoId}/${props.row.id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
+              await uploadFile(EVIDENCE_BUCKET, file, { key });
+              props.onSave({
+                evidence_bucket: EVIDENCE_BUCKET,
+                evidence_key: key,
+                evidence_file_name: file.name
+              });
+            } finally {
+              setUploadingEvidence(false);
+              e.target.value = '';
+            }
+          }}
+        />
+        {props.row.evidence_file_name ? (
+          <span className="text-xs text-charcoal-600 truncate max-w-[100px] inline-block" title={props.row.evidence_file_name}>
+            {props.row.evidence_file_name}
+          </span>
+        ) : (
+          <span className="text-xs text-charcoal-400">—</span>
+        )}
+        {props.canEdit && (
+          <button
+            type="button"
+            disabled={uploadingEvidence}
+            onClick={() => fileInputRef.current?.click()}
+            className="ml-2 inline-flex items-center gap-1 text-xs text-teal hover:underline disabled:opacity-50"
+          >
+            <PaperclipIcon className="w-3 h-3" />
+            {uploadingEvidence ? 'Uploading…' : props.row.evidence_file_name ? 'Replace' : 'Add'}
+          </button>
+        )}
       </td>
       <td className="px-5 py-4 text-right">
         <div className="flex flex-col items-end gap-2">

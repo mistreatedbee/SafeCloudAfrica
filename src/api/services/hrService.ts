@@ -291,6 +291,17 @@ export async function listHrEmployees(companyId: UUID): Promise<HrEmployee[]> {
   return listTable<HrEmployee>('hr_employees', companyId);
 }
 
+/** Distinct, non-empty job titles across the company's HR employees, sorted alphabetically. */
+export async function listDistinctJobTitles(companyId: UUID): Promise<string[]> {
+  const employees = await listHrEmployees(companyId);
+  const titles = new Set<string>();
+  for (const e of employees) {
+    const title = (e.job_title ?? '').trim();
+    if (title) titles.add(title);
+  }
+  return Array.from(titles).sort((a, b) => a.localeCompare(b));
+}
+
 export async function searchHrEmployees(
   companyId: UUID,
   input?: {

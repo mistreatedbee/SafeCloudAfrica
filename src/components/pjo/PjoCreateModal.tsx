@@ -8,6 +8,7 @@ import { createPjo, listPjoTemplates } from '../../api/services/pjoService';
 import { useAsync } from '../../api/hooks/useAsync';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 
 const REASONS = [
   'Effectiveness of training',
@@ -27,7 +28,13 @@ export function PjoCreateModal(props: {
 }) {
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `pjo-create:${props.companyId}:${props.actorUserId}`;
+  const [employeeId, setEmployeeId] = useState<UUID | ''>('');
   const [employeeName, setEmployeeName] = useState('');
+  const [employeeNumber, setEmployeeNumber] = useState<string | null>(null);
+  const [jobTitle, setJobTitle] = useState<string | null>(null);
+  const [departmentId, setDepartmentId] = useState<UUID | null>(null);
+  const [observerId, setObserverId] = useState<UUID | ''>('');
+  const [observerName, setObserverName] = useState('');
   const [reasonPreset, setReasonPreset] = useState<(typeof REASONS)[number]>('Effectiveness of training');
   const [reasonOther, setReasonOther] = useState('');
   const [department, setDepartment] = useState('');
@@ -81,7 +88,13 @@ export function PjoCreateModal(props: {
   );
 
   function resetForm() {
+    setEmployeeId('');
     setEmployeeName('');
+    setEmployeeNumber(null);
+    setJobTitle(null);
+    setDepartmentId(null);
+    setObserverId('');
+    setObserverName('');
     setReasonPreset('Effectiveness of training');
     setReasonOther('');
     setDepartment('');
@@ -150,6 +163,12 @@ export function PjoCreateModal(props: {
       await createPjo({
         companyId: props.companyId,
         employeeName: employeeName.trim(),
+        employeeHrEmployeeId: employeeId || null,
+        employeeNumber,
+        jobTitle,
+        departmentId,
+        observerHrEmployeeId: observerId || null,
+        observerName: observerName || null,
         conductedByUserId: props.actorUserId,
         reason,
         department: department.trim() || null,
@@ -202,12 +221,27 @@ export function PjoCreateModal(props: {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Employee name *</label>
+              <HrEmployeeSelect
+                companyId={props.companyId}
+                value={employeeId}
+                valueField="id"
+                includeUnlinked
+                label="Employee *"
+                onChange={(selected, meta) => {
+                  setEmployeeId(selected);
+                  setEmployeeName(meta.nameSnapshot);
+                  setEmployeeNumber(meta.employeeNumber ?? null);
+                }}
+                onEmployeeChange={(employee) => {
+                  setJobTitle(employee?.job_title ?? null);
+                  setDepartmentId(employee?.department_id ?? null);
+                }}
+              />
               <input
                 value={employeeName}
                 onChange={(e) => setEmployeeName(e.target.value)}
-                placeholder="e.g. Sipho Dlamini"
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                placeholder="Employee name (auto-filled, editable)"
+                className="mt-2 w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
               />
             </div>
             <div>
@@ -264,6 +298,17 @@ export function PjoCreateModal(props: {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <HrEmployeeSelect
+                companyId={props.companyId}
+                value={observerId}
+                label="Observer / Supervisor (optional)"
+                onChange={(selected, meta) => {
+                  setObserverId(selected);
+                  setObserverName(meta.nameSnapshot);
+                }}
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">
                 Checklist template (optional)

@@ -909,6 +909,7 @@ export type PjoChecklistTemplate = {
   site_id?: UUID | null;
   department_id?: UUID | null;
   is_active: boolean;
+  is_default?: boolean;
   created_by_user_id: UUID;
   updated_by_user_id?: UUID | null;
   created_at: string;
@@ -924,6 +925,9 @@ export type PjoChecklistItem = {
   category: string | null;
   default_rating_weight: number | null;
   is_active: boolean;
+  answer_type?: 'yes_no' | 'text' | 'rating';
+  evidence_required?: boolean;
+  allocated_score?: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -934,6 +938,12 @@ export type PjoObservation = {
   module: 'hr';
   employee_user_id: UUID | null;
   employee_name: string;
+  employee_hr_employee_id?: UUID | null;
+  employee_number?: string | null;
+  job_title?: string | null;
+  department_id?: UUID | null;
+  observer_hr_employee_id?: UUID | null;
+  observer_name?: string | null;
   conducted_by_user_id: UUID;
   reason: string;
   department: string | null;
@@ -973,6 +983,9 @@ export type PjoResponse = {
    template_id?: UUID | null;
    template_item_id?: UUID | null;
    category?: string | null;
+  evidence_bucket?: string | null;
+  evidence_key?: string | null;
+  evidence_file_name?: string | null;
   created_at: string;
   updated_at: string;
 };

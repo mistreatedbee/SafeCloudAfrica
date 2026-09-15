@@ -64,6 +64,8 @@ function isNonCompliantResponse(r: PjoResponse): boolean {
 export type ListPjosInput = {
   companyId: UUID;
   employeeUserId?: UUID;
+  employeeHrEmployeeId?: UUID;
+  jobTitle?: string;
   department?: string;
   site?: string;
   status?: PjoObservation['status'];
@@ -84,17 +86,187 @@ export async function listPjoTemplates(companyId: UUID): Promise<PjoChecklistTem
   return (data ?? []) as PjoChecklistTemplate[];
 }
 
+/**
+ * The single company-wide "default" template that customizable questions
+ * are managed against and that new PJOs use when no template is explicitly
+ * picked. Created and seeded from PJO_QUESTIONS on first use.
+ */
+export async function getOrCreateDefaultPjoTemplate(input: {
+  companyId: UUID;
+  actorUserId: UUID;
+}): Promise<PjoChecklistTemplate> {
+  const { data: existing, error: existingError } = await insforge.database
+    .from('pjo_checklist_templates')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('is_default', true)
+    .maybeSingle();
+  if (existingError) throw new Error(getErrorMessage(existingError));
+  if (existing) return existing as PjoChecklistTemplate;
+
+  const { data: created, error: createError } = await insforge.database
+    .from('pjo_checklist_templates')
+    .insert({
+      company_id: input.companyId,
+      module: 'hr',
+      name: 'Default PJO Checklist',
+      description: 'Company-wide customizable PJO question list.',
+      scope: 'global',
+      is_active: true,
+      is_default: true,
+      created_by_user_id: input.actorUserId
+    })
+    .select('*')
+    .single();
+  if (createError) throw new Error(getErrorMessage(createError));
+  if (!created) throw new Error('Failed to create default PJO template.');
+
+  const template = created as PjoChecklistTemplate;
+
+  const seedRows = PJO_QUESTIONS.map((text, idx) => ({
+    company_id: input.companyId,
+    template_id: template.id,
+    question_no: idx + 1,
+    question_text: text,
+    is_active: true,
+    answer_type: 'yes_no'
+  }));
+  const { error: seedError } = await insforge.database.from('pjo_checklist_items').insert(seedRows);
+  if (seedError) throw new Error(getErrorMessage(seedError));
+
+  return template;
+}
+
+export async function listPjoChecklistItems(companyId: UUID, templateId: UUID): Promise<PjoChecklistItem[]> {
+  const { data, error } = await insforge.database
+    .from('pjo_checklist_items')
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('template_id', templateId)
+    .order('question_no', { ascending: true });
+  if (error) throw new Error(getErrorMessage(error));
+  return (data ?? []) as PjoChecklistItem[];
+}
+
+export async function createPjoChecklistItem(input: {
+  companyId: UUID;
+  templateId: UUID;
+  questionText: string;
+  category?: string | null;
+}): Promise<PjoChecklistItem> {
+  const { data: existingItems, error: existingError } = await insforge.database
+    .from('pjo_checklist_items')
+    .select('question_no')
+    .eq('company_id', input.companyId)
+    .eq('template_id', input.templateId)
+    .order('question_no', { ascending: false })
+    .limit(1);
+  if (existingError) throw new Error(getErrorMessage(existingError));
+  const nextOrder = ((existingItems ?? [])[0]?.question_no ?? 0) + 1;
+
+  const { data, error } = await insforge.database
+    .from('pjo_checklist_items')
+    .insert({
+      company_id: input.companyId,
+      template_id: input.templateId,
+      question_no: nextOrder,
+      question_text: input.questionText,
+      category: input.category ?? null,
+      is_active: true,
+      answer_type: 'yes_no'
+    })
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to create PJO question.');
+  return data as PjoChecklistItem;
+}
+
+export async function updatePjoChecklistItem(input: {
+  companyId: UUID;
+  itemId: UUID;
+  patch: Partial<Pick<PjoChecklistItem, 'question_text' | 'category' | 'is_active' | 'question_no'>>;
+}): Promise<PjoChecklistItem> {
+  const { data, error } = await insforge.database
+    .from('pjo_checklist_items')
+    .update({ ...input.patch, updated_at: new Date().toISOString() })
+    .eq('company_id', input.companyId)
+    .eq('id', input.itemId)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update PJO question.');
+  return data as PjoChecklistItem;
+}
+
+/** Deletes a question if it has no existing answers, otherwise deactivates it. */
+export async function deleteOrDeactivatePjoChecklistItem(input: {
+  companyId: UUID;
+  itemId: UUID;
+}): Promise<{ deleted: boolean }> {
+  const { data: answered, error: answeredError } = await insforge.database
+    .from('pjo_responses')
+    .select('id')
+    .eq('company_id', input.companyId)
+    .eq('template_item_id', input.itemId)
+    .or('yes_no.not.is.null,rating.not.is.null,deviation.not.is.null')
+    .limit(1);
+  if (answeredError) throw new Error(getErrorMessage(answeredError));
+
+  if ((answered ?? []).length > 0) {
+    const { error } = await insforge.database
+      .from('pjo_checklist_items')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('company_id', input.companyId)
+      .eq('id', input.itemId);
+    if (error) throw new Error(getErrorMessage(error));
+    return { deleted: false };
+  }
+
+  const { error } = await insforge.database
+    .from('pjo_checklist_items')
+    .delete()
+    .eq('company_id', input.companyId)
+    .eq('id', input.itemId);
+  if (error) throw new Error(getErrorMessage(error));
+  return { deleted: true };
+}
+
+export async function reorderPjoChecklistItems(companyId: UUID, orderedItemIds: UUID[]): Promise<void> {
+  for (let i = 0; i < orderedItemIds.length; i += 1) {
+    const { error } = await insforge.database
+      .from('pjo_checklist_items')
+      .update({ question_no: i + 1 })
+      .eq('company_id', companyId)
+      .eq('id', orderedItemIds[i]);
+    if (error) throw new Error(getErrorMessage(error));
+  }
+}
+
 export async function getEffectivePjoChecklist(input: {
   companyId: UUID;
   templateId?: UUID | null;
 }): Promise<PjoChecklistQuestion[]> {
-  // If a specific template is requested, try to use it first.
-  if (input.templateId) {
+  // Resolve which template to use: an explicitly requested one, or the
+  // company's default customizable template (created on first use).
+  let templateId = input.templateId ?? null;
+  if (!templateId) {
+    const { data: defaultTemplate, error: defaultError } = await insforge.database
+      .from('pjo_checklist_templates')
+      .select('id')
+      .eq('company_id', input.companyId)
+      .eq('is_default', true)
+      .maybeSingle();
+    if (defaultError) throw new Error(getErrorMessage(defaultError));
+    templateId = (defaultTemplate as { id: UUID } | null)?.id ?? null;
+  }
+
+  if (templateId) {
     const { data, error } = await insforge.database
       .from('pjo_checklist_items')
       .select('*')
       .eq('company_id', input.companyId)
-      .eq('template_id', input.templateId)
+      .eq('template_id', templateId)
       .eq('is_active', true)
       .order('question_no', { ascending: true });
 
@@ -112,7 +284,9 @@ export async function getEffectivePjoChecklist(input: {
     }
   }
 
-  // Fallback: built-in fixed checklist (31+ questions).
+  // Fallback: built-in fixed checklist (31+ questions) — used only when the
+  // company has no default template yet (e.g. it hasn't been created via
+  // getOrCreateDefaultPjoTemplate) and no explicit template was picked.
   return PJO_QUESTIONS.map((q, idx) => ({
     questionNo: idx + 1,
     questionText: q,
@@ -128,10 +302,14 @@ export async function listPjos(input: ListPjosInput): Promise<PjoObservation[]> 
     .select('*')
     .eq('company_id', input.companyId);
 
-  const q1 = input.employeeUserId
-    ? base.eq('employee_user_id', input.employeeUserId)
+  const q0 = input.employeeHrEmployeeId
+    ? base.eq('employee_hr_employee_id', input.employeeHrEmployeeId)
     : base;
-  const q2 = input.department ? q1.ilike('department', `%${input.department}%`) : q1;
+  const q1 = input.employeeUserId
+    ? q0.eq('employee_user_id', input.employeeUserId)
+    : q0;
+  const qJob = input.jobTitle ? q1.eq('job_title', input.jobTitle) : q1;
+  const q2 = input.department ? qJob.ilike('department', `%${input.department}%`) : qJob;
   const q3 = input.site ? q2.ilike('site', `%${input.site}%`) : q2;
   const q4 = input.status ? q3.eq('status', input.status) : q3;
   const q5 = input.fromDate
@@ -152,6 +330,12 @@ export async function createPjo(input: {
   companyId: UUID;
   employeeUserId?: UUID | null;
   employeeName: string;
+  employeeHrEmployeeId?: UUID | null;
+  employeeNumber?: string | null;
+  jobTitle?: string | null;
+  departmentId?: UUID | null;
+  observerHrEmployeeId?: UUID | null;
+  observerName?: string | null;
   conductedByUserId: UUID;
   reason: string;
   department?: string | null;
@@ -162,25 +346,46 @@ export async function createPjo(input: {
   createdByUserId: UUID;
   templateId?: UUID | null;
 }): Promise<PjoObservation> {
-  const { data, error } = await insforge.database
-    .from('pjo_observations')
-    .insert({
-      company_id: input.companyId,
-      module: 'hr',
-      employee_user_id: input.employeeUserId ?? null,
-      employee_name: input.employeeName,
-      conducted_by_user_id: input.conductedByUserId,
-      reason: input.reason,
-      department: input.department ?? null,
-      site: input.site ?? null,
-      job_observed: input.jobObserved,
-      observed_at: input.observedAt,
-      next_observation_at: input.nextObservationAt ?? null,
-      status: 'open',
-      created_by_user_id: input.createdByUserId
-    })
-    .select('*')
-    .single();
+  const fullPayload: Record<string, unknown> = {
+    company_id: input.companyId,
+    module: 'hr',
+    employee_user_id: input.employeeUserId ?? null,
+    employee_name: input.employeeName,
+    employee_hr_employee_id: input.employeeHrEmployeeId ?? null,
+    employee_number: input.employeeNumber ?? null,
+    job_title: input.jobTitle ?? null,
+    department_id: input.departmentId ?? null,
+    observer_hr_employee_id: input.observerHrEmployeeId ?? null,
+    observer_name: input.observerName ?? null,
+    conducted_by_user_id: input.conductedByUserId,
+    reason: input.reason,
+    department: input.department ?? null,
+    site: input.site ?? null,
+    job_observed: input.jobObserved,
+    observed_at: input.observedAt,
+    next_observation_at: input.nextObservationAt ?? null,
+    status: 'open',
+    created_by_user_id: input.createdByUserId
+  };
+
+  let payload: Record<string, unknown> = { ...fullPayload };
+  let data: PjoObservation | null = null;
+  let error: { message?: string } | null = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await insforge.database.from('pjo_observations').insert(payload).select('*').single();
+    data = (result.data as PjoObservation | null) ?? null;
+    error = result.error;
+    if (!error) break;
+    const message = String(error.message ?? '').toLowerCase();
+    if (!message.includes('column')) throw new Error(getErrorMessage(error));
+    if (message.includes('employee_hr_employee_id')) delete payload.employee_hr_employee_id;
+    else if (message.includes('employee_number')) delete payload.employee_number;
+    else if (message.includes('job_title')) delete payload.job_title;
+    else if (message.includes('department_id')) delete payload.department_id;
+    else if (message.includes('observer_hr_employee_id')) delete payload.observer_hr_employee_id;
+    else if (message.includes('observer_name')) delete payload.observer_name;
+    else throw new Error(getErrorMessage(error));
+  }
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create PJO.');
 
@@ -362,6 +567,9 @@ export async function updatePjoResponse(input: {
       | 'closed_at'
       | 'closed_by_user_id'
       | 'ncr_id'
+      | 'evidence_bucket'
+      | 'evidence_key'
+      | 'evidence_file_name'
     >
   >;
 }): Promise<PjoResponse> {
