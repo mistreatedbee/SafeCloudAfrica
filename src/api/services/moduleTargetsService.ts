@@ -4,6 +4,7 @@ import type {
   ModuleTarget,
   ModuleTargetCategory,
   ModuleTargetNote,
+  ModuleTargetReview,
   ModuleTargetReviewActionStatus,
   ModuleTargetStatus,
   UUID
@@ -225,9 +226,116 @@ export async function createModuleTargetNote(input: {
       })
       .select('*')
       .single();
-    if (error) throw new Error(getErrorMessage(error));
+    if (error) {
+      console.error('[moduleTargetsService] createModuleTargetNote failed', { input, error });
+      throw new Error(getErrorMessage(error));
+    }
     if (!data) throw new Error('Failed to create note.');
     return data as ModuleTargetNote;
+  });
+}
+
+export async function listModuleTargetReviews(input: {
+  companyId: UUID;
+  moduleTargetId: UUID;
+}): Promise<ModuleTargetReview[]> {
+  return withInsforgeSession('module-target-reviews:list', async () => {
+    const { data, error } = await insforge.database
+      .from('module_target_reviews')
+      .select('*')
+      .eq('company_id', input.companyId)
+      .eq('module_target_id', input.moduleTargetId)
+      .order('review_date', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('[moduleTargetsService] listModuleTargetReviews failed', error);
+      throw new Error(getErrorMessage(error));
+    }
+    return (data ?? []) as ModuleTargetReview[];
+  });
+}
+
+/**
+ * Creates a review-history entry AND propagates its status onto the parent
+ * objective (module_targets.status), so the status badge reflects the
+ * latest review until the objective reaches 'achieved' (locked in the UI).
+ * A reason is required whenever status is 'not_achieved' -- enforced both
+ * here (clear error before hitting the DB) and by a DB CHECK constraint.
+ */
+export async function createModuleTargetReview(input: {
+  companyId: UUID;
+  moduleTargetId: UUID;
+  reviewerUserId?: UUID | null;
+  reviewerEmployeeId?: UUID | null;
+  reviewerName?: string | null;
+  reviewDate?: string | null;
+  status: ModuleTargetStatus;
+  notes?: string | null;
+  notAchievedReason?: string | null;
+  correctiveAction?: string | null;
+  responsibleEmployeeId?: UUID | null;
+  responsibleUserId?: UUID | null;
+  responsibleName?: string | null;
+  resourcesRequired?: string | null;
+  actionStatus?: ModuleTargetReviewActionStatus | null;
+  closeDate?: string | null;
+  createdByUserId: UUID;
+}): Promise<{ review: ModuleTargetReview; target: ModuleTarget }> {
+  return withInsforgeSession('module-target-reviews:create', async () => {
+    if (input.status === 'not_achieved' && !(input.notAchievedReason ?? '').trim()) {
+      throw new Error('A reason is required when marking this objective as not achieved.');
+    }
+
+    const payload = {
+      company_id: input.companyId,
+      module_target_id: input.moduleTargetId,
+      reviewer_user_id: input.reviewerUserId ?? input.createdByUserId,
+      reviewer_employee_id: input.reviewerEmployeeId ?? null,
+      reviewer_name: input.reviewerName ?? null,
+      review_date: input.reviewDate || new Date().toISOString().slice(0, 10),
+      status: input.status,
+      notes: input.notes?.trim() || null,
+      not_achieved_reason: input.status === 'not_achieved' ? (input.notAchievedReason ?? '').trim() : null,
+      created_by_user_id: input.createdByUserId
+    };
+
+    const { data, error } = await insforge.database
+      .from('module_target_reviews')
+      .insert(payload)
+      .select('*')
+      .single();
+    if (error) {
+      console.error('[moduleTargetsService] createModuleTargetReview failed', { payload, error });
+      throw new Error(getErrorMessage(error));
+    }
+    if (!data) throw new Error('Failed to save review.');
+
+    const target = await updateModuleTarget({
+      companyId: input.companyId,
+      id: input.moduleTargetId,
+      status: input.status,
+      reviewReason: input.status === 'not_achieved' ? payload.not_achieved_reason : null,
+      reviewCorrectiveAction: input.correctiveAction ?? null,
+      reviewResponsibleEmployeeId: input.responsibleEmployeeId ?? null,
+      reviewResponsibleUserId: input.responsibleUserId ?? null,
+      reviewResponsibleName: input.responsibleName ?? null,
+      reviewResourcesRequired: input.resourcesRequired ?? null,
+      reviewStartDate: payload.review_date,
+      reviewActionStatus: input.actionStatus ?? null,
+      reviewCloseDate: input.closeDate ?? null,
+      actorUserId: input.createdByUserId
+    });
+
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.createdByUserId,
+      action: 'module_targets.review',
+      entityType: 'module_target',
+      entityId: input.moduleTargetId,
+      metadata: { status: input.status }
+    });
+
+    return { review: data as ModuleTargetReview, target };
   });
 }
 

@@ -10,10 +10,17 @@ import { HrEmployeeSelect } from '../components/ui/HrEmployeeSelect';
 import { ObjectiveCreateModal } from '../components/general/ObjectiveCreateModal';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
-import { createModuleTargetNote, listModuleTargetNotes, listModuleTargets, updateModuleTarget } from '../api/services/moduleTargetsService';
+import {
+  createModuleTargetNote,
+  createModuleTargetReview,
+  listModuleTargetNotes,
+  listModuleTargetReviews,
+  listModuleTargets
+} from '../api/services/moduleTargetsService';
 import type {
   ModuleTarget,
   ModuleTargetNote,
+  ModuleTargetReview,
   ModuleTargetReviewActionStatus,
   ModuleTargetStatus,
   UUID
@@ -23,6 +30,9 @@ import { toUserFacingError } from '../utils/userFacingMessage';
 import { subscribeToLiveDataMutations } from '../api/liveData';
 import { listIncidents } from '../api/services/incidentsService';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { useIdentity } from '../hooks/useIdentity';
+import { useToast } from '../components/ui/ToastProvider';
+import { LockIcon, ChevronUpIcon } from 'lucide-react';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -82,17 +92,54 @@ function isOverdue(target: ModuleTarget) {
   return Boolean(target.target_date && target.target_date < todayKey() && !doneStatuses.includes(status));
 }
 
-function ReviewEditor(props: {
+function ReviewHistoryList(props: { reviews: ModuleTargetReview[] }) {
+  if (props.reviews.length === 0) {
+    return <p className="text-xs text-charcoal-400 italic">No reviews yet.</p>;
+  }
+  return (
+    <div className="space-y-2 max-h-56 overflow-y-auto">
+      {props.reviews.map((r) => (
+        <div key={r.id} className="bg-white border border-surface-200 rounded-lg p-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-charcoal-500">{r.review_date}</span>
+            <span className="text-xs text-charcoal-400">&middot;</span>
+            <span className="text-xs text-charcoal-600">{r.reviewer_name || 'Unknown reviewer'}</span>
+            <span className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold ${statusClass(r.status)}`}>
+              {statusLabel(r.status)}
+            </span>
+          </div>
+          {(r.notes || r.not_achieved_reason) && (
+            <p className="text-xs text-charcoal-600 mt-1.5">
+              {r.notes ? (r.notes.length > 160 ? `${r.notes.slice(0, 160)}...` : r.notes) : ''}
+              {r.not_achieved_reason && (
+                <span className="block text-critical mt-0.5">Reason: {r.not_achieved_reason}</span>
+              )}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReviewPanel(props: {
   companyId: UUID;
   target: ModuleTarget;
   actorUserId?: UUID;
-  /** Set when the status change to 'not_achieved' hasn't been persisted yet -- the
-   *  transition and the reason are committed together so an objective can never be
-   *  saved as not-achieved without an explanation. */
-  pendingStatus?: ModuleTargetStatus;
+  actorName?: string | null;
   onSaved: () => void;
+  onClose: () => void;
 }) {
-  const [reason, setReason] = useState(props.target.review_reason ?? '');
+  const { showSuccess, showError } = useToast();
+  const isAchieved = props.target.status === 'achieved';
+
+  const [reviews, setReviews] = useState<ModuleTargetReview[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const [status, setStatus] = useState<ModuleTargetStatus>(props.target.status ?? 'not_started');
+  const [reviewDate, setReviewDate] = useState(todayKey());
+  const [notes, setNotes] = useState('');
+  const [reason, setReason] = useState('');
   const [correctiveAction, setCorrectiveAction] = useState(props.target.review_corrective_action ?? '');
   const [responsibleEmployeeId, setResponsibleEmployeeId] = useState<UUID | ''>(
     (props.target.review_responsible_employee_id ?? '') as UUID | ''
@@ -100,7 +147,6 @@ function ReviewEditor(props: {
   const [responsibleUserId, setResponsibleUserId] = useState<UUID | null>(props.target.review_responsible_user_id ?? null);
   const [responsibleName, setResponsibleName] = useState(props.target.review_responsible_name ?? '');
   const [resourcesRequired, setResourcesRequired] = useState(props.target.review_resources_required ?? '');
-  const [startDate, setStartDate] = useState(props.target.review_start_date ?? '');
   const [actionStatus, setActionStatus] = useState<ModuleTargetReviewActionStatus>(
     props.target.review_action_status ?? 'not_started'
   );
@@ -108,133 +154,201 @@ function ReviewEditor(props: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isNotAchieved = props.pendingStatus === 'not_achieved' || props.target.status === 'not_achieved';
+  useEffect(() => {
+    setLoadingHistory(true);
+    listModuleTargetReviews({ companyId: props.companyId, moduleTargetId: props.target.id })
+      .then(setReviews)
+      .catch(() => setReviews([]))
+      .finally(() => setLoadingHistory(false));
+  }, [props.companyId, props.target.id]);
+
+  const isNotAchieved = status === 'not_achieved';
 
   async function saveReview() {
     setError(null);
+    if (!props.actorUserId) return;
     if (isNotAchieved && !reason.trim()) {
       setError('A reason is required when marking this objective as not achieved.');
       return;
     }
     setSaving(true);
     try {
-      await updateModuleTarget({
+      const result = await createModuleTargetReview({
         companyId: props.companyId,
-        id: props.target.id,
-        status: props.pendingStatus,
-        reviewReason: reason.trim() || null,
-        reviewCorrectiveAction: correctiveAction.trim() || null,
-        reviewResponsibleEmployeeId: responsibleEmployeeId || null,
-        reviewResponsibleUserId: responsibleUserId,
-        reviewResponsibleName: responsibleName || null,
-        reviewResourcesRequired: resourcesRequired.trim() || null,
-        reviewStartDate: startDate || null,
-        reviewActionStatus: actionStatus,
-        reviewCloseDate: closeDate || null,
-        actorUserId: props.actorUserId
+        moduleTargetId: props.target.id,
+        reviewerUserId: props.actorUserId,
+        reviewerName: props.actorName ?? null,
+        reviewDate,
+        status,
+        notes: notes.trim() || null,
+        notAchievedReason: isNotAchieved ? reason.trim() : null,
+        correctiveAction: correctiveAction.trim() || null,
+        responsibleEmployeeId: responsibleEmployeeId || null,
+        responsibleUserId,
+        responsibleName: responsibleName || null,
+        resourcesRequired: resourcesRequired.trim() || null,
+        actionStatus,
+        closeDate: closeDate || null,
+        createdByUserId: props.actorUserId
       });
+      setReviews((prev) => [result.review, ...prev]);
+      setNotes('');
+      setReason('');
+      showSuccess(`Review saved — status set to ${statusLabel(status)}.`);
       props.onSaved();
     } catch (err) {
-      setError(toUserFacingError(err, 'Unable to save target review.'));
+      const message = toUserFacingError(err, 'Unable to save target review.');
+      setError(message);
+      showError(message);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-4">
-      {props.pendingStatus === 'not_achieved' && (
-        <p className="text-sm text-warning-700 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2">
-          This objective will be marked <strong>Not Achieved</strong> once you provide a reason and save below.
-        </p>
-      )}
-      {error && <p className="text-sm text-critical">{error}</p>}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <label className="md:col-span-2">
-          <span className="block text-sm font-medium text-charcoal mb-1.5">
-            Reason for not achieving objective {isNotAchieved && <span className="text-critical">*</span>}
-          </span>
-          <textarea
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            rows={2}
-            required={isNotAchieved}
-            className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
-          />
-        </label>
-        <label className="md:col-span-2">
-          <span className="block text-sm font-medium text-charcoal mb-1.5">Corrective Action Required</span>
-          <textarea
-            value={correctiveAction}
-            onChange={(e) => setCorrectiveAction(e.target.value)}
-            rows={2}
-            className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
-          />
-        </label>
-        <HrEmployeeSelect
-          companyId={props.companyId}
-          value={responsibleEmployeeId}
-          valueField="id"
-          includeUnlinked
-          label="Responsible Person"
-          placeholder="Select corrective action owner"
-          onChange={(value, meta) => {
-            setResponsibleEmployeeId(value);
-            setResponsibleUserId(meta.userId ?? null);
-            setResponsibleName(meta.nameSnapshot);
-          }}
-        />
-        <label>
-          <span className="block text-sm font-medium text-charcoal mb-1.5">Resources Required</span>
-          <input
-            value={resourcesRequired}
-            onChange={(e) => setResourcesRequired(e.target.value)}
-            className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
-          />
-        </label>
-        <label>
-          <span className="block text-sm font-medium text-charcoal mb-1.5">Start Date</span>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
-          />
-        </label>
-        <label>
-          <span className="block text-sm font-medium text-charcoal mb-1.5">Status</span>
-          <select
-            value={actionStatus}
-            onChange={(e) => setActionStatus(e.target.value as ModuleTargetReviewActionStatus)}
-            className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
-          >
-            {ACTION_STATUS_OPTIONS.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span className="block text-sm font-medium text-charcoal mb-1.5">Close Date</span>
-          <input
-            type="date"
-            value={closeDate}
-            onChange={(e) => setCloseDate(e.target.value)}
-            className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
-          />
-        </label>
-      </div>
-      <div className="flex justify-end">
+    <div className="rounded-lg border border-surface-300 bg-white p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-charcoal">Review</p>
         <button
           type="button"
-          onClick={() => void saveReview()}
-          disabled={saving || (isNotAchieved && !reason.trim())}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60"
+          onClick={props.onClose}
+          className="inline-flex items-center gap-1 text-xs font-medium text-charcoal-500 hover:text-charcoal"
         >
-          {saving && <LoadingSpinner size={16} />}
-          Save Review
+          <ChevronUpIcon className="w-3.5 h-3.5" /> Collapse
         </button>
+      </div>
+
+      {isAchieved ? (
+        <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 py-3 text-sm text-success">
+          <LockIcon className="w-4 h-4" />
+          <span>
+            Achieved{props.target.completed_at ? ` on ${new Date(props.target.completed_at).toLocaleDateString('en-ZA')}` : ''} — locked, no
+            further reviews.
+          </span>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-4">
+          {error && <p className="text-sm text-critical">{error}</p>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label>
+              <span className="block text-sm font-medium text-charcoal mb-1.5">Status</span>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as ModuleTargetStatus)}
+                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+              >
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="block text-sm font-medium text-charcoal mb-1.5">Review Date</span>
+              <input
+                type="date"
+                value={reviewDate}
+                onChange={(e) => setReviewDate(e.target.value)}
+                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+              />
+            </label>
+            <label className="md:col-span-2">
+              <span className="block text-sm font-medium text-charcoal mb-1.5">Review Notes</span>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                placeholder="What did you observe in this review?"
+                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+              />
+            </label>
+            {isNotAchieved && (
+              <label className="md:col-span-2">
+                <span className="block text-sm font-medium text-charcoal mb-1.5">
+                  Reason for not achieving objective <span className="text-critical">*</span>
+                </span>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  rows={2}
+                  required
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                />
+              </label>
+            )}
+            <label className="md:col-span-2">
+              <span className="block text-sm font-medium text-charcoal mb-1.5">Corrective Action Required</span>
+              <textarea
+                value={correctiveAction}
+                onChange={(e) => setCorrectiveAction(e.target.value)}
+                rows={2}
+                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+              />
+            </label>
+            <HrEmployeeSelect
+              companyId={props.companyId}
+              value={responsibleEmployeeId}
+              valueField="id"
+              includeUnlinked
+              label="Responsible Person"
+              placeholder="Select corrective action owner"
+              onChange={(value, meta) => {
+                setResponsibleEmployeeId(value);
+                setResponsibleUserId(meta.userId ?? null);
+                setResponsibleName(meta.nameSnapshot);
+              }}
+            />
+            <label>
+              <span className="block text-sm font-medium text-charcoal mb-1.5">Resources Required</span>
+              <input
+                value={resourcesRequired}
+                onChange={(e) => setResourcesRequired(e.target.value)}
+                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+              />
+            </label>
+            <label>
+              <span className="block text-sm font-medium text-charcoal mb-1.5">Corrective Action Status</span>
+              <select
+                value={actionStatus}
+                onChange={(e) => setActionStatus(e.target.value as ModuleTargetReviewActionStatus)}
+                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+              >
+                {ACTION_STATUS_OPTIONS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="block text-sm font-medium text-charcoal mb-1.5">Close Date</span>
+              <input
+                type="date"
+                value={closeDate}
+                onChange={(e) => setCloseDate(e.target.value)}
+                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+              />
+            </label>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void saveReview()}
+              disabled={saving || (isNotAchieved && !reason.trim())}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60"
+            >
+              {saving && <LoadingSpinner size={16} />}
+              Save Review
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-charcoal-500 uppercase tracking-wider">Review History</p>
+        {loadingHistory && <p className="text-xs text-charcoal-400">Loading history...</p>}
+        {!loadingHistory && <ReviewHistoryList reviews={reviews} />}
       </div>
     </div>
   );
@@ -327,13 +441,11 @@ export function ObjectivesTargetsPage() {
   const [moduleFilter, setModuleFilter] = useState<ModuleKey | ''>('');
   const [createModule, setCreateModule] = useState<ModuleKey>('safety');
   const [createOpen, setCreateOpen] = useState(false);
+  /** Which objective's review panel is open -- collapsed by default, toggled via the review circle/button. */
   const [expandedReviewId, setExpandedReviewId] = useState<string | null>(null);
-  /** Objective whose status was set to 'not_achieved' in the UI but not yet persisted --
-   *  it commits together with the required reason so the two can never be saved apart. */
-  const [pendingNotAchievedId, setPendingNotAchievedId] = useState<string | null>(null);
   const [expandedNotesId, setExpandedNotesId] = useState<string | null>(null);
-  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
+  const { fullName } = useIdentity();
 
   useEffect(() => subscribeToLiveDataMutations(() => setRefreshKey((k) => k + 1)), []);
 
@@ -393,32 +505,6 @@ export function ObjectivesTargetsPage() {
     return { total, completed, notAchieved, overdue, completionRate };
   }, [objectives]);
 
-  async function handleStatusChange(target: ModuleTarget, status: ModuleTargetStatus) {
-    if (!activeCompanyId) return;
-    // Marking an objective not-achieved requires a reason -- don't persist the status
-    // change yet; open the review editor and let saveReview() commit both together.
-    if (status === 'not_achieved' && !(target.review_reason ?? '').trim()) {
-      setPendingNotAchievedId(target.id);
-      setExpandedReviewId(target.id);
-      return;
-    }
-    setStatusUpdatingId(target.id);
-    setPageError(null);
-    try {
-      await updateModuleTarget({
-        companyId: activeCompanyId,
-        id: target.id,
-        status,
-        actorUserId: user?.id
-      });
-      if (status === 'not_achieved') setExpandedReviewId(target.id);
-      setRefreshKey((k) => k + 1);
-    } catch (err) {
-      setPageError(toUserFacingError(err, 'Unable to update target status.'));
-    } finally {
-      setStatusUpdatingId(null);
-    }
-  }
 
   return (
     <Layout title="Objectives & Targets">
@@ -552,10 +638,8 @@ export function ObjectivesTargetsPage() {
                     />
                   )}
                   {objectives.map((objective) => {
-                    const isPendingNotAchieved = pendingNotAchievedId === objective.id;
-                    const normalizedStatus = isPendingNotAchieved
-                      ? 'not_achieved'
-                      : objective.status ?? (objective.achieved ? 'completed' : 'not_started');
+                    const normalizedStatus = objective.status ?? (objective.achieved ? 'completed' : 'not_started');
+                    const isAchieved = normalizedStatus === 'achieved';
                     return (
                       <React.Fragment key={objective.id}>
                         <tr className={isOverdue(objective) ? 'bg-critical/5' : undefined}>
@@ -596,27 +680,26 @@ export function ObjectivesTargetsPage() {
                               <span className={`px-2 py-1 rounded-full border text-xs font-semibold ${statusClass(objective.status, objective.achieved)}`}>
                                 {statusLabel(objective.status, objective.achieved)}
                               </span>
-                              <select
-                                value={normalizedStatus}
-                                onChange={(e) => void handleStatusChange(objective, e.target.value as ModuleTargetStatus)}
-                                disabled={statusUpdatingId === objective.id}
-                                className="px-2 py-1.5 border border-surface-300 rounded-lg text-xs"
-                                aria-label={`Update status for ${objective.name}`}
-                              >
-                                {STATUS_OPTIONS.map((s) => (
-                                  <option key={s.value} value={s.value}>
-                                    {s.label}
-                                  </option>
-                                ))}
-                              </select>
-                              {statusUpdatingId === objective.id && <LoadingSpinner size={14} />}
-                              {normalizedStatus === 'not_achieved' && (
+                              {isAchieved ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-success/20 bg-success/5 text-xs font-medium text-success">
+                                  <LockIcon className="w-3 h-3" />
+                                  {objective.completed_at
+                                    ? `Achieved ${new Date(objective.completed_at).toLocaleDateString('en-ZA')}`
+                                    : 'Achieved'}
+                                </span>
+                              ) : (
                                 <button
                                   type="button"
                                   onClick={() => setExpandedReviewId((cur) => (cur === objective.id ? null : objective.id))}
-                                  className="px-2 py-1.5 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"
+                                  aria-label={expandedReviewId === objective.id ? 'Collapse review' : 'Add review'}
+                                  className={`w-7 h-7 inline-flex items-center justify-center rounded-full border text-xs font-semibold ${
+                                    expandedReviewId === objective.id
+                                      ? 'bg-teal text-white border-teal'
+                                      : 'border-surface-300 text-charcoal-500 hover:bg-surface-50'
+                                  }`}
+                                  title={expandedReviewId === objective.id ? 'Hide review' : 'Add review / view reviews'}
                                 >
-                                  Review
+                                  {expandedReviewId === objective.id ? '−' : '+'}
                                 </button>
                               )}
                               <button
@@ -629,18 +712,16 @@ export function ObjectivesTargetsPage() {
                             </div>
                           </td>
                         </tr>
-                        {normalizedStatus === 'not_achieved' && expandedReviewId === objective.id && activeCompanyId && (
+                        {expandedReviewId === objective.id && activeCompanyId && (
                           <tr>
                             <td colSpan={5} className="px-4 py-4 bg-surface-50">
-                              <ReviewEditor
+                              <ReviewPanel
                                 companyId={activeCompanyId}
                                 target={objective}
                                 actorUserId={user?.id}
-                                pendingStatus={isPendingNotAchieved ? 'not_achieved' : undefined}
-                                onSaved={() => {
-                                  setPendingNotAchievedId((cur) => (cur === objective.id ? null : cur));
-                                  setRefreshKey((k) => k + 1);
-                                }}
+                                actorName={fullName}
+                                onSaved={() => setRefreshKey((k) => k + 1)}
+                                onClose={() => setExpandedReviewId(null)}
                               />
                             </td>
                           </tr>

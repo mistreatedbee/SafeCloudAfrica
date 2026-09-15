@@ -1917,6 +1917,21 @@ export type ModuleTargetNote = {
   created_at: string;
 };
 
+export type ModuleTargetReview = {
+  id: UUID;
+  company_id: UUID;
+  module_target_id: UUID;
+  reviewer_user_id: UUID | null;
+  reviewer_employee_id: UUID | null;
+  reviewer_name: string | null;
+  review_date: string;
+  status: ModuleTargetStatus;
+  notes: string | null;
+  not_achieved_reason: string | null;
+  created_by_user_id: UUID;
+  created_at: string;
+};
+
 export type PlanningPlanPeriod = 'annual' | 'quarterly' | 'monthly';
 export type PlanningPlanStatus = 'draft' | 'active' | 'complete';
 
