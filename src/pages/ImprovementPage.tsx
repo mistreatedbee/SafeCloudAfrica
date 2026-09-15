@@ -50,6 +50,12 @@ function shortDescription(text: string | null): string {
   return line.length > 80 ? `${line.slice(0, 80)}...` : line;
 }
 
+function truncateComments(text: string | null | undefined): string {
+  if (!text) return '';
+  const trimmed = text.trim();
+  return trimmed.length > 100 ? `${trimmed.slice(0, 100)}...` : trimmed;
+}
+
 const STATUS_OPTIONS: ImprovementWorkflowStatus[] = [
   'draft',
   'open',
@@ -521,6 +527,7 @@ export function ImprovementPage() {
                   <th className="px-3 py-2 text-left">Reference Number</th>
                   <th className="px-3 py-2 text-left">Type</th>
                   <th className="px-3 py-2 text-left">Title / Short Description</th>
+                  <th className="px-3 py-2 text-left">Comments</th>
                   <th className="px-3 py-2 text-left">Risk</th>
                   <th className="px-3 py-2 text-left">Department/Site</th>
                   <th className="px-3 py-2 text-left">Raised By</th>
@@ -546,6 +553,7 @@ export function ImprovementPage() {
                       <td className="px-3 py-2 font-semibold text-teal">{row.reference_number}</td>
                       <td className="px-3 py-2">{IMPROVEMENT_TYPE_LABELS[row.improvement_type]}</td>
                       <td className="px-3 py-2">{shortDescription(row.description)}</td>
+                      <td className="px-3 py-2 max-w-[220px]" title={row.comments || undefined}>{truncateComments(row.comments)}</td>
                       <td className="px-3 py-2 capitalize">{row.risk_level}</td>
                       <td className="px-3 py-2">{row.department_site || '-'}</td>
                       <td className="px-3 py-2">{raisedByName}</td>

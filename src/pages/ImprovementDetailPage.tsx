@@ -61,6 +61,7 @@ type FormState = {
   closureDate: string;
   closureStatus: '' | ImprovementClosureStatus;
   lessonsLearned: string;
+  comments: string;
   sourceType: ImprovementSourceType;
   sourceId: string;
   sourceOtherText: string;
@@ -110,6 +111,7 @@ function defaultForm(userId: string, sourceType: ImprovementSourceType | null, s
     closureDate: '',
     closureStatus: '',
     lessonsLearned: '',
+    comments: '',
     sourceType: sourceType ?? 'other',
     sourceId: sourceId ?? '',
     sourceOtherText: ''
@@ -182,6 +184,7 @@ export function ImprovementDetailPage() {
       closureDate: toDate(record.closure_date),
       closureStatus: (record.closure_status as any) || '',
       lessonsLearned: record.lessons_learned || '',
+      comments: record.comments || '',
       sourceType: record.source_type,
       sourceId: record.source_id || '',
       sourceOtherText: record.source_other_text || ''
@@ -270,10 +273,12 @@ export function ImprovementDetailPage() {
         closureDate: form.closureDate || null,
         closureStatus: (form.closureStatus || null) as any,
         lessonsLearned: form.lessonsLearned || null,
+        comments: form.comments || null,
         sourceType: form.sourceType,
         sourceId,
         sourceOtherText: form.sourceOtherText || null
       };
+      console.log('[ImprovementDetailPage] save payload', payload);
       if (isCreate) {
         const created = await createImprovement({
           companyId: activeCompanyId,
@@ -316,6 +321,7 @@ export function ImprovementDetailPage() {
             closure_date: payload.closureDate,
             closure_status: payload.closureStatus,
             lessons_learned: payload.lessonsLearned,
+            comments: payload.comments,
             source_type: payload.sourceType,
             source_id: payload.sourceId,
             source_other_text: payload.sourceOtherText,
@@ -416,7 +422,9 @@ export function ImprovementDetailPage() {
           {form.improvementType === 'other' && <input value={form.improvementTypeOtherText} onChange={(e) => setField('improvementTypeOtherText', e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg w-full" placeholder="Other type" />}
         </section>
 
-        <section className="bg-white rounded-xl border border-surface-300 p-4 space-y-3"><h3 className="font-semibold">SECTION 2: DESCRIPTION</h3><textarea rows={4} value={form.description} onChange={(e) => setField('description', e.target.value)} className="w-full px-3 py-2 border border-surface-300 rounded-lg" />{!isCreate && <button type="button" onClick={() => setEvidenceOpen(true)} className="px-3 py-2 rounded-lg border border-surface-300 text-sm">Manage Attachments ({(evidence ?? []).length})</button>}</section>
+        <section className="bg-white rounded-xl border border-surface-300 p-4 space-y-3"><h3 className="font-semibold">SECTION 2: DESCRIPTION</h3><textarea rows={4} value={form.description} onChange={(e) => setField('description', e.target.value)} className="w-full px-3 py-2 border border-surface-300 rounded-lg" />{!isCreate && <button type="button" onClick={() => setEvidenceOpen(true)} className="px-3 py-2 rounded-lg border border-surface-300 text-sm">Manage Attachments ({(evidence ?? []).length})</button>}
+          <label className="block text-sm"><span className="block text-xs font-medium text-charcoal-500 mb-1">Comments</span><textarea rows={3} value={form.comments} onChange={(e) => setField('comments', e.target.value)} className="w-full px-3 py-2 border border-surface-300 rounded-lg" placeholder="Add any general comments about this improvement…" /></label>
+        </section>
         <section className="bg-white rounded-xl border border-surface-300 p-4"><h3 className="font-semibold">SECTION 3: IMMEDIATE RISK LEVEL</h3><select value={form.riskLevel} onChange={(e) => setField('riskLevel', e.target.value as any)} className="mt-2 px-3 py-2 border border-surface-300 rounded-lg"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></section>
         <section className="bg-white rounded-xl border border-surface-300 p-4 space-y-2"><h3 className="font-semibold">SECTION 4: IMPROVEMENT ACTION PLAN</h3><textarea rows={3} value={form.actionRequired} onChange={(e) => setField('actionRequired', e.target.value)} className="w-full px-3 py-2 border border-surface-300 rounded-lg" placeholder="Action required" /><select value={form.responsibleUserId} onChange={(e) => setField('responsibleUserId', e.target.value)} className="w-full px-3 py-2 border border-surface-300 rounded-lg"><option value="">Responsible person</option>{userOptions.map((u) => <option key={u.user_id} value={u.user_id}>{userOptionLabel(u.user_id)}</option>)}</select><textarea rows={2} value={form.resourcesNeeded} onChange={(e) => setField('resourcesNeeded', e.target.value)} className="w-full px-3 py-2 border border-surface-300 rounded-lg" placeholder="Resources needed" /><input type="date" value={form.targetDate} onChange={(e) => setField('targetDate', e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg" /><select value={form.status} onChange={(e) => setField('status', e.target.value as ImprovementWorkflowStatus)} className="px-3 py-2 border border-surface-300 rounded-lg">{(Object.keys(IMPROVEMENT_STATUS_LABELS) as ImprovementWorkflowStatus[]).map((s) => <option key={s} value={s}>{IMPROVEMENT_STATUS_LABELS[s]}</option>)}</select></section>
         <section className="bg-white rounded-xl border border-surface-300 p-4 space-y-2"><h3 className="font-semibold">SECTION 5: VERIFICATION</h3><div className="grid grid-cols-2 gap-2">{VERIFICATION_METHODS.map((m) => <label key={m} className="text-xs"><input type="checkbox" checked={form.verificationMethods.includes(m)} onChange={(e) => setField('verificationMethods', e.target.checked ? [...form.verificationMethods, m] : form.verificationMethods.filter((x) => x !== m))} /> {IMPROVEMENT_VERIFICATION_METHOD_LABELS[m]}</label>)}</div>{form.verificationMethods.includes('other') && <input value={form.verificationMethodOtherText} onChange={(e) => setField('verificationMethodOtherText', e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg w-full" placeholder="Other verification method" />}<select value={form.verifiedByUserId} onChange={(e) => setField('verifiedByUserId', e.target.value)} className="w-full px-3 py-2 border border-surface-300 rounded-lg"><option value="">Confirmed by</option>{userOptions.map((u) => <option key={u.user_id} value={u.user_id}>{userOptionLabel(u.user_id)}</option>)}</select><input type="date" value={form.dateVerified} onChange={(e) => setField('dateVerified', e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg" /><select value={form.wasActionEffective} onChange={(e) => setField('wasActionEffective', e.target.value as any)} className="px-3 py-2 border border-surface-300 rounded-lg"><option value="">Action effective?</option><option value="yes">Yes</option><option value="no">No</option></select></section>

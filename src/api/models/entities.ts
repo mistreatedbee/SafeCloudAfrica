@@ -2032,6 +2032,7 @@ export type ImprovementRecord = {
   closure_date: string | null;
   closure_status: ImprovementClosureStatus | null;
   lessons_learned: string | null;
+  comments: string | null;
   source_type: ImprovementSourceType;
   source_id: UUID | null;
   source_other_text: string | null;

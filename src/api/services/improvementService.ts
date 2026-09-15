@@ -338,6 +338,7 @@ export async function createImprovement(input: {
   closedByUserId?: UUID | null;
   closureDate?: string | null;
   lessonsLearned?: string | null;
+  comments?: string | null;
   sourceType?: ImprovementSourceType;
   sourceId?: UUID | null;
   sourceOtherText?: string | null;
@@ -379,6 +380,7 @@ export async function createImprovement(input: {
     closure_date: input.closureDate ?? null,
     closure_status: input.closureStatus ?? null,
     lessons_learned: input.lessonsLearned ?? null,
+    comments: input.comments ?? null,
     source_type: input.sourceType ?? 'other',
     source_id: input.sourceId ?? null,
     source_other_text: input.sourceOtherText ?? null,
