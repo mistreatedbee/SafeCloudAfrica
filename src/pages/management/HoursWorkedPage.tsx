@@ -18,6 +18,22 @@ import { toCsv, downloadTextFile } from '../../utils/csv';
 const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/** South African number format: space thousands separator, 2 decimal places. */
+function formatZaNumber(value: number): string {
+  const fixed = Math.abs(value).toFixed(2);
+  const [whole, decimals] = fixed.split('.');
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return `${value < 0 ? '-' : ''}${grouped}.${decimals}`;
+}
+
+function clearZeroOnFocus(e: React.FocusEvent<HTMLInputElement>) {
+  if (e.target.value === '0') e.target.value = '';
+}
+
+function resetEmptyOnBlur(e: React.FocusEvent<HTMLInputElement>) {
+  if (e.target.value === '') e.target.value = '0';
+}
+
 function WorkHoursFormModal(props: {
   open: boolean;
   onClose: () => void;
@@ -37,7 +53,10 @@ function WorkHoursFormModal(props: {
   const [standardHoursPerDay, setStandardHoursPerDay] = useState(props.existing?.standard_hours_per_day ?? props.defaultStandardHours);
   const [overtimeWeekSat, setOvertimeWeekSat] = useState(props.existing?.overtime_hours_week_or_sat ?? 0);
   const [overtimeSunday, setOvertimeSunday] = useState(props.existing?.overtime_hours_sunday ?? 0);
-  const [absentDays, setAbsentDays] = useState(props.existing?.employee_absent_days ?? 0);
+  const [absentHours, setAbsentHours] = useState(
+    props.existing?.employee_absent_hours ??
+      (props.existing?.employee_absent_days ?? 0) * (props.existing?.standard_hours_per_day ?? props.defaultStandardHours)
+  );
   const [transportHours, setTransportHours] = useState(props.existing?.employee_transport_hours ?? 0);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -53,20 +72,26 @@ function WorkHoursFormModal(props: {
     setStandardHoursPerDay(props.existing?.standard_hours_per_day ?? props.defaultStandardHours);
     setOvertimeWeekSat(props.existing?.overtime_hours_week_or_sat ?? 0);
     setOvertimeSunday(props.existing?.overtime_hours_sunday ?? 0);
-    setAbsentDays(props.existing?.employee_absent_days ?? 0);
+    setAbsentHours(
+      props.existing?.employee_absent_hours ??
+        (props.existing?.employee_absent_days ?? 0) * (props.existing?.standard_hours_per_day ?? props.defaultStandardHours)
+    );
     setTransportHours(props.existing?.employee_transport_hours ?? 0);
     setError('');
     setSaving(false);
   }, [props.defaultDaysWorked, props.defaultStandardHours, props.existing, props.open]);
 
+  // gross_hours = headcount × hours_per_day × avg_days_worked
+  // total_hours_worked = gross_hours − total_absent_hours (a flat deduction,
+  // NOT multiplied by headcount or days again).
   const totalCalc = useMemo(() => {
-    const salaried = salariedEmployees * standardHoursPerDay * daysWorked;
-    const wage = wageEmployees * standardHoursPerDay * daysWorked;
+    const headcount = salariedEmployees + wageEmployees;
+    const gross = headcount * standardHoursPerDay * daysWorked;
     const ot = overtimeWeekSat * 1.5 + overtimeSunday * 2;
-    const absent = absentDays * standardHoursPerDay;
-    const total = salaried + wage + ot - absent + transportHours;
-    return { salaried, wage, ot, absent, total: Math.max(0, total) };
-  }, [salariedEmployees, wageEmployees, standardHoursPerDay, daysWorked, overtimeWeekSat, overtimeSunday, absentDays, transportHours]);
+    const absent = absentHours;
+    const total = gross + ot - absent + transportHours;
+    return { headcount, gross, ot, absent, total: Math.max(0, total) };
+  }, [salariedEmployees, wageEmployees, standardHoursPerDay, daysWorked, overtimeWeekSat, overtimeSunday, absentHours, transportHours]);
 
   const validationError = useMemo(() => {
     if (totalEmployees < salariedEmployees + wageEmployees) return 'Total employees must be ≥ salaried + wage';
@@ -95,7 +120,8 @@ function WorkHoursFormModal(props: {
         daysWorked,
         overtimeHoursWeekOrSat: overtimeWeekSat,
         overtimeHoursSunday: overtimeSunday,
-        employeeAbsentDays: absentDays,
+        employeeAbsentDays: 0,
+        employeeAbsentHours: absentHours,
         employeeTransportHours: transportHours || undefined,
         createdByUserId: props.userId
       });
@@ -162,6 +188,9 @@ function WorkHoursFormModal(props: {
                 min={0}
                 value={totalEmployees}
                 onChange={(e) => setTotalEmployees(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                onFocus={clearZeroOnFocus}
+                onBlur={resetEmptyOnBlur}
+                placeholder="e.g. 10"
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
               />
             </div>
@@ -172,6 +201,9 @@ function WorkHoursFormModal(props: {
                 min={0}
                 value={salariedEmployees}
                 onChange={(e) => setSalariedEmployees(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                onFocus={clearZeroOnFocus}
+                onBlur={resetEmptyOnBlur}
+                placeholder="e.g. 4"
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
               />
             </div>
@@ -182,6 +214,9 @@ function WorkHoursFormModal(props: {
                 min={0}
                 value={wageEmployees}
                 onChange={(e) => setWageEmployees(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                onFocus={clearZeroOnFocus}
+                onBlur={resetEmptyOnBlur}
+                placeholder="e.g. 6"
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
               />
             </div>
@@ -195,6 +230,9 @@ function WorkHoursFormModal(props: {
                 step={0.25}
                 value={daysWorked}
                 onChange={(e) => setDaysWorked(Math.max(0, parseFloat(e.target.value) || 0))}
+                onFocus={clearZeroOnFocus}
+                onBlur={resetEmptyOnBlur}
+                placeholder="e.g. 21.75"
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
               />
             </div>
@@ -206,6 +244,9 @@ function WorkHoursFormModal(props: {
                 step={0.5}
                 value={standardHoursPerDay}
                 onChange={(e) => setStandardHoursPerDay(Math.max(0, parseFloat(e.target.value) || 0))}
+                onFocus={clearZeroOnFocus}
+                onBlur={resetEmptyOnBlur}
+                placeholder="e.g. 9"
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
               />
             </div>
@@ -219,6 +260,9 @@ function WorkHoursFormModal(props: {
                 step={0.5}
                 value={overtimeWeekSat}
                 onChange={(e) => setOvertimeWeekSat(Math.max(0, parseFloat(e.target.value) || 0))}
+                onFocus={clearZeroOnFocus}
+                onBlur={resetEmptyOnBlur}
+                placeholder="e.g. 5"
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
               />
             </div>
@@ -230,19 +274,25 @@ function WorkHoursFormModal(props: {
                 step={0.5}
                 value={overtimeSunday}
                 onChange={(e) => setOvertimeSunday(Math.max(0, parseFloat(e.target.value) || 0))}
+                onFocus={clearZeroOnFocus}
+                onBlur={resetEmptyOnBlur}
+                placeholder="e.g. 2"
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
               />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-charcoal mb-1">Absent days</label>
+              <label className="block text-sm font-medium text-charcoal mb-1">Absent hours</label>
               <input
                 type="number"
                 min={0}
                 step={0.5}
-                value={absentDays}
-                onChange={(e) => setAbsentDays(Math.max(0, parseFloat(e.target.value) || 0))}
+                value={absentHours}
+                onChange={(e) => setAbsentHours(Math.max(0, parseFloat(e.target.value) || 0))}
+                onFocus={clearZeroOnFocus}
+                onBlur={resetEmptyOnBlur}
+                placeholder="e.g. 18"
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
               />
             </div>
@@ -254,12 +304,54 @@ function WorkHoursFormModal(props: {
                 step={0.5}
                 value={transportHours}
                 onChange={(e) => setTransportHours(Math.max(0, parseFloat(e.target.value) || 0))}
+                onFocus={clearZeroOnFocus}
+                onBlur={resetEmptyOnBlur}
+                placeholder="e.g. 4"
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
               />
             </div>
           </div>
-          <div className="bg-surface-50 rounded-lg p-3 text-sm">
-            <strong>Total hours (calculated):</strong> {totalCalc.total.toLocaleString()}
+
+          <div className="bg-surface-50 rounded-lg p-4 text-sm space-y-1.5">
+            <p className="text-xs font-semibold text-charcoal-500 uppercase tracking-wide mb-2">Live calculation</p>
+            <div className="flex items-center justify-between">
+              <span className="text-charcoal-600">
+                Gross hours: {totalCalc.headcount > 0 && standardHoursPerDay > 0 && daysWorked > 0
+                  ? `${totalCalc.headcount} × ${standardHoursPerDay} × ${daysWorked}`
+                  : ''}
+              </span>
+              <span className="font-mono font-medium text-charcoal">
+                {totalCalc.headcount > 0 && standardHoursPerDay > 0 && daysWorked > 0
+                  ? `= ${formatZaNumber(totalCalc.gross)}`
+                  : '—'}
+              </span>
+            </div>
+            {totalCalc.ot > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-charcoal-600">Plus overtime:</span>
+                <span className="font-mono font-medium text-charcoal">+ {formatZaNumber(totalCalc.ot)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-charcoal-600">Less absent hours:</span>
+              <span className="font-mono font-medium text-charcoal">
+                {totalCalc.absent > 0 ? `− ${formatZaNumber(totalCalc.absent)}` : '−0.00'}
+              </span>
+            </div>
+            {transportHours > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-charcoal-600">Plus transport hours:</span>
+                <span className="font-mono font-medium text-charcoal">+ {formatZaNumber(transportHours)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between pt-1.5 border-t border-surface-200">
+              <strong className="text-charcoal">Total hours worked:</strong>
+              <strong className="font-mono text-charcoal">
+                {totalCalc.headcount > 0 && standardHoursPerDay > 0 && daysWorked > 0
+                  ? `= ${formatZaNumber(totalCalc.total)}`
+                  : '—'}
+              </strong>
+            </div>
           </div>
           <div className="flex justify-end gap-2">
             <button type="button" onClick={props.onClose} className="px-4 py-2 rounded-lg border border-surface-300 text-charcoal">Cancel</button>

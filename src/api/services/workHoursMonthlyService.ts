@@ -93,7 +93,13 @@ export type UpsertWorkHoursMonthlyInput = {
   id?: UUID | null;
 };
 
-function computeHours(input: UpsertWorkHoursMonthlyInput): {
+/**
+ * gross_hours = headcount × hours_per_day × avg_days_worked
+ * total_hours_worked = gross_hours − total_absent_hours (a flat deduction
+ * of the raw absent-hours figure entered — never multiplied by headcount
+ * or days again).
+ */
+export function computeHours(input: UpsertWorkHoursMonthlyInput): {
   salariedHoursCalculated: number;
   wageHoursCalculated: number;
   absentHours: number;
