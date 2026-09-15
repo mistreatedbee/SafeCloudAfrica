@@ -614,6 +614,24 @@ export async function createInspectionRunFromTemplate(input: {
   });
 }
 
+export async function listInspectionRunsForInspection(
+  companyId: UUID,
+  inspectionId: UUID,
+  limit = 400
+): Promise<InspectionRun[]> {
+  return withInsforgeSession('inspection_runs:list_for_inspection', async () => {
+    const { data, error } = await insforge.database
+      .from('inspection_runs')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('inspection_id', inspectionId)
+      .order('started_at', { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as InspectionRun[];
+  });
+}
+
 export async function getInspectionRunById(
   companyId: UUID,
   runId: UUID

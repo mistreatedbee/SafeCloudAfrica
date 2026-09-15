@@ -97,6 +97,33 @@ export function formatInspectionPeriod(
   }
 }
 
+/** Max days allowed to pass since the last completed run before a checklist is "overdue" for its frequency. */
+const OVERDUE_GRACE_DAYS: Record<InspectionFrequency, number | null> = {
+  daily: 1,
+  weekly: 8,
+  monthly: 32,
+  quarterly: 93,
+  annually: 366,
+  'audit-linked': null,
+  ad_hoc: null
+};
+
+/** Whether a checklist is overdue based on its frequency and the last completed run date. */
+export function isInspectionOverdue(
+  frequency: InspectionFrequency | string | null | undefined,
+  lastCompletedAt: string | Date | null | undefined,
+  referenceDate?: string | Date | null
+): boolean {
+  const freq = (frequency ?? 'daily') as InspectionFrequency;
+  const graceDays = OVERDUE_GRACE_DAYS[freq];
+  if (graceDays == null) return false;
+  if (!lastCompletedAt) return true;
+  const last = parseDate(lastCompletedAt);
+  const now = parseDate(referenceDate);
+  const diffDays = (now.getTime() - last.getTime()) / (1000 * 60 * 60 * 24);
+  return diffDays > graceDays;
+}
+
 export function formatInspectionFrequencyLabel(
   frequency: InspectionFrequency | string | null | undefined
 ): string {

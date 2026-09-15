@@ -2,8 +2,17 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Audit } from '../models/entities';
 import type { AuditQuestion, AuditResponse } from './auditsService';
-import { drawPdfCoverWithLogo } from './reportExportService';
+import { drawPdfCoverWithLogo, fetchImageAsDataUrl } from './reportExportService';
 import { downloadStyledExcelWorkbook, type ExcelSheetSpec } from './excelExportService';
+import { getPublicUrl, type StorageBucket } from './storageService';
+
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+
+function isImageFileName(fileName: string | undefined | null): boolean {
+  if (!fileName) return false;
+  const lower = fileName.toLowerCase();
+  return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -112,6 +121,57 @@ export async function exportAuditDetailPdf(input: {
     headStyles: { fillColor: [15, 118, 110], textColor: 255 },
     columnStyles: { 2: { cellWidth: 130 }, 7: { cellWidth: 100 } }
   });
+
+  // Evidence appendix: thumbnail any image evidence attached to checklist questions.
+  type EvidenceEntry = { storageBucket?: string; storageKey?: string; fileName?: string };
+  const evidenceEntries: Array<{ questionIndex: number; evidence: EvidenceEntry }> = [];
+  questions.forEach((q, idx) => {
+    const resp = responsesByQuestion.get(q.id);
+    const files = ((resp as any)?.evidence_files ?? []) as EvidenceEntry[];
+    for (const file of files) {
+      if (isImageFileName(file.fileName)) evidenceEntries.push({ questionIndex: idx, evidence: file });
+    }
+  });
+
+  if (evidenceEntries.length > 0) {
+    doc.addPage();
+    let ey = 40;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Evidence', 40, ey);
+    ey += 20;
+
+    const thumbSize = 100;
+    const maxPerRow = 4;
+    const gap = 16;
+    let col = 0;
+    const limited = evidenceEntries.slice(0, 24);
+    for (const entry of limited) {
+      if (!entry.evidence.storageBucket || !entry.evidence.storageKey) continue;
+      const url = getPublicUrl(entry.evidence.storageBucket as StorageBucket, entry.evidence.storageKey);
+      const dataUrl = await fetchImageAsDataUrl(url);
+      if (!dataUrl) continue;
+      const x = 40 + col * (thumbSize + gap);
+      if (ey + thumbSize + 20 > doc.internal.pageSize.getHeight() - 40) {
+        doc.addPage();
+        ey = 40;
+      }
+      try {
+        doc.addImage(dataUrl, x, ey, thumbSize, thumbSize, undefined, 'FAST');
+      } catch {
+        continue;
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Q${entry.questionIndex + 1}: ${(entry.evidence.fileName ?? '').slice(0, 20)}`, x, ey + thumbSize + 10);
+      col += 1;
+      if (col >= maxPerRow) {
+        col = 0;
+        ey += thumbSize + 26;
+      }
+    }
+  }
 
   const pageCount = doc.getNumberOfPages();
   for (let page = 1; page <= pageCount; page++) {

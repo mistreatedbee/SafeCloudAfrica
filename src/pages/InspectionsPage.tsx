@@ -17,7 +17,8 @@ import { ListEmptyState } from '../components/ui/ListEmptyState';
 import type { ModuleKey } from '../api/models/core';
 import {
   formatInspectionFrequencyLabel,
-  formatInspectionPeriod
+  formatInspectionPeriod,
+  isInspectionOverdue
 } from '../utils/inspectionFrequency';
 
 const containerVariants = {
@@ -87,7 +88,8 @@ export function InspectionsPage() {
       nonConformances: i.nonconformances_count ?? 0,
       location: i.location,
       frequency: i.frequency ?? null,
-      periodLabel: formatInspectionPeriod(i.frequency, i.inspection_date ?? i.scheduled_at ?? i.created_at)
+      periodLabel: formatInspectionPeriod(i.frequency, i.inspection_date ?? i.scheduled_at ?? i.created_at),
+      overdue: isInspectionOverdue(i.frequency, i.completed_at)
     };
   });
 
@@ -287,6 +289,11 @@ export function InspectionsPage() {
                           {inspection.frequency && (
                             <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
                               {formatInspectionFrequencyLabel(inspection.frequency)} — {inspection.periodLabel}
+                            </span>
+                          )}
+                          {inspection.overdue && (
+                            <span className="px-2 py-0.5 bg-critical/10 text-critical rounded text-xs font-semibold">
+                              Overdue
                             </span>
                           )}
                           {inspection.findings > 0 && (

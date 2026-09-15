@@ -12,10 +12,12 @@ import {
   completeInspectionRun,
   getInspectionById,
   getInspectionRunById,
+  listInspectionRunsForInspection,
   submitAuditeeSelfAssessment,
   syncInspectionItemsFromNcrStatus,
   updateInspectionRunItem
 } from '../api/services/inspectionsService';
+import { InspectionScheduleTracker } from '../components/inspections/InspectionScheduleTracker';
 import { listQualityNcrs } from '../api/services/qualityNcrsService';
 import { listCorrectiveActions, type CorrectiveAction } from '../api/services/correctiveActionsService';
 import { listUserProfiles } from '../api/services/profilesService';
@@ -82,6 +84,14 @@ export function InspectionDetailPage() {
       if (!run) return null;
       await syncInspectionItemsFromNcrStatus(activeCompanyId as UUID, run.id as UUID);
       return await getInspectionRunById(activeCompanyId as UUID, run.id as UUID);
+    },
+    [activeCompanyId, inspectionId]
+  );
+
+  const { data: allRuns } = useAsync<InspectionRun[]>(
+    async () => {
+      if (!activeCompanyId || !inspectionId) return [];
+      return await listInspectionRunsForInspection(activeCompanyId as UUID, inspectionId as unknown as UUID);
     },
     [activeCompanyId, inspectionId]
   );
@@ -286,6 +296,7 @@ export function InspectionDetailPage() {
                 <div><p className="text-xs text-charcoal-500">Compliance</p><p className="font-medium">{checklistStats.compliancePercent.toFixed(1)}%</p></div>
                 <div><p className="text-xs text-charcoal-500">Findings / NC</p><p className="font-medium">{inspection.findings_count ?? 0} / {inspection.nonconformances_count ?? 0}</p></div>
               </div>
+              <InspectionScheduleTracker frequency={(inspection as any).frequency} runs={allRuns ?? []} />
               {sectionScores.length > 0 && (
                 <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
                   <p className="text-xs font-semibold text-charcoal mb-2">Score per section</p>
