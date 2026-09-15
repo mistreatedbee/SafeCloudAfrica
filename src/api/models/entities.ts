@@ -2700,6 +2700,13 @@ export type Audit = {
   date_approval_status: 'pending' | 'approved' | 'declined' | null;
   date_decline_reason: string | null;
   checklist_template_id: UUID | null;
+  auditee_hr_employee_id: UUID | null;
+  auditee_name: string | null;
+  lead_auditor_hr_employee_id: UUID | null;
+  lead_auditor_name: string | null;
+  overall_score: number | null;
+  max_score: number | null;
+  compliance_percent: number | null;
 
   // Planning inputs (document URLs or references)
   organogram_document_url: string | null;

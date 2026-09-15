@@ -8,6 +8,72 @@ import { listAuditChecklistTemplates } from '../../api/services/auditChecklistTe
 import { useAsync } from '../../api/hooks/useAsync';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
+
+/**
+ * Repeated HrEmployeeSelect rows (add/remove) for a plain array of linked
+ * user ids. Distinct from the shared `HrEmployeeMultiSelect` component,
+ * which selects HR employee row ids (+ unlinked "external names") rather
+ * than platform user ids — this form needs auth user ids for email lookup.
+ */
+function RepeatableHrEmployeeUserPicker(props: {
+  companyId: UUID;
+  values: UUID[];
+  onChange: (values: UUID[]) => void;
+  label: string;
+  addLabel: string;
+}) {
+  const { values, onChange } = props;
+  const [rows, setRows] = useState<Array<UUID | ''>>(values.length > 0 ? values : ['']);
+
+  useEffect(() => {
+    setRows(values.length > 0 ? values : ['']);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values.join(',')]);
+
+  function commit(next: Array<UUID | ''>) {
+    setRows(next);
+    onChange(next.filter((v): v is UUID => Boolean(v)));
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-charcoal mb-1">{props.label}</label>
+      {rows.map((val, i) => (
+        <div key={i} className="flex gap-2 items-start">
+          <div className="flex-1">
+            <HrEmployeeSelect
+              companyId={props.companyId}
+              value={val}
+              onChange={(selected) => {
+                const next = [...rows];
+                next[i] = selected;
+                commit(next);
+              }}
+            />
+          </div>
+          {rows.length > 1 && (
+            <button
+              type="button"
+              onClick={() => commit(rows.filter((_, idx) => idx !== i))}
+              className="p-2 mt-0.5 rounded-lg border border-surface-300 text-charcoal-500 hover:bg-surface-50"
+              title="Remove"
+            >
+              <Trash2Icon className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => setRows((prev) => [...prev, ''])}
+        className="inline-flex items-center gap-1 text-sm text-teal font-medium hover:underline"
+      >
+        <PlusIcon className="w-4 h-4" /> {props.addLabel}
+      </button>
+    </div>
+  );
+}
 
 export function AuditScheduleModal(props: {
   open: boolean;
@@ -24,10 +90,15 @@ export function AuditScheduleModal(props: {
   const [scopeOfAudit, setScopeOfAudit] = useState('');
   const [proposedDates, setProposedDates] = useState<string[]>(['', '', '']);
   const [location, setLocation] = useState('');
-  const [auditorIdsInput, setAuditorIdsInput] = useState('');
-  const [auditeeIdsInput, setAuditeeIdsInput] = useState('');
-  const [companyRepIdsInput, setCompanyRepIdsInput] = useState('');
-  const [leadAuditorId, setLeadAuditorId] = useState('');
+  const [auditorUserIds, setAuditorUserIds] = useState<UUID[]>([]);
+  const [departmentRepUserIds, setDepartmentRepUserIds] = useState<UUID[]>([]);
+  const [companyRepUserIds, setCompanyRepUserIds] = useState<UUID[]>([]);
+  const [leadAuditorId, setLeadAuditorId] = useState<UUID | ''>('');
+  const [leadAuditorHrEmployeeId, setLeadAuditorHrEmployeeId] = useState<UUID | null>(null);
+  const [leadAuditorName, setLeadAuditorName] = useState('');
+  const [auditeeId, setAuditeeId] = useState<UUID | ''>('');
+  const [auditeeHrEmployeeId, setAuditeeHrEmployeeId] = useState<UUID | null>(null);
+  const [auditeeName, setAuditeeName] = useState('');
   const [documentDeadline, setDocumentDeadline] = useState('');
   const [requiredDocs, setRequiredDocs] = useState<string[]>(['']);
   const [checklistTemplateId, setChecklistTemplateId] = useState<string>('');
@@ -46,10 +117,11 @@ export function AuditScheduleModal(props: {
         scopeOfAudit.trim().length > 0 ||
         location.trim().length > 0 ||
         proposedDates.some((d) => d.trim().length > 0) ||
-        auditorIdsInput.trim().length > 0 ||
-        auditeeIdsInput.trim().length > 0 ||
-        companyRepIdsInput.trim().length > 0 ||
+        auditorUserIds.length > 0 ||
+        departmentRepUserIds.length > 0 ||
+        companyRepUserIds.length > 0 ||
         leadAuditorId.trim().length > 0 ||
+        auditeeId.trim().length > 0 ||
         documentDeadline.trim().length > 0 ||
         requiredDocs.some((d) => d.trim().length > 0) ||
         checklistTemplateId.trim().length > 0 ||
@@ -58,13 +130,14 @@ export function AuditScheduleModal(props: {
     [
       auditCriteria,
       auditType,
-      auditorIdsInput,
-      auditeeIdsInput,
+      auditorUserIds,
+      departmentRepUserIds,
       checklistTemplateId,
-      companyRepIdsInput,
+      companyRepUserIds,
       documentDeadline,
       location,
       leadAuditorId,
+      auditeeId,
       module,
       objectives,
       proposedDates,
@@ -90,10 +163,15 @@ export function AuditScheduleModal(props: {
       scopeOfAudit,
       proposedDates,
       location,
-      auditorIdsInput,
-      auditeeIdsInput,
-      companyRepIdsInput,
+      auditorUserIds,
+      departmentRepUserIds,
+      companyRepUserIds,
       leadAuditorId,
+      leadAuditorHrEmployeeId,
+      leadAuditorName,
+      auditeeId,
+      auditeeHrEmployeeId,
+      auditeeName,
       documentDeadline,
       requiredDocs,
       checklistTemplateId
@@ -116,10 +194,15 @@ export function AuditScheduleModal(props: {
       scopeOfAudit?: string;
       proposedDates?: string[];
       location?: string;
-      auditorIdsInput?: string;
-      auditeeIdsInput?: string;
-      companyRepIdsInput?: string;
-      leadAuditorId?: string;
+      auditorUserIds?: UUID[];
+      departmentRepUserIds?: UUID[];
+      companyRepUserIds?: UUID[];
+      leadAuditorId?: UUID | '';
+      leadAuditorHrEmployeeId?: UUID | null;
+      leadAuditorName?: string;
+      auditeeId?: UUID | '';
+      auditeeHrEmployeeId?: UUID | null;
+      auditeeName?: string;
       documentDeadline?: string;
       requiredDocs?: string[];
       checklistTemplateId?: string;
@@ -135,10 +218,15 @@ export function AuditScheduleModal(props: {
     setScopeOfAudit(restored.scopeOfAudit ?? '');
     setProposedDates(Array.isArray(restored.proposedDates) ? restored.proposedDates : ['', '', '']);
     setLocation(restored.location ?? '');
-    setAuditorIdsInput(restored.auditorIdsInput ?? '');
-    setAuditeeIdsInput(restored.auditeeIdsInput ?? '');
-    setCompanyRepIdsInput(restored.companyRepIdsInput ?? '');
+    setAuditorUserIds(Array.isArray(restored.auditorUserIds) ? restored.auditorUserIds : []);
+    setDepartmentRepUserIds(Array.isArray(restored.departmentRepUserIds) ? restored.departmentRepUserIds : []);
+    setCompanyRepUserIds(Array.isArray(restored.companyRepUserIds) ? restored.companyRepUserIds : []);
     setLeadAuditorId(restored.leadAuditorId ?? '');
+    setLeadAuditorHrEmployeeId(restored.leadAuditorHrEmployeeId ?? null);
+    setLeadAuditorName(restored.leadAuditorName ?? '');
+    setAuditeeId(restored.auditeeId ?? '');
+    setAuditeeHrEmployeeId(restored.auditeeHrEmployeeId ?? null);
+    setAuditeeName(restored.auditeeName ?? '');
     setDocumentDeadline(restored.documentDeadline ?? '');
     setRequiredDocs(Array.isArray(restored.requiredDocs) ? restored.requiredDocs : ['']);
     setChecklistTemplateId(restored.checklistTemplateId ?? '');
@@ -193,15 +281,9 @@ export function AuditScheduleModal(props: {
     setError(null);
     try {
       setLoading(true);
-      const auditorUserIds = auditorIdsInput
-        ? (auditorIdsInput.split(',').map((s) => s.trim()).filter(Boolean) as UUID[])
-        : [props.createdByUserId];
-      const departmentsAuditeeIds = auditeeIdsInput
-        ? (auditeeIdsInput.split(',').map((s) => s.trim()).filter(Boolean) as UUID[])
-        : undefined;
-      const companyRepresentativeUserIds = companyRepIdsInput
-        ? (companyRepIdsInput.split(',').map((s) => s.trim()).filter(Boolean) as UUID[])
-        : undefined;
+      const resolvedAuditorUserIds = auditorUserIds.length > 0 ? auditorUserIds : [props.createdByUserId];
+      const departmentsAuditeeIds = departmentRepUserIds.length > 0 ? departmentRepUserIds : undefined;
+      const companyRepresentativeUserIds = companyRepUserIds.length > 0 ? companyRepUserIds : undefined;
       const requiredDocumentList = requiredDocs
         .map((s) => s.trim())
         .filter(Boolean)
@@ -222,7 +304,7 @@ export function AuditScheduleModal(props: {
         auditCriteria: auditCriteria.trim(),
         scopeOfAudit: scopeOfAudit.trim(),
         location: location.trim(),
-        auditorUserIds,
+        auditorUserIds: resolvedAuditorUserIds,
         proposedDates: proposedDatesParsed,
         createdByUserId: props.createdByUserId,
         requiredDocumentList: requiredDocumentList.length ? requiredDocumentList : undefined,
@@ -230,6 +312,10 @@ export function AuditScheduleModal(props: {
         departmentsAuditeeIds,
         companyRepresentativeUserIds,
         leadAuditorUserId: leadAuditorId ? (leadAuditorId as UUID) : undefined,
+        leadAuditorHrEmployeeId,
+        leadAuditorName: leadAuditorName || undefined,
+        auditeeHrEmployeeId,
+        auditeeName: auditeeName || undefined,
         checklistTemplateId: checklistTemplateId ? (checklistTemplateId as UUID) : undefined
       });
 
@@ -242,10 +328,15 @@ export function AuditScheduleModal(props: {
       setScopeOfAudit('');
       setProposedDates(['', '', '']);
       setLocation('');
-      setAuditorIdsInput('');
-      setAuditeeIdsInput('');
-      setCompanyRepIdsInput('');
+      setAuditorUserIds([]);
+      setDepartmentRepUserIds([]);
+      setCompanyRepUserIds([]);
       setLeadAuditorId('');
+      setLeadAuditorHrEmployeeId(null);
+      setLeadAuditorName('');
+      setAuditeeId('');
+      setAuditeeHrEmployeeId(null);
+      setAuditeeName('');
       setDocumentDeadline('');
       setRequiredDocs(['']);
       setChecklistTemplateId('');
@@ -481,42 +572,58 @@ export function AuditScheduleModal(props: {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Auditors (optional)</label>
-            <input
-              value={auditorIdsInput}
-              onChange={(e) => setAuditorIdsInput(e.target.value)}
-              placeholder="Comma-separated user IDs; leave empty to default to the creator"
-              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            <RepeatableHrEmployeeUserPicker
+              companyId={props.companyId}
+              values={auditorUserIds}
+              onChange={setAuditorUserIds}
+              label="Auditors (optional — leave empty to default to the creator)"
+              addLabel="Add another auditor"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Lead auditor (optional)</label>
-            <input
+            <HrEmployeeSelect
+              companyId={props.companyId}
               value={leadAuditorId}
-              onChange={(e) => setLeadAuditorId(e.target.value)}
-              placeholder="User ID of lead auditor"
-              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+              label="Lead auditor (optional)"
+              onChange={(selected, meta) => {
+                setLeadAuditorId(selected);
+                setLeadAuditorHrEmployeeId(meta.employeeId ?? null);
+                setLeadAuditorName(meta.nameSnapshot);
+              }}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Auditees / department reps (optional)</label>
-            <input
-              value={auditeeIdsInput}
-              onChange={(e) => setAuditeeIdsInput(e.target.value)}
-              placeholder="Comma-separated user IDs — they will approve the audit date"
-              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            <HrEmployeeSelect
+              companyId={props.companyId}
+              value={auditeeId}
+              label="Auditee (optional)"
+              onChange={(selected, meta) => {
+                setAuditeeId(selected);
+                setAuditeeHrEmployeeId(meta.employeeId ?? null);
+                setAuditeeName(meta.nameSnapshot);
+              }}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Company representatives (optional)</label>
-            <input
-              value={companyRepIdsInput}
-              onChange={(e) => setCompanyRepIdsInput(e.target.value)}
-              placeholder="Comma-separated user IDs"
-              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            <RepeatableHrEmployeeUserPicker
+              companyId={props.companyId}
+              values={departmentRepUserIds}
+              onChange={setDepartmentRepUserIds}
+              label="Department reps (optional — they will approve the audit date)"
+              addLabel="Add another department rep"
+            />
+          </div>
+
+          <div>
+            <RepeatableHrEmployeeUserPicker
+              companyId={props.companyId}
+              values={companyRepUserIds}
+              onChange={setCompanyRepUserIds}
+              label="Company representatives (optional)"
+              addLabel="Add another representative"
             />
           </div>
 

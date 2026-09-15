@@ -80,46 +80,111 @@ export type CreateInspectionInput = {
   companyId: UUID;
   module: ModuleKey;
   title: string;
+  subTitle?: string;
   scheduledAt?: string;
   location?: string;
   assigneeUserId?: UUID;
   createdByUserId: UUID;
   templateId?: UUID;
+  siteId?: UUID | null;
+  departmentId?: UUID | null;
   inspectorUserId?: UUID | null;
+  inspectorHrEmployeeId?: UUID | null;
+  inspectorName?: string | null;
   auditorUserId?: UUID | null;
+  auditorHrEmployeeId?: UUID | null;
+  auditorName?: string | null;
+  areaManagerUserId?: UUID | null;
+  areaManagerHrEmployeeId?: UUID | null;
+  areaManagerName?: string | null;
   auditeeUserId?: UUID | null;
+  auditeeHrEmployeeId?: UUID | null;
+  auditeeName?: string | null;
   sector?: string;
   frequency?: InspectionFrequency;
   inspectionMethod?: 'physical-inspection' | 'observation' | 'record-review';
   inspectionDate?: string;
+  openingHoursKm?: number | null;
+  closingHoursKm?: number | null;
+  serviceIntervalHoursKm?: number | null;
+  nextServiceHoursKm?: number | null;
+  periodLabel?: string | null;
 };
 
 export async function createInspection(input: CreateInspectionInput): Promise<Inspection> {
   return withInsforgeSession('inspections:create', async () => {
   const profile = await getMyProfile(input.companyId, input.createdByUserId);
-  const { data, error } = await insforge.database
-    .from('inspections')
-    .insert({
-      company_id: input.companyId,
-      module: input.module,
-      site_id: (profile as any)?.site_id ?? null,
-      department_id: (profile as any)?.department_id ?? null,
-      title: input.title,
-      status: 'scheduled',
-      scheduled_at: input.scheduledAt ?? null,
-      location: input.location ?? null,
-      assignee_user_id: input.assigneeUserId ?? null,
-      inspector_user_id: input.inspectorUserId ?? input.assigneeUserId ?? input.createdByUserId,
-      auditor_user_id: input.auditorUserId ?? null,
-      auditee_user_id: input.auditeeUserId ?? null,
-      sector: input.sector ?? null,
-      frequency: input.frequency ?? 'daily',
-      inspection_method: input.inspectionMethod ?? 'physical-inspection',
-      inspection_date: input.inspectionDate ?? null,
-      created_by_user_id: input.createdByUserId
-    })
-    .select('*')
-    .single();
+  const fullPayload: Record<string, unknown> = {
+    company_id: input.companyId,
+    module: input.module,
+    site_id: input.siteId ?? (profile as any)?.site_id ?? null,
+    department_id: input.departmentId ?? (profile as any)?.department_id ?? null,
+    title: input.title,
+    sub_title: input.subTitle ?? null,
+    status: 'scheduled',
+    scheduled_at: input.scheduledAt ?? null,
+    location: input.location ?? null,
+    assignee_user_id: input.assigneeUserId ?? null,
+    inspector_user_id: input.inspectorUserId ?? input.assigneeUserId ?? input.createdByUserId,
+    inspector_hr_employee_id: input.inspectorHrEmployeeId ?? null,
+    inspector_name: input.inspectorName ?? null,
+    auditor_user_id: input.auditorUserId ?? null,
+    auditor_hr_employee_id: input.auditorHrEmployeeId ?? null,
+    auditor_name: input.auditorName ?? null,
+    area_manager_hr_employee_id: input.areaManagerHrEmployeeId ?? null,
+    area_manager_name: input.areaManagerName ?? null,
+    auditee_user_id: input.auditeeUserId ?? null,
+    auditee_hr_employee_id: input.auditeeHrEmployeeId ?? null,
+    auditee_name: input.auditeeName ?? null,
+    sector: input.sector ?? null,
+    frequency: input.frequency ?? 'daily',
+    inspection_method: input.inspectionMethod ?? 'physical-inspection',
+    inspection_date: input.inspectionDate ?? null,
+    opening_hours_km: input.openingHoursKm ?? null,
+    closing_hours_km: input.closingHoursKm ?? null,
+    service_interval_hours_km: input.serviceIntervalHoursKm ?? null,
+    next_service_hours_km: input.nextServiceHoursKm ?? null,
+    period_label: input.periodLabel ?? null,
+    created_by_user_id: input.createdByUserId
+  };
+
+  let payload: Record<string, unknown> = { ...fullPayload };
+  let data: Inspection | null = null;
+  let error: { message?: string } | null = null;
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const result = await insforge.database.from('inspections').insert(payload).select('*').single();
+    data = (result.data as Inspection | null) ?? null;
+    error = result.error;
+    if (!error) break;
+    const message = String(error.message ?? '').toLowerCase();
+    if (!message.includes('column')) throw new Error(getErrorMessage(error));
+    if (message.includes('sub_title')) delete payload.sub_title;
+    else if (message.includes('site_id')) delete payload.site_id;
+    else if (message.includes('department_id')) delete payload.department_id;
+    else if (message.includes('inspector_hr_employee_id')) delete payload.inspector_hr_employee_id;
+    else if (message.includes('inspector_name')) delete payload.inspector_name;
+    else if (message.includes('inspector_user_id')) delete payload.inspector_user_id;
+    else if (message.includes('auditor_hr_employee_id')) delete payload.auditor_hr_employee_id;
+    else if (message.includes('auditor_name')) delete payload.auditor_name;
+    else if (message.includes('auditor_user_id')) delete payload.auditor_user_id;
+    else if (message.includes('area_manager_hr_employee_id')) delete payload.area_manager_hr_employee_id;
+    else if (message.includes('area_manager_name')) delete payload.area_manager_name;
+    else if (message.includes('auditee_hr_employee_id')) delete payload.auditee_hr_employee_id;
+    else if (message.includes('auditee_name')) delete payload.auditee_name;
+    else if (message.includes('auditee_user_id')) delete payload.auditee_user_id;
+    else if (message.includes('sector')) delete payload.sector;
+    else if (message.includes('frequency')) delete payload.frequency;
+    else if (message.includes('inspection_method')) delete payload.inspection_method;
+    else if (message.includes('opening_hours_km')) delete payload.opening_hours_km;
+    else if (message.includes('closing_hours_km')) delete payload.closing_hours_km;
+    else if (message.includes('service_interval_hours_km')) delete payload.service_interval_hours_km;
+    else if (message.includes('next_service_hours_km')) delete payload.next_service_hours_km;
+    else if (message.includes('period_label')) delete payload.period_label;
+    else if (message.includes('inspection_date')) delete payload.inspection_date;
+    else throw new Error(getErrorMessage(error));
+  }
+
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create inspection.');
 

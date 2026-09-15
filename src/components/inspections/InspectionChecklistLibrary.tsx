@@ -7,8 +7,7 @@ import {
   createInspectionChecklistTemplate,
   updateInspectionChecklistTemplate
 } from '../../api/services/inspectionsService';
-import { listUserProfiles } from '../../api/services/profilesService';
-import type { UserProfile } from '../../api/models/entities';
+import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useUser } from '@insforge/react';
 import { useDraftManager } from '../../session/DraftManagerProvider';
@@ -43,7 +42,6 @@ export function InspectionChecklistLibrary(props: Props) {
   const { user } = useUser();
   const [moduleFilter, setModuleFilter] = useState<ModuleKey | 'all'>(props.defaultModule ?? 'all');
   const [templates, setTemplates] = useState<InspectionChecklistTemplate[]>([]);
-  const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchSucceeded, setFetchSucceeded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,18 +71,6 @@ export function InspectionChecklistLibrary(props: Props) {
     if (!restored) return;
     setEditing(restored);
   }, [draftKey, props.canManage, restoreDraft]);
-
-  useEffect(() => {
-    async function loadProfiles() {
-      try {
-        const data = await listUserProfiles(props.companyId);
-        setProfiles(data);
-      } catch {
-        setProfiles([]);
-      }
-    }
-    void loadProfiles();
-  }, [props.companyId]);
 
   async function refresh() {
     if (!props.companyId) return;
@@ -409,34 +395,20 @@ export function InspectionChecklistLibrary(props: Props) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-charcoal mb-1.5">Default auditor</label>
-                <select
-                  value={editing.defaultAuditorUserId}
-                  onChange={(e) => setEditing({ ...editing, defaultAuditorUserId: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
-                >
-                  <option value="">None</option>
-                  {profiles.map((p) => (
-                    <option key={p.user_id} value={p.user_id}>
-                      {p.full_name || p.email || p.user_id}
-                    </option>
-                  ))}
-                </select>
+                <HrEmployeeSelect
+                  companyId={props.companyId}
+                  value={editing.defaultAuditorUserId as UUID | ''}
+                  label="Default auditor"
+                  onChange={(selected) => setEditing({ ...editing, defaultAuditorUserId: selected })}
+                />
               </div>
               <div>
-                <label className="block text-xs font-medium text-charcoal mb-1.5">Area manager</label>
-                <select
-                  value={editing.defaultAreaManagerUserId}
-                  onChange={(e) => setEditing({ ...editing, defaultAreaManagerUserId: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
-                >
-                  <option value="">None</option>
-                  {profiles.map((p) => (
-                    <option key={p.user_id} value={p.user_id}>
-                      {p.full_name || p.email || p.user_id}
-                    </option>
-                  ))}
-                </select>
+                <HrEmployeeSelect
+                  companyId={props.companyId}
+                  value={editing.defaultAreaManagerUserId as UUID | ''}
+                  label="Area manager"
+                  onChange={(selected) => setEditing({ ...editing, defaultAreaManagerUserId: selected })}
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-charcoal mb-1.5">

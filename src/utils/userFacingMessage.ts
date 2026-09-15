@@ -7,6 +7,11 @@ import { paaq } from '../lib/paaq';
 // how real or severe the underlying failure was. Reporting it here, once,
 // covers all of them instead of instrumenting every call site by hand.
 export function toUserFacingError(error: unknown, fallback: string): string {
+  // Always surface the raw InsForge/DB error to the console so it's visible
+  // during development and in browser devtools, even though the message
+  // shown to the user below may be a sanitized fallback.
+  console.error('[toUserFacingError]', fallback, error);
+
   try {
     paaq.trackError(error, { context: { fallback } });
   } catch {

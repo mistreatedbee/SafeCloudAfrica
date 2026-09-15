@@ -12,7 +12,7 @@ import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
 import type { UUID, Audit, QualityNcr } from '../api/models/entities';
 import { exportAuditChecklistCSV, downloadFile } from '../api/services/exportService';
-import { exportAuditDetailPdf } from '../api/services/auditReportExportService';
+import { exportAuditDetailPdf, exportAuditDetailExcel } from '../api/services/auditReportExportService';
 import { getCompanyLogoUrl } from '../utils/companyLogo';
 import {
   getAudit,
@@ -28,8 +28,14 @@ import {
   submitAuditResponse,
   approveAuditDate,
   declineAuditDate,
+  refreshAuditScore,
+  createCorrectiveActionForAuditResponse,
+  listAuditSections,
+  createAuditSection,
+  deleteAuditSection,
   type AuditQuestion,
-  type AuditResponse
+  type AuditResponse,
+  type AuditSection
 } from '../api/services/auditsService';
 import { listQualityNcrs } from '../api/services/qualityNcrsService';
 import { listCorrectiveActions, createCorrectiveAction, type CorrectiveAction } from '../api/services/correctiveActionsService';
@@ -115,6 +121,17 @@ export function AuditDetailPage() {
   );
 
   const {
+    data: sections,
+    refresh: refreshSections
+  } = useAsync<AuditSection[]>(
+    async () => {
+      if (!auditId) return [];
+      return await listAuditSections(auditId as UUID);
+    },
+    [auditId]
+  );
+
+  const {
     data: responses,
     loading: responsesLoading,
     error: responsesError,
@@ -134,6 +151,7 @@ export function AuditDetailPage() {
   const [ncrLinkedQuestionId, setNcrLinkedQuestionId] = useState<UUID | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [raisingFindingForQuestionId, setRaisingFindingForQuestionId] = useState<UUID | null>(null);
+  const [creatingCapaForQuestionId, setCreatingCapaForQuestionId] = useState<UUID | null>(null);
   const [creatingTaskForFindingId, setCreatingTaskForFindingId] = useState<UUID | null>(null);
   const [dateApprovalLoading, setDateApprovalLoading] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
@@ -150,12 +168,17 @@ export function AuditDetailPage() {
   const [deletingQuestionId, setDeletingQuestionId] = useState<UUID | null>(null);
   const [newQuestion, setNewQuestion] = useState('');
   const [newQuestionSection, setNewQuestionSection] = useState('');
+  const [newQuestionSectionRefId, setNewQuestionSectionRefId] = useState('');
   const [newQuestionEvidence, setNewQuestionEvidence] = useState('');
   const [newQuestionScore, setNewQuestionScore] = useState('1');
+  const [newSectionTitle, setNewSectionTitle] = useState('');
+  const [newSectionIsoClause, setNewSectionIsoClause] = useState('');
+  const [addingSection, setAddingSection] = useState(false);
   const [addingQuestion, setAddingQuestion] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [importingTemplate, setImportingTemplate] = useState(false);
   const [exportingAuditPdf, setExportingAuditPdf] = useState(false);
+  const [exportingAuditExcel, setExportingAuditExcel] = useState(false);
   const [reorderingQuestions, setReorderingQuestions] = useState(false);
 
   const { data: checklistTemplates } = useAsync(
@@ -314,7 +337,19 @@ export function AuditDetailPage() {
     const answered = (responses ?? []).length;
     const compliant = (responses ?? []).filter((r) => r.is_compliant).length;
     const percentCompliant = answered > 0 ? Math.round((compliant / answered) * 100) : 0;
-    return { total, answered, compliant, percentCompliant };
+    let achieved = 0;
+    let allocated = 0;
+    for (const r of responses ?? []) {
+      achieved += Number((r as any).achieved_score ?? 0);
+      allocated += Number((r as any).allocated_score ?? 0);
+    }
+    const scorePercent = allocated > 0 ? Math.round((achieved / allocated) * 1000) / 10 : 0;
+    const complianceCounts = { C: 0, NC: 0, Obs: 0, 'N/A': 0 } as Record<string, number>;
+    for (const r of responses ?? []) {
+      const status = (r as any).compliance_status as string | undefined;
+      if (status && status in complianceCounts) complianceCounts[status] += 1;
+    }
+    return { total, answered, compliant, percentCompliant, achieved, allocated, scorePercent, complianceCounts };
   }, [questions, responses]);
 
   async function handleStartAudit() {
@@ -352,12 +387,14 @@ export function AuditDetailPage() {
     try {
       const existing = responsesByQuestion.get(question.id);
       await submitAuditResponse({
+        companyId: activeCompanyId,
         auditQuestionId: question.id,
         isCompliant: partial.is_compliant ?? existing?.is_compliant ?? true,
         finding: partial.finding ?? existing?.finding ?? '',
         evidenceDocumentUrl: partial.evidence_document_url ?? existing?.evidence_document_url ?? undefined,
         riskRating: partial.risk_rating ?? existing?.risk_rating ?? 'low',
         deviationType: (partial as any).deviation_type ?? existing?.deviation_type ?? null,
+        complianceStatus: (partial as any).compliance_status ?? (existing as any)?.compliance_status ?? null,
         allocatedScore: (partial as any).allocated_score ?? existing?.allocated_score ?? question.allocated_score ?? null,
         achievedScore: (partial as any).achieved_score ?? existing?.achieved_score ?? null,
         evidenceFiles: (partial as any).evidence_files ?? existing?.evidence_files ?? null,
@@ -365,6 +402,7 @@ export function AuditDetailPage() {
       });
       await refreshResponses();
       await updateAuditFindingsCounts(audit.id as UUID, activeCompanyId, user.id as any);
+      await refreshAuditScore(audit.id as UUID, activeCompanyId, user.id as any);
       await refreshAudit();
       await refreshFindings();
       await refreshNcrs();
@@ -372,6 +410,35 @@ export function AuditDetailPage() {
       await refreshLinkedImprovements();
     } finally {
       setSavingResponseId(null);
+    }
+  }
+
+  async function handleCreateCapaForQuestion(question: AuditQuestion) {
+    if (!audit || !activeCompanyId || !user?.id) return;
+    const resp = responsesByQuestion.get(question.id);
+    if (!resp) return;
+    const dueDate = window.prompt('Due date for this corrective action (YYYY-MM-DD)?');
+    if (!dueDate) return;
+    setCreatingCapaForQuestionId(question.id);
+    setActionError(null);
+    try {
+      await createCorrectiveActionForAuditResponse({
+        companyId: activeCompanyId,
+        auditId: audit.id as UUID,
+        auditTitle: audit.title ?? audit.objectives ?? 'Audit',
+        responseId: resp.id,
+        questionText: question.question,
+        description: resp.finding ?? undefined,
+        priority: resp.risk_rating === 'high' ? 'high' : resp.risk_rating === 'medium' ? 'medium' : 'low',
+        dueDate: new Date(dueDate).toISOString(),
+        createdByUserId: user.id as UUID
+      });
+      await refreshResponses();
+      await refreshCapas();
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Unable to create corrective action.'));
+    } finally {
+      setCreatingCapaForQuestionId(null);
     }
   }
 
@@ -396,15 +463,50 @@ export function AuditDetailPage() {
     }
   }
 
+  async function handleAddSection() {
+    if (!auditId || !activeCompanyId || !user?.id || !newSectionTitle.trim()) return;
+    setAddingSection(true);
+    setActionError(null);
+    try {
+      await createAuditSection({
+        companyId: activeCompanyId,
+        auditId: auditId as UUID,
+        sectionTitle: newSectionTitle.trim(),
+        isoClause: newSectionIsoClause.trim() || null,
+        sectionOrder: (sections?.length ?? 0) + 1,
+        createdByUserId: user.id as UUID
+      });
+      setNewSectionTitle('');
+      setNewSectionIsoClause('');
+      await refreshSections();
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Unable to add audit section.'));
+    } finally {
+      setAddingSection(false);
+    }
+  }
+
+  async function handleDeleteSection(section: AuditSection) {
+    if (!window.confirm(`Delete section "${section.section_title}"? Questions keep their free-text section label.`)) return;
+    try {
+      await deleteAuditSection(section.id);
+      await refreshSections();
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Unable to delete audit section.'));
+    }
+  }
+
   async function handleAddQuestion() {
     if (!auditId || !user?.id || !newQuestion.trim()) return;
     setAddingQuestion(true);
     setActionError(null);
     try {
+      const sectionRef = sections?.find((s) => s.id === newQuestionSectionRefId);
       await createAuditQuestion({
         auditId: auditId as UUID,
         question: newQuestion.trim(),
-        section: newQuestionSection.trim() || null,
+        section: newQuestionSection.trim() || sectionRef?.section_title || null,
+        sectionRefId: newQuestionSectionRefId ? (newQuestionSectionRefId as UUID) : null,
         expectedEvidence: newQuestionEvidence.trim() || undefined,
         questionOrder: (questions?.length ?? 0) + 1,
         allocatedScore: Number(newQuestionScore) || 1,
@@ -412,6 +514,7 @@ export function AuditDetailPage() {
       });
       setNewQuestion('');
       setNewQuestionSection('');
+      setNewQuestionSectionRefId('');
       setNewQuestionEvidence('');
       setNewQuestionScore('1');
       await refreshQuestions();
@@ -461,6 +564,23 @@ export function AuditDetailPage() {
       setActionError(toUserFacingError(err, 'Failed to generate audit PDF.'));
     } finally {
       setExportingAuditPdf(false);
+    }
+  }
+
+  async function handleExportAuditExcel() {
+    if (!audit) return;
+    setExportingAuditExcel(true);
+    setActionError(null);
+    try {
+      await exportAuditDetailExcel({
+        audit,
+        questions: questions ?? [],
+        responses: responses ?? []
+      });
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Failed to generate audit Excel report.'));
+    } finally {
+      setExportingAuditExcel(false);
     }
   }
 
@@ -555,9 +675,12 @@ export function AuditDetailPage() {
                   <p className="font-medium">{audit.location || '—'}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-charcoal-500 mb-0.5">Compliance</p>
+                  <p className="text-xs text-charcoal-500 mb-0.5">Score</p>
                   <p className="font-medium">
-                    {checklistStats.answered}/{checklistStats.total} answered • {checklistStats.percentCompliant}% compliant
+                    {checklistStats.answered}/{checklistStats.total} answered • {checklistStats.scorePercent}% ({checklistStats.achieved}/{checklistStats.allocated})
+                  </p>
+                  <p className="text-xs text-charcoal-500 mt-0.5">
+                    C: {checklistStats.complianceCounts.C} · NC: {checklistStats.complianceCounts.NC} · Obs: {checklistStats.complianceCounts.Obs} · N/A: {checklistStats.complianceCounts['N/A']}
                   </p>
                 </div>
               </div>
@@ -571,6 +694,15 @@ export function AuditDetailPage() {
                 >
                   <DownloadIcon className="w-3.5 h-3.5" />
                   {exportingAuditPdf ? 'Generating PDF…' : 'Download PDF'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExportAuditExcel()}
+                  disabled={exportingAuditExcel}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-surface-300 text-xs font-semibold text-charcoal hover:bg-surface-50 disabled:opacity-60"
+                >
+                  <DownloadIcon className="w-3.5 h-3.5" />
+                  {exportingAuditExcel ? 'Generating Excel…' : 'Download Excel'}
                 </button>
                 {canEdit && (
                   <>
@@ -882,12 +1014,67 @@ export function AuditDetailPage() {
 
               {canEdit && audit.status !== 'completed' && audit.status !== 'archived' && (
                 <div className="mb-4 border border-surface-200 rounded-xl p-4 space-y-3 bg-surface-50">
+                  <p className="text-xs font-semibold text-charcoal">Sections (ISO clause + title)</p>
+                  {(sections ?? []).length > 0 && (
+                    <ul className="space-y-1">
+                      {(sections ?? []).map((s) => (
+                        <li key={s.id} className="flex items-center justify-between text-xs bg-white border border-surface-200 rounded-lg px-2 py-1">
+                          <span>
+                            {s.iso_clause && <span className="font-mono text-charcoal-500 mr-1">{s.iso_clause}</span>}
+                            {s.section_title}
+                          </span>
+                          <button type="button" onClick={() => void handleDeleteSection(s)} className="text-critical hover:underline">
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <input
+                      value={newSectionIsoClause}
+                      onChange={(e) => setNewSectionIsoClause(e.target.value)}
+                      placeholder="ISO clause (e.g. 8.1)"
+                      className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                    />
+                    <input
+                      value={newSectionTitle}
+                      onChange={(e) => setNewSectionTitle(e.target.value)}
+                      placeholder="Section title (e.g. Risk Management)"
+                      className="px-3 py-2 border border-surface-300 rounded-lg text-sm md:col-span-1"
+                    />
+                    <button
+                      type="button"
+                      disabled={addingSection || !newSectionTitle.trim()}
+                      onClick={() => void handleAddSection()}
+                      className="px-4 py-2 rounded-lg bg-navy text-white text-xs font-semibold hover:bg-navy-600 disabled:opacity-60"
+                    >
+                      {addingSection ? 'Adding…' : 'Add section'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {canEdit && audit.status !== 'completed' && audit.status !== 'archived' && (
+                <div className="mb-4 border border-surface-200 rounded-xl p-4 space-y-3 bg-surface-50">
                   <p className="text-xs font-semibold text-charcoal">Add checklist question</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <select
+                      value={newQuestionSectionRefId}
+                      onChange={(e) => setNewQuestionSectionRefId(e.target.value)}
+                      className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                    >
+                      <option value="">No section</option>
+                      {(sections ?? []).map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.iso_clause ? `${s.iso_clause} — ${s.section_title}` : s.section_title}
+                        </option>
+                      ))}
+                    </select>
                     <input
                       value={newQuestionSection}
                       onChange={(e) => setNewQuestionSection(e.target.value)}
-                      placeholder="Section (optional)"
+                      placeholder="Or free-text section label (optional)"
                       className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
                     />
                     <input
@@ -938,8 +1125,7 @@ export function AuditDetailPage() {
                         <th className="py-2 pr-3 text-left font-medium">#</th>
                         <th className="py-2 pr-3 text-left font-medium">Question</th>
                         <th className="py-2 pr-3 text-left font-medium">Expected evidence</th>
-                        <th className="py-2 pr-3 text-left font-medium">Compliant?</th>
-                        <th className="py-2 pr-3 text-left font-medium">Finding type</th>
+                        <th className="py-2 pr-3 text-left font-medium">Compliance</th>
                         <th className="py-2 pr-3 text-left font-medium">Alloc.</th>
                         <th className="py-2 pr-3 text-left font-medium">Achieved</th>
                         <th className="py-2 pr-3 text-left font-medium">Finding</th>
@@ -949,11 +1135,32 @@ export function AuditDetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {questions.map((q, idx) => {
+                      {(() => {
+                        let lastSectionKey = '__none__';
+                        return questions.map((q, idx) => {
                         const resp = responsesByQuestion.get(q.id);
                         const disabled = !canEdit || audit.status === 'completed' || audit.status === 'archived';
+                        const sectionRef = (q as any).section_ref_id
+                          ? (sections ?? []).find((s) => s.id === (q as any).section_ref_id)
+                          : null;
+                        const sectionLabel = sectionRef
+                          ? sectionRef.iso_clause
+                            ? `${sectionRef.iso_clause} — ${sectionRef.section_title}`
+                            : sectionRef.section_title
+                          : q.section || null;
+                        const sectionKey = sectionLabel ?? '__none__';
+                        const showSectionHeader = sectionKey !== lastSectionKey;
+                        lastSectionKey = sectionKey;
                         return (
-                          <tr key={q.id} className="border-b border-surface-100 align-top">
+                          <React.Fragment key={q.id}>
+                          {showSectionHeader && sectionLabel && (
+                            <tr>
+                              <td colSpan={10} className="pt-3 pb-1 text-xs font-semibold text-navy uppercase tracking-wide">
+                                {sectionLabel}
+                              </td>
+                            </tr>
+                          )}
+                          <tr className="border-b border-surface-100 align-top">
                             <td className="py-2 pr-3 text-xs text-charcoal-500">
                               <div className="flex items-center gap-1">
                                 <span>{idx + 1}</span>
@@ -992,34 +1199,19 @@ export function AuditDetailPage() {
                             <td className="py-2 pr-3">
                               <select
                                 disabled={disabled}
-                                value={resp?.is_compliant ? 'yes' : 'no'}
+                                value={(resp as any)?.compliance_status ?? ''}
                                 onChange={(e) =>
                                   handleSubmitResponse(q, {
-                                    is_compliant: e.target.value === 'yes'
-                                  } as any)
-                                }
-                                className="px-2 py-1 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal focus:border-transparent"
-                              >
-                                <option value="yes">Yes</option>
-                                <option value="no">No</option>
-                              </select>
-                            </td>
-                            <td className="py-2 pr-3">
-                              <select
-                                disabled={disabled}
-                                value={(resp as any)?.deviation_type ?? ''}
-                                onChange={(e) =>
-                                  handleSubmitResponse(q, {
-                                    deviation_type: e.target.value ? (e.target.value as any) : null
+                                    compliance_status: (e.target.value || null) as any
                                   } as any)
                                 }
                                 className="px-2 py-1 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal focus:border-transparent"
                               >
                                 <option value="">—</option>
-                                <option value="observation">Observation</option>
-                                <option value="finding">Finding</option>
-                                <option value="non_conformance">Non-conformance</option>
-                                <option value="opportunity_for_improvement">OFI</option>
+                                <option value="C">C — Conforming</option>
+                                <option value="NC">NC — Nonconformity</option>
+                                <option value="Obs">Obs — Observation</option>
+                                <option value="N/A">N/A — Not applicable</option>
                               </select>
                             </td>
                             <td className="py-2 pr-3 text-xs text-charcoal-500">
@@ -1151,6 +1343,30 @@ export function AuditDetailPage() {
                                 >
                                   {raisingFindingForQuestionId === q.id ? 'Saving…' : 'Raise finding'}
                                 </button>
+                                {(resp as any)?.compliance_status === 'NC' && (
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      !canEdit ||
+                                      !activeCompanyId ||
+                                      !user?.id ||
+                                      !audit ||
+                                      creatingCapaForQuestionId === q.id ||
+                                      !!(resp as any)?.corrective_action_id
+                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleCreateCapaForQuestion(q);
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-warning/40 text-xs font-semibold text-warning hover:bg-warning/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {(resp as any)?.corrective_action_id
+                                      ? 'CAPA created'
+                                      : creatingCapaForQuestionId === q.id
+                                        ? 'Creating…'
+                                        : 'Create corrective action'}
+                                  </button>
+                                )}
                                 {canEdit && (
                                   <button
                                     type="button"
@@ -1167,8 +1383,10 @@ export function AuditDetailPage() {
                               </div>
                             </td>
                           </tr>
+                          </React.Fragment>
                         );
-                      })}
+                        });
+                      })()}
                     </tbody>
                   </table>
                 </div>

@@ -5,12 +5,29 @@ import { getErrorMessage } from '../insforge/errors';
 import { getAuditChecklistTemplate } from './auditChecklistTemplatesService';
 import { sendTemplatedNotificationEmail } from './emailService';
 import { createActivityLog } from './activityLogService';
+import { createCorrectiveAction } from './correctiveActionsService';
+
+export type AuditComplianceStatus = 'C' | 'NC' | 'Obs' | 'N/A';
+
+export interface AuditSection {
+  id: UUID;
+  company_id: UUID;
+  audit_id: UUID;
+  parent_section_id: UUID | null;
+  section_order: number;
+  iso_clause: string | null;
+  section_title: string;
+  created_by_user_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface AuditQuestion {
   id: UUID;
   audit_id: UUID;
   question: string;
   section?: string | null;
+  section_ref_id?: UUID | null;
   expected_evidence?: string | null;
   allocated_score?: number | null;
   question_order: number;
@@ -20,10 +37,13 @@ export interface AuditQuestion {
 
 export interface AuditResponse {
   id: UUID;
+  company_id?: UUID;
   audit_question_id: UUID;
   is_compliant: boolean;
   finding: string | null;
   deviation_type?: 'observation' | 'finding' | 'non_conformance' | 'opportunity_for_improvement' | null;
+  compliance_status?: AuditComplianceStatus | null;
+  corrective_action_id?: UUID | null;
   evidence_document_url: string | null;
   achieved_score?: number | null;
   allocated_score?: number | null;
@@ -31,6 +51,22 @@ export interface AuditResponse {
   risk_rating: 'low' | 'medium' | 'high';
   answered_by_user_id: UUID;
   answered_at: string;
+}
+
+/** Maps the 4-state ISO compliance status onto the legacy boolean/deviation_type fields for back-compat. */
+function deriveLegacyComplianceFields(status: AuditComplianceStatus): {
+  is_compliant: boolean;
+  deviation_type: 'observation' | 'finding' | 'non_conformance' | null;
+} {
+  switch (status) {
+    case 'C':
+    case 'N/A':
+      return { is_compliant: true, deviation_type: null };
+    case 'Obs':
+      return { is_compliant: false, deviation_type: 'observation' };
+    case 'NC':
+      return { is_compliant: false, deviation_type: 'non_conformance' };
+  }
 }
 
 function generateAuditNumber(): string {
@@ -123,6 +159,10 @@ export async function createAudit(input: {
   departmentsAuditeeIds?: UUID[];
   companyRepresentativeUserIds?: UUID[];
   leadAuditorUserId?: UUID;
+  leadAuditorHrEmployeeId?: UUID | null;
+  leadAuditorName?: string | null;
+  auditeeHrEmployeeId?: UUID | null;
+  auditeeName?: string | null;
   checklistTemplateId?: UUID;
   inviteeEmail?: string | null;
 }): Promise<Audit> {
@@ -151,6 +191,10 @@ export async function createAudit(input: {
     departments_auditee_ids: input.departmentsAuditeeIds ?? null,
     company_representative_user_ids: input.companyRepresentativeUserIds ?? null,
     lead_auditor_user_id: input.leadAuditorUserId ?? null,
+    lead_auditor_hr_employee_id: input.leadAuditorHrEmployeeId ?? null,
+    lead_auditor_name: input.leadAuditorName ?? null,
+    auditee_hr_employee_id: input.auditeeHrEmployeeId ?? null,
+    auditee_name: input.auditeeName ?? null,
     checklist_template_id: input.checklistTemplateId ?? null,
     date_approval_status: 'pending',
     invitee_email: input.inviteeEmail ?? null,
@@ -161,7 +205,7 @@ export async function createAudit(input: {
   let data: Audit | null = null;
   let error: { message?: string } | null = null;
 
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 14; attempt += 1) {
     const result = await insforge.database.from('audits').insert(payload).select('*').single();
     data = (result.data as Audit | null) ?? null;
     error = result.error;
@@ -175,6 +219,11 @@ export async function createAudit(input: {
     else if (message.includes('invitee_email')) delete payload.invitee_email;
     else if (message.includes('date_approval_status')) delete payload.date_approval_status;
     else if (message.includes('lead_auditor_user_id')) delete payload.lead_auditor_user_id;
+    else if (message.includes('document_submission_deadline')) delete payload.document_submission_deadline;
+    else if (message.includes('lead_auditor_hr_employee_id')) delete payload.lead_auditor_hr_employee_id;
+    else if (message.includes('lead_auditor_name')) delete payload.lead_auditor_name;
+    else if (message.includes('auditee_hr_employee_id')) delete payload.auditee_hr_employee_id;
+    else if (message.includes('auditee_name')) delete payload.auditee_name;
     else throw new Error(getErrorMessage(error));
   }
 
@@ -530,6 +579,58 @@ export async function listAuditInvitationTokens(auditId: UUID): Promise<AuditInv
   return (data ?? []) as AuditInvitationToken[];
 }
 
+// ---------------------------
+// Sections (ISO clause + title, optional sub-sections)
+// ---------------------------
+
+export async function listAuditSections(auditId: UUID): Promise<AuditSection[]> {
+  return withInsforgeSession('audit_sections:list', async () => {
+    const { data, error } = await insforge.database
+      .from('audit_sections')
+      .select('*')
+      .eq('audit_id', auditId)
+      .order('section_order', { ascending: true });
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as AuditSection[];
+  });
+}
+
+export async function createAuditSection(input: {
+  companyId: UUID;
+  auditId: UUID;
+  sectionTitle: string;
+  isoClause?: string | null;
+  parentSectionId?: UUID | null;
+  sectionOrder: number;
+  createdByUserId: UUID;
+}): Promise<AuditSection> {
+  return withInsforgeSession('audit_sections:create', async () => {
+    const { data, error } = await insforge.database
+      .from('audit_sections')
+      .insert({
+        company_id: input.companyId,
+        audit_id: input.auditId,
+        section_title: input.sectionTitle,
+        iso_clause: input.isoClause ?? null,
+        parent_section_id: input.parentSectionId ?? null,
+        section_order: input.sectionOrder,
+        created_by_user_id: input.createdByUserId
+      })
+      .select('*')
+      .single();
+    if (error) throw new Error(getErrorMessage(error));
+    if (!data) throw new Error('Failed to create audit section.');
+    return data as AuditSection;
+  });
+}
+
+export async function deleteAuditSection(sectionId: UUID): Promise<void> {
+  return withInsforgeSession('audit_sections:delete', async () => {
+    const { error } = await insforge.database.from('audit_sections').delete().eq('id', sectionId);
+    if (error) throw new Error(getErrorMessage(error));
+  });
+}
+
 export async function listAuditQuestions(auditId: UUID): Promise<AuditQuestion[]> {
   return withInsforgeSession('audit_questions:list', async () => {
     const { data, error } = await insforge.database
@@ -546,24 +647,33 @@ export async function createAuditQuestion(input: {
   auditId: UUID;
   question: string;
   section?: string | null;
+  sectionRefId?: UUID | null;
   expectedEvidence?: string;
   questionOrder: number;
   allocatedScore?: number | null;
   createdByUserId: UUID;
 }): Promise<AuditQuestion> {
-  const { data, error } = await insforge.database
-    .from('audit_questions')
-    .insert({
-      audit_id: input.auditId,
-      question: input.question,
-      section: input.section ?? null,
-      expected_evidence: input.expectedEvidence ?? null,
-      allocated_score: input.allocatedScore ?? 1,
-      question_order: input.questionOrder,
-      created_by_user_id: input.createdByUserId
-    })
-    .select('*')
-    .single();
+  const payload: Record<string, unknown> = {
+    audit_id: input.auditId,
+    question: input.question,
+    section: input.section ?? null,
+    section_ref_id: input.sectionRefId ?? null,
+    expected_evidence: input.expectedEvidence ?? null,
+    allocated_score: input.allocatedScore ?? 1,
+    question_order: input.questionOrder,
+    created_by_user_id: input.createdByUserId
+  };
+  let data: AuditQuestion | null = null;
+  let error: { message?: string } | null = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const result = await insforge.database.from('audit_questions').insert(payload).select('*').single();
+    data = (result.data as AuditQuestion | null) ?? null;
+    error = result.error;
+    if (!error) break;
+    const message = String(error.message ?? '').toLowerCase();
+    if (message.includes('column') && message.includes('section_ref_id')) delete payload.section_ref_id;
+    else throw new Error(getErrorMessage(error));
+  }
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create audit question.');
   return data as AuditQuestion;
@@ -646,6 +756,7 @@ export async function listAuditResponses(auditId: UUID): Promise<AuditResponse[]
 }
 
 export async function submitAuditResponse(input: {
+  companyId: UUID;
   auditQuestionId: UUID;
   isCompliant: boolean;
   finding?: string;
@@ -654,6 +765,7 @@ export async function submitAuditResponse(input: {
   riskRating: 'low' | 'medium' | 'high';
   answeredByUserId: UUID;
   deviationType?: string | null;
+  complianceStatus?: AuditComplianceStatus | null;
   allocatedScore?: number | null;
   evidenceFiles?: unknown[] | null;
 }): Promise<AuditResponse> {
@@ -666,30 +778,115 @@ export async function submitAuditResponse(input: {
       .maybeSingle();
     if (existingError) throw new Error(getErrorMessage(existingError));
 
+    const legacy = input.complianceStatus ? deriveLegacyComplianceFields(input.complianceStatus) : null;
+
     const payload: Record<string, unknown> = {
-      is_compliant: input.isCompliant,
+      is_compliant: legacy ? legacy.is_compliant : input.isCompliant,
       finding: input.finding ?? null,
       evidence_document_url: input.evidenceDocumentUrl ?? null,
       achieved_score: input.achievedScore ?? null,
       risk_rating: input.riskRating,
       answered_at: new Date().toISOString()
     };
+    if (input.complianceStatus !== undefined) payload.compliance_status = input.complianceStatus;
     if (input.deviationType !== undefined) payload.deviation_type = input.deviationType;
+    else if (legacy) payload.deviation_type = legacy.deviation_type;
     if (input.allocatedScore !== undefined) payload.allocated_score = input.allocatedScore;
     if (input.evidenceFiles !== undefined) payload.evidence_files = input.evidenceFiles;
 
-    const query = existing
+    let query = existing
       ? insforge.database.from('audit_responses').update(payload).eq('id', (existing as AuditResponse).id)
       : insforge.database.from('audit_responses').insert({
+          company_id: input.companyId,
           audit_question_id: input.auditQuestionId,
           answered_by_user_id: input.answeredByUserId,
           ...payload
         });
 
-    const { data, error } = await query.select('*').single();
+    let { data, error } = await query.select('*').single();
+    if (error && String(error.message ?? '').toLowerCase().includes('compliance_status')) {
+      delete payload.compliance_status;
+      query = existing
+        ? insforge.database.from('audit_responses').update(payload).eq('id', (existing as AuditResponse).id)
+        : insforge.database.from('audit_responses').insert({
+            company_id: input.companyId,
+            audit_question_id: input.auditQuestionId,
+            answered_by_user_id: input.answeredByUserId,
+            ...payload
+          });
+      ({ data, error } = await query.select('*').single());
+    }
     if (error) throw new Error(getErrorMessage(error));
     if (!data) throw new Error('Failed to submit audit response.');
     return data as AuditResponse;
+  });
+}
+
+/** SUM(achieved_score) / SUM(allocated_score) * 100 across all answered questions on the audit. */
+export async function calculateAuditScore(auditId: UUID): Promise<{
+  overallScore: number;
+  maxScore: number;
+  compliancePercent: number;
+}> {
+  const responses = await listAuditResponses(auditId);
+  let overallScore = 0;
+  let maxScore = 0;
+  for (const response of responses) {
+    overallScore += Number(response.achieved_score ?? 0);
+    maxScore += Number(response.allocated_score ?? 0);
+  }
+  const compliancePercent = maxScore > 0 ? Math.round((overallScore / maxScore) * 1000) / 10 : 0;
+  return { overallScore, maxScore, compliancePercent };
+}
+
+export async function refreshAuditScore(auditId: UUID, companyId: UUID, actorUserId: UUID): Promise<void> {
+  const score = await calculateAuditScore(auditId);
+  await updateAudit(
+    auditId,
+    companyId,
+    {
+      overall_score: score.overallScore,
+      max_score: score.maxScore,
+      compliance_percent: score.compliancePercent
+    },
+    actorUserId
+  );
+}
+
+/** Creates a CAPA record linked to a specific NC audit question/response, and stamps the link back onto the response. */
+export async function createCorrectiveActionForAuditResponse(input: {
+  companyId: UUID;
+  auditId: UUID;
+  auditTitle: string;
+  responseId: UUID;
+  questionText: string;
+  description?: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  dueDate: string;
+  assignedToUserId?: UUID;
+  createdByUserId: UUID;
+}): Promise<UUID> {
+  return withInsforgeSession('audit_responses:create_capa', async () => {
+    const capa = await createCorrectiveAction({
+      companyId: input.companyId,
+      title: `Audit NC: ${input.questionText}`.slice(0, 255),
+      description: input.description ?? `Non-conformance raised during audit: ${input.auditTitle}`,
+      actionType: 'corrective',
+      sourceType: 'audit_finding',
+      sourceId: input.responseId,
+      priority: input.priority,
+      dueDate: input.dueDate,
+      assignedToUserId: input.assignedToUserId,
+      createdByUserId: input.createdByUserId
+    });
+
+    const { error } = await insforge.database
+      .from('audit_responses')
+      .update({ corrective_action_id: capa.id })
+      .eq('id', input.responseId);
+    if (error) throw new Error(getErrorMessage(error));
+
+    return capa.id as UUID;
   });
 }
 

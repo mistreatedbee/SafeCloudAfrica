@@ -4,10 +4,12 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { ModuleKey, UUID } from '../../api/models/core';
 import { createInspection, listInspectionChecklistTemplates } from '../../api/services/inspectionsService';
-import { listUserProfiles } from '../../api/services/profilesService';
-import type { UserProfile } from '../../api/models/entities';
+import { listDepartments } from '../../api/services/departmentsService';
+import type { Department } from '../../api/models/entities';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
+import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
+import { computeNextServiceHoursKm } from '../../utils/inspectionServiceInterval';
 import {
   INSPECTION_FREQUENCY_OPTIONS,
   formatInspectionPeriod,
@@ -30,19 +32,39 @@ export function InspectionCreateModal(props: {
 }) {
   const [module, setModule] = useState<ModuleKey>('safety');
   const [templateId, setTemplateId] = useState<string>('');
+  const [titleOverride, setTitleOverride] = useState('');
+  const [subTitle, setSubTitle] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [inspectionDate, setInspectionDate] = useState('');
   const [location, setLocation] = useState('');
   const [sector, setSector] = useState('');
-  const [department, setDepartment] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
   const [frequency, setFrequency] = useState<InspectionFrequency>('daily');
-  const [inspectorUserId, setInspectorUserId] = useState('');
-  const [auditorUserId, setAuditorUserId] = useState('');
+  const [inspectorUserId, setInspectorUserId] = useState<UUID | ''>('');
+  const [inspectorHrEmployeeId, setInspectorHrEmployeeId] = useState<UUID | null>(null);
+  const [inspectorName, setInspectorName] = useState('');
+  const [auditorUserId, setAuditorUserId] = useState<UUID | ''>('');
+  const [auditorHrEmployeeId, setAuditorHrEmployeeId] = useState<UUID | null>(null);
+  const [auditorName, setAuditorName] = useState('');
+  const [areaManagerUserId, setAreaManagerUserId] = useState<UUID | ''>('');
+  const [areaManagerHrEmployeeId, setAreaManagerHrEmployeeId] = useState<UUID | null>(null);
+  const [areaManagerName, setAreaManagerName] = useState('');
+  const [auditeeUserId, setAuditeeUserId] = useState<UUID | ''>('');
+  const [auditeeHrEmployeeId, setAuditeeHrEmployeeId] = useState<UUID | null>(null);
+  const [auditeeName, setAuditeeName] = useState('');
+  const [openingHoursKm, setOpeningHoursKm] = useState('');
+  const [closingHoursKm, setClosingHoursKm] = useState('');
+  const [serviceIntervalHoursKm, setServiceIntervalHoursKm] = useState('');
   const [templates, setTemplates] = useState<ChecklistTemplateOption[]>([]);
-  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+
+  const nextServiceHoursKm = useMemo(
+    () => computeNextServiceHoursKm(closingHoursKm ? Number(closingHoursKm) : null, serviceIntervalHoursKm ? Number(serviceIntervalHoursKm) : null),
+    [closingHoursKm, serviceIntervalHoursKm]
+  );
 
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `inspection-create:${props.companyId}:${props.createdByUserId}`;
@@ -51,16 +73,42 @@ export function InspectionCreateModal(props: {
     () =>
       props.open &&
       (templateId.trim().length > 0 ||
+        titleOverride.trim().length > 0 ||
+        subTitle.trim().length > 0 ||
         scheduledAt.trim().length > 0 ||
         inspectionDate.trim().length > 0 ||
         location.trim().length > 0 ||
         sector.trim().length > 0 ||
-        department.trim().length > 0 ||
+        departmentId.trim().length > 0 ||
         frequency !== 'daily' ||
         inspectorUserId.trim().length > 0 ||
         auditorUserId.trim().length > 0 ||
+        areaManagerUserId.trim().length > 0 ||
+        auditeeUserId.trim().length > 0 ||
+        openingHoursKm.trim().length > 0 ||
+        closingHoursKm.trim().length > 0 ||
         module !== 'safety'),
-    [auditorUserId, department, frequency, inspectorUserId, inspectionDate, location, module, props.open, props.companyId, props.createdByUserId, scheduledAt, sector, templateId]
+    [
+      auditorUserId,
+      areaManagerUserId,
+      auditeeUserId,
+      departmentId,
+      frequency,
+      inspectorUserId,
+      inspectionDate,
+      location,
+      module,
+      openingHoursKm,
+      closingHoursKm,
+      props.open,
+      props.companyId,
+      props.createdByUserId,
+      scheduledAt,
+      sector,
+      subTitle,
+      templateId,
+      titleOverride
+    ]
   );
 
   useDraftRegistration({
@@ -70,14 +118,29 @@ export function InspectionCreateModal(props: {
     serialize: () => ({
       module,
       templateId,
+      titleOverride,
+      subTitle,
       scheduledAt,
       inspectionDate,
       location,
       sector,
-      department,
+      departmentId,
       frequency,
       inspectorUserId,
-      auditorUserId
+      inspectorHrEmployeeId,
+      inspectorName,
+      auditorUserId,
+      auditorHrEmployeeId,
+      auditorName,
+      areaManagerUserId,
+      areaManagerHrEmployeeId,
+      areaManagerName,
+      auditeeUserId,
+      auditeeHrEmployeeId,
+      auditeeName,
+      openingHoursKm,
+      closingHoursKm,
+      serviceIntervalHoursKm
     })
   });
 
@@ -86,28 +149,58 @@ export function InspectionCreateModal(props: {
     const restored = restoreDraft<{
       module?: ModuleKey;
       templateId?: string;
+      titleOverride?: string;
+      subTitle?: string;
       scheduledAt?: string;
       inspectionDate?: string;
       location?: string;
       sector?: string;
-      department?: string;
+      departmentId?: string;
       frequency?: InspectionFrequency;
-      inspectorUserId?: string;
-      auditorUserId?: string;
+      inspectorUserId?: UUID | '';
+      inspectorHrEmployeeId?: UUID | null;
+      inspectorName?: string;
+      auditorUserId?: UUID | '';
+      auditorHrEmployeeId?: UUID | null;
+      auditorName?: string;
+      areaManagerUserId?: UUID | '';
+      areaManagerHrEmployeeId?: UUID | null;
+      areaManagerName?: string;
+      auditeeUserId?: UUID | '';
+      auditeeHrEmployeeId?: UUID | null;
+      auditeeName?: string;
+      openingHoursKm?: string;
+      closingHoursKm?: string;
+      serviceIntervalHoursKm?: string;
     }>(draftKey);
 
     if (!restored) return;
 
     setModule(restored.module ?? 'safety');
     setTemplateId(restored.templateId ?? '');
+    setTitleOverride(restored.titleOverride ?? '');
+    setSubTitle(restored.subTitle ?? '');
     setScheduledAt(restored.scheduledAt ?? '');
     setInspectionDate(restored.inspectionDate ?? '');
     setLocation(restored.location ?? '');
     setSector(restored.sector ?? '');
-    setDepartment(restored.department ?? '');
+    setDepartmentId(restored.departmentId ?? '');
     setFrequency(restored.frequency ?? 'daily');
     setInspectorUserId(restored.inspectorUserId ?? '');
+    setInspectorHrEmployeeId(restored.inspectorHrEmployeeId ?? null);
+    setInspectorName(restored.inspectorName ?? '');
     setAuditorUserId(restored.auditorUserId ?? '');
+    setAuditorHrEmployeeId(restored.auditorHrEmployeeId ?? null);
+    setAuditorName(restored.auditorName ?? '');
+    setAreaManagerUserId(restored.areaManagerUserId ?? '');
+    setAreaManagerHrEmployeeId(restored.areaManagerHrEmployeeId ?? null);
+    setAreaManagerName(restored.areaManagerName ?? '');
+    setAuditeeUserId(restored.auditeeUserId ?? '');
+    setAuditeeHrEmployeeId(restored.auditeeHrEmployeeId ?? null);
+    setAuditeeName(restored.auditeeName ?? '');
+    setOpeningHoursKm(restored.openingHoursKm ?? '');
+    setClosingHoursKm(restored.closingHoursKm ?? '');
+    setServiceIntervalHoursKm(restored.serviceIntervalHoursKm ?? '');
   }, [draftKey, props.open, restoreDraft]);
 
   useEffect(() => {
@@ -141,16 +234,16 @@ export function InspectionCreateModal(props: {
   }, [props.companyId, module]);
 
   useEffect(() => {
-    async function loadProfiles() {
+    async function loadDepartments() {
       if (!props.companyId) return;
       try {
-        const data = await listUserProfiles(props.companyId);
-        setProfiles(data);
+        const data = await listDepartments(props.companyId);
+        setDepartments(data);
       } catch {
-        setProfiles([]);
+        setDepartments([]);
       }
     }
-    loadProfiles();
+    loadDepartments();
   }, [props.companyId]);
 
   const canSubmit = useMemo(() => !!templateId && !loading, [templateId, loading]);
@@ -176,23 +269,41 @@ export function InspectionCreateModal(props: {
     try {
       setLoading(true);
       const selectedTemplate = templates.find((t) => t.id === templateId);
-      const title = selectedTemplate ? `[INSPECTION] ${selectedTemplate.name}` : '[INSPECTION] Inspection';
-      
+      const title = titleOverride.trim() || (selectedTemplate ? `[INSPECTION] ${selectedTemplate.name}` : '[INSPECTION] Inspection');
+      const periodLabel = formatInspectionPeriod(frequency, inspectionDate || scheduledAt || new Date().toISOString().slice(0, 10));
+
       await createInspection({
         companyId: props.companyId,
         module,
         title,
+        subTitle: subTitle.trim() || undefined,
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
         inspectionDate: inspectionDate || undefined,
         location: location.trim() || undefined,
         sector: sector.trim() || undefined,
+        departmentId: departmentId ? (departmentId as UUID) : undefined,
         frequency,
-        inspectorUserId: inspectorUserId ? (inspectorUserId as UUID) : undefined,
-        auditorUserId: auditorUserId ? (auditorUserId as UUID) : undefined,
+        periodLabel,
+        inspectorUserId: inspectorUserId || undefined,
+        inspectorHrEmployeeId,
+        inspectorName: inspectorName || undefined,
+        auditorUserId: auditorUserId || undefined,
+        auditorHrEmployeeId,
+        auditorName: auditorName || undefined,
+        areaManagerUserId: areaManagerUserId || undefined,
+        areaManagerHrEmployeeId,
+        areaManagerName: areaManagerName || undefined,
+        auditeeUserId: auditeeUserId || undefined,
+        auditeeHrEmployeeId,
+        auditeeName: auditeeName || undefined,
+        openingHoursKm: openingHoursKm ? Number(openingHoursKm) : undefined,
+        closingHoursKm: closingHoursKm ? Number(closingHoursKm) : undefined,
+        serviceIntervalHoursKm: serviceIntervalHoursKm ? Number(serviceIntervalHoursKm) : undefined,
+        nextServiceHoursKm: nextServiceHoursKm ?? undefined,
         createdByUserId: props.createdByUserId,
         templateId: templateId as UUID
       });
-      
+
       clearDraft(draftKey);
       props.onCreated?.();
       props.onClose();
@@ -206,14 +317,29 @@ export function InspectionCreateModal(props: {
 
   function resetForm() {
     setTemplateId('');
+    setTitleOverride('');
+    setSubTitle('');
     setScheduledAt('');
     setInspectionDate('');
     setLocation('');
     setSector('');
-    setDepartment('');
+    setDepartmentId('');
     setFrequency('daily');
     setInspectorUserId('');
+    setInspectorHrEmployeeId(null);
+    setInspectorName('');
     setAuditorUserId('');
+    setAuditorHrEmployeeId(null);
+    setAuditorName('');
+    setAreaManagerUserId('');
+    setAreaManagerHrEmployeeId(null);
+    setAreaManagerName('');
+    setAuditeeUserId('');
+    setAuditeeHrEmployeeId(null);
+    setAuditeeName('');
+    setOpeningHoursKm('');
+    setClosingHoursKm('');
+    setServiceIntervalHoursKm('');
     setModule('safety');
   }
 
@@ -305,6 +431,24 @@ export function InspectionCreateModal(props: {
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Title (optional override)</label>
+                <input
+                  value={titleOverride}
+                  onChange={(e) => setTitleOverride(e.target.value)}
+                  placeholder="e.g. Vehicle"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Sub-title</label>
+                <input
+                  value={subTitle}
+                  onChange={(e) => setSubTitle(e.target.value)}
+                  placeholder="e.g. LDV"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Location</label>
                 <input
@@ -325,12 +469,18 @@ export function InspectionCreateModal(props: {
               </div>
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Department</label>
-                <input
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="e.g. Operations"
+                <select
+                  value={departmentId}
+                  onChange={(e) => setDepartmentId(e.target.value)}
                   className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                />
+                >
+                  <option value="">Select department</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Frequency</label>
@@ -350,38 +500,95 @@ export function InspectionCreateModal(props: {
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Inspector</label>
-                <select
+                <HrEmployeeSelect
+                  companyId={props.companyId}
                   value={inspectorUserId}
-                  onChange={(e) => setInspectorUserId(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                >
-                  <option value="">Select inspector</option>
-                  {profiles.map((p) => (
-                    <option key={p.user_id} value={p.user_id}>
-                      {p.full_name || p.email || p.user_id}
-                    </option>
-                  ))}
-                </select>
+                  label="Inspector"
+                  onChange={(selected, meta) => {
+                    setInspectorUserId(selected);
+                    setInspectorHrEmployeeId(meta.employeeId ?? null);
+                    setInspectorName(meta.nameSnapshot);
+                  }}
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1.5">Auditor</label>
-                <select
+                <HrEmployeeSelect
+                  companyId={props.companyId}
                   value={auditorUserId}
-                  onChange={(e) => setAuditorUserId(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-                >
-                  <option value="">Select auditor</option>
-                  {profiles.map((p) => (
-                    <option key={p.user_id} value={p.user_id}>
-                      {p.full_name || p.email || p.user_id}
-                    </option>
-                  ))}
-                </select>
+                  label="Auditor"
+                  onChange={(selected, meta) => {
+                    setAuditorUserId(selected);
+                    setAuditorHrEmployeeId(meta.employeeId ?? null);
+                    setAuditorName(meta.nameSnapshot);
+                  }}
+                />
+              </div>
+              <div>
+                <HrEmployeeSelect
+                  companyId={props.companyId}
+                  value={areaManagerUserId}
+                  label="Area manager"
+                  onChange={(selected, meta) => {
+                    setAreaManagerUserId(selected);
+                    setAreaManagerHrEmployeeId(meta.employeeId ?? null);
+                    setAreaManagerName(meta.nameSnapshot);
+                  }}
+                />
+                <p className="mt-1 text-xs text-charcoal-500">Notified automatically on medium/high risk findings.</p>
+              </div>
+              <div>
+                <HrEmployeeSelect
+                  companyId={props.companyId}
+                  value={auditeeUserId}
+                  label="Auditee"
+                  onChange={(selected, meta) => {
+                    setAuditeeUserId(selected);
+                    setAuditeeHrEmployeeId(meta.employeeId ?? null);
+                    setAuditeeName(meta.nameSnapshot);
+                  }}
+                />
               </div>
             </div>
           </div>
 
+          {/* Vehicle / machine hours-km tracking */}
+          <div className="border-b border-surface-200 pb-4">
+            <h3 className="text-sm font-semibold text-charcoal mb-4">Vehicle / machine service tracking (optional)</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Opening hours/km</label>
+                <input
+                  type="number"
+                  value={openingHoursKm}
+                  onChange={(e) => setOpeningHoursKm(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Closing hours/km</label>
+                <input
+                  type="number"
+                  value={closingHoursKm}
+                  onChange={(e) => setClosingHoursKm(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Service interval</label>
+                <input
+                  type="number"
+                  value={serviceIntervalHoursKm}
+                  onChange={(e) => setServiceIntervalHoursKm(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+            </div>
+            {nextServiceHoursKm != null && (
+              <p className="mt-2 text-xs text-charcoal-600">
+                Next service due at <span className="font-semibold">{nextServiceHoursKm}</span> hours/km.
+              </p>
+            )}
+          </div>
 
           <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-4 border-t border-surface-200">
             <button
