@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildReviewMeetingRecordNumber } from './reviewMeetingsService';
 
 function toDbItemEvidenceFields(item: {
   evidenceFileIds?: string[];
@@ -29,5 +30,10 @@ describe('review meeting item payload', () => {
       evidence_file_ids: ['file-1'],
       linked_document_ids: ['doc-1']
     });
+  });
+
+  it('formats review meeting record numbers with a four-digit sequence', () => {
+    expect(buildReviewMeetingRecordNumber(2026, 1)).toBe('MM-2026-0001');
+    expect(buildReviewMeetingRecordNumber(2026, 12)).toBe('MM-2026-0012');
   });
 });

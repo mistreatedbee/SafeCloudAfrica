@@ -23,6 +23,7 @@ import {
   updateReviewMeeting
 } from '../api/services/reviewMeetingsService';
 import { listLinkedImprovements } from '../api/services/improvementService';
+import { listHrEmployees } from '../api/services/hrService';
 import { createEvidence } from '../api/services/evidenceService';
 import { uploadDocumentFile, downloadBlob, openBlobInNewTab } from '../api/services/documentsStorageService';
 import { listDocuments } from '../api/services/documentsService';
@@ -90,6 +91,7 @@ export function ReviewMeetingDetailPage() {
   const [autoEmailOnUpdate, setAutoEmailOnUpdate] = useState(false);
   const [autoCreateTasksFromItems, setAutoCreateTasksFromItems] = useState(false);
   const [items, setItems] = useState<FormItem[]>([createEmptyItem()]);
+  const [isDraft, setIsDraft] = useState(true);
   const [statusLabel, setStatusLabel] = useState<'DRAFT' | 'ACTIVE' | 'SIGNED' | 'ARCHIVED'>('DRAFT');
   const [meetingStatus, setMeetingStatus] = useState<'DRAFT' | 'ACTIVE' | 'SIGNED' | 'ARCHIVED'>('DRAFT');
   const [signatureStatus, setSignatureStatus] = useState<'SIGNED' | 'NOT_SIGNED'>('NOT_SIGNED');
@@ -139,10 +141,15 @@ export function ReviewMeetingDetailPage() {
       return await listLinkedImprovements({
         companyId: activeCompanyId,
         sourceType: 'management_review',
-        sourceId: meetingId as UUID
+        sourceId: meetingData?.meeting.record_number ?? (meetingId as UUID)
       });
     },
-    [activeCompanyId, isCreate, meetingId]
+    [activeCompanyId, isCreate, meetingId, meetingData?.meeting.record_number]
+  );
+
+  const { data: hrEmployees } = useAsync(
+    async () => (activeCompanyId ? listHrEmployees(activeCompanyId) : []),
+    [activeCompanyId]
   );
 
   const profileByUserId = useMemo(() => {
@@ -168,6 +175,18 @@ export function ReviewMeetingDetailPage() {
     });
   }, [memberships, profileByUserId]);
 
+  const hrResponsibleOptions = useMemo(() => {
+    return (hrEmployees ?? [])
+      .filter((employee) => !!employee.user_id)
+      .map((employee) => {
+        const name = `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim() || employee.email || employee.employee_no;
+        return {
+          userId: employee.user_id as UUID,
+          label: employee.employee_no ? `${name} (${employee.employee_no})` : name
+        };
+      });
+  }, [hrEmployees]);
+
   useEffect(() => {
     if (!meetingData) return;
     const { meeting, items: loadedItems } = meetingData;
@@ -187,6 +206,7 @@ export function ReviewMeetingDetailPage() {
     setAutoCreateTasksFromItems(!!meeting.auto_create_tasks_from_items);
     setStatusLabel(meeting.status);
     setMeetingStatus(meeting.status);
+    setIsDraft(meeting.status === 'DRAFT');
     setSignatureStatus(meeting.signature_status);
     setIsLocked(meeting.is_locked);
     setItems(
@@ -437,14 +457,18 @@ export function ReviewMeetingDetailPage() {
           linkedTaskId: item.linkedTaskId ?? null
         }))
       };
+      console.info('[ReviewMeetingDetailPage] save payload', { isCreate, payload, meetingId });
+
       if (isCreate || !meetingId) {
         const created = await createReviewMeeting(payload);
+        setIsDraft(created.meeting.status === 'DRAFT');
         clearDraft(draftKey);
         navigate(`/document-reviews/${created.meeting.id}`);
       } else {
         const updated = await updateReviewMeeting({ ...payload, meetingId: meetingId as UUID });
         setStatusLabel(updated.meeting.status);
         setMeetingStatus(updated.meeting.status);
+        setIsDraft(updated.meeting.status === 'DRAFT');
         setSignatureStatus(updated.meeting.signature_status);
         setIsLocked(updated.meeting.is_locked);
         setItems(
@@ -477,7 +501,7 @@ export function ReviewMeetingDetailPage() {
     } catch (err: unknown) {
       // Log detailed error for development while showing a user-friendly message.
       // eslint-disable-next-line no-console
-      console.error('Failed to save review meeting', err);
+      console.error('[ReviewMeetingDetailPage] failed to save review meeting', { err, payload, meetingId });
       setError(toUserFacingError(err, 'Failed to save review meeting.'));
     } finally {
       setSaving(false);
@@ -633,7 +657,16 @@ export function ReviewMeetingDetailPage() {
           <div className="space-y-1">
             <Link to="/document-reviews" className="text-sm text-teal hover:underline">Back to review meetings</Link>
             <h2 className="text-lg font-semibold text-charcoal mt-1">{title || 'Management Review Meeting'}</h2>
-            <p className="text-xs text-charcoal-500">Status: {statusLabel} | Signature: {signatureStatus} | {isLocked ? 'Read-only (signed)' : 'Editable'}</p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-charcoal-500">
+              <span className="font-medium">Ref:</span>
+              <span className="font-mono rounded bg-surface-100 px-2 py-1">{(meetingData?.meeting.record_number ?? 'MM-0000-0000')}</span>
+              <span>|</span>
+              <span>Status: {statusLabel}</span>
+              <span>|</span>
+              <span>Signature: {signatureStatus}</span>
+              <span>|</span>
+              <span>{isLocked ? 'Read-only (signed)' : 'Editable'}</span>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2 md:justify-end">
             {!isCreate && (
@@ -643,7 +676,7 @@ export function ReviewMeetingDetailPage() {
                 {!isCreate && meetingId && (
                   <button
                     type="button"
-                    onClick={() => navigate(`/improvement/new?sourceType=management_review&sourceId=${meetingId}`)}
+                    onClick={() => navigate(`/improvement/new?sourceType=management_review&sourceId=${meetingData?.meeting.record_number ?? meetingId}`)}
                     className="px-3 py-2 rounded-lg border border-surface-300 bg-white text-sm font-medium hover:bg-surface-50"
                   >
                     Create Improvement Action
@@ -662,6 +695,12 @@ export function ReviewMeetingDetailPage() {
         </div>
 
         {error && <div className="bg-critical/5 border border-critical/30 rounded-xl p-3 text-sm text-critical">{error}</div>}
+
+        {!isCreate && !isDraft && (
+          <div className="bg-success/5 border border-success/30 rounded-xl p-3 text-sm text-success">
+            Meeting is active. The draft banner is cleared and the record is now visible in Active status.
+          </div>
+        )}
 
         {!isCreate && (
           <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card space-y-1">
@@ -774,7 +813,8 @@ export function ReviewMeetingDetailPage() {
                   <td className="px-3 py-2 min-w-[180px]"><textarea rows={3} value={item.actionRequired} onChange={(e) => updateItem(index, { actionRequired: e.target.value })} disabled={!canEditItem(item)} className="w-full px-2 py-1 border border-surface-300 rounded" /></td>
                   <td className="px-3 py-2 min-w-[220px] space-y-1">
                     <select value={item.responsibleUserId} onChange={(e) => updateItem(index, { responsibleUserId: e.target.value as UUID | '' })} disabled={!canEditItem(item)} className="w-full px-2 py-1 border border-surface-300 rounded">
-                      <option value="">Select user</option>{memberOptions.map((opt) => <option key={opt.userId} value={opt.userId}>{opt.label}</option>)}
+                      <option value="">Select HR employee</option>
+                      {hrResponsibleOptions.map((opt) => <option key={opt.userId} value={opt.userId}>{opt.label}</option>)}
                     </select>
                     <input value={item.externalResponsibleName} onChange={(e) => updateItem(index, { externalResponsibleName: e.target.value })} disabled={!canEditItem(item)} placeholder="Or external person" className="w-full px-2 py-1 border border-surface-300 rounded" />
                   </td>

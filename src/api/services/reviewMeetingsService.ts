@@ -70,6 +70,58 @@ export type ReviewMeetingWithItems = {
   items: ReviewMeetingItem[];
 };
 
+export function buildReviewMeetingRecordNumber(year: number, sequence: number): string {
+  return `MM-${year}-${String(sequence).padStart(4, '0')}`;
+}
+
+export async function getReviewMeetingByRecordNumber(companyId: UUID, recordNumber: string): Promise<ReviewMeetingWithItems | null> {
+  const normalized = recordNumber.trim();
+  if (!normalized) return null;
+
+  const { data, error } = await insforge.database
+    .from('review_meetings')
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('record_number', normalized)
+    .maybeSingle();
+
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) return null;
+
+  const items = await listReviewMeetingItems(companyId, [data.id as UUID]);
+  return { meeting: data as ReviewMeeting, items };
+}
+
+export async function resolveMeetingReferenceId(companyId: UUID, sourceId: string | UUID | null | undefined): Promise<UUID | null> {
+  const value = String(sourceId ?? '').trim();
+  if (!value) return null;
+
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+    return value as UUID;
+  }
+
+  const meeting = await getReviewMeetingByRecordNumber(companyId, value);
+  return meeting?.meeting.id ?? null;
+}
+
+async function getNextReviewMeetingRecordNumber(companyId: UUID): Promise<string> {
+  const year = new Date().getFullYear();
+  const startOfYear = `${year}-01-01T00:00:00.000Z`;
+  const startOfNextYear = `${year + 1}-01-01T00:00:00.000Z`;
+
+  const { data, error } = await insforge.database
+    .from('review_meetings')
+    .select('record_number')
+    .eq('company_id', companyId)
+    .gte('created_at', startOfYear)
+    .lt('created_at', startOfNextYear);
+
+  if (error) throw new Error(getErrorMessage(error));
+  const existing = (data ?? []) as Array<{ record_number?: string | null }>;
+  const sequence = existing.filter((row) => row.record_number && /^MM-\d{4}-\d{4}$/.test(row.record_number)).length + 1;
+  return buildReviewMeetingRecordNumber(year, sequence);
+}
+
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
@@ -547,8 +599,10 @@ export async function createReviewMeeting(input: ReviewMeetingInput): Promise<Re
     throw new Error('Only owner/admin/manager/supervisor can create review meetings.');
   }
   if (!input.items.length) throw new Error('At least one review item is required.');
+  const recordNumber = await getNextReviewMeetingRecordNumber(input.companyId);
   const payload = {
     company_id: input.companyId,
+    record_number: recordNumber,
     title: input.title?.trim() || 'Management Review Meeting',
     date: input.date,
     time: input.time,
@@ -633,6 +687,8 @@ export async function updateReviewMeeting(input: ReviewMeetingInput & { meetingI
     throw new Error('Meeting minutes are signed and locked.');
   }
 
+  console.info('[reviewMeetingsService.updateReviewMeeting] payload', { companyId: input.companyId, meetingId: input.meetingId, payload: { ...input, status: input.status ?? existing.meeting.status } });
+
   const updatePayload = {
     title: input.title?.trim() || existing.meeting.title,
     date: input.date,
@@ -661,7 +717,15 @@ export async function updateReviewMeeting(input: ReviewMeetingInput & { meetingI
     .select('*')
     .single();
 
-  if (updateMeetingError) throw new Error(getErrorMessage(updateMeetingError));
+  if (updateMeetingError) {
+    console.error('[reviewMeetingsService.updateReviewMeeting] db error', {
+      companyId: input.companyId,
+      meetingId: input.meetingId,
+      updatePayload,
+      error: updateMeetingError
+    });
+    throw new Error(getErrorMessage(updateMeetingError));
+  }
   const updatedMeeting = updatedMeetingRow as ReviewMeeting;
 
   const existingById = new Map(existing.items.map((item) => [item.id, item]));

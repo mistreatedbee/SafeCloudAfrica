@@ -31,6 +31,7 @@ import {
   listImprovementComments,
   updateImprovement
 } from '../api/services/improvementService';
+import { resolveMeetingReferenceId } from '../api/services/reviewMeetingsService';
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { useDraftRegistration } from '../session/useDraftRegistration';
 import { toUserFacingError } from '../utils/userFacingMessage';
@@ -234,8 +235,10 @@ export function ImprovementDetailPage() {
     const keyToClear = draftKey;
     try {
       const hasSourceIdInput = !!form.sourceId.trim();
-      const sourceId = asUuidOrNull(form.sourceId);
-      if (hasSourceIdInput && !sourceId) {
+      const resolvedSourceId = form.sourceType === 'management_review'
+        ? await resolveMeetingReferenceId(activeCompanyId, form.sourceId)
+        : asUuidOrNull(form.sourceId);
+      if (hasSourceIdInput && !resolvedSourceId) {
         setError('Linked Source ID is not valid. Please clear it or use a system-generated link from the source module.');
         setSaving(false);
         return;
@@ -275,7 +278,7 @@ export function ImprovementDetailPage() {
         lessonsLearned: form.lessonsLearned || null,
         comments: form.comments || null,
         sourceType: form.sourceType,
-        sourceId,
+        sourceId: resolvedSourceId,
         sourceOtherText: form.sourceOtherText || null
       };
       console.log('[ImprovementDetailPage] save payload', payload);

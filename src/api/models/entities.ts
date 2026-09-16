@@ -614,6 +614,7 @@ export type ReviewMeetingItemStatus = 'IN_PROGRESS' | 'OUTSTANDING' | 'COMPLETED
 export type ReviewMeeting = {
   id: UUID;
   company_id: UUID;
+  record_number: string | null;
   title: string | null;
   date: string;
   time: string;

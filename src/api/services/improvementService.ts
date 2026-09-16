@@ -282,14 +282,20 @@ export async function listImprovements(input: ImprovementListFilters): Promise<I
 export async function listLinkedImprovements(input: {
   companyId: UUID;
   sourceType: ImprovementSourceType;
-  sourceId: UUID;
+  sourceId: UUID | string;
 }): Promise<ImprovementRecord[]> {
+  const targetSourceId = input.sourceType === 'management_review'
+    ? await (await import('./reviewMeetingsService')).resolveMeetingReferenceId(input.companyId, input.sourceId as string | UUID)
+    : (input.sourceId as UUID);
+
+  if (!targetSourceId) return [];
+
   const { data, error } = await insforge.database
     .from('improvements')
     .select('*')
     .eq('company_id', input.companyId)
     .eq('source_type', input.sourceType)
-    .eq('source_id', input.sourceId)
+    .eq('source_id', targetSourceId)
     .order('created_at', { ascending: false })
     .limit(200);
   if (error) throw new Error(getErrorMessage(error));

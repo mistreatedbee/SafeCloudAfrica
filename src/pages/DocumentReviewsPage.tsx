@@ -273,6 +273,7 @@ export function DocumentReviewsPage() {
           <table className="w-full min-w-[1420px]">
             <thead className="bg-surface-50 text-xs uppercase tracking-wider text-charcoal-500">
               <tr>
+                <th className="px-4 py-3 text-left">Reference</th>
                 <th className="px-4 py-3 text-left">Meeting Title</th>
                 <th className="px-4 py-3 text-left">Date</th>
                 <th className="px-4 py-3 text-left">Time</th>
@@ -317,6 +318,9 @@ export function DocumentReviewsPage() {
 
                 return (
                   <tr key={meeting.id} className="hover:bg-surface-50">
+                    <td className="px-4 py-3">
+                      <p className="font-mono text-sm font-medium text-charcoal">{meeting.record_number ?? 'MM-0000-0000'}</p>
+                    </td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-charcoal">{meeting.title ?? 'Management Review Meeting'}</p>
                       <p className="text-xs text-charcoal-500">MRM-{meeting.id.slice(0, 8)}</p>

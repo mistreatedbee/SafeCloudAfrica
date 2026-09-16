@@ -4,6 +4,7 @@
 create table if not exists public.review_meetings (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
+  record_number text not null unique,
   title text null default 'Management Review Meeting',
   date date not null,
   time text not null,
@@ -51,6 +52,7 @@ create table if not exists public.review_meeting_items (
 );
 
 create index if not exists idx_review_meetings_company_date on public.review_meetings(company_id, date desc);
+create index if not exists idx_review_meetings_record_number on public.review_meetings(company_id, record_number);
 create index if not exists idx_review_meetings_status on public.review_meetings(company_id, status);
 create index if not exists idx_review_meetings_next on public.review_meetings(company_id, next_meeting_date);
 
