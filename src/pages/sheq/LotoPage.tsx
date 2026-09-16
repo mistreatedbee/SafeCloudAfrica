@@ -18,6 +18,7 @@ import {
 } from '../../api/services/lotoService';
 import { listSites } from '../../api/services/sitesService';
 import { listUserProfiles } from '../../api/services/profilesService';
+import { listHrEmployees } from '../../api/services/hrService';
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import { MANAGEMENT_ROLES } from '../../constants/roles';
@@ -57,6 +58,11 @@ export function LotoPage() {
   const [endTime, setEndTime] = useState('');
   const [responsiblePersonUserId, setResponsiblePersonUserId] = useState('');
   const [authorisedLotoPersonUserId, setAuthorisedLotoPersonUserId] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | LotoStatus>('all');
+  const [energyFilter, setEnergyFilter] = useState<'all' | 'yes' | 'no'>('all');
+  const [dateFromFilter, setDateFromFilter] = useState('');
+  const [dateToFilter, setDateToFilter] = useState('');
+  const [responsibleFilter, setResponsibleFilter] = useState<'all' | UUID>('all');
   const [affectedEmployeesCount, setAffectedEmployeesCount] = useState('');
   const [zeroEnergyVerified, setZeroEnergyVerified] = useState<'yes' | 'no' | ''>('');
   const [shiftHandover, setShiftHandover] = useState<'yes' | 'no' | ''>('');
@@ -86,6 +92,11 @@ export function LotoPage() {
     return listUserProfiles(activeCompanyId);
   }, [activeCompanyId]);
 
+  const { data: hrEmployees } = useAsync(async () => {
+    if (!activeCompanyId) return [];
+    return listHrEmployees(activeCompanyId);
+  }, [activeCompanyId]);
+
   const profileMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const p of profiles ?? []) {
@@ -93,6 +104,18 @@ export function LotoPage() {
     }
     return map;
   }, [profiles]);
+
+  const hrEmployeeOptions = useMemo(() => {
+    return (hrEmployees ?? [])
+      .filter((employee) => !!employee.user_id)
+      .map((employee) => {
+        const name = `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim() || employee.email || employee.employee_no;
+        return {
+          userId: employee.user_id as UUID,
+          label: employee.employee_no ? `${name} (${employee.employee_no})` : name
+        };
+      });
+  }, [hrEmployees]);
 
   const activeSites = (sites ?? []).filter((s) => s.is_active);
 
@@ -294,8 +317,24 @@ export function LotoPage() {
     }
   }
 
-  const openRecords = (records ?? []).filter((r) => !TERMINAL_STATUSES.includes(r.status));
-  const closedRecords = (records ?? []).filter((r) => TERMINAL_STATUSES.includes(r.status));
+  const filteredRecords = useMemo(() => {
+    return (records ?? []).filter((record) => {
+      if (statusFilter !== 'all' && record.status !== statusFilter) return false;
+      if (energyFilter !== 'all') {
+        const value = record.zero_energy_verified === true ? 'yes' : 'no';
+        if (value !== energyFilter) return false;
+      }
+      if (responsibleFilter !== 'all' && record.responsible_person_user_id !== responsibleFilter) return false;
+      if (dateFromFilter && record.start_time && new Date(record.start_time).getTime() < new Date(dateFromFilter + 'T00:00:00.000Z').getTime()) return false;
+      if (dateToFilter && record.start_time && new Date(record.start_time).getTime() > new Date(dateToFilter + 'T23:59:59.999Z').getTime()) return false;
+      if (dateFromFilter && !record.start_time) return false;
+      if (dateToFilter && !record.start_time) return false;
+      return true;
+    });
+  }, [records, statusFilter, energyFilter, dateFromFilter, dateToFilter, responsibleFilter]);
+
+  const openRecords = filteredRecords.filter((r) => !TERMINAL_STATUSES.includes(r.status));
+  const closedRecords = filteredRecords.filter((r) => TERMINAL_STATUSES.includes(r.status));
   const workflowRecord = (records ?? []).find((r) => r.id === workflowRecordId) ?? null;
 
   return (
@@ -322,14 +361,14 @@ export function LotoPage() {
               <label className="text-sm">
                 <span className="block text-xs text-charcoal-500 mb-1">Responsible person *</span>
                 <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={responsiblePersonUserId} onChange={(e) => setResponsiblePersonUserId(e.target.value)} disabled={!canManage}>
-                  {(profiles ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{profileLabel(profileMap, p.user_id)}</option>)}
+                  {hrEmployeeOptions.map((employee) => <option key={employee.userId} value={employee.userId}>{employee.label}</option>)}
                 </select>
               </label>
               <label className="text-sm">
                 <span className="block text-xs text-charcoal-500 mb-1">Authorised LOTO person *</span>
                 <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={authorisedLotoPersonUserId} onChange={(e) => setAuthorisedLotoPersonUserId(e.target.value)}>
                   <option value="">Select authoriser…</option>
-                  {(profiles ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{profileLabel(profileMap, p.user_id)}</option>)}
+                  {hrEmployeeOptions.map((employee) => <option key={employee.userId} value={employee.userId}>{employee.label}</option>)}
                 </select>
               </label>
               <label className="text-sm">
@@ -395,7 +434,27 @@ export function LotoPage() {
           <>
             <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
               <div className="px-4 py-3 border-b border-surface-200">
-                <h3 className="font-semibold">Open LOTO records ({openRecords.length})</h3>
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <h3 className="font-semibold">Open LOTO records ({openRecords.length})</h3>
+                  <div className="flex flex-wrap gap-2 text-sm">
+                    <select value={statusFilter} onChange={(e) => setStatusFilter((e.target.value as 'all' | LotoStatus) || 'all')} className="px-3 py-2 border border-surface-300 rounded-lg">
+                      <option value="all">All statuses</option>
+                      {Object.keys(STATUS_BADGE).map((status) => <option key={status} value={status}>{STATUS_BADGE[status as LotoStatus].label}</option>)}
+                    </select>
+                    <select value={energyFilter} onChange={(e) => setEnergyFilter((e.target.value as 'all' | 'yes' | 'no') || 'all')} className="px-3 py-2 border border-surface-300 rounded-lg">
+                      <option value="all">All energy states</option>
+                      <option value="yes">Zero energy verified</option>
+                      <option value="no">Not verified</option>
+                    </select>
+                    <input type="date" value={dateFromFilter} onChange={(e) => setDateFromFilter(e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg" placeholder="From" />
+                    <input type="date" value={dateToFilter} onChange={(e) => setDateToFilter(e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg" placeholder="To" />
+                    <select value={responsibleFilter} onChange={(e) => setResponsibleFilter((e.target.value || 'all') as 'all' | UUID)} className="px-3 py-2 border border-surface-300 rounded-lg min-w-[220px]">
+                      <option value="all">All responsible persons</option>
+                      {hrEmployeeOptions.map((employee) => <option key={employee.userId} value={employee.userId}>{employee.label}</option>)}
+                    </select>
+                    <button type="button" className="text-teal underline" onClick={() => { setStatusFilter('all'); setEnergyFilter('all'); setDateFromFilter(''); setDateToFilter(''); setResponsibleFilter('all'); }}>Clear filters</button>
+                  </div>
+                </div>
               </div>
               <table className="w-full text-sm min-w-[1100px]">
                 <thead className="bg-surface-100">
@@ -418,6 +477,7 @@ export function LotoPage() {
                   {openRecords.map((r) => (
                     <Fragment key={r.id}>
                       <tr className="border-t border-surface-100">
+                        <td className="px-4 py-2 text-charcoal-500">{r.permit_number ?? '—'}</td>
                         <td className="px-4 py-2 font-medium">{r.equipment_name}</td>
                         <td className="px-4 py-2 text-charcoal-500">{profileLabel(profileMap, r.responsible_person_user_id)}</td>
                         <td className="px-4 py-2 text-charcoal-500">{profileLabel(profileMap, r.authorised_loto_person_user_id)}</td>
@@ -514,7 +574,7 @@ export function LotoPage() {
                   <span className="block text-xs text-charcoal-500 mb-1">Notify person *</span>
                   <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={emergencyNotifyUserId} onChange={(e) => setEmergencyNotifyUserId(e.target.value)}>
                     <option value="">Select person…</option>
-                    {(profiles ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{profileLabel(profileMap, p.user_id)}</option>)}
+                    {hrEmployeeOptions.map((employee) => <option key={employee.userId} value={employee.userId}>{employee.label}</option>)}
                   </select>
                 </label>
               )}

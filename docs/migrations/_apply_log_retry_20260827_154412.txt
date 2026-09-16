@@ -1,0 +1,70 @@
+APPLY: document_management_metadata_restrictions_expiry_2026_04_28.sql
+Query executed successfully.
+No rows returned.
+  OK: document_management_metadata_restrictions_expiry_2026_04_28.sql
+APPLY: hr_documents_module_2026_03_03.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_documents_module_2026_03_03.sql
+APPLY: hr_module_2026_02_24.sql
+Error: Query could not be parsed and was rejected for security reasons.
+  FAIL: hr_module_2026_02_24.sql (see log)
+APPLY: hr_rls_personnel_and_self_service_2026_03_21.sql
+Error: OSS request failed: 502
+  FAIL: hr_rls_personnel_and_self_service_2026_03_21.sql (see log)
+APPLY: legal_requirements_register_and_updates.sql
+Error: OSS request failed: 502
+  FAIL: legal_requirements_register_and_updates.sql (see log)
+APPLY: license_activation_schema.sql
+Query executed successfully.
+No rows returned.
+  OK: license_activation_schema.sql
+APPLY: objectives_targets_2026_05_04.sql
+Query executed successfully.
+No rows returned.
+  OK: objectives_targets_2026_05_04.sql
+APPLY: objectives_targets_progress_notes_2026_05_25.sql
+Query executed successfully.
+No rows returned.
+  OK: objectives_targets_progress_notes_2026_05_25.sql
+APPLY: owner_rls_onboarding_fix_2026_02_25.sql
+Query executed successfully.
+No rows returned.
+  OK: owner_rls_onboarding_fix_2026_02_25.sql
+APPLY: permit_to_work_types_approval_2026_08_27.sql
+Query executed successfully.
+No rows returned.
+  OK: permit_to_work_types_approval_2026_08_27.sql
+APPLY: rbac_consultant_scope_and_trial_export.sql
+Query executed successfully.
+No rows returned.
+  OK: rbac_consultant_scope_and_trial_export.sql
+APPLY: review_meetings_module.sql
+Query executed successfully.
+No rows returned.
+  OK: review_meetings_module.sql
+APPLY: risk_assessments_enterprise_upgrade_2026_03_05.sql
+Query executed successfully.
+No rows returned.
+  OK: risk_assessments_enterprise_upgrade_2026_03_05.sql
+APPLY: rls_hotfix_owner_tenant_and_missing_tables_2026_02_27.sql
+Query executed successfully.
+No rows returned.
+  OK: rls_hotfix_owner_tenant_and_missing_tables_2026_02_27.sql
+APPLY: roadmap_phase1_compliance_automation_billing_2026_04_22.sql
+Query executed successfully.
+No rows returned.
+  OK: roadmap_phase1_compliance_automation_billing_2026_04_22.sql
+APPLY: sheq_toolbox_talks_permit_loto_2026_06.sql
+Query executed successfully.
+No rows returned.
+  OK: sheq_toolbox_talks_permit_loto_2026_06.sql
+APPLY: training_providers_contact_details_2026_08_20.sql
+Query executed successfully.
+No rows returned.
+  OK: training_providers_contact_details_2026_08_20.sql
+APPLY: training_records_hr_employee_link_2026_08_20.sql
+Query executed successfully.
+No rows returned.
+  OK: training_records_hr_employee_link_2026_08_20.sql
+Error: OSS request failed: 504

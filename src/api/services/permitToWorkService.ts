@@ -70,6 +70,32 @@ async function notifyPermitRecipient(input: {
   });
 }
 
+export function buildPermitToWorkNumber(year: number, month: number, day: number, sequence: number): string {
+  return `PTW-${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}-${String(sequence).padStart(4, '0')}`;
+}
+
+async function getNextPermitToWorkNumber(companyId: UUID, dateKey?: string): Promise<string> {
+  const referenceDate = dateKey ? new Date(`${dateKey}T00:00:00.000Z`) : new Date();
+  const year = referenceDate.getUTCFullYear();
+  const month = referenceDate.getUTCMonth() + 1;
+  const day = referenceDate.getUTCDate();
+  const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  const startOfNextDay = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0, 0));
+
+  const { data, error } = await insforge.database
+    .from('permits_to_work')
+    .select('permit_number')
+    .eq('company_id', companyId)
+    .gte('created_at', startOfDay.toISOString())
+    .lt('created_at', startOfNextDay.toISOString());
+
+  if (error) throw new Error(getErrorMessage(error));
+
+  const existing = (data ?? []) as Array<{ permit_number?: string | null }>;
+  const sequence = existing.filter((row) => row.permit_number && /^PTW-\d{8}-\d{4}$/.test(row.permit_number)).length + 1;
+  return buildPermitToWorkNumber(year, month, day, sequence);
+}
+
 export async function listPermitsToWork(companyId: UUID): Promise<PermitToWork[]> {
   return withInsforgeSession('permits_to_work:list', async () => {
     const { data, error } = await insforge.database
@@ -103,11 +129,13 @@ export async function createPermitToWork(input: {
       throw new Error('Person to approve permit is required.');
     }
 
+    const permitNumber = input.permitNumber ?? (await getNextPermitToWorkNumber(input.companyId));
+
     const { data, error } = await insforge.database
       .from('permits_to_work')
       .insert({
         company_id: input.companyId,
-        permit_number: input.permitNumber ?? null,
+        permit_number: permitNumber,
         permit_type: input.permitType ?? null,
         work_description: input.workDescription,
         mandatory_requirements: input.mandatoryRequirements ?? null,

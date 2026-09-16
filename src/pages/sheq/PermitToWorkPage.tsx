@@ -17,6 +17,7 @@ import {
 } from '../../api/services/permitToWorkService';
 import { listSites } from '../../api/services/sitesService';
 import { listUserProfiles } from '../../api/services/profilesService';
+import { listHrEmployees } from '../../api/services/hrService';
 import type { UUID } from '../../api/models/core';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import { MANAGEMENT_ROLES } from '../../constants/roles';
@@ -61,6 +62,11 @@ export function PermitToWorkPage() {
   const [validTo, setValidTo] = useState('');
   const [hazardsRaw, setHazardsRaw] = useState('');
   const [precautionsRaw, setPrecautionsRaw] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | PermitToWorkStatus>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | PermitType>('all');
+  const [dateFromFilter, setDateFromFilter] = useState('');
+  const [dateToFilter, setDateToFilter] = useState('');
+  const [responsibleFilter, setResponsibleFilter] = useState<'all' | UUID>('all');
   const [editingId, setEditingId] = useState<UUID | null>(null);
   const [workflowPermitId, setWorkflowPermitId] = useState<UUID | null>(null);
   const [workflowMode, setWorkflowMode] = useState<'review' | 'close'>('review');
@@ -85,6 +91,11 @@ export function PermitToWorkPage() {
     return listUserProfiles(activeCompanyId);
   }, [activeCompanyId]);
 
+  const { data: hrEmployees } = useAsync(async () => {
+    if (!activeCompanyId) return [];
+    return listHrEmployees(activeCompanyId);
+  }, [activeCompanyId]);
+
   const profileMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const p of profiles ?? []) {
@@ -93,6 +104,18 @@ export function PermitToWorkPage() {
     }
     return map;
   }, [profiles]);
+
+  const hrEmployeeOptions = useMemo(() => {
+    return (hrEmployees ?? [])
+      .filter((employee) => !!employee.user_id)
+      .map((employee) => {
+        const name = `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim() || employee.email || employee.employee_no;
+        return {
+          userId: employee.user_id as UUID,
+          label: employee.employee_no ? `${name} (${employee.employee_no})` : name
+        };
+      });
+  }, [hrEmployees]);
 
   const activeSites = (sites ?? []).filter((s) => s.is_active);
 
@@ -103,7 +126,12 @@ export function PermitToWorkPage() {
   }, [user?.id, requestedByUserId]);
 
   function generatePermitNumber(): string {
-    return `PTW-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth() + 1;
+    const day = now.getUTCDate();
+    const sequence = ((permits ?? []).filter((p) => p.permit_number && /^PTW-\d{8}-\d{4}$/.test(p.permit_number)).length % 9000) + 1;
+    return `PTW-${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}-${String(sequence).padStart(4, '0')}`;
   }
 
   function resetForm() {
@@ -172,8 +200,15 @@ export function PermitToWorkPage() {
       setError('Person to approve permit is required.');
       return;
     }
-    if (validFrom && validTo && validFrom > validTo) {
+    const validFromDate = validFrom ? new Date(validFrom) : null;
+    const validToDate = validTo ? new Date(validTo) : null;
+    if (validFromDate && validToDate && validFromDate.getTime() > validToDate.getTime()) {
       setError('"Valid from" date must not be after "Valid to" date.');
+      return;
+    }
+
+    if (validFrom && validTo && validFromDate && validToDate && validFromDate.getTime() === validToDate.getTime()) {
+      setError('"Valid from" and "Valid to" must be different times when both are provided.');
       return;
     }
 
@@ -184,6 +219,8 @@ export function PermitToWorkPage() {
     const precautions = precautionsRaw.split(',').map((s) => s.trim()).filter(Boolean);
     const resolvedPermitNumber = permitNumber.trim() || generatePermitNumber();
     const resolvedRequestedBy = (requestedByUserId || user.id) as UUID;
+    const validFromValue = validFrom ? new Date(validFrom).toISOString() : null;
+    const validToValue = validTo ? new Date(validTo).toISOString() : null;
 
     try {
       if (editingId) {
@@ -198,8 +235,8 @@ export function PermitToWorkPage() {
             location: location.trim() || null,
             site_id: (siteId || null) as UUID | null,
             approved_by_user_id: approvedByUserId as UUID,
-            valid_from: validFrom || null,
-            valid_to: validTo || null,
+            valid_from: validFromValue,
+            valid_to: validToValue,
             hazards,
             precautions
           },
@@ -217,8 +254,8 @@ export function PermitToWorkPage() {
           siteId: (siteId || null) as UUID | null,
           requestedByUserId: resolvedRequestedBy,
           approvedByUserId: approvedByUserId as UUID,
-          validFrom: validFrom || null,
-          validTo: validTo || null,
+          validFrom: validFromValue,
+          validTo: validToValue,
           hazards,
           precautions,
           actorUserId: user.id as UUID
@@ -325,6 +362,26 @@ export function PermitToWorkPage() {
     }
   }
 
+  const filteredPermits = useMemo(() => {
+    return (permits ?? []).filter((permit) => {
+      if (statusFilter !== 'all' && permit.status !== statusFilter) return false;
+      if (typeFilter !== 'all' && permit.permit_type !== typeFilter) return false;
+      if (responsibleFilter !== 'all') {
+        const matchesResponsible = permit.requested_by_user_id === responsibleFilter || permit.approved_by_user_id === responsibleFilter;
+        if (!matchesResponsible) return false;
+      }
+      if (dateFromFilter && permit.valid_from && new Date(permit.valid_from).getTime() < new Date(dateFromFilter + 'T00:00:00.000Z').getTime()) {
+        return false;
+      }
+      if (dateToFilter && permit.valid_to && new Date(permit.valid_to).getTime() > new Date(dateToFilter + 'T23:59:59.999Z').getTime()) {
+        return false;
+      }
+      if (dateFromFilter && !permit.valid_from) return false;
+      if (dateToFilter && !permit.valid_to) return false;
+      return true;
+    });
+  }, [permits, statusFilter, typeFilter, dateFromFilter, dateToFilter, responsibleFilter]);
+
   const showForm = Boolean(user?.id);
 
   return (
@@ -358,10 +415,8 @@ export function PermitToWorkPage() {
                   onChange={(e) => setRequestedByUserId(e.target.value)}
                   disabled={!canManage && Boolean(user?.id)}
                 >
-                  {(profiles ?? []).map((p) => (
-                    <option key={p.user_id} value={p.user_id}>
-                      {profileLabel(profileMap, p.user_id)}
-                    </option>
+                  {hrEmployeeOptions.map((employee) => (
+                    <option key={employee.userId} value={employee.userId}>{employee.label}</option>
                   ))}
                 </select>
               </label>
@@ -369,10 +424,8 @@ export function PermitToWorkPage() {
                 <span className="block text-xs text-charcoal-500 mb-1">Person to approve permit *</span>
                 <select className="w-full border border-surface-300 rounded-lg px-3 py-2" value={approvedByUserId} onChange={(e) => setApprovedByUserId(e.target.value)}>
                   <option value="">Select approver…</option>
-                  {(profiles ?? []).map((p) => (
-                    <option key={p.user_id} value={p.user_id}>
-                      {profileLabel(profileMap, p.user_id)}
-                    </option>
+                  {hrEmployeeOptions.map((employee) => (
+                    <option key={employee.userId} value={employee.userId}>{employee.label}</option>
                   ))}
                 </select>
               </label>
@@ -432,7 +485,26 @@ export function PermitToWorkPage() {
         {!permitsLoading && (
           <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
             <div className="px-4 py-3 border-b border-surface-200">
-              <h3 className="font-semibold">Permits to work ({(permits ?? []).length})</h3>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <h3 className="font-semibold">Permits to work ({filteredPermits.length})</h3>
+                <div className="flex flex-wrap gap-2 text-sm">
+                  <select value={statusFilter} onChange={(e) => setStatusFilter((e.target.value as 'all' | PermitToWorkStatus) || 'all')} className="px-3 py-2 border border-surface-300 rounded-lg">
+                    <option value="all">All statuses</option>
+                    {Object.keys(STATUS_BADGE).map((status) => <option key={status} value={status}>{STATUS_BADGE[status as PermitToWorkStatus].label}</option>)}
+                  </select>
+                  <select value={typeFilter} onChange={(e) => setTypeFilter((e.target.value as 'all' | PermitType) || 'all')} className="px-3 py-2 border border-surface-300 rounded-lg">
+                    <option value="all">All types</option>
+                    {PERMIT_TYPE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                  </select>
+                  <input type="date" value={dateFromFilter} onChange={(e) => setDateFromFilter(e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg" placeholder="From" />
+                  <input type="date" value={dateToFilter} onChange={(e) => setDateToFilter(e.target.value)} className="px-3 py-2 border border-surface-300 rounded-lg" placeholder="To" />
+                  <select value={responsibleFilter} onChange={(e) => setResponsibleFilter((e.target.value || 'all') as 'all' | UUID)} className="px-3 py-2 border border-surface-300 rounded-lg min-w-[220px]">
+                    <option value="all">All responsible persons</option>
+                    {hrEmployeeOptions.map((employee) => <option key={employee.userId} value={employee.userId}>{employee.label}</option>)}
+                  </select>
+                  <button type="button" className="text-teal underline" onClick={() => { setStatusFilter('all'); setTypeFilter('all'); setDateFromFilter(''); setDateToFilter(''); setResponsibleFilter('all'); }}>Clear filters</button>
+                </div>
+              </div>
             </div>
             <table className="w-full text-sm min-w-[960px]">
               <thead className="bg-surface-100">
@@ -449,10 +521,10 @@ export function PermitToWorkPage() {
                 </tr>
               </thead>
               <tbody>
-                {(permits ?? []).length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-6 text-charcoal-500 text-center">No permits to work. Create your first permit.</td></tr>
+                {filteredPermits.length === 0 && (
+                  <tr><td colSpan={9} className="px-4 py-6 text-charcoal-500 text-center">No permits match these filters.</td></tr>
                 )}
-                {(permits ?? []).map((p) => (
+                {filteredPermits.map((p) => (
                   <Fragment key={p.id}>
                     <tr className="border-t border-surface-100">
                       <td className="px-4 py-2 text-charcoal-500">{p.permit_number ?? '—'}</td>

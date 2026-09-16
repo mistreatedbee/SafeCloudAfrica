@@ -9,6 +9,7 @@ export type LotoStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'REJ
 export type LotoRecord = {
   id: UUID;
   company_id: UUID;
+  permit_number: string | null;
   equipment_name: string;
   location: string | null;
   site_id: UUID | null;
@@ -70,6 +71,32 @@ async function notifyLotoRecipient(input: {
   });
 }
 
+export function buildLotoRecordNumber(year: number, month: number, day: number, sequence: number): string {
+  return `LOTO-${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}-${String(sequence).padStart(4, '0')}`;
+}
+
+async function getNextLotoRecordNumber(companyId: UUID, dateKey?: string): Promise<string> {
+  const referenceDate = dateKey ? new Date(`${dateKey}T00:00:00.000Z`) : new Date();
+  const year = referenceDate.getUTCFullYear();
+  const month = referenceDate.getUTCMonth() + 1;
+  const day = referenceDate.getUTCDate();
+  const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  const startOfNextDay = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0, 0));
+
+  const { data, error } = await insforge.database
+    .from('loto_records')
+    .select('permit_number')
+    .eq('company_id', companyId)
+    .gte('created_at', startOfDay.toISOString())
+    .lt('created_at', startOfNextDay.toISOString());
+
+  if (error) throw new Error(getErrorMessage(error));
+
+  const existing = (data ?? []) as Array<{ permit_number?: string | null }>;
+  const sequence = existing.filter((row) => row.permit_number && /^LOTO-\d{8}-\d{4}$/.test(row.permit_number)).length + 1;
+  return buildLotoRecordNumber(year, month, day, sequence);
+}
+
 export async function listLotoRecords(companyId: UUID): Promise<LotoRecord[]> {
   return withInsforgeSession('loto_records:list', async () => {
     const { data, error } = await insforge.database
@@ -84,6 +111,7 @@ export async function listLotoRecords(companyId: UUID): Promise<LotoRecord[]> {
 
 export async function createLotoRecord(input: {
   companyId: UUID;
+  permitNumber?: string | null;
   equipmentName: string;
   location?: string | null;
   siteId?: UUID | null;
@@ -105,10 +133,13 @@ export async function createLotoRecord(input: {
       throw new Error('Start time must be before end time.');
     }
 
+    const permitNumber = input.permitNumber ?? (await getNextLotoRecordNumber(input.companyId));
+
     const { data, error } = await insforge.database
       .from('loto_records')
       .insert({
         company_id: input.companyId,
+        permit_number: permitNumber,
         equipment_name: input.equipmentName,
         location: input.location ?? null,
         site_id: input.siteId ?? null,

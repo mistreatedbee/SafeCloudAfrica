@@ -1,0 +1,465 @@
+APPLY: activate_license_key_rpc.sql
+Query executed successfully.
+No rows returned.
+  OK: activate_license_key_rpc.sql
+APPLY: ai_briefings_2026_08_03.sql
+Query executed successfully.
+No rows returned.
+  OK: ai_briefings_2026_08_03.sql
+APPLY: ai_platform_foundation_2026_08_03.sql
+Query executed successfully.
+No rows returned.
+  OK: ai_platform_foundation_2026_08_03.sql
+APPLY: audit_questions_schema_sync_2026_08_27.sql
+Query executed successfully.
+No rows returned.
+  OK: audit_questions_schema_sync_2026_08_27.sql
+APPLY: calibration_register_2026_02_24.sql
+Query executed successfully.
+No rows returned.
+  OK: calibration_register_2026_02_24.sql
+APPLY: capa_enterprise_upgrade_2026_03_03.sql
+Query executed successfully.
+No rows returned.
+  OK: capa_enterprise_upgrade_2026_03_03.sql
+APPLY: chatbot_logs_super_admin_2026_05_06.sql
+Query executed successfully.
+No rows returned.
+  OK: chatbot_logs_super_admin_2026_05_06.sql
+APPLY: checklist_authoritative_workflow_2026_02_27.sql
+Query executed successfully.
+No rows returned.
+  OK: checklist_authoritative_workflow_2026_02_27.sql
+APPLY: customer_complaint_log_2026_02_24.sql
+Query executed successfully.
+No rows returned.
+  OK: customer_complaint_log_2026_02_24.sql
+APPLY: document_management_folders_versions_onlyoffice_2026_04_23.sql
+Query executed successfully.
+No rows returned.
+  OK: document_management_folders_versions_onlyoffice_2026_04_23.sql
+APPLY: document_management_metadata_restrictions_expiry_2026_04_28.sql
+Error: Connection to pas375jb.us-west.insforge.app timed out. Check your network, VPN, or proxy settings.
+  FAIL: document_management_metadata_restrictions_expiry_2026_04_28.sql (see log)
+APPLY: draft_snapshots_global_autosave_2026_04_21.sql
+Query executed successfully.
+No rows returned.
+  OK: draft_snapshots_global_autosave_2026_04_21.sql
+APPLY: dynamic_options.sql
+Query executed successfully.
+No rows returned.
+  OK: dynamic_options.sql
+APPLY: employee_ids_org_code_and_sequence_2026_03_16.sql
+Query executed successfully.
+No rows returned.
+  OK: employee_ids_org_code_and_sequence_2026_03_16.sql
+APPLY: ensure_me_as_super_admin_definer.sql
+Query executed successfully.
+No rows returned.
+  OK: ensure_me_as_super_admin_definer.sql
+APPLY: environment_air_quality_monitoring_tools_and_lab_2026_03_16.sql
+Query executed successfully.
+No rows returned.
+  OK: environment_air_quality_monitoring_tools_and_lab_2026_03_16.sql
+APPLY: environment_hr_employee_snapshots_2026_04_21.sql
+Query executed successfully.
+No rows returned.
+  OK: environment_hr_employee_snapshots_2026_04_21.sql
+APPLY: environment_waste_disposal_disposal_status_2026_03_16.sql
+Query executed successfully.
+No rows returned.
+  OK: environment_waste_disposal_disposal_status_2026_03_16.sql
+APPLY: environmental_module_2026_02_24.sql
+Query executed successfully.
+No rows returned.
+  OK: environmental_module_2026_02_24.sql
+APPLY: final_feature_pass_2026_05_04.sql
+Query executed successfully.
+No rows returned.
+  OK: final_feature_pass_2026_05_04.sql
+APPLY: fix_performance_review_ratings_2026_07_03.sql
+Query executed successfully.
+No rows returned.
+  OK: fix_performance_review_ratings_2026_07_03.sql
+APPLY: fix_performance_reviews_schema.sql
+Query executed successfully.
+No rows returned.
+  OK: fix_performance_reviews_schema.sql
+APPLY: health_medicals_hr_integration_2026_03_16.sql
+Query executed successfully.
+No rows returned.
+  OK: health_medicals_hr_integration_2026_03_16.sql
+APPLY: health_module_2026_02_24.sql
+Query executed successfully.
+No rows returned.
+  OK: health_module_2026_02_24.sql
+APPLY: hr_ack_documents_privacy_rls_2026_08_24.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_ack_documents_privacy_rls_2026_08_24.sql
+APPLY: hr_ack_receipts_decline_2026_07_03.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_ack_receipts_decline_2026_07_03.sql
+APPLY: hr_documents_module_2026_03_03.sql
+Error: Connection to pas375jb.us-west.insforge.app timed out. Check your network, VPN, or proxy settings.
+  FAIL: hr_documents_module_2026_03_03.sql (see log)
+APPLY: hr_employee_sensitive_details_and_dependents_2026_03_18.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_employee_sensitive_details_and_dependents_2026_03_18.sql
+APPLY: hr_employee_sensitive_details_bootstrap_2026_03_18.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_employee_sensitive_details_bootstrap_2026_03_18.sql
+APPLY: hr_employee_sensitive_details_fk_fix_2026_03_18.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_employee_sensitive_details_fk_fix_2026_03_18.sql
+APPLY: hr_employee_wellness_programme_2026_03_16.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_employee_wellness_programme_2026_03_16.sql
+APPLY: hr_employees_job_description_link_2026_08_21.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_employees_job_description_link_2026_08_21.sql
+APPLY: hr_employees_select_company_member_2026_08_20.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_employees_select_company_member_2026_08_20.sql
+APPLY: hr_leave_approval_balance_soft_check_2026_06_15.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_leave_approval_balance_soft_check_2026_06_15.sql
+APPLY: hr_leave_hours_archive_2026_07_03.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_leave_hours_archive_2026_07_03.sql
+APPLY: hr_management_full_update_2026_03_03.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_management_full_update_2026_03_03.sql
+APPLY: hr_module_2026_02_24.sql
+Error: Query could not be parsed and was rejected for security reasons.
+  FAIL: hr_module_2026_02_24.sql (see log)
+APPLY: hr_performance_disciplinary_archive_and_responsible_2026_08_24.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_performance_disciplinary_archive_and_responsible_2026_08_24.sql
+APPLY: hr_personal_doc_acknowledgement_2026_05_25.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_personal_doc_acknowledgement_2026_05_25.sql
+APPLY: hr_rls_personnel_and_self_service_2026_03_21.sql
+Error: policy "hr_employees_select" for table "hr_employees" already exists
+  FAIL: hr_rls_personnel_and_self_service_2026_03_21.sql (see log)
+APPLY: hr_settings_working_days_2026_04_13.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_settings_working_days_2026_04_13.sql
+APPLY: hr_supervisor_employee_id_and_multi_competency_2026_05_27.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_supervisor_employee_id_and_multi_competency_2026_05_27.sql
+APPLY: hr_wellness_signoff_and_action_closed_status_2026_06_25.sql
+Query executed successfully.
+No rows returned.
+  OK: hr_wellness_signoff_and_action_closed_status_2026_06_25.sql
+APPLY: improvement_module_register.sql
+Query executed successfully.
+No rows returned.
+  OK: improvement_module_register.sql
+APPLY: incident_flow_replacement_2026_02_27.sql
+Query executed successfully.
+No rows returned.
+  OK: incident_flow_replacement_2026_02_27.sql
+APPLY: incident_form_updated_2026_02_27.sql
+Query executed successfully.
+No rows returned.
+  OK: incident_form_updated_2026_02_27.sql
+APPLY: incident_investigations_table_2026_07_31.sql
+Query executed successfully.
+No rows returned.
+  OK: incident_investigations_table_2026_07_31.sql
+APPLY: incident_kpi_classification.sql
+Query executed successfully.
+No rows returned.
+  OK: incident_kpi_classification.sql
+APPLY: incident_module_enhancements.sql
+Query executed successfully.
+No rows returned.
+  OK: incident_module_enhancements.sql
+APPLY: inspection_runs_auditee_user_id_2026_08_20.sql
+Query executed successfully.
+No rows returned.
+  OK: inspection_runs_auditee_user_id_2026_08_20.sql
+APPLY: internal_external_issues_assessment_2026_02_24.sql
+Query executed successfully.
+No rows returned.
+  OK: internal_external_issues_assessment_2026_02_24.sql
+APPLY: internal_external_issues_links_2026_02_24.sql
+Query executed successfully.
+No rows returned.
+  OK: internal_external_issues_links_2026_02_24.sql
+APPLY: invite_feedback_and_owner_access_2026_02_25.sql
+Query executed successfully.
+No rows returned.
+  OK: invite_feedback_and_owner_access_2026_02_25.sql
+APPLY: invite_hashed_token_alignment_2026_04_22.sql
+Query executed successfully.
+No rows returned.
+  OK: invite_hashed_token_alignment_2026_04_22.sql
+APPLY: invite_manual_link_pending_alignment_2026_04_22.sql
+Query executed successfully.
+No rows returned.
+  OK: invite_manual_link_pending_alignment_2026_04_22.sql
+APPLY: invite_token_hash_api_flow_2026_03_03.sql
+Query executed successfully.
+No rows returned.
+  OK: invite_token_hash_api_flow_2026_03_03.sql
+APPLY: invite_token_resolver_alignment_2026_04_23.sql
+Query executed successfully.
+No rows returned.
+  OK: invite_token_resolver_alignment_2026_04_23.sql
+APPLY: invite_validation_alignment_2026_04_29.sql
+Query executed successfully.
+No rows returned.
+  OK: invite_validation_alignment_2026_04_29.sql
+APPLY: kpi_assessment_enterprise_upgrade_2026_03_03.sql
+Query executed successfully.
+No rows returned.
+  OK: kpi_assessment_enterprise_upgrade_2026_03_03.sql
+APPLY: kpi_library_full_templates_2026_08_24.sql
+Query executed successfully.
+No rows returned.
+  OK: kpi_library_full_templates_2026_08_24.sql
+APPLY: kpi_performance_module.sql
+Query executed successfully.
+No rows returned.
+  OK: kpi_performance_module.sql
+APPLY: kpi_result_cache.sql
+Query executed successfully.
+No rows returned.
+  OK: kpi_result_cache.sql
+APPLY: kpi_settings.sql
+Query executed successfully.
+No rows returned.
+  OK: kpi_settings.sql
+APPLY: legal_requirement_links_2026_03_10.sql
+Query executed successfully.
+No rows returned.
+  OK: legal_requirement_links_2026_03_10.sql
+APPLY: legal_requirements_finding_target_date_hr_2026_03_16.sql
+Query executed successfully.
+No rows returned.
+  OK: legal_requirements_finding_target_date_hr_2026_03_16.sql
+APPLY: legal_requirements_register_and_updates.sql
+Error: Query could not be parsed and was rejected for security reasons.
+  FAIL: legal_requirements_register_and_updates.sql (see log)
+APPLY: legal_requirements_soft_delete_2026_02_27.sql
+Query executed successfully.
+No rows returned.
+  OK: legal_requirements_soft_delete_2026_02_27.sql
+APPLY: legal_updates_table_and_fk_2026_02_27.sql
+Query executed successfully.
+No rows returned.
+  OK: legal_updates_table_and_fk_2026_02_27.sql
+APPLY: license_activation_schema.sql
+Error: duplicate key value violates unique constraint "idx_company_invites_active_unique"
+A record with this field(field) already exists. You can query the existing record by using the query tool and then try again.
+  FAIL: license_activation_schema.sql (see log)
+APPLY: loto_workflow_upgrade_2026_08_27.sql
+Query executed successfully.
+No rows returned.
+  OK: loto_workflow_upgrade_2026_08_27.sql
+APPLY: ncr_authoritative_unification_2026_02_27.sql
+Query executed successfully.
+No rows returned.
+  OK: ncr_authoritative_unification_2026_02_27.sql
+APPLY: ncr_requirements_update_2026_02_24.sql
+Query executed successfully.
+No rows returned.
+  OK: ncr_requirements_update_2026_02_24.sql
+APPLY: notifications_all_roles_rls_2026_07_31.sql
+Query executed successfully.
+No rows returned.
+  OK: notifications_all_roles_rls_2026_07_31.sql
+APPLY: notifications_metadata_column_2026_04_23.sql
+Query executed successfully.
+No rows returned.
+  OK: notifications_metadata_column_2026_04_23.sql
+APPLY: objectives_targets_2026_05_04.sql
+Error: check constraint "module_targets_status_check" of relation "module_targets" is violated by some row
+  FAIL: objectives_targets_2026_05_04.sql (see log)
+APPLY: objectives_targets_progress_notes_2026_05_25.sql
+Error: policy "company_rls" for table "module_target_notes" already exists
+  FAIL: objectives_targets_progress_notes_2026_05_25.sql (see log)
+APPLY: operating_model_roles_licensing.sql
+Query executed successfully.
+No rows returned.
+  OK: operating_model_roles_licensing.sql
+APPLY: operational_inputs_monthly.sql
+Query executed successfully.
+No rows returned.
+  OK: operational_inputs_monthly.sql
+APPLY: org_invites_end_to_end_2026_02_27.sql
+Query executed successfully.
+No rows returned.
+  OK: org_invites_end_to_end_2026_02_27.sql
+APPLY: org_invites_scope_and_org_name_2026_02_27.sql
+Query executed successfully.
+No rows returned.
+  OK: org_invites_scope_and_org_name_2026_02_27.sql
+APPLY: org_licenses.sql
+Query executed successfully.
+No rows returned.
+  OK: org_licenses.sql
+APPLY: organization_member_scope_seats.sql
+Query executed successfully.
+No rows returned.
+  OK: organization_member_scope_seats.sql
+APPLY: owner_rls_onboarding_fix_2026_02_25.sql
+Error: Invalid API key
+Check the API key is valid or generate a new API key.
+  FAIL: owner_rls_onboarding_fix_2026_02_25.sql (see log)
+APPLY: permit_to_work_types_approval_2026_08_27.sql
+Error: Invalid API key
+Check the API key is valid or generate a new API key.
+  FAIL: permit_to_work_types_approval_2026_08_27.sql (see log)
+APPLY: platform_admin_audit_logs.sql
+Query executed successfully.
+No rows returned.
+  OK: platform_admin_audit_logs.sql
+APPLY: platform_operational_events_2026_03_21.sql
+Query executed successfully.
+No rows returned.
+  OK: platform_operational_events_2026_03_21.sql
+APPLY: ppe_hr_employee_links_2026_08_20.sql
+Query executed successfully.
+No rows returned.
+  OK: ppe_hr_employee_links_2026_08_20.sql
+APPLY: ppe_issue_atomic_rpc_2026_08_21.sql
+Query executed successfully.
+No rows returned.
+  OK: ppe_issue_atomic_rpc_2026_08_21.sql
+APPLY: ppe_module_comments2.sql
+Query executed successfully.
+No rows returned.
+  OK: ppe_module_comments2.sql
+APPLY: ppe_module_sizes_prices_and_expiry_2026_03_16.sql
+Query executed successfully.
+No rows returned.
+  OK: ppe_module_sizes_prices_and_expiry_2026_03_16.sql
+APPLY: ppe_stock_movement_atomic_rpc_2026_08_20.sql
+Query executed successfully.
+No rows returned.
+  OK: ppe_stock_movement_atomic_rpc_2026_08_20.sql
+APPLY: ppe_stock_per_size_2026_05_25.sql
+Query executed successfully.
+No rows returned.
+  OK: ppe_stock_per_size_2026_05_25.sql
+APPLY: ppe_training_referential_integrity_2026_08_20.sql
+Query executed successfully.
+No rows returned.
+  OK: ppe_training_referential_integrity_2026_08_20.sql
+APPLY: rbac_consultant_scope_and_trial_export.sql
+Error: Invalid API key
+Check the API key is valid or generate a new API key.
+  FAIL: rbac_consultant_scope_and_trial_export.sql (see log)
+APPLY: review_meeting_reminders_and_constraints.sql
+Query executed successfully.
+No rows returned.
+  OK: review_meeting_reminders_and_constraints.sql
+APPLY: review_meetings_module.sql
+Error: Invalid API key
+Check the API key is valid or generate a new API key.
+  FAIL: review_meetings_module.sql (see log)
+APPLY: risk_assessment_active_archive_2026_08_27.sql
+Query executed successfully.
+No rows returned.
+  OK: risk_assessment_active_archive_2026_08_27.sql
+APPLY: risk_assessment_updated_forms_2026_02_27.sql
+Query executed successfully.
+No rows returned.
+  OK: risk_assessment_updated_forms_2026_02_27.sql
+APPLY: risk_assessments_enterprise_upgrade_2026_03_05.sql
+Error: Invalid API key
+Check the API key is valid or generate a new API key.
+  FAIL: risk_assessments_enterprise_upgrade_2026_03_05.sql (see log)
+APPLY: rls_hotfix_owner_tenant_and_missing_tables_2026_02_27.sql
+Error: Invalid API key
+Check the API key is valid or generate a new API key.
+  FAIL: rls_hotfix_owner_tenant_and_missing_tables_2026_02_27.sql (see log)
+APPLY: roadmap_phase1_compliance_automation_billing_2026_04_22.sql
+Error: Invalid API key
+Check the API key is valid or generate a new API key.
+  FAIL: roadmap_phase1_compliance_automation_billing_2026_04_22.sql (see log)
+APPLY: sellable_features_paywall_2026_02_24.sql
+Query executed successfully.
+No rows returned.
+  OK: sellable_features_paywall_2026_02_24.sql
+APPLY: sellable_features_unlock_request_notify_super_admin_2026_04_23.sql
+Query executed successfully.
+No rows returned.
+  OK: sellable_features_unlock_request_notify_super_admin_2026_04_23.sql
+APPLY: sheq_toolbox_talks_permit_loto_2026_06.sql
+Error: OSS request failed: 502
+  FAIL: sheq_toolbox_talks_permit_loto_2026_06.sql (see log)
+APPLY: sites_departments_user_profiles.sql
+Query executed successfully.
+No rows returned.
+  OK: sites_departments_user_profiles.sql
+APPLY: super_admin_bootstrap.sql
+Query executed successfully.
+No rows returned.
+  OK: super_admin_bootstrap.sql
+APPLY: support_admin_contact_system_2026_05_05.sql
+Query executed successfully.
+No rows returned.
+  OK: support_admin_contact_system_2026_05_05.sql
+APPLY: task_manager_register.sql
+Query executed successfully.
+No rows returned.
+  OK: task_manager_register.sql
+APPLY: task_owner_permissions_2026_05_02.sql
+Query executed successfully.
+No rows returned.
+  OK: task_owner_permissions_2026_05_02.sql
+APPLY: tasks_enterprise_upgrade_2026_03_03.sql
+Query executed successfully.
+No rows returned.
+  OK: tasks_enterprise_upgrade_2026_03_03.sql
+APPLY: training_matrix_job_linked.sql
+Query executed successfully.
+No rows returned.
+  OK: training_matrix_job_linked.sql
+APPLY: training_providers_contact_details_2026_08_20.sql
+Error: OSS request failed: 502
+  FAIL: training_providers_contact_details_2026_08_20.sql (see log)
+APPLY: training_records_hr_employee_link_2026_08_20.sql
+Error: OSS request failed: 502
+  FAIL: training_records_hr_employee_link_2026_08_20.sql (see log)
+APPLY: training_records_self_view_employee_link_2026_08_21.sql
+Query executed successfully.
+No rows returned.
+  OK: training_records_self_view_employee_link_2026_08_21.sql
+APPLY: training_reminder_sent.sql
+Query executed successfully.
+No rows returned.
+  OK: training_reminder_sent.sql
+APPLY: user_profiles_avatar_support_2026_04_22.sql
+Query executed successfully.
+No rows returned.
+  OK: user_profiles_avatar_support_2026_04_22.sql
+APPLY: user_profiles_rls_email_notifications_2026_07_30.sql
+Query executed successfully.
+No rows returned.
+  OK: user_profiles_rls_email_notifications_2026_07_30.sql
+APPLY: work_hours_monthly.sql
+Query executed successfully.
+No rows returned.
+  OK: work_hours_monthly.sql
+Reloading PostgREST schema cache...
+Query executed successfully.
+No rows returned.
