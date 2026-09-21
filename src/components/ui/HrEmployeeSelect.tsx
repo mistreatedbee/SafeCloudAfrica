@@ -52,7 +52,7 @@ export function HrEmployeeSelect({
     return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
-  const { data: employees, loading, error } = useAsync<HrEmployee[]>(
+  const { data: employees, loading, error, retry } = useAsync<HrEmployee[]>(
     async () => {
       if (!companyId) return [];
       return await searchHrEmployees(companyId, {
@@ -127,7 +127,18 @@ export function HrEmployeeSelect({
           );
         })}
       </select>
-      {error && <p className="text-xs text-critical">Failed to load employees. Please retry.</p>}
+      {error && (
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-critical">Failed to load employees.</p>
+          <button
+            type="button"
+            onClick={() => retry()}
+            className="text-xs font-medium text-teal hover:underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {!error && !loading && companyId && rows.length === 0 && (
         <p className="text-xs text-charcoal-500">No employees found for this search.</p>
       )}

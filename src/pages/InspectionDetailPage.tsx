@@ -10,6 +10,7 @@ import type { Inspection, InspectionRun, InspectionRunItem, QualityNcr, UserProf
 import type { UUID } from '../api/models/core';
 import {
   completeInspectionRun,
+  createCorrectiveActionForInspectionItem,
   getInspectionById,
   getInspectionRunById,
   listInspectionRunsForInspection,
@@ -26,7 +27,8 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
 import {
   InspectionChecklistItemCard,
-  InspectionChecklistItemTableRow
+  InspectionChecklistItemTableRow,
+  type CreateCorrectiveActionInput
 } from '../components/inspections/InspectionChecklistItemViews';
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { useDraftRegistration } from '../session/useDraftRegistration';
@@ -195,6 +197,29 @@ export function InspectionDetailPage() {
     }
   }
 
+  async function handleCreateCorrectiveAction(item: InspectionRunItem, input: CreateCorrectiveActionInput) {
+    if (!activeCompanyId || !latestRun || !user?.id) return;
+    setSavingItemId(String(item.id));
+    setRunActionError(null);
+    try {
+      await createCorrectiveActionForInspectionItem({
+        companyId: activeCompanyId as UUID,
+        runId: latestRun.run.id as UUID,
+        itemId: item.id as UUID,
+        actionDescription: input.actionDescription,
+        assignedToUserId: input.assignedToUserId,
+        responsiblePersonName: input.responsiblePersonName,
+        dueDate: input.dueDate,
+        createdByUserId: user.id as UUID
+      });
+      await refreshRun();
+    } catch (e) {
+      setRunActionError(toUserFacingError(e, 'Failed to create corrective action. Please try again.'));
+    } finally {
+      setSavingItemId(null);
+    }
+  }
+
   async function handleCompleteRun() {
     if (!activeCompanyId || !latestRun || !user?.id) return;
     setCompletingRun(true);
@@ -234,7 +259,9 @@ export function InspectionDetailPage() {
         generatedBy: fullName,
         logoUrl
       });
-      downloadFile(blob, `inspection-run-${String(latestRun.run.id).slice(0, 8)}.pdf`);
+      const safeTitle = (inspection?.title || 'Inspection').replace(/\s+/g, '_').replace(/[^\w-]/g, '');
+      const dateTag = new Date().toISOString().slice(0, 10);
+      downloadFile(blob, `SCA_Inspection_${safeTitle}_${dateTag}.pdf`);
     } catch (e) {
       setRunActionError(toUserFacingError(e, 'Failed to generate PDF report.'));
     } finally {
@@ -423,6 +450,7 @@ export function InspectionDetailPage() {
                                 idx={idx}
                                 run={latestRun.run}
                                 userProfiles={userProfiles ?? []}
+                                companyId={activeCompanyId as UUID}
                                 canScore={canScore}
                                 isAuditee={isAuditee}
                                 isManager={isManager}
@@ -430,6 +458,7 @@ export function InspectionDetailPage() {
                                 savingItemId={savingItemId}
                                 userId={user?.id}
                                 onUpdateItem={handleUpdateItem}
+                                onCreateCorrectiveAction={handleCreateCorrectiveAction}
                                 onOpenEvidence={(id) => {
                                   setEvidenceItemId(id);
                                   setEvidenceOpen(true);
@@ -447,6 +476,7 @@ export function InspectionDetailPage() {
                             idx={idx}
                             run={latestRun.run}
                             userProfiles={userProfiles ?? []}
+                            companyId={activeCompanyId as UUID}
                             canScore={canScore}
                             isAuditee={isAuditee}
                             isManager={isManager}
@@ -454,6 +484,7 @@ export function InspectionDetailPage() {
                             savingItemId={savingItemId}
                             userId={user?.id}
                             onUpdateItem={handleUpdateItem}
+                            onCreateCorrectiveAction={handleCreateCorrectiveAction}
                             onOpenEvidence={(id) => {
                               setEvidenceItemId(id);
                               setEvidenceOpen(true);

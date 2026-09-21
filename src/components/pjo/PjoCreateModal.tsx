@@ -46,13 +46,25 @@ export function PjoCreateModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: templates, loading: templatesLoading } = useAsync<PjoChecklistTemplate[]>(
+  const { data: templates, loading: templatesLoading, error: templatesError } = useAsync<PjoChecklistTemplate[]>(
     async () => {
       if (!props.open) return [];
       return await listPjoTemplates(props.companyId);
     },
     [props.open, props.companyId]
   );
+
+  // Fallback so a slow/hung template fetch never blocks the (optional) field forever —
+  // the user can proceed without a template once this fires.
+  const [templatesTimedOut, setTemplatesTimedOut] = useState(false);
+  React.useEffect(() => {
+    if (!props.open || !templatesLoading) {
+      setTemplatesTimedOut(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setTemplatesTimedOut(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, [props.open, templatesLoading]);
 
   const nextObservationAt = useMemo(() => {
     const d = new Date(observedAt);
@@ -184,6 +196,13 @@ export function PjoCreateModal(props: {
       props.onClose();
       resetForm();
     } catch (err: any) {
+      console.error('[PjoCreateModal] createPjo failed', {
+        employeeId,
+        employeeName,
+        observerId,
+        observerName,
+        error: err
+      });
       setError(formatAuthError(err));
     } finally {
       setLoading(false);
@@ -302,6 +321,8 @@ export function PjoCreateModal(props: {
               <HrEmployeeSelect
                 companyId={props.companyId}
                 value={observerId}
+                valueField="id"
+                includeUnlinked
                 label="Observer / Supervisor (optional)"
                 onChange={(selected, meta) => {
                   setObserverId(selected);
@@ -313,10 +334,20 @@ export function PjoCreateModal(props: {
               <label className="block text-sm font-medium text-charcoal mb-1.5">
                 Checklist template (optional)
               </label>
-              {templatesLoading && (
+              {templatesLoading && !templatesTimedOut && (
                 <p className="text-xs text-charcoal-500">Loading templates…</p>
               )}
-              {!templatesLoading && (templates?.length ?? 0) > 0 && (
+              {templatesLoading && templatesTimedOut && (
+                <p className="text-xs text-warning">
+                  Could not load templates — you can proceed without one.
+                </p>
+              )}
+              {!templatesLoading && templatesError && (
+                <p className="text-xs text-warning">
+                  Could not load templates — you can proceed without one.
+                </p>
+              )}
+              {!templatesLoading && !templatesError && (templates?.length ?? 0) > 0 && (
                 <select
                   value={templateId}
                   onChange={(e) => setTemplateId(e.target.value)}
@@ -330,7 +361,7 @@ export function PjoCreateModal(props: {
                   ))}
                 </select>
               )}
-              {!templatesLoading && (templates?.length ?? 0) === 0 && (
+              {!templatesLoading && !templatesError && (templates?.length ?? 0) === 0 && (
                 <p className="text-xs text-charcoal-500">
                   No custom templates configured yet. The standard checklist will be used.
                 </p>

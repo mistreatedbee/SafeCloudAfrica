@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Audit } from '../models/entities';
 import type { AuditQuestion, AuditResponse } from './auditsService';
+import type { CorrectiveAction } from './correctiveActionsService';
 import { drawPdfCoverWithLogo, fetchImageAsDataUrl } from './reportExportService';
 import { downloadStyledExcelWorkbook, type ExcelSheetSpec } from './excelExportService';
 import { getPublicUrl, type StorageBucket } from './storageService';
@@ -28,6 +29,7 @@ export async function exportAuditDetailPdf(input: {
   companyName: string;
   generatedBy: string;
   logoUrl?: string | null;
+  correctiveActions?: CorrectiveAction[];
 }): Promise<Blob> {
   const { audit, questions, responses } = input;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
@@ -95,6 +97,45 @@ export async function exportAuditDetailPdf(input: {
   });
 
   y = ((doc as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? y) + 24;
+
+  const capasByResponseId = new Map<string, CorrectiveAction>();
+  for (const capa of input.correctiveActions ?? []) {
+    if (capa.source_type === 'audit_finding') capasByResponseId.set(String(capa.source_id), capa);
+  }
+  const ncAndObsRows = questions
+    .map((q, idx) => ({ q, idx, resp: responsesByQuestion.get(q.id) }))
+    .filter(({ resp }) => {
+      const status = (resp as any)?.compliance_status as string | undefined;
+      return status === 'NC' || status === 'Obs';
+    });
+
+  if (ncAndObsRows.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Non-conformances & observations', 40, y);
+    autoTable(doc, {
+      startY: y + 10,
+      head: [['#', 'Question', 'Status', 'Finding', 'Corrective action']],
+      body: ncAndObsRows.map(({ q, idx, resp }) => {
+        const capa = resp ? capasByResponseId.get(String(resp.id)) : undefined;
+        const capaLabel = capa
+          ? `${capa.action_number} — ${capa.status}${capa.due_date ? ` (due ${formatDate(capa.due_date)})` : ''}`
+          : '—';
+        return [
+          String(idx + 1),
+          String(q.question).slice(0, 100),
+          String((resp as any)?.compliance_status ?? '—'),
+          String(resp?.finding ?? '—').slice(0, 80),
+          capaLabel
+        ];
+      }),
+      styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak' },
+      headStyles: { fillColor: [217, 119, 6], textColor: 255 },
+      columnStyles: { 1: { cellWidth: 130 }, 3: { cellWidth: 100 } }
+    });
+    y = ((doc as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? y) + 24;
+  }
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.text('Checklist results', 40, y);
@@ -188,6 +229,7 @@ export async function exportAuditDetailExcel(input: {
   audit: Audit;
   questions: AuditQuestion[];
   responses: AuditResponse[];
+  correctiveActions?: CorrectiveAction[];
 }): Promise<void> {
   const { audit, questions, responses } = input;
   const responsesByQuestion = new Map<string, AuditResponse>();
@@ -257,9 +299,46 @@ export async function exportAuditDetailExcel(input: {
     })
   };
 
+  const capasByResponseId = new Map<string, CorrectiveAction>();
+  for (const capa of input.correctiveActions ?? []) {
+    if (capa.source_type === 'audit_finding') capasByResponseId.set(String(capa.source_id), capa);
+  }
+  const ncAndObsRows = questions
+    .map((q, idx) => ({ q, idx, resp: responsesByQuestion.get(q.id) }))
+    .filter(({ resp }) => {
+      const status = (resp as any)?.compliance_status as string | undefined;
+      return status === 'NC' || status === 'Obs';
+    });
+
+  const findingsSheet: ExcelSheetSpec = {
+    name: 'NCs & Observations',
+    titleLines: [`Non-conformances & observations — ${title}`],
+    columns: [
+      { header: '#', width: 6 },
+      { header: 'Question', width: 40 },
+      { header: 'Status', width: 12 },
+      { header: 'Finding', width: 35 },
+      { header: 'Corrective action', width: 20 },
+      { header: 'CAPA status', width: 14 },
+      { header: 'Due date', width: 14 }
+    ],
+    rows: ncAndObsRows.map(({ q, idx, resp }) => {
+      const capa = resp ? capasByResponseId.get(String(resp.id)) : undefined;
+      return [
+        idx + 1,
+        q.question,
+        (resp as any)?.compliance_status ?? '—',
+        resp?.finding ?? '—',
+        capa?.action_number ?? '—',
+        capa?.status ?? '—',
+        capa?.due_date ? formatDate(capa.due_date) : '—'
+      ];
+    })
+  };
+
   const dateTag = new Date().toISOString().slice(0, 10);
   await downloadStyledExcelWorkbook(
-    [summarySheet, checklistSheet],
+    [summarySheet, checklistSheet, findingsSheet],
     `SCA_Audit_${(audit.title ?? audit.audit_number ?? 'audit').replace(/\s+/g, '_')}_${dateTag}.xlsx`
   );
 }

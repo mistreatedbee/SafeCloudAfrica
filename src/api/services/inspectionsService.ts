@@ -198,6 +198,44 @@ export async function createInspection(input: CreateInspectionInput): Promise<In
 
   const inspection = data as Inspection;
 
+  // Notify HR-employee assignees (auditor, area manager, inspector, auditee) by email.
+  try {
+    const assignees: Array<{ hrEmployeeId: UUID | null | undefined; role: string }> = [
+      { hrEmployeeId: input.auditorHrEmployeeId, role: 'Auditor' },
+      { hrEmployeeId: input.areaManagerHrEmployeeId, role: 'Area manager' },
+      { hrEmployeeId: input.inspectorHrEmployeeId, role: 'Inspector' },
+      { hrEmployeeId: input.auditeeHrEmployeeId, role: 'Auditee' }
+    ].filter((a) => a.hrEmployeeId);
+    if (assignees.length > 0) {
+      const { data: employeeRows } = await insforge.database
+        .from('hr_employees')
+        .select('id, email')
+        .eq('company_id', input.companyId)
+        .in('id', assignees.map((a) => a.hrEmployeeId));
+      const emailByEmployeeId = new Map<string, string>();
+      for (const row of (employeeRows ?? []) as Array<{ id: string; email?: string }>) {
+        if (row.email) emailByEmployeeId.set(String(row.id), row.email);
+      }
+      for (const assignee of assignees) {
+        const email = emailByEmployeeId.get(String(assignee.hrEmployeeId));
+        if (!email) continue;
+        await sendTemplatedNotificationEmail({
+          to: email,
+          templateKey: 'inspections',
+          variables: {
+            title: inspection.title,
+            status: `Assigned as ${assignee.role}`,
+            dueDate: inspection.inspection_date ?? inspection.scheduled_at ?? ''
+          },
+          actionUrl: '/dashboard/operations/inspections',
+          meta: { companyId: input.companyId, inspectionId: inspection.id }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[inspections] assignment notification failed', err);
+  }
+
   // Optionally create an initial run from a selected template
   if (input.templateId) {
     await createInspectionRunFromTemplate({
@@ -657,6 +695,87 @@ export async function getInspectionRunById(
     run: runData as unknown as InspectionRun,
     items: (itemsData ?? []) as unknown as InspectionRunItem[]
   };
+}
+
+/**
+ * Manually creates a corrective action for a single NC/PC checklist item, on demand
+ * (as opposed to the bulk auto-CAPA pass that runs when the inspection is completed).
+ * Reuses the same NCR-then-CAPA linkage so both paths converge on the same records.
+ */
+export async function createCorrectiveActionForInspectionItem(input: {
+  companyId: UUID;
+  runId: UUID;
+  itemId: UUID;
+  actionDescription: string;
+  assignedToUserId?: UUID | null;
+  responsiblePersonName?: string | null;
+  dueDate: string;
+  createdByUserId: UUID;
+}): Promise<InspectionRunItem> {
+  return withInsforgeSession('inspections:runs:items:create_capa', async () => {
+    const { data: runData } = await insforge.database
+      .from('inspection_runs')
+      .select('location')
+      .eq('company_id', input.companyId)
+      .eq('id', input.runId)
+      .maybeSingle();
+
+    const { data: itemData, error: itemError } = await insforge.database
+      .from('inspection_run_items')
+      .select('*')
+      .eq('company_id', input.companyId)
+      .eq('id', input.itemId)
+      .single();
+    if (itemError) throw new Error(getErrorMessage(itemError));
+    const item = itemData as unknown as InspectionRunItem;
+    if (item.corrective_action_id) throw new Error('A corrective action already exists for this item.');
+
+    let autoNcrId = item.auto_ncr_id as UUID | null | undefined;
+    if (!autoNcrId) {
+      const ncr = await createQualityNcrFromInspectionItem({
+        companyId: input.companyId,
+        title: `Checklist NC: ${item.question}`,
+        sourceEntityType: 'inspection_item',
+        sourceEntityId: item.id,
+        location: (runData as { location?: string } | null)?.location ?? undefined,
+        severity: item.risk_level === 'high' ? 'high' : item.risk_level === 'low' ? 'low' : 'medium',
+        description: item.comments ?? item.question,
+        createdByUserId: input.createdByUserId
+      });
+      autoNcrId = ncr.id as UUID;
+    }
+
+    const priority: 'low' | 'medium' | 'high' | 'urgent' =
+      item.risk_level === 'high' ? 'high' : item.risk_level === 'low' ? 'low' : 'medium';
+
+    const capa = await createCorrectiveAction({
+      companyId: input.companyId,
+      title: item.question,
+      description: input.actionDescription,
+      actionType: 'corrective',
+      sourceType: 'ncr',
+      sourceId: autoNcrId as UUID,
+      priority,
+      dueDate: input.dueDate,
+      assignedToUserId: input.assignedToUserId ?? undefined,
+      createdByUserId: input.createdByUserId
+    });
+
+    const updated = await updateInspectionRunItem(input.companyId, input.itemId, {
+      responsible_person_id: input.assignedToUserId ?? null,
+      responsible_person_name: input.responsiblePersonName ?? null,
+      due_date: input.dueDate,
+      corrective_action_required: true
+    });
+
+    await insforge.database
+      .from('inspection_run_items')
+      .update({ auto_ncr_id: autoNcrId, corrective_action_id: capa.id, updated_at: new Date().toISOString() })
+      .eq('company_id', input.companyId)
+      .eq('id', input.itemId);
+
+    return { ...updated, auto_ncr_id: autoNcrId, corrective_action_id: capa.id } as InspectionRunItem;
+  });
 }
 
 export async function updateInspectionRunItem(

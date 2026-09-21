@@ -1,17 +1,101 @@
+import { useState } from 'react';
 import { AlertCircleIcon, CheckCircleIcon } from 'lucide-react';
-import type { InspectionRun, InspectionRunItem, UserProfile } from '../../api/models/entities';
-import { formatUserProfileLabel } from '../../utils/userDisplayNames';
+import type { InspectionRun, InspectionRunItem, UserProfile, UUID } from '../../api/models/entities';
+import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
+
+export type CreateCorrectiveActionInput = {
+  actionDescription: string;
+  assignedToUserId: UUID | null;
+  responsiblePersonName: string | null;
+  dueDate: string;
+};
 
 export type InspectionChecklistItemHandlers = {
   onUpdateItem: (item: InspectionRunItem, patch: Record<string, unknown>) => void | Promise<void>;
   onOpenEvidence: (itemId: string) => void;
+  onCreateCorrectiveAction: (item: InspectionRunItem, input: CreateCorrectiveActionInput) => void | Promise<void>;
 };
+
+function CapaInlineForm(props: {
+  companyId: UUID | null;
+  disabled: boolean;
+  onCreate: (input: CreateCorrectiveActionInput) => void | Promise<void>;
+  onCancel: () => void;
+}) {
+  const [actionDescription, setActionDescription] = useState('');
+  const [assigneeUserId, setAssigneeUserId] = useState<UUID | ''>('');
+  const [assigneeName, setAssigneeName] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  return (
+    <div className="mt-2 p-3 rounded-lg border border-warning/40 bg-warning/5 space-y-2">
+      <p className="text-xs font-semibold text-charcoal">Add corrective action</p>
+      <textarea
+        value={actionDescription}
+        onChange={(e) => setActionDescription(e.target.value)}
+        placeholder="Corrective action *"
+        rows={2}
+        className="w-full px-2 py-1.5 border border-surface-300 rounded text-xs"
+      />
+      <HrEmployeeSelect
+        companyId={props.companyId}
+        value={assigneeUserId}
+        label="Responsible person"
+        placeholder="Select responsible person"
+        onChange={(selected, meta) => {
+          setAssigneeUserId(selected);
+          setAssigneeName(meta.nameSnapshot);
+        }}
+      />
+      <div>
+        <label className="block text-xs font-medium text-charcoal-500 mb-1">Due date *</label>
+        <input
+          type="date"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+          className="px-2 py-1.5 border border-surface-300 rounded text-xs"
+        />
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={props.disabled || saving || !actionDescription.trim() || !dueDate}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await props.onCreate({
+                actionDescription: actionDescription.trim(),
+                assignedToUserId: assigneeUserId || null,
+                responsiblePersonName: assigneeName || null,
+                dueDate
+              });
+            } finally {
+              setSaving(false);
+            }
+          }}
+          className="px-3 py-1.5 rounded-lg bg-teal text-white text-xs font-semibold hover:bg-teal-600 disabled:opacity-60"
+        >
+          {saving ? 'Saving…' : 'Create CAPA'}
+        </button>
+        <button
+          type="button"
+          onClick={props.onCancel}
+          className="px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-semibold hover:bg-surface-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export type InspectionChecklistItemProps = InspectionChecklistItemHandlers & {
   item: InspectionRunItem;
   idx: number;
   run: InspectionRun;
   userProfiles: UserProfile[];
+  companyId: UUID | null;
   canScore: boolean;
   isAuditee: boolean;
   isManager: boolean;
@@ -37,9 +121,13 @@ export function InspectionChecklistItemTableRow(props: InspectionChecklistItemPr
     savingItemId,
     userId,
     onUpdateItem,
-    onOpenEvidence
+    onOpenEvidence,
+    onCreateCorrectiveAction
   } = props;
   const completed = run.status === 'completed';
+  const [capaFormOpen, setCapaFormOpen] = useState(false);
+  const needsCorrectiveAction =
+    (item.inspection_rating === 'NC' || item.inspection_rating === 'PC') && !item.corrective_action_id;
 
   return (
     <tr className="border-b border-surface-100 align-top">
@@ -114,20 +202,19 @@ export function InspectionChecklistItemTableRow(props: InspectionChecklistItemPr
           <option value="no">No</option>
         </select>
       </td>
-      <td className="py-2 pr-3">
-        <select
+      <td className="py-2 pr-3 min-w-[180px]">
+        <HrEmployeeSelect
+          companyId={props.companyId}
+          value={(item.responsible_person_id ?? '') as UUID | ''}
           disabled={!canScore || completed}
-          value={item.responsible_person_id ?? ''}
-          onChange={(e) => void onUpdateItem(item, { responsible_person_id: e.target.value || null })}
-          className={`${selectTable} mb-1`}
-        >
-          <option value="">Responsible</option>
-          {userProfiles.map((p) => (
-            <option key={p.user_id} value={p.user_id}>
-              {formatUserProfileLabel(p)}
-            </option>
-          ))}
-        </select>
+          placeholder="Responsible"
+          onChange={(selected, meta) =>
+            void onUpdateItem(item, {
+              responsible_person_id: selected || null,
+              responsible_person_name: meta.nameSnapshot || null
+            })
+          }
+        />
         <input
           type="date"
           defaultValue={item.due_date ?? ''}
@@ -206,6 +293,29 @@ export function InspectionChecklistItemTableRow(props: InspectionChecklistItemPr
             Verify & close
           </button>
         )}
+        {needsCorrectiveAction && canScore && !capaFormOpen && (
+          <button
+            type="button"
+            onClick={() => setCapaFormOpen(true)}
+            className="mt-1 px-2 py-0.5 rounded border border-warning/40 text-warning"
+          >
+            Add corrective action
+          </button>
+        )}
+        {item.corrective_action_id && (
+          <div className="mt-1 text-success">CAPA linked</div>
+        )}
+        {capaFormOpen && (
+          <CapaInlineForm
+            companyId={props.companyId}
+            disabled={savingItemId === String(item.id)}
+            onCreate={async (input) => {
+              await onCreateCorrectiveAction(item, input);
+              setCapaFormOpen(false);
+            }}
+            onCancel={() => setCapaFormOpen(false)}
+          />
+        )}
       </td>
     </tr>
   );
@@ -224,9 +334,13 @@ export function InspectionChecklistItemCard(props: InspectionChecklistItemProps)
     savingItemId,
     userId,
     onUpdateItem,
-    onOpenEvidence
+    onOpenEvidence,
+    onCreateCorrectiveAction
   } = props;
   const completed = run.status === 'completed';
+  const [capaFormOpen, setCapaFormOpen] = useState(false);
+  const needsCorrectiveAction =
+    (item.inspection_rating === 'NC' || item.inspection_rating === 'PC') && !item.corrective_action_id;
 
   return (
     <div className="rounded-xl border border-surface-200 p-4 space-y-4 bg-surface-50/30">
@@ -336,19 +450,18 @@ export function InspectionChecklistItemCard(props: InspectionChecklistItemProps)
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <p className={fieldLabel}>Responsible</p>
-          <select
+          <HrEmployeeSelect
+            companyId={props.companyId}
+            value={(item.responsible_person_id ?? '') as UUID | ''}
             disabled={!canScore || completed}
-            value={item.responsible_person_id ?? ''}
-            onChange={(e) => void onUpdateItem(item, { responsible_person_id: e.target.value || null })}
-            className={selectCard}
-          >
-            <option value="">Select person</option>
-            {userProfiles.map((p) => (
-              <option key={p.user_id} value={p.user_id}>
-                {formatUserProfileLabel(p)}
-              </option>
-            ))}
-          </select>
+            placeholder="Select person"
+            onChange={(selected, meta) =>
+              void onUpdateItem(item, {
+                responsible_person_id: selected || null,
+                responsible_person_name: meta.nameSnapshot || null
+              })
+            }
+          />
         </div>
         <div>
           <p className={fieldLabel}>Due date</p>
@@ -419,6 +532,27 @@ export function InspectionChecklistItemCard(props: InspectionChecklistItemProps)
             >
               Verify & close
             </button>
+          )}
+          {needsCorrectiveAction && canScore && !capaFormOpen && (
+            <button
+              type="button"
+              onClick={() => setCapaFormOpen(true)}
+              className="min-h-[44px] px-3 rounded-lg border border-warning/40 text-sm font-medium text-warning hover:bg-warning/5"
+            >
+              Add corrective action
+            </button>
+          )}
+          {item.corrective_action_id && <p className="text-sm text-success">CAPA linked</p>}
+          {capaFormOpen && (
+            <CapaInlineForm
+              companyId={props.companyId}
+              disabled={savingItemId === String(item.id)}
+              onCreate={async (input) => {
+                await onCreateCorrectiveAction(item, input);
+                setCapaFormOpen(false);
+              }}
+              onCancel={() => setCapaFormOpen(false)}
+            />
           )}
         </div>
       </div>

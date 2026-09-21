@@ -55,12 +55,14 @@ export function PjoPage() {
   const [filterJobTitle, setFilterJobTitle] = useState('');
   const [filterFromDate, setFilterFromDate] = useState(CURRENT_YEAR_START);
   const [filterToDate, setFilterToDate] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'' | 'open' | 'closed' | 'overdue'>('');
 
   function clearFilters() {
     setFilterEmployeeId('');
     setFilterJobTitle('');
     setFilterFromDate(CURRENT_YEAR_START);
     setFilterToDate('');
+    setFilterStatus('');
   }
 
   const { data: jobTitles } = useAsync<string[]>(
@@ -68,7 +70,7 @@ export function PjoPage() {
     [activeCompanyId]
   );
 
-  const { data, loading, error: loadError } = useAsync<PjoObservation[]>(
+  const { data, loading, error: loadError, retry: retryPjos } = useAsync<PjoObservation[]>(
     async () => {
       if (!activeCompanyId) return [];
       return await listPjos({
@@ -77,17 +79,24 @@ export function PjoPage() {
         employeeHrEmployeeId: filterEmployeeId || undefined,
         jobTitle: filterJobTitle || undefined,
         fromDate: filterFromDate || undefined,
-        toDate: filterToDate || undefined
+        toDate: filterToDate || undefined,
+        // "Overdue" is derived client-side (open + past next_observation_at), not a stored status.
+        status: filterStatus === 'open' || filterStatus === 'closed' ? filterStatus : undefined
       });
     },
-    [activeCompanyId, refreshKey, filterEmployeeId, filterJobTitle, filterFromDate, filterToDate]
+    [activeCompanyId, refreshKey, filterEmployeeId, filterJobTitle, filterFromDate, filterToDate, filterStatus]
   );
 
   const list = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const all = data ?? [];
-    if (!q) return all;
-    return all.filter((p) => {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const statusFiltered =
+      filterStatus === 'overdue'
+        ? all.filter((p) => p.status === 'open' && !!p.next_observation_at && p.next_observation_at < todayIso)
+        : all;
+    if (!q) return statusFiltered;
+    return statusFiltered.filter((p) => {
       return (
         p.employee_name.toLowerCase().includes(q) ||
         p.job_observed.toLowerCase().includes(q) ||
@@ -95,7 +104,7 @@ export function PjoPage() {
         (p.site ?? '').toLowerCase().includes(q)
       );
     });
-  }, [data, searchQuery]);
+  }, [data, searchQuery, filterStatus]);
 
   const openCount = (data ?? []).filter((p) => p.status === 'open').length;
 
@@ -244,7 +253,7 @@ export function PjoPage() {
         {activeTab === 'observations' && (
         <>
         <motion.div variants={itemVariants} className="bg-white rounded-xl border border-surface-300 p-4 shadow-card space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
             <HrEmployeeSelect
               companyId={activeCompanyId}
               value={filterEmployeeId}
@@ -266,6 +275,19 @@ export function PjoPage() {
                     {t}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1">Status</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+              >
+                <option value="">All</option>
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+                <option value="overdue">Overdue</option>
               </select>
             </div>
             <div>
@@ -365,7 +387,19 @@ export function PjoPage() {
 
           <div className="divide-y divide-surface-100">
             {loading && <div className="px-5 py-4 text-sm text-charcoal-500">Loading PJOs…</div>}
-            {!loading && list.length === 0 && <div className="px-5 py-4 text-sm text-charcoal-500">No PJOs yet.</div>}
+            {!loading && loadError && (
+              <div className="px-5 py-4 flex items-center justify-between gap-3">
+                <p className="text-sm text-critical">Failed to load PJOs — {loadError.message}</p>
+                <button
+                  type="button"
+                  onClick={() => retryPjos()}
+                  className="shrink-0 px-3 py-1.5 rounded-lg border border-surface-300 text-xs font-semibold hover:bg-surface-50"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {!loading && !loadError && list.length === 0 && <div className="px-5 py-4 text-sm text-charcoal-500">No PJOs yet.</div>}
             {list.map((p) => (
               <div key={p.id} className="w-full px-5 py-4 hover:bg-surface-50 transition-colors flex items-start justify-between gap-3">
                 <button
@@ -395,9 +429,17 @@ export function PjoPage() {
                     <DownloadIcon className="w-3 h-3" />
                     {exportingPdfId === p.id ? '…' : 'PDF'}
                   </button>
-                  <span className={`text-xs px-2 py-1 rounded-lg border ${p.status === 'open' ? 'bg-warning/10 border-warning/30 text-warning' : 'bg-success/10 border-success/30 text-success'}`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelected(p);
+                      setDetailOpen(true);
+                    }}
+                    title="Open this PJO"
+                    className={`text-xs px-2 py-1 rounded-lg border ${p.status === 'open' ? 'bg-warning/10 border-warning/30 text-warning hover:bg-warning/20' : 'bg-success/10 border-success/30 text-success hover:bg-success/20'}`}
+                  >
                     {p.status.toUpperCase()}
-                  </span>
+                  </button>
                 </div>
               </div>
             ))}

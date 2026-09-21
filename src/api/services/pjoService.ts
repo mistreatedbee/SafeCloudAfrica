@@ -1,4 +1,5 @@
 import { insforge } from '../insforge/client';
+import { withInsforgeSession } from '../insforge/ensureSession';
 import { getErrorMessage } from '../insforge/errors';
 import type {
   PjoChecklistItem,
@@ -75,6 +76,7 @@ export type ListPjosInput = {
 };
 
 export async function listPjoTemplates(companyId: UUID): Promise<PjoChecklistTemplate[]> {
+  return withInsforgeSession('pjo:templates:list', async () => {
   const { data, error } = await insforge.database
     .from('pjo_checklist_templates')
     .select('*')
@@ -84,6 +86,7 @@ export async function listPjoTemplates(companyId: UUID): Promise<PjoChecklistTem
 
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as PjoChecklistTemplate[];
+  });
 }
 
 /**
@@ -95,6 +98,7 @@ export async function getOrCreateDefaultPjoTemplate(input: {
   companyId: UUID;
   actorUserId: UUID;
 }): Promise<PjoChecklistTemplate> {
+  return withInsforgeSession('pjo:templates:get_or_create_default', async () => {
   const { data: existing, error: existingError } = await insforge.database
     .from('pjo_checklist_templates')
     .select('*')
@@ -135,9 +139,11 @@ export async function getOrCreateDefaultPjoTemplate(input: {
   if (seedError) throw new Error(getErrorMessage(seedError));
 
   return template;
+  });
 }
 
 export async function listPjoChecklistItems(companyId: UUID, templateId: UUID): Promise<PjoChecklistItem[]> {
+  return withInsforgeSession('pjo:checklist_items:list', async () => {
   const { data, error } = await insforge.database
     .from('pjo_checklist_items')
     .select('*')
@@ -146,6 +152,7 @@ export async function listPjoChecklistItems(companyId: UUID, templateId: UUID): 
     .order('question_no', { ascending: true });
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as PjoChecklistItem[];
+  });
 }
 
 export async function createPjoChecklistItem(input: {
@@ -154,6 +161,7 @@ export async function createPjoChecklistItem(input: {
   questionText: string;
   category?: string | null;
 }): Promise<PjoChecklistItem> {
+  return withInsforgeSession('pjo:checklist_items:create', async () => {
   const { data: existingItems, error: existingError } = await insforge.database
     .from('pjo_checklist_items')
     .select('question_no')
@@ -180,6 +188,7 @@ export async function createPjoChecklistItem(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to create PJO question.');
   return data as PjoChecklistItem;
+  });
 }
 
 export async function updatePjoChecklistItem(input: {
@@ -187,6 +196,7 @@ export async function updatePjoChecklistItem(input: {
   itemId: UUID;
   patch: Partial<Pick<PjoChecklistItem, 'question_text' | 'category' | 'is_active' | 'question_no'>>;
 }): Promise<PjoChecklistItem> {
+  return withInsforgeSession('pjo:checklist_items:update', async () => {
   const { data, error } = await insforge.database
     .from('pjo_checklist_items')
     .update({ ...input.patch, updated_at: new Date().toISOString() })
@@ -197,6 +207,7 @@ export async function updatePjoChecklistItem(input: {
   if (error) throw new Error(getErrorMessage(error));
   if (!data) throw new Error('Failed to update PJO question.');
   return data as PjoChecklistItem;
+  });
 }
 
 /** Deletes a question if it has no existing answers, otherwise deactivates it. */
@@ -204,6 +215,7 @@ export async function deleteOrDeactivatePjoChecklistItem(input: {
   companyId: UUID;
   itemId: UUID;
 }): Promise<{ deleted: boolean }> {
+  return withInsforgeSession('pjo:checklist_items:delete_or_deactivate', async () => {
   const { data: answered, error: answeredError } = await insforge.database
     .from('pjo_responses')
     .select('id')
@@ -230,9 +242,11 @@ export async function deleteOrDeactivatePjoChecklistItem(input: {
     .eq('id', input.itemId);
   if (error) throw new Error(getErrorMessage(error));
   return { deleted: true };
+  });
 }
 
 export async function reorderPjoChecklistItems(companyId: UUID, orderedItemIds: UUID[]): Promise<void> {
+  return withInsforgeSession('pjo:checklist_items:reorder', async () => {
   for (let i = 0; i < orderedItemIds.length; i += 1) {
     const { error } = await insforge.database
       .from('pjo_checklist_items')
@@ -241,12 +255,14 @@ export async function reorderPjoChecklistItems(companyId: UUID, orderedItemIds: 
       .eq('id', orderedItemIds[i]);
     if (error) throw new Error(getErrorMessage(error));
   }
+  });
 }
 
 export async function getEffectivePjoChecklist(input: {
   companyId: UUID;
   templateId?: UUID | null;
 }): Promise<PjoChecklistQuestion[]> {
+  return withInsforgeSession('pjo:checklist:get_effective', async () => {
   // Resolve which template to use: an explicitly requested one, or the
   // company's default customizable template (created on first use).
   let templateId = input.templateId ?? null;
@@ -294,9 +310,11 @@ export async function getEffectivePjoChecklist(input: {
     templateId: null,
     templateItemId: null
   }));
+  });
 }
 
 export async function listPjos(input: ListPjosInput): Promise<PjoObservation[]> {
+  return withInsforgeSession('pjo:list', async () => {
   const base = insforge.database
     .from('pjo_observations')
     .select('*')
@@ -324,6 +342,7 @@ export async function listPjos(input: ListPjosInput): Promise<PjoObservation[]> 
     .limit(input.limit ?? 100);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as PjoObservation[];
+  });
 }
 
 export async function createPjo(input: {
@@ -346,6 +365,7 @@ export async function createPjo(input: {
   createdByUserId: UUID;
   templateId?: UUID | null;
 }): Promise<PjoObservation> {
+  return withInsforgeSession('pjo:create', async () => {
   const fullPayload: Record<string, unknown> = {
     company_id: input.companyId,
     module: 'hr',
@@ -386,7 +406,10 @@ export async function createPjo(input: {
     else if (message.includes('observer_name')) delete payload.observer_name;
     else throw new Error(getErrorMessage(error));
   }
-  if (error) throw new Error(getErrorMessage(error));
+  if (error) {
+    console.error('[pjoService.createPjo] insert failed', { payload, error });
+    throw new Error(getErrorMessage(error));
+  }
   if (!data) throw new Error('Failed to create PJO.');
 
   const pjo = data as PjoObservation;
@@ -432,9 +455,11 @@ export async function createPjo(input: {
   });
 
   return pjo;
+  });
 }
 
 export async function getPjoById(companyId: UUID, pjoId: UUID): Promise<PjoObservation | null> {
+  return withInsforgeSession('pjo:get', async () => {
   const { data, error } = await insforge.database
     .from('pjo_observations')
     .select('*')
@@ -443,6 +468,7 @@ export async function getPjoById(companyId: UUID, pjoId: UUID): Promise<PjoObser
     .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? null) as PjoObservation | null;
+  });
 }
 
 export async function updatePjo(input: {
@@ -465,6 +491,7 @@ export async function updatePjo(input: {
     >
   >;
 }): Promise<PjoObservation> {
+  return withInsforgeSession('pjo:update', async () => {
   const { data, error } = await insforge.database
     .from('pjo_observations')
     .update({
@@ -487,6 +514,7 @@ export async function updatePjo(input: {
   });
 
   return data as PjoObservation;
+  });
 }
 
 export async function closePjo(input: {
@@ -494,6 +522,7 @@ export async function closePjo(input: {
   pjoId: UUID;
   actorUserId: UUID;
 }): Promise<PjoObservation> {
+  return withInsforgeSession('pjo:close', async () => {
   const nowIso = new Date().toISOString();
 
   // Guard: only allow closing when all checklist responses are closed.
@@ -533,9 +562,11 @@ export async function closePjo(input: {
   });
 
   return data as PjoObservation;
+  });
 }
 
 export async function listPjoResponses(companyId: UUID, pjoId: UUID): Promise<PjoResponse[]> {
+  return withInsforgeSession('pjo:responses:list', async () => {
   const { data, error } = await insforge.database
     .from('pjo_responses')
     .select('*')
@@ -544,6 +575,7 @@ export async function listPjoResponses(companyId: UUID, pjoId: UUID): Promise<Pj
     .order('question_no', { ascending: true });
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as PjoResponse[];
+  });
 }
 
 export async function updatePjoResponse(input: {
@@ -573,6 +605,7 @@ export async function updatePjoResponse(input: {
     >
   >;
 }): Promise<PjoResponse> {
+  return withInsforgeSession('pjo:responses:update', async () => {
   const { data, error } = await insforge.database
     .from('pjo_responses')
     .update({
@@ -613,6 +646,7 @@ export async function updatePjoResponse(input: {
   }
 
   return response;
+  });
 }
 
 export type PjoSummary = {
@@ -663,6 +697,7 @@ async function fetchPjosAndResponses(filters: ListPjosInput): Promise<{
     return { pjos: [], responses: [] };
   }
 
+  return withInsforgeSession('pjo:fetch_pjos_and_responses', async () => {
   const pjoIds = pjos.map((p) => p.id);
   const { data, error } = await insforge.database
     .from('pjo_responses')
@@ -672,6 +707,7 @@ async function fetchPjosAndResponses(filters: ListPjosInput): Promise<{
   if (error) throw new Error(getErrorMessage(error));
   const responses = (data ?? []) as PjoResponse[];
   return { pjos, responses };
+  });
 }
 
 export async function getPjoSummary(filters: ListPjosInput): Promise<PjoSummary> {
@@ -891,12 +927,14 @@ export async function getPjoNcrStats(filters: ListPjosInput): Promise<PjoNcrStat
     return { totalNcrs: 0, bySeverity: [], byStatus: [] };
   }
 
-  const { data, error } = await insforge.database
-    .from('quality_ncrs')
-    .select('id,severity,status')
-    .in('id', ncrIds);
-  if (error) throw new Error(getErrorMessage(error));
-  const ncrs = (data ?? []) as { id: UUID; severity: string; status: string }[];
+  const ncrs = await withInsforgeSession('pjo:ncr_stats', async () => {
+    const { data, error } = await insforge.database
+      .from('quality_ncrs')
+      .select('id,severity,status')
+      .in('id', ncrIds);
+    if (error) throw new Error(getErrorMessage(error));
+    return (data ?? []) as { id: UUID; severity: string; status: string }[];
+  });
 
   const bySeverityMap = new Map<string, number>();
   const byStatusMap = new Map<string, number>();

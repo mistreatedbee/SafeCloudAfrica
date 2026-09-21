@@ -10,6 +10,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useDraftRegistration } from '../session/useDraftRegistration';
 import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
+import { HrEmployeeSelect } from '../components/ui/HrEmployeeSelect';
 import type { UUID, Audit, QualityNcr } from '../api/models/entities';
 import { exportAuditChecklistCSV, downloadFile } from '../api/services/exportService';
 import { exportAuditDetailPdf, exportAuditDetailExcel } from '../api/services/auditReportExportService';
@@ -152,6 +153,10 @@ export function AuditDetailPage() {
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [raisingFindingForQuestionId, setRaisingFindingForQuestionId] = useState<UUID | null>(null);
   const [creatingCapaForQuestionId, setCreatingCapaForQuestionId] = useState<UUID | null>(null);
+  const [capaDraftQuestionId, setCapaDraftQuestionId] = useState<UUID | null>(null);
+  const [capaDraftDueDate, setCapaDraftDueDate] = useState('');
+  const [capaDraftAssigneeUserId, setCapaDraftAssigneeUserId] = useState<UUID | ''>('');
+  const [capaDraftAssigneeName, setCapaDraftAssigneeName] = useState('');
   const [creatingTaskForFindingId, setCreatingTaskForFindingId] = useState<UUID | null>(null);
   const [dateApprovalLoading, setDateApprovalLoading] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
@@ -224,6 +229,23 @@ export function AuditDetailPage() {
       });
     },
     [activeCompanyId, auditId]
+  );
+
+  // Per-question CAPAs (sourceType 'audit_finding', keyed by audit_responses.id) — kept
+  // separate from `capas` above (sourceType 'audit') since they're queried by different
+  // source ids; combined for report export so the NC/Obs summary can show linked CAPAs.
+  const { data: findingCapas, refresh: refreshFindingCapas } = useAsync<CorrectiveAction[]>(
+    async () => {
+      if (!activeCompanyId || !responses || responses.length === 0) return [];
+      const responseIds = new Set(responses.map((r) => String(r.id)));
+      const all = await listCorrectiveActions({
+        companyId: activeCompanyId,
+        sourceType: 'audit_finding',
+        limit: 500
+      });
+      return all.filter((c) => responseIds.has(String(c.source_id)));
+    },
+    [activeCompanyId, responses?.length]
   );
 
   const { data: auditReports, refresh: refreshAuditReports } = useAsync(
@@ -413,12 +435,24 @@ export function AuditDetailPage() {
     }
   }
 
+  function openCapaDraftForQuestion(question: AuditQuestion) {
+    setCapaDraftQuestionId(question.id);
+    setCapaDraftDueDate('');
+    setCapaDraftAssigneeUserId('');
+    setCapaDraftAssigneeName('');
+  }
+
+  function cancelCapaDraft() {
+    setCapaDraftQuestionId(null);
+    setCapaDraftDueDate('');
+    setCapaDraftAssigneeUserId('');
+    setCapaDraftAssigneeName('');
+  }
+
   async function handleCreateCapaForQuestion(question: AuditQuestion) {
     if (!audit || !activeCompanyId || !user?.id) return;
     const resp = responsesByQuestion.get(question.id);
-    if (!resp) return;
-    const dueDate = window.prompt('Due date for this corrective action (YYYY-MM-DD)?');
-    if (!dueDate) return;
+    if (!resp || !capaDraftDueDate) return;
     setCreatingCapaForQuestionId(question.id);
     setActionError(null);
     try {
@@ -430,11 +464,14 @@ export function AuditDetailPage() {
         questionText: question.question,
         description: resp.finding ?? undefined,
         priority: resp.risk_rating === 'high' ? 'high' : resp.risk_rating === 'medium' ? 'medium' : 'low',
-        dueDate: new Date(dueDate).toISOString(),
+        dueDate: new Date(capaDraftDueDate).toISOString(),
+        assignedToUserId: capaDraftAssigneeUserId || undefined,
         createdByUserId: user.id as UUID
       });
       await refreshResponses();
       await refreshCapas();
+      await refreshFindingCapas();
+      cancelCapaDraft();
     } catch (err) {
       setActionError(toUserFacingError(err, 'Unable to create corrective action.'));
     } finally {
@@ -555,11 +592,14 @@ export function AuditDetailPage() {
         audit,
         questions: questions ?? [],
         responses: responses ?? [],
+        correctiveActions: findingCapas ?? [],
         companyName: organisationName,
         generatedBy: fullName,
         logoUrl
       });
-      downloadFile(blob, `audit-${audit.audit_number ?? audit.id.slice(0, 8)}.pdf`);
+      const safeTitle = (audit.title ?? audit.audit_number ?? 'audit').replace(/\s+/g, '_').replace(/[^\w-]/g, '');
+      const dateTag = new Date().toISOString().slice(0, 10);
+      downloadFile(blob, `SCA_Audit_${safeTitle}_${dateTag}.pdf`);
     } catch (err) {
       setActionError(toUserFacingError(err, 'Failed to generate audit PDF.'));
     } finally {
@@ -575,7 +615,8 @@ export function AuditDetailPage() {
       await exportAuditDetailExcel({
         audit,
         questions: questions ?? [],
-        responses: responses ?? []
+        responses: responses ?? [],
+        correctiveActions: findingCapas ?? []
       });
     } catch (err) {
       setActionError(toUserFacingError(err, 'Failed to generate audit Excel report.'));
@@ -1356,7 +1397,7 @@ export function AuditDetailPage() {
                                     }
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      void handleCreateCapaForQuestion(q);
+                                      openCapaDraftForQuestion(q);
                                     }}
                                     className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-warning/40 text-xs font-semibold text-warning hover:bg-warning/5 disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
@@ -1383,6 +1424,55 @@ export function AuditDetailPage() {
                               </div>
                             </td>
                           </tr>
+                          {capaDraftQuestionId === q.id && (
+                            <tr className="border-b border-surface-100 bg-warning/5">
+                              <td colSpan={10} className="py-3 px-3">
+                                <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                                  <div className="flex-1 max-w-xs">
+                                    <HrEmployeeSelect
+                                      companyId={activeCompanyId}
+                                      value={capaDraftAssigneeUserId}
+                                      label="Responsible person"
+                                      placeholder="Select responsible person"
+                                      onChange={(selected, meta) => {
+                                        setCapaDraftAssigneeUserId(selected);
+                                        setCapaDraftAssigneeName(meta.nameSnapshot);
+                                      }}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-charcoal mb-1">Due date *</label>
+                                    <input
+                                      type="date"
+                                      value={capaDraftDueDate}
+                                      onChange={(e) => setCapaDraftDueDate(e.target.value)}
+                                      className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={!capaDraftDueDate || creatingCapaForQuestionId === q.id}
+                                      onClick={() => void handleCreateCapaForQuestion(q)}
+                                      className="px-4 py-2 rounded-lg bg-teal text-white text-xs font-semibold hover:bg-teal-600 disabled:opacity-60"
+                                    >
+                                      {creatingCapaForQuestionId === q.id ? 'Creating…' : 'Create CAPA'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={cancelCapaDraft}
+                                      className="px-4 py-2 rounded-lg border border-surface-300 text-xs font-semibold hover:bg-surface-50"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                                {capaDraftAssigneeName && (
+                                  <p className="mt-2 text-xs text-charcoal-500">Assigning to {capaDraftAssigneeName}.</p>
+                                )}
+                              </td>
+                            </tr>
+                          )}
                           </React.Fragment>
                         );
                         });

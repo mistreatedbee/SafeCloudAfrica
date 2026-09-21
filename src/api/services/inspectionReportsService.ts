@@ -157,7 +157,13 @@ export async function exportInspectionRunPdf(
 ): Promise<Blob> {
   const { default: jsPDF } = await import('jspdf');
   const { default: autoTable } = await import('jspdf-autotable');
-  const { drawPdfCoverWithLogo } = await import('./reportExportService');
+  const { drawPdfCoverWithLogo, fetchImageAsDataUrl } = await import('./reportExportService');
+  const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+  const isImageEvidence = (ev: InspectionItemEvidence) => {
+    if (ev.mime_type && ev.mime_type.startsWith('image/')) return true;
+    const lower = (ev.original_filename ?? '').toLowerCase();
+    return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+  };
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -188,21 +194,26 @@ export async function exportInspectionRunPdf(
     y += 14;
   });
 
-  const itemRows = report.findings.map((item: any, idx: number) => [
-    String(idx + 1),
-    String(item.audit_section_or_category || item.section || '—'),
-    String(item.question ?? '').slice(0, 80),
-    String(item.inspection_rating ?? '—'),
-    String(item.risk_level ?? '—')
-  ]);
+  const itemRows = report.findings.map((item: any, idx: number) => {
+    const evidenceCount = (report.evidenceByItemId[String(item.id)] ?? []).length;
+    return [
+      String(idx + 1),
+      String(item.audit_section_or_category || item.section || '—'),
+      String(item.question ?? '').slice(0, 70),
+      String(item.inspection_rating ?? '—'),
+      String(item.risk_level ?? '—'),
+      String(item.comments ?? '—').slice(0, 60),
+      evidenceCount > 0 ? `${evidenceCount} file(s)` : '—'
+    ];
+  });
 
   autoTable(doc, {
     startY: y + 10,
-    head: [['#', 'Category', 'Question', 'Rating', 'Risk']],
-    body: itemRows.length > 0 ? itemRows : [['—', '—', 'No findings recorded', '—', '—']],
-    styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
+    head: [['#', 'Category', 'Question', 'Rating', 'Risk', 'Comments', 'Evidence']],
+    body: itemRows.length > 0 ? itemRows : [['—', '—', 'No findings recorded', '—', '—', '—', '—']],
+    styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak' },
     headStyles: { fillColor: [15, 118, 110], textColor: 255 },
-    columnStyles: { 2: { cellWidth: 180 } }
+    columnStyles: { 2: { cellWidth: 140 }, 5: { cellWidth: 110 } }
   });
 
   const finalY = (doc as any).lastAutoTable?.finalY ?? y + 40;
@@ -218,6 +229,53 @@ export async function exportInspectionRunPdf(
       styles: { fontSize: 8, cellPadding: 4 },
       headStyles: { fillColor: [30, 64, 175], textColor: 255 }
     });
+  }
+
+  // Evidence appendix: thumbnail any image evidence attached to findings.
+  const evidenceEntries: Array<{ questionIndex: number; evidence: InspectionItemEvidence }> = [];
+  report.findings.forEach((item: any, idx: number) => {
+    const files = report.evidenceByItemId[String(item.id)] ?? [];
+    for (const file of files) {
+      if (isImageEvidence(file)) evidenceEntries.push({ questionIndex: idx, evidence: file });
+    }
+  });
+
+  if (evidenceEntries.length > 0) {
+    doc.addPage();
+    let ey = 40;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Evidence', 40, ey);
+    ey += 20;
+
+    const thumbSize = 100;
+    const maxPerRow = 4;
+    const gap = 16;
+    let col = 0;
+    const limited = evidenceEntries.slice(0, 24);
+    for (const entry of limited) {
+      const dataUrl = await fetchImageAsDataUrl(entry.evidence.file_url);
+      if (!dataUrl) continue;
+      const x = 40 + col * (thumbSize + gap);
+      if (ey + thumbSize + 20 > doc.internal.pageSize.getHeight() - 40) {
+        doc.addPage();
+        ey = 40;
+      }
+      try {
+        doc.addImage(dataUrl, x, ey, thumbSize, thumbSize, undefined, 'FAST');
+      } catch {
+        continue;
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Q${entry.questionIndex + 1}: ${(entry.evidence.original_filename ?? '').slice(0, 20)}`, x, ey + thumbSize + 10);
+      col += 1;
+      if (col >= maxPerRow) {
+        col = 0;
+        ey += thumbSize + 26;
+      }
+    }
   }
 
   const pageCount = doc.getNumberOfPages();
