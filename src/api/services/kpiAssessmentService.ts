@@ -299,12 +299,14 @@ export async function getKPIAssessment(assessmentId: UUID, organizationId: UUID)
   });
 }
 
-export async function listKPIAssessmentLines(assessmentId: UUID, organizationId: UUID): Promise<KPIAssessmentLine[]> {
+export async function listKPIAssessmentLines(assessmentId: UUID, _organizationId: UUID): Promise<KPIAssessmentLine[]> {
+  // kpi_assessment_lines has no organization_id/company_id column of its own — it is
+  // scoped entirely by assessment_id (whose parent kpi_assessments row is already
+  // company-scoped by the caller's earlier getKPIAssessment lookup).
   return withInsforgeSession('kpi_assessment_lines:list', async () => {
     const { data, error } = await insforge.database
       .from('kpi_assessment_lines')
       .select('*')
-      .eq('organization_id', organizationId)
       .eq('assessment_id', assessmentId)
       .order('created_at', { ascending: true });
     if (error) throw new Error(getErrorMessage(error));

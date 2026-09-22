@@ -93,9 +93,16 @@ export function KPIAssessmentDetailPage() {
     return payloadJson !== draftBaselineJson;
   }, [draftBaselineJson, draftEnabled, payloadJson]);
 
+  // This page only ever views/edits an EXISTING assessment (assessmentId always
+  // present in the route) — every line rating, comment, and note already autosaves
+  // straight to the DB via the debounced refs below. Registering with DraftManager
+  // on top of that showed a confusing "Changes pending... Autosave will run in a
+  // moment" tooltip for changes that were already saved. Never register here; the
+  // restoreDraft/clearDraft calls further down are left in place as a no-op safety
+  // net (they only ever find something to restore if this was once enabled).
   useDraftRegistration({
     key: draftKey,
-    enabled: draftEnabled,
+    enabled: false,
     isDirty: () => hasDirtyDraft,
     serialize: () => payload
   });
@@ -434,11 +441,11 @@ export function KPIAssessmentDetailPage() {
           </div>
           <div>
             <p className="text-xs text-charcoal-500">Overall score</p>
-            <p className="font-medium text-charcoal">{localOverallScore != null ? localOverallScore.toFixed(2) : '-'}</p>
+            <p className="font-medium text-charcoal">{localOverallScore != null ? localOverallScore.toFixed(1) : '-'}</p>
           </div>
           <div>
             <p className="text-xs text-charcoal-500">Achievement percentage</p>
-            <p className="font-medium text-charcoal">{localAchievementPercentage != null ? `${localAchievementPercentage.toFixed(1)}%` : '-'}</p>
+            <p className="font-medium text-charcoal">{localAchievementPercentage != null ? `${Math.round(localAchievementPercentage)}%` : '-'}</p>
           </div>
           <div>
             <p className="text-xs text-charcoal-500">Unrated Questionnaires</p>

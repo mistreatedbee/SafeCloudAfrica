@@ -3,11 +3,15 @@ import type { KPIAssessmentLine, KpiImportance, UUID } from '../models/entities'
 import { getErrorMessage } from '../insforge/errors';
 import { refreshAssessmentOverallScore } from './kpiAssessmentService';
 
-export async function getKPIAssessmentLine(lineId: UUID, organizationId: UUID): Promise<KPIAssessmentLine | null> {
+// kpi_assessment_lines has no organization_id/company_id column of its own — it is
+// scoped entirely by assessment_id/line_id. organizationId is kept as a parameter on
+// every function here (rather than removed) purely to refresh the parent
+// kpi_assessments row's score, which IS organization-scoped.
+
+export async function getKPIAssessmentLine(lineId: UUID, _organizationId: UUID): Promise<KPIAssessmentLine | null> {
   const { data, error } = await insforge.database
     .from('kpi_assessment_lines')
     .select('*')
-    .eq('organization_id', organizationId)
     .eq('line_id', lineId)
     .maybeSingle();
   if (error) throw new Error(getErrorMessage(error));
@@ -32,7 +36,6 @@ export async function updateKPIAssessmentLine(
       ...nextPatch,
       updated_at: new Date().toISOString()
     })
-    .eq('organization_id', organizationId)
     .eq('line_id', lineId)
     .select('*')
     .single();
@@ -57,7 +60,6 @@ export async function addKPIAssessmentLine(
   const { data, error } = await insforge.database
     .from('kpi_assessment_lines')
     .insert({
-      organization_id: organizationId,
       assessment_id: assessmentId,
       kpi_item_id: input.kpiItemId ?? null,
       custom_kpi_title: input.customKpiTitle ?? null,
@@ -77,7 +79,6 @@ export async function deleteKPIAssessmentLine(lineId: UUID, assessmentId: UUID, 
   const { error } = await insforge.database
     .from('kpi_assessment_lines')
     .delete()
-    .eq('organization_id', organizationId)
     .eq('line_id', lineId);
   if (error) throw new Error(getErrorMessage(error));
   await refreshAssessmentOverallScore(assessmentId, organizationId);

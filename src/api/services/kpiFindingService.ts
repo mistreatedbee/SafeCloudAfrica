@@ -37,10 +37,10 @@ export async function createKPIFinding(input: CreateKPIFindingInput): Promise<KP
 
   const finding = data as KPIFinding;
 
+  // kpi_assessment_lines has no organization_id column — scoped by line_id alone.
   await insforge.database
     .from('kpi_assessment_lines')
     .update({ finding_generated: true, finding_id: finding.finding_id, updated_at: new Date().toISOString() })
-    .eq('organization_id', input.organizationId)
     .eq('line_id', input.lineId);
 
   await createActivityLog({
@@ -287,10 +287,10 @@ export async function deleteKPIFinding(input: {
   if (error) throw new Error(getErrorMessage(error));
 
   if (lineId) {
+    // kpi_assessment_lines has no organization_id column — scoped by line_id/finding_id alone.
     await insforge.database
       .from('kpi_assessment_lines')
       .update({ finding_generated: false, finding_id: null, updated_at: new Date().toISOString() })
-      .eq('organization_id', input.organizationId)
       .eq('line_id', lineId)
       .eq('finding_id', input.findingId);
   }
