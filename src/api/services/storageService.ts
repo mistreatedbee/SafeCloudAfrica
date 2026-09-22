@@ -30,7 +30,19 @@ async function uploadFileViaSdk(
   await ensureInsforgeSession({ reason: `storage-upload:sdk:${bucket}` });
 
   const { data, error } = await insforge.storage.from(bucket).upload(key, file);
-  if (error) throw new Error(`Storage upload failed: ${getErrorMessage(error)}`);
+  if (error) {
+    console.error('Storage upload error:', {
+      bucket,
+      key,
+      fileName: file.name,
+      fileSize: file.size,
+      status: (error as { statusCode?: number; status?: number }).statusCode ?? (error as { status?: number }).status,
+      statusText: (error as { error?: string }).error,
+      body: (error as { message?: string }).message ?? error,
+      cause: (error as { cause?: unknown }).cause
+    });
+    throw new Error(`Storage upload failed: ${getErrorMessage(error)}`);
+  }
 
   const uploadedKey = String(
     (data as Record<string, unknown> | null)?.path ??

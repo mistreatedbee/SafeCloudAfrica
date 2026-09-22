@@ -7,6 +7,14 @@ import { uploadFile, type StorageBucket } from './storageService';
 
 export const EVIDENCE_STORAGE_BUCKET: StorageBucket = 'sca-evidence';
 
+// Large files (e.g. full-resolution AI-generated images) silently fail the storage
+// upload with an opaque "Request failed:" error and no status code — confirmed via
+// `insforge diagnose` to be the platform gateway dropping the TCP connection before
+// writing any HTTP response for request bodies in the ~5-10 MB range (the app-layer
+// backend never even sees the request, so it can't return a structured error).
+// Reject client-side, below that threshold, so the failure is immediate and legible.
+const MAX_EVIDENCE_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
+
 function isMissingObjectError(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();
   return message.includes('not found') || message.includes('404');
@@ -118,11 +126,24 @@ export async function uploadEntityEvidenceFiles(input: {
     const created: EvidenceAttachment[] = [];
 
     for (const file of input.files) {
+      if (file.size > MAX_EVIDENCE_FILE_BYTES) {
+        throw new Error(
+          `"${file.name}" is ${(file.size / (1024 * 1024)).toFixed(1)} MB — evidence files must be under 5 MB. Please compress or resize it and try again.`
+        );
+      }
+
       const key = `${input.companyId}/${input.entityType}/${input.entityId}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
       let uploaded: { bucket: string; key: string };
       try {
         uploaded = await uploadFile(EVIDENCE_STORAGE_BUCKET, file, { key });
       } catch (err: unknown) {
+        console.error('[evidenceService.uploadEntityEvidenceFiles] upload failed', {
+          fileName: file.name,
+          fileSize: file.size,
+          bucket: EVIDENCE_STORAGE_BUCKET,
+          key,
+          error: err
+        });
         throw new Error(`Failed to upload "${file.name}" to storage: ${getErrorMessage(err)}`);
       }
 
