@@ -3,17 +3,9 @@ import { ensureInsforgeSession, withInsforgeSession } from '../insforge/ensureSe
 import { getErrorMessage } from '../insforge/errors';
 import type { EvidenceAttachment, UUID } from '../models/entities';
 import { createActivityLog } from './activityLogService';
-import { uploadFile, type StorageBucket } from './storageService';
+import { uploadFile, MAX_EVIDENCE_FILE_BYTES, type StorageBucket } from './storageService';
 
 export const EVIDENCE_STORAGE_BUCKET: StorageBucket = 'sca-evidence';
-
-// Large files (e.g. full-resolution AI-generated images) silently fail the storage
-// upload with an opaque "Request failed:" error and no status code — confirmed via
-// `insforge diagnose` to be the platform gateway dropping the TCP connection before
-// writing any HTTP response for request bodies in the ~5-10 MB range (the app-layer
-// backend never even sees the request, so it can't return a structured error).
-// Reject client-side, below that threshold, so the failure is immediate and legible.
-const MAX_EVIDENCE_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
 
 function isMissingObjectError(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();

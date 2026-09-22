@@ -19,6 +19,14 @@ export interface UploadResult {
   mimeType: string;
 }
 
+// Confirmed via `insforge diagnose`: the platform gateway drops the connection
+// before writing any HTTP response for request bodies in the ~5-10 MB range, which
+// surfaces to callers as an opaque "Request failed:" with no status code. Every
+// evidence upload (Labour, Leave, KPI findings, Toolbox Talks, Risk Assessments,
+// etc.) goes through this one function, so the guard lives here once rather than
+// being duplicated at each call site.
+export const MAX_EVIDENCE_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
+
 /**
  * Upload a file to InsForge storage
  */
@@ -72,6 +80,11 @@ export async function uploadFile(
   // Evidence uploads must work for every company role (assignees, employees, auditors).
   // The custom upload-strategy HTTP path is restricted for some non-admin users on InsForge.
   if (bucket === 'sca-evidence') {
+    if (file.size > MAX_EVIDENCE_FILE_BYTES) {
+      throw new Error(
+        `"${file.name}" is ${(file.size / (1024 * 1024)).toFixed(1)} MB — evidence files must be under 5 MB. Please compress or resize it and try again.`
+      );
+    }
     return uploadFileViaSdk(bucket, file, key);
   }
 

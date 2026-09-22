@@ -187,6 +187,68 @@ export async function updateKPIFindingStatus(
   return updated;
 }
 
+export type RejectKPIFindingInput = {
+  findingId: UUID;
+  organizationId: UUID;
+  actorUserId: UUID;
+  rejectionReason: string;
+};
+
+/** Rejects a finding back to the responsible employee for action and resubmission. */
+export async function rejectKPIFinding(input: RejectKPIFindingInput): Promise<KPIFinding> {
+  const reason = input.rejectionReason.trim();
+  if (!reason) throw new Error('A rejection reason is required.');
+
+  const now = new Date().toISOString();
+  const { data, error } = await insforge.database
+    .from('kpi_findings')
+    .update({
+      status: 'rejected',
+      rejection_reason: reason,
+      rejected_by_user_id: input.actorUserId,
+      rejected_at: now,
+      updated_at: now
+    })
+    .eq('finding_id', input.findingId)
+    .eq('organization_id', input.organizationId)
+    .select('*')
+    .single();
+
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to reject finding.');
+  const rejected = data as KPIFinding;
+
+  await createActivityLog({
+    companyId: input.organizationId,
+    actorUserId: input.actorUserId,
+    action: 'kpi_findings.reject',
+    entityType: 'kpi_finding',
+    entityId: input.findingId,
+    metadata: { rejectionReason: reason }
+  }).catch(() => undefined);
+
+  // Notify the person responsible for resolving the finding (the employee it's about,
+  // falling back to the assigned line manager if this finding has no linked employee).
+  const responsibleUserId = rejected.employee_id ?? rejected.assigned_line_manager_id;
+  if (responsibleUserId && responsibleUserId !== input.actorUserId) {
+    const { notifyRelevantUsers } = await import('./notificationEventsService');
+    await notifyRelevantUsers({
+      companyId: input.organizationId,
+      eventKey: `kpi-finding-rejected:${input.findingId}`,
+      eventType: 'kpi_finding_rejected',
+      title: 'KPI finding rejected — action needed',
+      message: `Your KPI finding sign-off was rejected: ${reason}`,
+      recipientUserIds: [responsibleUserId],
+      emailTemplateKey: 'kpi_updates',
+      emailVariables: { title: rejected.description?.slice(0, 120) ?? 'KPI finding', status: 'Rejected — resubmission needed' },
+      actionUrl: '/dashboard/kpi/findings',
+      metadata: { itemType: 'kpi_finding', itemId: input.findingId }
+    }).catch(() => undefined);
+  }
+
+  return rejected;
+}
+
 export async function attachProofToFinding(
   findingId: UUID,
   organizationId: UUID,
@@ -244,7 +306,23 @@ export async function closeKPIFindingWithSignOff(input: ManagerSignOffInput): Pr
   if (!data) throw new Error('Failed to close finding.');
   const closed = data as KPIFinding;
 
+  // Notify the assessment creator (not just the assigned line manager, who is
+  // usually the same person doing the closing here) that the finding was resolved.
+  const { data: assessment } = await insforge.database
+    .from('kpi_assessments')
+    .select('created_by_user_id, assessment_name')
+    .eq('assessment_id', closed.assessment_id)
+    .eq('organization_id', input.organizationId)
+    .maybeSingle();
+
+  const recipientIds = new Set<string>();
+  const creatorId = (assessment as { created_by_user_id?: string } | null)?.created_by_user_id;
+  if (creatorId && creatorId !== input.managerUserId) recipientIds.add(creatorId);
   if (closed.assigned_line_manager_id && closed.assigned_line_manager_id !== input.managerUserId) {
+    recipientIds.add(closed.assigned_line_manager_id);
+  }
+
+  if (recipientIds.size > 0) {
     const { notifyRelevantUsers } = await import('./notificationEventsService');
     await notifyRelevantUsers({
       companyId: input.organizationId,
@@ -252,7 +330,7 @@ export async function closeKPIFindingWithSignOff(input: ManagerSignOffInput): Pr
       eventType: 'kpi_finding_closed',
       title: 'KPI finding closed',
       message: 'A KPI finding has been closed with manager sign-off.',
-      recipientUserIds: [closed.assigned_line_manager_id],
+      recipientUserIds: Array.from(recipientIds) as UUID[],
       emailTemplateKey: 'kpi_updates',
       emailVariables: { title: closed.description?.slice(0, 120) ?? 'KPI finding', status: 'Closed' },
       actionUrl: '/dashboard/kpi/findings',

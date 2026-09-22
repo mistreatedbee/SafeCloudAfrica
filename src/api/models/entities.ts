@@ -2584,7 +2584,7 @@ export type KpiImportance = 'low' | 'medium' | 'high';
 export type KpiAssessmentType = 'employee' | 'project';
 export type KpiPeriodType = 'monthly' | 'quarterly' | 'bi_annual' | 'annual';
 export type KpiAssessmentStatus = 'draft' | 'in_progress' | 'under_review' | 'completed' | 'closed' | 'submitted' | 'finalized';
-export type KpiFindingStatus = 'open' | 'in_progress' | 'awaiting_evidence' | 'under_review' | 'closed' | 'overdue';
+export type KpiFindingStatus = 'open' | 'in_progress' | 'awaiting_evidence' | 'under_review' | 'closed' | 'overdue' | 'rejected';
 
 export type KpiTemplateQuestionnaireLine = {
   kpiItemId: UUID | null;
@@ -2686,6 +2686,9 @@ export type KPIFinding = {
   manager_sign_off_comment: string | null;
   manager_sign_off_signature_method: string | null;
   closed_at: string | null;
+  rejection_reason: string | null;
+  rejected_by_user_id: UUID | null;
+  rejected_at: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -3,23 +3,31 @@ import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../../tenant/TenantContext';
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../api/hooks/useAsync';
-import { listKPIFindings, attachProofToFinding, closeKPIFindingWithSignOff, updateKPIFindingStatus } from '../../api/services/kpiFindingService';
+import { listKPIFindings, attachProofToFinding, closeKPIFindingWithSignOff, rejectKPIFinding } from '../../api/services/kpiFindingService';
 import { uploadFile } from '../../api/services/storageService';
 import type { KPIFinding, KpiFindingStatus } from '../../api/models/entities';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
-import { SearchIcon } from 'lucide-react';
+import { SearchIcon, XIcon, FileIcon } from 'lucide-react';
 import { toUserFacingError } from '../../utils/userFacingMessage';
+
+type StatusFilterValue = 'all' | KpiFindingStatus | 'overdue_derived';
+
+function isPastDue(dueDate: string): boolean {
+  return dueDate < new Date().toISOString().slice(0, 10);
+}
 
 export function KPIFindingsListPage() {
   const navigate = useNavigate();
   const { activeCompanyId } = useTenant();
   const { user } = useUser();
-  const [statusFilter, setStatusFilter] = useState<'all' | KpiFindingStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('all');
   const [refreshKey, setRefreshKey] = useState(0);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [signOffComments, setSignOffComments] = useState<Record<string, string>>({});
-  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofFiles, setProofFiles] = useState<Record<string, File | null>>({});
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadedProofName, setUploadedProofName] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectComment, setRejectComment] = useState('');
@@ -28,6 +36,17 @@ export function KPIFindingsListPage() {
   const { data: findings, loading } = useAsync<KPIFinding[]>(
     async () => {
       if (!activeCompanyId) return [];
+      // "Overdue" is derived (open + past due), not a status ever stored on the row,
+      // so it needs its own query shape rather than an .eq('status', ...) filter.
+      if (statusFilter === 'overdue_derived') {
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        return listKPIFindings({
+          organizationId: activeCompanyId,
+          status: 'open',
+          dueTo: yesterday,
+          limit: 200
+        });
+      }
       return listKPIFindings({
         organizationId: activeCompanyId,
         status: statusFilter === 'all' ? undefined : statusFilter,
@@ -41,11 +60,13 @@ export function KPIFindingsListPage() {
   const canClose = (f: KPIFinding) => f.assigned_line_manager_id === user?.id;
 
   const handleUploadProof = async (findingId: string) => {
-    if (!activeCompanyId || !proofFile || !user?.id) return;
+    const file = proofFiles[findingId];
+    if (!activeCompanyId || !file || !user?.id) return;
     setActionError(null);
+    setUploadingId(findingId);
     try {
-      const result = await uploadFile('sca-evidence', proofFile, {
-        key: `kpi-finding-${findingId}-${Date.now()}-${proofFile.name}`
+      const result = await uploadFile('sca-evidence', file, {
+        key: `kpi-finding-${findingId}-${Date.now()}-${file.name}`
       });
       await attachProofToFinding(
         findingId as any,
@@ -54,14 +75,17 @@ export function KPIFindingsListPage() {
           storage_bucket: result.bucket,
           storage_key: result.key,
           url: result.url,
-          filename: proofFile.name
+          filename: file.name
         },
         user.id as any
       );
-      setProofFile(null);
+      setUploadedProofName((prev) => ({ ...prev, [findingId]: file.name }));
+      setProofFiles((prev) => ({ ...prev, [findingId]: null }));
       setRefreshKey((k) => k + 1);
     } catch (err: unknown) {
       setActionError(toUserFacingError(err, 'Failed to upload proof.'));
+    } finally {
+      setUploadingId(null);
     }
   };
 
@@ -71,7 +95,12 @@ export function KPIFindingsListPage() {
     setActionError(null);
     setRejectSubmittingId(f.finding_id);
     try {
-      await updateKPIFindingStatus(f.finding_id as any, activeCompanyId, 'in_progress', user.id as any, rejectComment.trim());
+      await rejectKPIFinding({
+        findingId: f.finding_id,
+        organizationId: activeCompanyId,
+        actorUserId: user.id as any,
+        rejectionReason: rejectComment.trim()
+      });
       setRejectingId(null);
       setRejectComment('');
       setRefreshKey((k) => k + 1);
@@ -84,6 +113,12 @@ export function KPIFindingsListPage() {
 
   const handleClose = async (f: KPIFinding) => {
     if (!activeCompanyId || !user?.id) return;
+    const comment = (signOffComments[f.finding_id] ?? '').trim();
+    if (!comment) {
+      setActionError('A sign-off comment is required before closing this finding.');
+      return;
+    }
+    if (!window.confirm('Close this finding? This cannot be undone.')) return;
     setActionError(null);
     setClosingId(f.finding_id);
     try {
@@ -91,7 +126,7 @@ export function KPIFindingsListPage() {
         findingId: f.finding_id,
         organizationId: activeCompanyId,
         managerUserId: user.id as any,
-        comment: signOffComments[f.finding_id] ?? undefined,
+        comment,
         signatureMethod: 'password_confirm'
       });
       setSignOffComments((prev) => {
@@ -113,7 +148,7 @@ export function KPIFindingsListPage() {
       <div className="flex flex-wrap gap-3">
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as any)}
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilterValue)}
           className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
         >
           <option value="all">All statuses</option>
@@ -122,7 +157,8 @@ export function KPIFindingsListPage() {
           <option value="awaiting_evidence">Awaiting evidence</option>
           <option value="under_review">Under review</option>
           <option value="closed">Closed</option>
-          <option value="overdue">Overdue</option>
+          <option value="rejected">Rejected</option>
+          <option value="overdue_derived">Overdue</option>
         </select>
       </div>
 
@@ -159,8 +195,15 @@ export function KPIFindingsListPage() {
                 <div>
                   <p className="font-medium text-charcoal">{f.description}</p>
                   <p className="text-sm text-charcoal-500 mt-1">
-                    Due: {f.due_date} · Status: <span className="capitalize">{f.status.replace('_', ' ')}</span>
+                    Due: {f.due_date}
+                    {f.status === 'open' && isPastDue(f.due_date) && (
+                      <span className="ml-2 text-critical font-medium">Overdue</span>
+                    )}
+                    {' · '}Status: <span className="capitalize">{f.status.replace('_', ' ')}</span>
                   </p>
+                  {f.status === 'rejected' && f.rejection_reason && (
+                    <p className="text-sm text-critical mt-1">Rejection reason: {f.rejection_reason}</p>
+                  )}
                   {f.proof_uploads && f.proof_uploads.length > 0 && (
                     <div className="mt-2 text-sm">
                       <p className="text-charcoal-500">Proof:</p>
@@ -179,36 +222,68 @@ export function KPIFindingsListPage() {
                 <div className="flex flex-col gap-2">
                   {f.status !== 'closed' && (
                     <>
-                      <input
-                        type="file"
-                        onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
-                        className="text-sm"
-                      />
-                      {proofFile && (
-                        <button
-                          type="button"
-                          onClick={() => handleUploadProof(f.finding_id)}
-                          className="text-sm px-3 py-1 rounded-lg bg-teal text-white hover:bg-teal-600"
-                        >
-                          Upload proof
-                        </button>
+                      {uploadedProofName[f.finding_id] ? (
+                        <div className="flex items-center gap-2 text-sm bg-surface-100 rounded-lg px-2 py-1">
+                          <FileIcon className="w-3.5 h-3.5 shrink-0 text-charcoal-500" />
+                          <span className="truncate max-w-[10rem]">{uploadedProofName[f.finding_id]}</span>
+                          <button
+                            type="button"
+                            onClick={() => setUploadedProofName((prev) => { const next = { ...prev }; delete next[f.finding_id]; return next; })}
+                            aria-label="Clear uploaded file indicator"
+                            className="text-charcoal-400 hover:text-critical"
+                          >
+                            <XIcon className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <input
+                          type="file"
+                          onChange={(e) => setProofFiles((prev) => ({ ...prev, [f.finding_id]: e.target.files?.[0] ?? null }))}
+                          disabled={uploadingId === f.finding_id}
+                          className="text-sm disabled:opacity-50"
+                        />
+                      )}
+                      {proofFiles[f.finding_id] && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleUploadProof(f.finding_id)}
+                            disabled={uploadingId === f.finding_id}
+                            className="text-sm px-3 py-1 rounded-lg bg-teal text-white hover:bg-teal-600 disabled:opacity-50 inline-flex items-center gap-1.5"
+                          >
+                            {uploadingId === f.finding_id && <LoadingSpinner size={12} />}
+                            {uploadingId === f.finding_id ? 'Uploading…' : 'Upload proof'}
+                          </button>
+                          {uploadingId !== f.finding_id && (
+                            <button
+                              type="button"
+                              onClick={() => setProofFiles((prev) => ({ ...prev, [f.finding_id]: null }))}
+                              aria-label="Remove selected file"
+                              className="text-charcoal-400 hover:text-critical"
+                            >
+                              <XIcon className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       )}
                       {canClose(f) && (
                         <>
                           <input
                             type="text"
-                            placeholder="Sign-off comment"
+                            placeholder="Sign-off comment (required)"
                             value={signOffComments[f.finding_id] ?? ''}
                             onChange={(e) =>
                               setSignOffComments((prev) => ({ ...prev, [f.finding_id]: e.target.value }))
                             }
-                            className="px-2 py-1 border border-surface-300 rounded text-sm w-48"
+                            disabled={uploadingId === f.finding_id}
+                            className="px-2 py-1 border border-surface-300 rounded text-sm w-48 disabled:opacity-50"
                           />
                           <button
                             type="button"
                             onClick={() => handleClose(f)}
-                            disabled={closingId === f.finding_id}
-                            className="text-sm px-3 py-1 rounded-lg bg-navy text-white hover:bg-navy-800 disabled:opacity-50"
+                            disabled={closingId === f.finding_id || uploadingId === f.finding_id || !(signOffComments[f.finding_id] ?? '').trim()}
+                            title={!(signOffComments[f.finding_id] ?? '').trim() ? 'A sign-off comment is required' : undefined}
+                            className="text-sm px-3 py-1 rounded-lg bg-navy text-white hover:bg-navy-800 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             {closingId === f.finding_id ? 'Closing…' : 'Close with sign-off'}
                           </button>

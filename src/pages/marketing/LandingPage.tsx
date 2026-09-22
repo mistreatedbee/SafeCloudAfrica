@@ -227,6 +227,51 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* Real sites photo strip */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.6 }}
+        className="bg-surface-50 border-y border-surface-200"
+      >
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+          <p className="text-center text-sm font-semibold text-charcoal-500 uppercase tracking-wider">
+            Where the work actually happens
+          </p>
+          <p className="text-center text-xs text-charcoal-400 mt-2 max-w-xl mx-auto">
+            Forestry, civil works, and site operations from teams using Safe Cloud Africa to manage safety day to day.
+          </p>
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            {[
+              { src: '/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.23.55.jpeg', alt: 'Excavator working an earthworks site under open sky' },
+              { src: '/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.24.01.jpeg', alt: 'Field crew member responding to a controlled burn with fire-fighting equipment' },
+              { src: '/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.24.04.jpeg', alt: 'Site crew in hi-vis PPE and hard hats installing a gabion retaining structure' },
+              { src: '/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.20.50.jpeg', alt: 'Fire-fighting water tanker vehicle parked under a site shelter' }
+            ].map((img, i) => (
+              <motion.div
+                key={img.src}
+                initial={{ opacity: 0, scale: 0.96 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.05 }}
+                className="rounded-xl overflow-hidden border border-surface-200 shadow-sm aspect-square bg-surface-200"
+              >
+                <img
+                  src={img.src}
+                  alt={img.alt}
+                  loading={i === 0 ? 'eager' : 'lazy'}
+                  decoding="async"
+                  width={480}
+                  height={480}
+                  className="w-full h-full object-cover"
+                />
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </motion.section>
+
       {/* Trusted By - Enhanced with glow */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
@@ -303,6 +348,22 @@ export function LandingPage() {
                 Certification is issued by accredited bodies; your organisation remains responsible for its management system.
               </p>
             </motion.div>
+            <div className="mt-5 pt-5 border-t border-surface-200 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-center">
+              <p className="text-sm text-charcoal-500">
+                Real evidence from real sites—inspections, approvals, and corrective actions logged as the work happens, not reconstructed before an audit.
+              </p>
+              <div className="w-full sm:w-48 aspect-video rounded-xl overflow-hidden border border-surface-200 shrink-0 bg-surface-200">
+                <img
+                  src="/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.24.07.jpeg"
+                  alt="Two workers in hard hats and hi-vis PPE installing gabion stone works in a drainage trench"
+                  loading="lazy"
+                  decoding="async"
+                  width={480}
+                  height={270}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </motion.section>
@@ -465,42 +526,128 @@ export function LandingPage() {
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
           <motion.div
             whileHover={{ y: -5 }}
-            className="bg-white rounded-2xl border border-surface-300 shadow-card p-6 hover:shadow-xl transition-all"
+            className="bg-white rounded-2xl border border-surface-300 shadow-card overflow-hidden hover:shadow-xl transition-all"
           >
-            <p className="font-semibold text-charcoal">Organisation & user management</p>
-            <p className="mt-2 text-sm text-charcoal-500">
-              Role-based access control, user onboarding, and organisation settings built for SA SMEs and growing teams.
-            </p>
-            <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-charcoal-500">
-              <span className="px-2 py-1 rounded-full bg-surface-100 border border-surface-200">Secure by design</span>
+            <div className="aspect-video bg-surface-200">
+              <img
+                src="/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.24.13.jpeg"
+                alt="Field team member in orange hi-vis PPE and hard hat on a plantation site"
+                loading="lazy"
+                decoding="async"
+                width={640}
+                height={360}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="p-6">
+              <p className="font-semibold text-charcoal">Organisation & user management</p>
+              <p className="mt-2 text-sm text-charcoal-500">
+                Role-based access control, user onboarding, and organisation settings built for SA SMEs and growing teams.
+              </p>
+              <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-charcoal-500">
+                <span className="px-2 py-1 rounded-full bg-surface-100 border border-surface-200">Secure by design</span>
+              </div>
             </div>
           </motion.div>
           <motion.div
             whileHover={{ y: -5 }}
-            className="bg-white rounded-2xl border border-surface-300 shadow-card p-6 hover:shadow-xl transition-all"
+            className="bg-white rounded-2xl border border-surface-300 shadow-card overflow-hidden hover:shadow-xl transition-all"
           >
-            <p className="font-semibold text-charcoal">Secure cloud storage + audit trails</p>
-            <p className="mt-2 text-sm text-charcoal-500">
-              Store documents and evidence with activity tracking, approvals, and audit logs for defensible compliance.
-            </p>
-            <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-charcoal-500">
-              <span className="px-2 py-1 rounded-full bg-surface-100 border border-surface-200">Audit-ready</span>
-              <span className="px-2 py-1 rounded-full bg-surface-100 border border-surface-200">Privacy-aware</span>
+            <div className="aspect-video bg-surface-200">
+              <img
+                src="/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.17.25.jpeg"
+                alt="Completed gabion retaining wall and stone culvert drainage works on site"
+                loading="lazy"
+                decoding="async"
+                width={640}
+                height={360}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="p-6">
+              <p className="font-semibold text-charcoal">Secure cloud storage + audit trails</p>
+              <p className="mt-2 text-sm text-charcoal-500">
+                Store documents and evidence with activity tracking, approvals, and audit logs for defensible compliance.
+              </p>
+              <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-charcoal-500">
+                <span className="px-2 py-1 rounded-full bg-surface-100 border border-surface-200">Audit-ready</span>
+                <span className="px-2 py-1 rounded-full bg-surface-100 border border-surface-200">Privacy-aware</span>
+              </div>
             </div>
           </motion.div>
           <motion.div
             whileHover={{ y: -5 }}
-            className="bg-white rounded-2xl border border-surface-300 shadow-card p-6 hover:shadow-xl transition-all"
+            className="bg-white rounded-2xl border border-surface-300 shadow-card overflow-hidden hover:shadow-xl transition-all"
           >
-            <p className="font-semibold text-charcoal">Scalable infrastructure</p>
-            <p className="mt-2 text-sm text-charcoal-500">
-              Built to grow from a small business to multi-site operations with reliable performance and structured data.
-            </p>
-            <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-charcoal-500">
-              <span className="px-2 py-1 rounded-full bg-teal-50 border border-teal/20 text-teal">Planned Upgrade</span>
-              <span className="px-2 py-1 rounded-full bg-surface-100 border border-surface-200">Advanced analytics</span>
+            <div className="aspect-video bg-surface-200">
+              <img
+                src="/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.24.23.jpeg"
+                alt="Forestry harvesting machine among stacked timber logs at a large operational site"
+                loading="lazy"
+                decoding="async"
+                width={640}
+                height={360}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="p-6">
+              <p className="font-semibold text-charcoal">Scalable infrastructure</p>
+              <p className="mt-2 text-sm text-charcoal-500">
+                Built to grow from a small business to multi-site operations with reliable performance and structured data.
+              </p>
+              <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-charcoal-500">
+                <span className="px-2 py-1 rounded-full bg-teal-50 border border-teal/20 text-teal">Planned Upgrade</span>
+                <span className="px-2 py-1 rounded-full bg-surface-100 border border-surface-200">Advanced analytics</span>
+              </div>
             </div>
           </motion.div>
+        </div>
+      </motion.section>
+
+      {/* Real sites gallery */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.6 }}
+        className="bg-white border-t border-surface-200"
+      >
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14">
+          <h2 className="text-2xl font-bold text-navy text-center">Real sites, real compliance</h2>
+          <p className="text-sm text-charcoal-500 mt-2 text-center max-w-2xl mx-auto">
+            Roadworks, drainage, and environmental rehabilitation from operations managed with Safe Cloud Africa.
+          </p>
+          <div className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { src: '/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.20.25.jpeg', alt: 'Road grader maintaining an unpaved plantation access road', caption: 'Road & access maintenance' },
+              { src: '/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.24.16.jpeg', alt: 'Pine seedling trays ready for planting on a fire-cleared hillside', caption: 'Environmental rehabilitation' },
+              { src: '/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.24.20.jpeg', alt: 'Worker in PPE hand-planting a tree seedling on site', caption: 'Reforestation in progress' },
+              { src: '/Safecloudlandingpageimages/WhatsApp%20Image%202026-09-22%20at%2009.18.03.jpeg', alt: 'Close-up of a completed stone culvert channelling water beneath a road', caption: 'Drainage & civil works' }
+            ].map((img, i) => (
+              <motion.div
+                key={img.src}
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.08 }}
+                whileHover={{ scale: 1.02 }}
+                className="rounded-2xl overflow-hidden border border-surface-200 shadow-sm bg-surface-200"
+              >
+                <div className="aspect-[4/3]">
+                  <img
+                    src={img.src}
+                    alt={img.alt}
+                    loading="lazy"
+                    decoding="async"
+                    width={480}
+                    height={360}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <p className="px-3 py-2 text-xs font-medium text-charcoal-500 bg-white">{img.caption}</p>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </motion.section>
 
