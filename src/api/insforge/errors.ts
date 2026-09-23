@@ -5,13 +5,19 @@ function isTransientStatus(status: number): boolean {
 export function getErrorMessage(err: unknown): string {
   if (!err) return 'Unknown error';
   if (typeof err === 'string') return err;
-  if (err instanceof Error && err.message && err.message !== '[object Object]') return err.message;
 
+  // Checked before the `instanceof Error` branch below: InsForgeError (and most SDK
+  // errors) ARE Error subclasses with `.message` always set, so a plain `instanceof
+  // Error` check short-circuits before this ever runs, silently discarding the
+  // `statusCode` a 502/503/504/429 carries -- the caller never learns the failure
+  // was a transient backend blip rather than something to "fix".
   const anyErr = err as Record<string, unknown>;
   const statusCode = Number(anyErr?.statusCode ?? anyErr?.status ?? 0);
   if (isTransientStatus(statusCode)) {
     return 'Service temporarily unavailable. Please try again.';
   }
+
+  if (err instanceof Error && err.message && err.message !== '[object Object]') return err.message;
 
   const message = anyErr?.message;
   if (typeof message === 'string' && message !== '[object Object]') return message;

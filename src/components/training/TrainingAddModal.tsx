@@ -3,8 +3,8 @@ import { XIcon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatAuthError } from '../../auth/authMessages';
 import { toUserFacingError } from '../../utils/userFacingMessage';
-import type { TrainingCourse, TrainingProvider, UUID } from '../../api/models/entities';
-import { createTrainingCourse, createTrainingRecord, listTrainingProviders } from '../../api/services/trainingService';
+import type { TrainingCourse, TrainingProvider, TrainingRecord, UUID } from '../../api/models/entities';
+import { createTrainingCourse, createTrainingRecord, updateTrainingRecord, listTrainingProviders } from '../../api/services/trainingService';
 import { uploadFile, type StorageBucket } from '../../api/services/storageService';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 import { useAsync } from '../../api/hooks/useAsync';
@@ -22,7 +22,12 @@ export function TrainingAddModal(props: {
   defaultUserId?: UUID;
   courses: TrainingCourse[];
   onAdded?: () => void;
+  /** When set, the modal edits this existing record instead of creating a new one. */
+  editRecord?: TrainingRecord | null;
+  /** Resolved display name for editRecord's employee/user (the Employee field is locked in edit mode). */
+  editRecordEmployeeLabel?: string;
 }) {
+  const isEditing = !!props.editRecord;
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const [courseId, setCourseId] = useState<string>('');
   const [newCourseName, setNewCourseName] = useState('');
@@ -73,7 +78,7 @@ export function TrainingAddModal(props: {
 
   useDraftRegistration({
     key: draftKey,
-    enabled: props.open,
+    enabled: props.open && !isEditing,
     isDirty: () => hasDirtyDraft,
     serialize: () =>
       ({
@@ -95,6 +100,25 @@ export function TrainingAddModal(props: {
 
   useEffect(() => {
     if (!props.open) return;
+    if (props.editRecord) {
+      const rec = props.editRecord;
+      setMode('existing');
+      setCourseId(rec.course_id ?? '');
+      setNewCourseName('');
+      setNewCourseValidMonths('12');
+      setUserId(rec.user_id ?? '');
+      setEmployeeId(rec.employee_id ?? '');
+      setProviderId(rec.provider_id ?? '');
+      setJobDescriptionId(rec.job_description_id ?? '');
+      setJobDescriptionLabel('');
+      setCompletedAt(rec.completed_at ? rec.completed_at.slice(0, 10) : '');
+      setExpiresAt(rec.expires_at ? rec.expires_at.slice(0, 10) : '');
+      setCost(rec.cost != null ? String(rec.cost) : '');
+      setEmployeeNameSnapshot('');
+      setFile(null);
+      setError(null);
+      return;
+    }
     const restored = restoreDraft<TrainingAddDraftPayload>(draftKey);
     if (!restored) {
       setMode('existing');
@@ -130,7 +154,7 @@ export function TrainingAddModal(props: {
     setFile(null);
     setError(null);
     // Note: we cannot restore the selected File certificate.
-  }, [draftKey, props.defaultUserId, props.open, restoreDraft]);
+  }, [draftKey, props.defaultUserId, props.editRecord, props.open, restoreDraft]);
 
   const closeWithDraftClear = () => {
     clearDraft(draftKey);
@@ -161,8 +185,10 @@ export function TrainingAddModal(props: {
         finalCourseId = course.id;
       }
 
-      let certificateBucket: StorageBucket | null = null;
-      let certificateKey: string | null = null;
+      // Only set when a NEW file was chosen -- undefined (not null) tells
+      // updateTrainingRecord to leave the existing certificate untouched.
+      let certificateBucket: StorageBucket | null | undefined;
+      let certificateKey: string | null | undefined;
       if (file) {
         // Basic client-side file type validation for certificates
         const allowedExtensions = ['pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg'];
@@ -181,22 +207,41 @@ export function TrainingAddModal(props: {
         certificateKey = uploadResult.key;
       }
 
-      const hasCompleted = !!(completedAt && certificateBucket && certificateKey);
-      await createTrainingRecord({
-        companyId: props.companyId,
-        userId: userId ? (userId as UUID) : null,
-        employeeId: employeeId ? (employeeId as UUID) : null,
-        courseId: finalCourseId as UUID,
-        jobDescriptionId: jobDescriptionId ? (jobDescriptionId as UUID) : null,
-        providerId: providerId ? (providerId as UUID) : null,
-        status: hasCompleted ? 'COMPLETED' : 'REQUIRED',
-        completedAt: completedAt ? new Date(completedAt).toISOString() : null,
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
-        certificateBucket,
-        certificateKey,
-        cost: cost.trim() ? Number(cost) : null,
-        createdByUserId: props.createdByUserId
-      });
+      if (isEditing && props.editRecord) {
+        const hasCert = !!(certificateKey || props.editRecord.certificate_key);
+        const hasCompleted = !!(completedAt && hasCert);
+        await updateTrainingRecord({
+          companyId: props.companyId,
+          recordId: props.editRecord.id,
+          courseId: finalCourseId as UUID,
+          jobDescriptionId: jobDescriptionId ? (jobDescriptionId as UUID) : null,
+          providerId: providerId ? (providerId as UUID) : null,
+          status: hasCompleted ? 'COMPLETED' : undefined,
+          completedAt: completedAt ? new Date(completedAt).toISOString() : null,
+          expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+          certificateBucket,
+          certificateKey,
+          cost: cost.trim() ? Number(cost) : null,
+          actorUserId: props.createdByUserId
+        });
+      } else {
+        const hasCompleted = !!(completedAt && certificateBucket && certificateKey);
+        await createTrainingRecord({
+          companyId: props.companyId,
+          userId: userId ? (userId as UUID) : null,
+          employeeId: employeeId ? (employeeId as UUID) : null,
+          courseId: finalCourseId as UUID,
+          jobDescriptionId: jobDescriptionId ? (jobDescriptionId as UUID) : null,
+          providerId: providerId ? (providerId as UUID) : null,
+          status: hasCompleted ? 'COMPLETED' : 'REQUIRED',
+          completedAt: completedAt ? new Date(completedAt).toISOString() : null,
+          expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+          certificateBucket: certificateBucket ?? null,
+          certificateKey: certificateKey ?? null,
+          cost: cost.trim() ? Number(cost) : null,
+          createdByUserId: props.createdByUserId
+        });
+      }
 
       props.onAdded?.();
       clearDraft(draftKey);
@@ -214,6 +259,23 @@ export function TrainingAddModal(props: {
       setFile(null);
       setError(null);
     } catch (err: any) {
+      console.error('Training record create error:', {
+        message: err?.message,
+        status: err?.statusCode ?? err?.status,
+        cause: err?.cause,
+        stack: err?.stack,
+        payload: {
+          companyId: props.companyId,
+          userId: userId || null,
+          employeeId: employeeId || null,
+          courseId: courseId || null,
+          providerId: providerId || null,
+          jobDescriptionId: jobDescriptionId || null,
+          completedAt: completedAt || null,
+          expiresAt: expiresAt || null,
+          cost: cost || null
+        }
+      });
       setError(toUserFacingError(err, formatAuthError(err)));
     } finally {
       setLoading(false);
@@ -239,8 +301,12 @@ export function TrainingAddModal(props: {
       <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
           <div>
-            <p className="text-sm font-semibold text-charcoal">Add training record</p>
-            <p className="text-xs text-charcoal-500 mt-0.5">Creates a real training record in your company workspace.</p>
+            <p className="text-sm font-semibold text-charcoal">{isEditing ? 'Edit training record' : 'Add training record'}</p>
+            <p className="text-xs text-charcoal-500 mt-0.5">
+              {isEditing
+                ? 'Update this training record, e.g. to renew an expiring certificate.'
+                : 'Creates a real training record in your company workspace.'}
+            </p>
           </div>
           <button
             type="button"
@@ -255,12 +321,22 @@ export function TrainingAddModal(props: {
         <form onSubmit={onSubmit} className="p-5 space-y-4">
           {error && (
             <div className="bg-critical/5 border border-critical/20 rounded-xl p-3">
-              <p className="text-sm font-semibold text-critical">Could not add training</p>
+              <p className="text-sm font-semibold text-critical">{isEditing ? 'Could not update training' : 'Could not add training'}</p>
               <p className="text-sm text-charcoal-600 mt-1">{error}</p>
             </div>
           )}
 
-          {!props.defaultUserId && (
+          {isEditing && (
+            <div>
+              <label className="block text-sm font-medium text-charcoal mb-1.5">Employee</label>
+              <div className="bg-surface-50 border border-surface-200 rounded-xl px-4 py-2.5 text-sm text-charcoal-600">
+                {props.editRecordEmployeeLabel || 'Employee'}
+              </div>
+              <p className="mt-1 text-xs text-charcoal-500">Employee cannot be changed on an existing record.</p>
+            </div>
+          )}
+
+          {!props.defaultUserId && !isEditing && (
             <div>
               <HrEmployeeSelect
                 companyId={props.companyId}
@@ -376,24 +452,31 @@ export function TrainingAddModal(props: {
             <p className="mt-1 text-xs text-charcoal-500">Feeds the "By provider" cost breakdown on Reports &amp; Costs.</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Completed date (optional)</label>
-              <input
-                type="date"
-                value={completedAt}
-                onChange={(e) => setCompletedAt(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-charcoal mb-1.5">Expiry date (optional)</label>
-              <input
-                type="date"
-                value={expiresAt}
-                onChange={(e) => setExpiresAt(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
-              />
+          <div className={isEditing ? 'rounded-xl border-2 border-teal/30 bg-teal/5 p-3 space-y-3' : 'space-y-3'}>
+            {isEditing && (
+              <p className="text-xs font-medium text-teal-700">
+                Updating? Change the completed date, expiry date, and upload the new certificate.
+              </p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Completed date (optional)</label>
+                <input
+                  type="date"
+                  value={completedAt}
+                  onChange={(e) => setCompletedAt(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">Expiry date (optional)</label>
+                <input
+                  type="date"
+                  value={expiresAt}
+                  onChange={(e) => setExpiresAt(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                />
+              </div>
             </div>
           </div>
 
@@ -411,8 +494,15 @@ export function TrainingAddModal(props: {
             <p className="mt-1 text-xs text-charcoal-500">Leave blank if no cost or cost unknown.</p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-charcoal mb-1.5">Certificate file (optional)</label>
+          <div className={isEditing ? 'rounded-xl border-2 border-teal/30 bg-teal/5 p-3' : undefined}>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">
+              Certificate file {isEditing ? '(replace)' : '(optional)'}
+            </label>
+            {isEditing && props.editRecord?.certificate_key && !file && (
+              <p className="text-xs text-charcoal-500 mb-1.5">
+                Current: {props.editRecord.certificate_key.split('/').pop()}
+              </p>
+            )}
             <input
               type="file"
               accept=".pdf,.doc,.docx,image/*"
@@ -420,6 +510,9 @@ export function TrainingAddModal(props: {
               className="w-full text-sm"
             />
             {file && <p className="text-xs text-charcoal-500 mt-1">Selected: {file.name}</p>}
+            {isEditing && !file && (
+              <p className="text-xs text-charcoal-500 mt-1">Leave blank to keep the current certificate.</p>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">
@@ -436,7 +529,7 @@ export function TrainingAddModal(props: {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading && <LoadingSpinner size={16} />}
-              Add record
+              {isEditing ? 'Save changes' : 'Add record'}
             </button>
           </div>
         </form>

@@ -85,6 +85,7 @@ export function TrainingPage() {
   const canAddTraining = Boolean(activeCompanyId && user?.id && (canManage || activeRole === 'employee'));
 
   const [addOpen, setAddOpen] = useState(false);
+  const [editRecord, setEditRecord] = useState<TrainingRecord | null>(null);
   const [statusFilter, setStatusFilter] = useState<TrainingRecordStatus | ''>('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
   const [scheduleRecord, setScheduleRecord] = useState<TrainingRecord | null>(null);
@@ -263,7 +264,7 @@ export function TrainingPage() {
   // trainees are HR employees with no platform login/membership row at all.
   const matrix = useMemo(() => {
     const nowMs = Date.now();
-    type GroupAgg = { members: Set<string>; total: number; expired: number; expiring: number };
+    type GroupAgg = { members: Set<string>; total: number; expired: number; expiring: number; compliant: number };
     const byGroup = new Map<string, GroupAgg>();
 
     const groupLabelForRecord = (r: TrainingRecord): string => {
@@ -278,22 +279,24 @@ export function TrainingPage() {
 
     for (const r of all) {
       const label = groupLabelForRecord(r);
-      const agg = byGroup.get(label) ?? { members: new Set<string>(), total: 0, expired: 0, expiring: 0 };
+      const agg = byGroup.get(label) ?? { members: new Set<string>(), total: 0, expired: 0, expiring: 0, compliant: 0 };
       agg.members.add(String(r.employee_id ?? r.user_id ?? r.id));
       agg.total += 1;
-      if (r.expires_at) {
-        const t = new Date(r.expires_at).getTime();
-        if (Number.isFinite(t)) {
-          if (t < nowMs) agg.expired += 1;
-          else if (t < nowMs + 1000 * 60 * 60 * 24 * 30) agg.expiring += 1;
-        }
+      const expiresAtMs = r.expires_at ? new Date(r.expires_at).getTime() : null;
+      const isExpired = expiresAtMs != null && Number.isFinite(expiresAtMs) && expiresAtMs < nowMs;
+      if (isExpired) agg.expired += 1;
+      else if (expiresAtMs != null && Number.isFinite(expiresAtMs) && expiresAtMs < nowMs + 1000 * 60 * 60 * 24 * 30) {
+        agg.expiring += 1;
       }
+      // Compliant requires the course to actually be completed, not just "not yet expired" --
+      // a REQUIRED record that has never been done (and so has no expires_at at all) must not
+      // count toward compliance just because it isn't expired.
+      if (r.status === 'COMPLETED' && !isExpired) agg.compliant += 1;
       byGroup.set(label, agg);
     }
 
     const rows = Array.from(byGroup.entries()).map(([role, agg]) => {
-      const valid = agg.total - agg.expired;
-      const compliancePct = agg.total === 0 ? 0 : Math.round((valid / agg.total) * 100);
+      const compliancePct = agg.total === 0 ? 0 : Math.round((agg.compliant / agg.total) * 100);
       return { role, users: agg.members.size, total: agg.total, expired: agg.expired, expiring: agg.expiring, compliancePct };
     });
     rows.sort((a, b) => b.users - a.users);
@@ -315,17 +318,29 @@ export function TrainingPage() {
     <Layout title="Training & Competency">
       {activeCompanyId && user?.id && (
         <TrainingAddModal
-          open={addOpen}
-          onClose={() => setAddOpen(false)}
+          open={addOpen || !!editRecord}
+          onClose={() => {
+            setAddOpen(false);
+            setEditRecord(null);
+          }}
           companyId={activeCompanyId}
           createdByUserId={user.id}
           defaultUserId={activeRole === 'employee' ? user.id : undefined}
           courses={courses ?? []}
+          editRecord={editRecord}
+          editRecordEmployeeLabel={
+            editRecord
+              ? (editRecord.employee_id && employeeById.get(editRecord.employee_id)
+                  ? employeeName(employeeById.get(editRecord.employee_id)!)
+                  : undefined)
+              : undefined
+          }
           onAdded={() => {
             setRecordsRefresh((r) => r + 1);
             setActionError(null);
-            setActionSuccess('Saved successfully.');
+            setActionSuccess(editRecord ? 'Training record updated.' : 'Saved successfully.');
             setAddOpen(false);
+            setEditRecord(null);
           }}
         />
       )}
@@ -559,6 +574,7 @@ export function TrainingPage() {
               const canCancel =
                 canManage && (r.status === 'REQUIRED' || r.status === 'SCHEDULED' || r.status === 'OVERDUE');
               const canDelete = canManage;
+              const canEdit = canManage;
               const actionIsLoading = actionLoadingRecordId === r.id;
               const linkedEmployee = r.employee_id ? employeeById.get(r.employee_id) : null;
               const linkedProfile = r.user_id ? profileByUserId.get(r.user_id) : null;
@@ -691,6 +707,15 @@ export function TrainingPage() {
                         className="px-3 py-2 rounded-lg border border-critical/40 text-critical text-sm font-medium hover:bg-critical/5 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         {actionIsLoading ? 'Cancelling...' : 'Cancel record'}
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => setEditRecord(r)}
+                        className="px-3 py-2 rounded-lg border border-surface-300 text-sm font-medium text-charcoal hover:bg-surface-50"
+                      >
+                        Edit record
                       </button>
                     )}
                     {canDelete && (

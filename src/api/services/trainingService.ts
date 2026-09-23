@@ -258,7 +258,15 @@ export async function createTrainingRecord(input: {
   };
 
   const { data, error } = await insforge.database.from('training_records').insert(row).select('*').single();
-  if (error) throw new Error(getErrorMessage(error));
+  if (error) {
+    console.error('[trainingService.createTrainingRecord] insert failed', {
+      row,
+      status: (error as { statusCode?: number; status?: number }).statusCode ?? (error as { status?: number }).status,
+      message: (error as { message?: string }).message,
+      cause: (error as { cause?: unknown }).cause
+    });
+    throw new Error(getErrorMessage(error));
+  }
   if (!data) throw new Error('Failed to create training record.');
 
   await createActivityLog({
@@ -358,6 +366,7 @@ async function notifyTrainingStatusChange(input: {
 export async function updateTrainingRecord(input: {
   companyId: UUID;
   recordId: UUID;
+  courseId?: UUID;
   status?: TrainingRecordStatus;
   jobDescriptionId?: UUID | null;
   providerId?: UUID | null;
@@ -384,6 +393,7 @@ export async function updateTrainingRecord(input: {
     updated_at: new Date().toISOString(),
     status
   };
+  if (input.courseId !== undefined) payload.course_id = input.courseId;
   if (input.jobDescriptionId !== undefined) payload.job_description_id = input.jobDescriptionId;
   if (input.providerId !== undefined) payload.provider_id = input.providerId;
   if (input.providerType !== undefined) payload.provider_type = input.providerType;
