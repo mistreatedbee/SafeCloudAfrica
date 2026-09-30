@@ -502,11 +502,13 @@ export function InspectionCreateModal(props: {
               <div>
                 <HrEmployeeSelect
                   companyId={props.companyId}
-                  value={inspectorUserId}
+                  value={inspectorHrEmployeeId ?? ''}
+                  valueField="id"
+                  includeUnlinked
                   label="Inspector"
                   onChange={(selected, meta) => {
-                    setInspectorUserId(selected);
-                    setInspectorHrEmployeeId(meta.employeeId ?? null);
+                    setInspectorHrEmployeeId(selected || null);
+                    setInspectorUserId(meta.userId ?? '');
                     setInspectorName(meta.nameSnapshot);
                   }}
                 />
@@ -514,11 +516,13 @@ export function InspectionCreateModal(props: {
               <div>
                 <HrEmployeeSelect
                   companyId={props.companyId}
-                  value={auditorUserId}
+                  value={auditorHrEmployeeId ?? ''}
+                  valueField="id"
+                  includeUnlinked
                   label="Auditor"
                   onChange={(selected, meta) => {
-                    setAuditorUserId(selected);
-                    setAuditorHrEmployeeId(meta.employeeId ?? null);
+                    setAuditorHrEmployeeId(selected || null);
+                    setAuditorUserId(meta.userId ?? '');
                     setAuditorName(meta.nameSnapshot);
                   }}
                 />
@@ -526,11 +530,13 @@ export function InspectionCreateModal(props: {
               <div>
                 <HrEmployeeSelect
                   companyId={props.companyId}
-                  value={areaManagerUserId}
+                  value={areaManagerHrEmployeeId ?? ''}
+                  valueField="id"
+                  includeUnlinked
                   label="Area manager"
                   onChange={(selected, meta) => {
-                    setAreaManagerUserId(selected);
-                    setAreaManagerHrEmployeeId(meta.employeeId ?? null);
+                    setAreaManagerHrEmployeeId(selected || null);
+                    setAreaManagerUserId(meta.userId ?? '');
                     setAreaManagerName(meta.nameSnapshot);
                   }}
                 />
@@ -539,11 +545,13 @@ export function InspectionCreateModal(props: {
               <div>
                 <HrEmployeeSelect
                   companyId={props.companyId}
-                  value={auditeeUserId}
+                  value={auditeeHrEmployeeId ?? ''}
+                  valueField="id"
+                  includeUnlinked
                   label="Auditee"
                   onChange={(selected, meta) => {
-                    setAuditeeUserId(selected);
-                    setAuditeeHrEmployeeId(meta.employeeId ?? null);
+                    setAuditeeHrEmployeeId(selected || null);
+                    setAuditeeUserId(meta.userId ?? '');
                     setAuditeeName(meta.nameSnapshot);
                   }}
                 />

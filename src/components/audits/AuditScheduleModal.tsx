@@ -584,11 +584,13 @@ export function AuditScheduleModal(props: {
           <div>
             <HrEmployeeSelect
               companyId={props.companyId}
-              value={leadAuditorId}
+              value={leadAuditorHrEmployeeId ?? ''}
+              valueField="id"
+              includeUnlinked
               label="Lead auditor (optional)"
               onChange={(selected, meta) => {
-                setLeadAuditorId(selected);
-                setLeadAuditorHrEmployeeId(meta.employeeId ?? null);
+                setLeadAuditorHrEmployeeId(selected || null);
+                setLeadAuditorId(meta.userId ?? '');
                 setLeadAuditorName(meta.nameSnapshot);
               }}
             />
@@ -597,11 +599,13 @@ export function AuditScheduleModal(props: {
           <div>
             <HrEmployeeSelect
               companyId={props.companyId}
-              value={auditeeId}
+              value={auditeeHrEmployeeId ?? ''}
+              valueField="id"
+              includeUnlinked
               label="Auditee (optional)"
               onChange={(selected, meta) => {
-                setAuditeeId(selected);
-                setAuditeeHrEmployeeId(meta.employeeId ?? null);
+                setAuditeeHrEmployeeId(selected || null);
+                setAuditeeId(meta.userId ?? '');
                 setAuditeeName(meta.nameSnapshot);
               }}
             />
