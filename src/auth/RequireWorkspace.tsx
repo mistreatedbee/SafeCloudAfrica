@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@insforge/react';
 import { useTenant } from '../tenant/TenantContext';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { AuthLoadingScreen } from '../components/auth/AuthLoadingScreen';
 import { ensureInsforgeSession, InsforgeAuthBootstrapError } from '../api/insforge/ensureSession';
 import { PendingInviteAcceptanceError } from '../api/services/tenantService';
 import { acceptPendingInviteAndActivateWorkspace } from './acceptPendingInviteWorkspace';
@@ -93,19 +94,11 @@ export function RequireWorkspace({ children }: { children: React.ReactElement })
   if (acceptedInviteRedirectPath) return <Navigate to={acceptedInviteRedirectPath} replace />;
 
   if (!isLoaded) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <LoadingSpinner className="w-8 h-8 border-charcoal-300 border-t-teal" />
-      </div>
-    );
+    return <AuthLoadingScreen stage="session" />;
   }
   if (!isSignedIn) return <Navigate to="/login" replace />;
   if (!isTenantLoaded) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <LoadingSpinner className="w-8 h-8 border-charcoal-300 border-t-teal" />
-      </div>
-    );
+    return <AuthLoadingScreen stage="workspace" />;
   }
   if (isPlatformAdmin) return <Navigate to="/super-admin/overview" replace />;
   if (!hasMemberships) {
