@@ -30,6 +30,7 @@ import { TrainingPage } from './pages/TrainingPage';
 import { AuditsPage } from './pages/AuditsPage';
 import { InspectionsPage } from './pages/InspectionsPage';
 import { InspectionDetailPage } from './pages/InspectionDetailPage';
+import { AuditDetailPage } from './pages/AuditDetailPage';
 import { InspectionRunReportPage } from './pages/InspectionRunReportPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -1082,6 +1083,16 @@ export function App() {
               <RequireSignedIn>
                 <RequireWorkspace>
                   <AuditsPage />
+                </RequireWorkspace>
+              </RequireSignedIn>
+            }
+          />
+          <Route
+            path="/audits/:auditId"
+            element={
+              <RequireSignedIn>
+                <RequireWorkspace>
+                  <AuditDetailPage />
                 </RequireWorkspace>
               </RequireSignedIn>
             }

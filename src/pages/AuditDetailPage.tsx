@@ -25,6 +25,7 @@ import {
   reorderAuditQuestions,
   startAudit,
   completeAudit,
+  submitAuditReport,
   updateAuditFindingsCounts,
   submitAuditResponse,
   approveAuditDate,
@@ -68,6 +69,8 @@ import { EVIDENCE_BUCKET } from '../components/evidence/EvidenceModal';
 import { useIdentity } from '../hooks/useIdentity';
 import { useDraftManager } from '../session/DraftManagerProvider';
 import { listAuditChecklistTemplates } from '../api/services/auditChecklistTemplatesService';
+import { getHrEmployeeByUserId } from '../api/services/hrService';
+import { sendTemplatedNotificationEmail } from '../api/services/emailService';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -147,6 +150,7 @@ export function AuditDetailPage() {
 
   const [savingResponseId, setSavingResponseId] = useState<UUID | null>(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [sharingQuestions, setSharingQuestions] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isNcrModalOpen, setIsNcrModalOpen] = useState(false);
   const [ncrLinkedQuestionId, setNcrLinkedQuestionId] = useState<UUID | null>(null);
@@ -300,6 +304,24 @@ export function AuditDetailPage() {
     return Array.isArray(ids) && ids.includes(user.id as UUID);
   }, [audit, user?.id]);
 
+  // The auditee for the questionnaire itself (auditee_hr_employee_id) is a distinct
+  // concept from the departments_auditee_ids used above for proposed-date approval.
+  const { data: myHrEmployee } = useAsync(
+    async () => {
+      if (!activeCompanyId || !user?.id) return null;
+      return await getHrEmployeeByUserId(activeCompanyId, user.id as UUID);
+    },
+    [activeCompanyId, user?.id]
+  );
+  const isAssignedAuditee = Boolean(
+    myHrEmployee && audit?.auditee_hr_employee_id && myHrEmployee.id === audit.auditee_hr_employee_id
+  );
+  const canViewSharedQuestions =
+    isAssignedAuditee &&
+    !canEdit &&
+    audit?.share_questions_with_auditee &&
+    (audit?.status === 'scheduled' || audit?.status === 'in-progress');
+
   const proposedDates = (audit as any)?.proposed_dates as string[] | null | undefined;
   const dateApprovalStatus = (audit as any)?.date_approval_status as string | null | undefined;
   const dateDeclineReason = (audit as any)?.date_decline_reason as string | null | undefined;
@@ -374,6 +396,56 @@ export function AuditDetailPage() {
     return { total, answered, compliant, percentCompliant, achieved, allocated, scorePercent, complianceCounts };
   }, [questions, responses]);
 
+  async function handleShareQuestionsWithAuditee() {
+    if (!audit || !activeCompanyId || !user?.id) return;
+    setSharingQuestions(true);
+    setActionError(null);
+    try {
+      const nowIso = new Date().toISOString();
+      await updateAudit(
+        audit.id as UUID,
+        activeCompanyId,
+        { share_questions_with_auditee: true, questions_shared_at: nowIso },
+        user.id as any
+      );
+
+      const auditeeEmployeeId = audit.auditee_hr_employee_id;
+      if (auditeeEmployeeId) {
+        const { insforge } = await import('../api/insforge/client');
+        const { data: auditeeEmployee } = await insforge.database
+          .from('hr_employees')
+          .select('email')
+          .eq('company_id', activeCompanyId)
+          .eq('id', auditeeEmployeeId)
+          .maybeSingle();
+        const email = String((auditeeEmployee as { email?: string } | null)?.email ?? '').trim();
+        if (email) {
+          const questionSummary = (questions ?? [])
+            .slice(0, 10)
+            .map((q, idx) => `${idx + 1}. ${q.question}`)
+            .join('\n');
+          await sendTemplatedNotificationEmail({
+            to: email,
+            templateKey: 'audits',
+            variables: {
+              title: audit.title ?? audit.objectives ?? 'Audit',
+              status: 'Questions shared with you',
+              owner: audit.auditee_name ?? '',
+              findings: (questions ?? []).length > 10 ? `${questionSummary}\n…and ${(questions ?? []).length - 10} more` : questionSummary
+            },
+            actionUrl: `/audits/${audit.id}`,
+            meta: { companyId: activeCompanyId, auditId: audit.id }
+          });
+        }
+      }
+      await refreshAudit();
+    } catch (e) {
+      setActionError(toUserFacingError(e, 'Failed to share questions with the auditee.'));
+    } finally {
+      setSharingQuestions(false);
+    }
+  }
+
   async function handleStartAudit() {
     if (!audit || !activeCompanyId || !user?.id) return;
     setStatusUpdating(true);
@@ -393,7 +465,31 @@ export function AuditDetailPage() {
     setStatusUpdating(true);
     setActionError(null);
     try {
-      await completeAudit(audit.id as UUID, activeCompanyId, null, user.id as any);
+      // Generate and attach the audit report PDF as part of completion, so
+      // submitAuditReport's report_document_url is populated instead of null.
+      let reportDocumentUrl: string | null = null;
+      try {
+        const blob = await exportAuditDetailPdf({
+          audit,
+          questions: questions ?? [],
+          responses: responses ?? [],
+          correctiveActions: findingCapas ?? [],
+          companyName: organisationName,
+          generatedBy: fullName,
+          logoUrl
+        });
+        const safeTitle = (audit.title ?? audit.audit_number ?? 'audit').replace(/\s+/g, '_').replace(/[^\w-]/g, '');
+        const key = `${activeCompanyId}/audits/${audit.id}/${Date.now()}-${safeTitle}.pdf`;
+        const uploaded = await uploadFile('sca-documents', new File([blob], `${safeTitle}.pdf`, { type: 'application/pdf' }), { key });
+        reportDocumentUrl = uploaded.url;
+      } catch (pdfErr) {
+        console.warn('[audits] report PDF generation/upload failed, completing without an attached report', pdfErr);
+      }
+      if (reportDocumentUrl) {
+        await submitAuditReport(audit.id as UUID, activeCompanyId, reportDocumentUrl, user.id as any);
+      } else {
+        await completeAudit(audit.id as UUID, activeCompanyId, null, user.id as any);
+      }
       await updateAuditFindingsCounts(audit.id as UUID, activeCompanyId, user.id as any);
       await refreshAudit();
     } catch (e) {
@@ -973,8 +1069,80 @@ export function AuditDetailPage() {
                   <p className="text-xs text-charcoal-500">
                     Use this list to capture compliance, findings, and risk ratings during execution.
                   </p>
+                  {canEdit && audit.auditee_hr_employee_id && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={sharingQuestions}
+                        onClick={() => void handleShareQuestionsWithAuditee()}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-teal text-teal font-semibold hover:bg-teal/5 disabled:opacity-60"
+                      >
+                        {sharingQuestions
+                          ? 'Sharing…'
+                          : audit.share_questions_with_auditee
+                            ? 'Re-share with auditee'
+                            : 'Share with auditee'}
+                      </button>
+                      {audit.questions_shared_at && (
+                        <span className="text-xs text-charcoal-500">
+                          Shared {new Date(audit.questions_shared_at).toLocaleDateString('en-ZA')}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
+              {canViewSharedQuestions && (
+                <div className="space-y-3">
+                  <div className="bg-teal/5 border border-teal/20 rounded-lg p-3 text-xs text-teal-800">
+                    Read-only view: you can see the questions and what evidence is expected. Compliance ratings, scores,
+                    and comments are only visible to the auditor.
+                  </div>
+                  {questionsError && (
+                    <p className="text-xs text-critical">{(questionsError as any)?.message || 'Could not load checklist.'}</p>
+                  )}
+                  {(!questions || questions.length === 0) && (
+                    <p className="text-sm text-charcoal-500">No checklist questions have been added yet.</p>
+                  )}
+                  {questions && questions.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-surface-200 text-xs text-charcoal-500">
+                            <th className="py-2 pr-3 text-left font-medium">#</th>
+                            <th className="py-2 pr-3 text-left font-medium">Section</th>
+                            <th className="py-2 pr-3 text-left font-medium">Question</th>
+                            <th className="py-2 pr-3 text-left font-medium">Evidence expected</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {questions.map((q, idx) => {
+                            const sectionRef = (q as any).section_ref_id
+                              ? (sections ?? []).find((s) => s.id === (q as any).section_ref_id)
+                              : null;
+                            const sectionLabel = sectionRef
+                              ? sectionRef.iso_clause
+                                ? `${sectionRef.iso_clause} — ${sectionRef.section_title}`
+                                : sectionRef.section_title
+                              : q.section ?? '—';
+                            return (
+                              <tr key={q.id} className="border-b border-surface-100">
+                                <td className="py-2 pr-3 text-xs">{idx + 1}</td>
+                                <td className="py-2 pr-3 text-xs">{sectionLabel}</td>
+                                <td className="py-2 pr-3 text-sm">{q.question}</td>
+                                <td className="py-2 pr-3 text-xs">{q.expected_evidence ?? '—'}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!canViewSharedQuestions && (
+              <>
               {questionsError && (
                 <div className="mb-3 bg-critical/5 border border-critical/20 rounded-xl p-3">
                   <p className="text-xs font-semibold text-critical">Could not load checklist</p>
@@ -1480,6 +1648,8 @@ export function AuditDetailPage() {
                     </tbody>
                   </table>
                 </div>
+              )}
+              </>
               )}
               <input
                 ref={questionEvidenceFileInputRef}

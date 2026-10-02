@@ -2740,6 +2740,8 @@ export type Audit = {
   overall_score: number | null;
   max_score: number | null;
   compliance_percent: number | null;
+  share_questions_with_auditee: boolean;
+  questions_shared_at: string | null;
 
   // Planning inputs (document URLs or references)
   organogram_document_url: string | null;

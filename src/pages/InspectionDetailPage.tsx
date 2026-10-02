@@ -11,13 +11,16 @@ import type { UUID } from '../api/models/core';
 import {
   completeInspectionRun,
   createCorrectiveActionForInspectionItem,
+  createInspectionRunFromTemplate,
   getInspectionById,
   getInspectionRunById,
+  listInspectionChecklistTemplates,
   listInspectionRunsForInspection,
   submitAuditeeSelfAssessment,
   syncInspectionItemsFromNcrStatus,
   updateInspectionRunItem
 } from '../api/services/inspectionsService';
+import type { InspectionChecklistTemplate } from '../api/models/entities';
 import { InspectionScheduleTracker } from '../components/inspections/InspectionScheduleTracker';
 import { listQualityNcrs } from '../api/services/qualityNcrsService';
 import { listCorrectiveActions, type CorrectiveAction } from '../api/services/correctiveActionsService';
@@ -98,6 +101,16 @@ export function InspectionDetailPage() {
     [activeCompanyId, inspectionId]
   );
 
+  // Recovery path for inspections that ended up with no run at all (e.g. created
+  // before any checklist template existed, or a template was deleted afterward).
+  const { data: startTemplates } = useAsync<InspectionChecklistTemplate[]>(
+    async () => {
+      if (!activeCompanyId || !inspection || latestRun) return [];
+      return await listInspectionChecklistTemplates({ companyId: activeCompanyId as UUID, module: inspection.module });
+    },
+    [activeCompanyId, inspection, latestRun]
+  );
+
   const { data: userProfiles } = useAsync<UserProfile[]>(
     async () => (activeCompanyId ? await listUserProfiles(activeCompanyId as UUID) : []),
     [activeCompanyId]
@@ -139,6 +152,8 @@ export function InspectionDetailPage() {
   const [evidenceItemId, setEvidenceItemId] = useState<string | null>(null);
   const [runActionError, setRunActionError] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [startTemplateId, setStartTemplateId] = useState('');
+  const [startingRun, setStartingRun] = useState(false);
 
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `inspection-detail:${activeCompanyId ?? 'company'}:${inspectionId ?? 'unknown'}:${user?.id ?? 'anon'}`;
@@ -183,6 +198,12 @@ export function InspectionDetailPage() {
     setEvidenceItemId(restored.evidenceItemId ?? null);
   }, [activeCompanyId, draftKey, inspectionId, restoreDraft, user?.id]);
 
+  useEffect(() => {
+    if (!startTemplateId && startTemplates && startTemplates.length > 0) {
+      setStartTemplateId(startTemplates[0].id);
+    }
+  }, [startTemplateId, startTemplates]);
+
   async function handleUpdateItem(item: InspectionRunItem, patch: Record<string, unknown>) {
     if (!activeCompanyId) return;
     setSavingItemId(String(item.id));
@@ -217,6 +238,26 @@ export function InspectionDetailPage() {
       setRunActionError(toUserFacingError(e, 'Failed to create corrective action. Please try again.'));
     } finally {
       setSavingItemId(null);
+    }
+  }
+
+  async function handleStartRun() {
+    if (!activeCompanyId || !inspection || !startTemplateId) return;
+    setStartingRun(true);
+    setRunActionError(null);
+    try {
+      await createInspectionRunFromTemplate({
+        companyId: activeCompanyId as UUID,
+        inspectionId: inspection.id as UUID,
+        templateId: startTemplateId as UUID,
+        inspectorUserId: (inspection as any).inspector_user_id ?? user?.id ?? null,
+        auditeeUserId: (inspection as any).auditee_user_id ?? null
+      });
+      await refreshRun();
+    } catch (e) {
+      setRunActionError(toUserFacingError(e, 'Failed to start the checklist. Please try again.'));
+    } finally {
+      setStartingRun(false);
     }
   }
 
@@ -421,7 +462,42 @@ export function InspectionDetailPage() {
                 <>
                   {runError && <div className="text-xs text-critical">{runError.message}</div>}
                   {runActionError && <div className="text-xs text-critical bg-critical/5 border border-critical/20 rounded-lg p-2">{runActionError}</div>}
-                  {!latestRun && <p className="text-sm text-charcoal-500">No checklist run found for this inspection.</p>}
+                  {!latestRun && (
+                    <div className="bg-surface-50 border border-surface-200 rounded-xl p-4 space-y-3">
+                      <p className="text-sm text-charcoal-500">
+                        No checklist run found for this inspection yet.
+                        {canScore ? ' Start one from a checklist template:' : ' Ask a manager or consultant to start the checklist.'}
+                      </p>
+                      {canScore && (
+                        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                          <select
+                            value={startTemplateId}
+                            onChange={(e) => setStartTemplateId(e.target.value)}
+                            disabled={startingRun || !(startTemplates ?? []).length}
+                            className="min-h-[44px] px-3 rounded-lg border border-surface-300 text-sm bg-white disabled:opacity-60"
+                          >
+                            <option value="">
+                              {(startTemplates ?? []).length ? 'Select a checklist template' : 'No checklist templates available'}
+                            </option>
+                            {(startTemplates ?? []).map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => void handleStartRun()}
+                            disabled={!startTemplateId || startingRun}
+                            className="min-h-[44px] inline-flex items-center justify-center gap-2 px-4 rounded-lg bg-teal text-white text-xs font-semibold hover:bg-teal-600 disabled:opacity-60"
+                          >
+                            {startingRun && <LoadingSpinner size={14} />}
+                            Start checklist
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {latestRun && (
                     <>
                       <div className="hidden md:block overflow-x-auto">
