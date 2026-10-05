@@ -630,12 +630,13 @@ export function AuditDetailPage() {
   }
 
   async function handleAddQuestion() {
-    if (!auditId || !user?.id || !newQuestion.trim()) return;
+    if (!auditId || !activeCompanyId || !user?.id || !newQuestion.trim()) return;
     setAddingQuestion(true);
     setActionError(null);
     try {
       const sectionRef = sections?.find((s) => s.id === newQuestionSectionRefId);
       await createAuditQuestion({
+        companyId: activeCompanyId,
         auditId: auditId as UUID,
         question: newQuestion.trim(),
         section: newQuestionSection.trim() || sectionRef?.section_title || null,

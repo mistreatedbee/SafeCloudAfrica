@@ -644,6 +644,7 @@ export async function listAuditQuestions(auditId: UUID): Promise<AuditQuestion[]
 }
 
 export async function createAuditQuestion(input: {
+  companyId: UUID;
   auditId: UUID;
   question: string;
   section?: string | null;
@@ -654,6 +655,7 @@ export async function createAuditQuestion(input: {
   createdByUserId: UUID;
 }): Promise<AuditQuestion> {
   const payload: Record<string, unknown> = {
+    company_id: input.companyId,
     audit_id: input.auditId,
     question: input.question,
     section: input.section ?? null,
@@ -699,6 +701,7 @@ export async function importAuditChecklistFromTemplate(input: {
     const text = String(row.question ?? row.text ?? '').trim();
     if (!text) continue;
     await createAuditQuestion({
+      companyId: input.companyId,
       auditId: input.auditId,
       question: text,
       section: row.section ? String(row.section) : null,
