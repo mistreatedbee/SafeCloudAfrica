@@ -12,9 +12,13 @@ import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 
 /**
  * Repeated HrEmployeeSelect rows (add/remove) for a plain array of linked
- * user ids. Distinct from the shared `HrEmployeeMultiSelect` component,
- * which selects HR employee row ids (+ unlinked "external names") rather
- * than platform user ids — this form needs auth user ids for email lookup.
+ * user ids. The exposed `values`/`onChange` contract stays UUID[] of real
+ * platform user ids (auditor_user_ids / departments_auditee_ids /
+ * company_representative_user_ids all require that — not an HR employee id),
+ * but the picker itself browses every HR employee (not just linked ones) so
+ * the list isn't silently limited to whoever already has a login; an
+ * employee with no login can be selected and shown, but shows a note that
+ * they can't actually be added to this specific list.
  */
 function RepeatableHrEmployeeUserPicker(props: {
   companyId: UUID;
@@ -24,49 +28,65 @@ function RepeatableHrEmployeeUserPicker(props: {
   addLabel: string;
 }) {
   const { values, onChange } = props;
-  const [rows, setRows] = useState<Array<UUID | ''>>(values.length > 0 ? values : ['']);
+  type Row = { employeeId: UUID | ''; userId: UUID | ''; name: string };
+  const [rows, setRows] = useState<Row[]>(
+    values.length > 0 ? values.map((v) => ({ employeeId: '', userId: v, name: '' })) : [{ employeeId: '', userId: '', name: '' }]
+  );
 
   useEffect(() => {
-    setRows(values.length > 0 ? values : ['']);
+    setRows((prev) => {
+      const prevUserIds = prev.map((r) => r.userId).filter(Boolean);
+      if (prevUserIds.join(',') === values.join(',')) return prev;
+      return values.length > 0 ? values.map((v) => ({ employeeId: '', userId: v, name: '' })) : [{ employeeId: '', userId: '', name: '' }];
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [values.join(',')]);
 
-  function commit(next: Array<UUID | ''>) {
+  function commit(next: Row[]) {
     setRows(next);
-    onChange(next.filter((v): v is UUID => Boolean(v)));
+    onChange(next.map((r) => r.userId).filter((v): v is UUID => Boolean(v)));
   }
 
   return (
     <div className="space-y-2">
       <label className="block text-sm font-medium text-charcoal mb-1">{props.label}</label>
-      {rows.map((val, i) => (
-        <div key={i} className="flex gap-2 items-start">
-          <div className="flex-1">
-            <HrEmployeeSelect
-              companyId={props.companyId}
-              value={val}
-              onChange={(selected) => {
-                const next = [...rows];
-                next[i] = selected;
-                commit(next);
-              }}
-            />
+      {rows.map((row, i) => (
+        <div key={i}>
+          <div className="flex gap-2 items-start">
+            <div className="flex-1">
+              <HrEmployeeSelect
+                companyId={props.companyId}
+                value={row.employeeId}
+                valueField="id"
+                includeUnlinked
+                onChange={(selected, meta) => {
+                  const next = [...rows];
+                  next[i] = { employeeId: selected, userId: meta.userId ?? '', name: meta.nameSnapshot };
+                  commit(next);
+                }}
+              />
+            </div>
+            {rows.length > 1 && (
+              <button
+                type="button"
+                onClick={() => commit(rows.filter((_, idx) => idx !== i))}
+                className="p-2 mt-0.5 rounded-lg border border-surface-300 text-charcoal-500 hover:bg-surface-50"
+                title="Remove"
+              >
+                <Trash2Icon className="w-4 h-4" />
+              </button>
+            )}
           </div>
-          {rows.length > 1 && (
-            <button
-              type="button"
-              onClick={() => commit(rows.filter((_, idx) => idx !== i))}
-              className="p-2 mt-0.5 rounded-lg border border-surface-300 text-charcoal-500 hover:bg-surface-50"
-              title="Remove"
-            >
-              <Trash2Icon className="w-4 h-4" />
-            </button>
+          {row.employeeId && !row.userId && (
+            <p className="mt-1 text-xs text-warning">
+              {row.name || 'This employee'} has no platform login, so they can&apos;t be added here (this list needs an account to notify/approve). Choose someone with a login, or add this person manually elsewhere.
+            </p>
           )}
         </div>
       ))}
       <button
         type="button"
-        onClick={() => setRows((prev) => [...prev, ''])}
+        onClick={() => setRows((prev) => [...prev, { employeeId: '', userId: '', name: '' }])}
         className="inline-flex items-center gap-1 text-sm text-teal font-medium hover:underline"
       >
         <PlusIcon className="w-4 h-4" /> {props.addLabel}
