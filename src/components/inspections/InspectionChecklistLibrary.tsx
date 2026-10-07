@@ -8,6 +8,7 @@ import {
   updateInspectionChecklistTemplate
 } from '../../api/services/inspectionsService';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
+import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useUser } from '@insforge/react';
 import { useDraftManager } from '../../session/DraftManagerProvider';
@@ -36,6 +37,12 @@ type TemplateFormState = {
   frequency: InspectionFrequency;
   defaultAuditorUserId: string;
   defaultAreaManagerUserId: string;
+  /** Display-only: the HR employee id behind the selected default auditor/area
+      manager, since those may not have a linked platform login (defaultXUserId
+      stays the real user_id used for auto-notification, kept null when the
+      selected employee has no login). */
+  defaultAuditorHrEmployeeId: string;
+  defaultAreaManagerHrEmployeeId: string;
 };
 
 export function InspectionChecklistLibrary(props: Props) {
@@ -49,6 +56,17 @@ export function InspectionChecklistLibrary(props: Props) {
   const [editing, setEditing] = useState<TemplateFormState | null>(null);
   const [buildingTemplate, setBuildingTemplate] = useState<InspectionChecklistTemplate | null>(null);
   const [saving, setSaving] = useState(false);
+  const [employees, setEmployees] = useState<HrEmployee[]>([]);
+
+  useEffect(() => {
+    if (!props.companyId) return;
+    listHrEmployees(props.companyId).then(setEmployees).catch(() => setEmployees([]));
+  }, [props.companyId]);
+
+  const employeeIdByUserId = useMemo(
+    () => new Map(employees.filter((e) => e.user_id).map((e) => [e.user_id as string, e.id])),
+    [employees]
+  );
 
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `inspection-checklist-library:${props.companyId}:${user?.id ?? 'anon'}`;
@@ -108,7 +126,9 @@ export function InspectionChecklistLibrary(props: Props) {
       defaultArea: '',
       frequency: 'monthly',
       defaultAuditorUserId: '',
-      defaultAreaManagerUserId: ''
+      defaultAreaManagerUserId: '',
+      defaultAuditorHrEmployeeId: '',
+      defaultAreaManagerHrEmployeeId: ''
     });
   }
 
@@ -123,7 +143,9 @@ export function InspectionChecklistLibrary(props: Props) {
       defaultArea: t.default_area ?? '',
       frequency: (t.frequency ?? 'monthly') as InspectionFrequency,
       defaultAuditorUserId: t.default_auditor_user_id ?? '',
-      defaultAreaManagerUserId: t.default_area_manager_user_id ?? ''
+      defaultAreaManagerUserId: t.default_area_manager_user_id ?? '',
+      defaultAuditorHrEmployeeId: t.default_auditor_user_id ? (employeeIdByUserId.get(t.default_auditor_user_id) ?? '') : '',
+      defaultAreaManagerHrEmployeeId: t.default_area_manager_user_id ? (employeeIdByUserId.get(t.default_area_manager_user_id) ?? '') : ''
     });
   }
 
@@ -397,18 +419,36 @@ export function InspectionChecklistLibrary(props: Props) {
               <div>
                 <HrEmployeeSelect
                   companyId={props.companyId}
-                  value={editing.defaultAuditorUserId as UUID | ''}
+                  value={editing.defaultAuditorHrEmployeeId as UUID | ''}
+                  valueField="id"
+                  includeUnlinked
                   label="Default auditor"
-                  onChange={(selected) => setEditing({ ...editing, defaultAuditorUserId: selected })}
+                  onChange={(selected, meta) =>
+                    setEditing({ ...editing, defaultAuditorHrEmployeeId: selected, defaultAuditorUserId: meta.userId ?? '' })
+                  }
                 />
+                {editing.defaultAuditorHrEmployeeId && !editing.defaultAuditorUserId && (
+                  <p className="mt-1 text-xs text-charcoal-500">
+                    This employee has no platform login, so they won&apos;t get an automatic notification — they can still be assigned manually per inspection.
+                  </p>
+                )}
               </div>
               <div>
                 <HrEmployeeSelect
                   companyId={props.companyId}
-                  value={editing.defaultAreaManagerUserId as UUID | ''}
+                  value={editing.defaultAreaManagerHrEmployeeId as UUID | ''}
+                  valueField="id"
+                  includeUnlinked
                   label="Area manager"
-                  onChange={(selected) => setEditing({ ...editing, defaultAreaManagerUserId: selected })}
+                  onChange={(selected, meta) =>
+                    setEditing({ ...editing, defaultAreaManagerHrEmployeeId: selected, defaultAreaManagerUserId: meta.userId ?? '' })
+                  }
                 />
+                {editing.defaultAreaManagerHrEmployeeId && !editing.defaultAreaManagerUserId && (
+                  <p className="mt-1 text-xs text-charcoal-500">
+                    This employee has no platform login, so they won&apos;t get an automatic notification — they can still be assigned manually per inspection.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-charcoal mb-1.5">
