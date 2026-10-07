@@ -34,6 +34,7 @@ export type ListInspectionsInput = {
   inspectorUserId?: UUID;
   fromDate?: string;
   toDate?: string;
+  assetNumber?: string;
   limit?: number;
 };
 
@@ -52,8 +53,9 @@ export async function listInspections(input: ListInspectionsInput): Promise<Insp
   // Template and inspector are stored in inspection_runs; we keep listInspections scoped to inspections table for now.
   const q5 = input.fromDate ? q4.gte('scheduled_at', `${input.fromDate}T00:00:00.000Z`) : q4;
   const q6 = input.toDate ? q5.lte('scheduled_at', `${input.toDate}T23:59:59.999Z`) : q5;
+  const q7 = input.assetNumber ? q6.ilike('asset_number', `%${input.assetNumber.trim()}%`) : q6;
 
-  const { data, error } = await q6.order('scheduled_at', { ascending: false }).limit(input.limit ?? 200);
+  const { data, error } = await q7.order('scheduled_at', { ascending: false }).limit(input.limit ?? 200);
   if (error) throw new Error(getErrorMessage(error));
   return (data ?? []) as Inspection[];
   });
@@ -109,6 +111,10 @@ export type CreateInspectionInput = {
   serviceIntervalHoursKm?: number | null;
   nextServiceHoursKm?: number | null;
   periodLabel?: string | null;
+  /** Free-text asset/equipment identifier, e.g. a vehicle registration ("357 MP"),
+      machine tag ("Machine-Roller 02"), or extinguisher number ("05") -- lets
+      checklists be linked to and filtered by a specific asset. */
+  assetNumber?: string | null;
 };
 
 export async function createInspection(input: CreateInspectionInput): Promise<Inspection> {
@@ -145,6 +151,7 @@ export async function createInspection(input: CreateInspectionInput): Promise<In
     service_interval_hours_km: input.serviceIntervalHoursKm ?? null,
     next_service_hours_km: input.nextServiceHoursKm ?? null,
     period_label: input.periodLabel ?? null,
+    asset_number: input.assetNumber?.trim() || null,
     created_by_user_id: input.createdByUserId
   };
 
@@ -182,6 +189,7 @@ export async function createInspection(input: CreateInspectionInput): Promise<In
     else if (message.includes('next_service_hours_km')) delete payload.next_service_hours_km;
     else if (message.includes('period_label')) delete payload.period_label;
     else if (message.includes('inspection_date')) delete payload.inspection_date;
+    else if (message.includes('asset_number')) delete payload.asset_number;
     else throw new Error(getErrorMessage(error));
   }
 

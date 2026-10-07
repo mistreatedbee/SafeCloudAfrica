@@ -37,6 +37,7 @@ export function InspectionCreateModal(props: {
   const [scheduledAt, setScheduledAt] = useState('');
   const [inspectionDate, setInspectionDate] = useState('');
   const [location, setLocation] = useState('');
+  const [assetNumber, setAssetNumber] = useState('');
   const [sector, setSector] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [frequency, setFrequency] = useState<InspectionFrequency>('daily');
@@ -78,6 +79,7 @@ export function InspectionCreateModal(props: {
         scheduledAt.trim().length > 0 ||
         inspectionDate.trim().length > 0 ||
         location.trim().length > 0 ||
+        assetNumber.trim().length > 0 ||
         sector.trim().length > 0 ||
         departmentId.trim().length > 0 ||
         frequency !== 'daily' ||
@@ -92,6 +94,7 @@ export function InspectionCreateModal(props: {
       auditorUserId,
       areaManagerUserId,
       auditeeUserId,
+      assetNumber,
       departmentId,
       frequency,
       inspectorUserId,
@@ -123,6 +126,7 @@ export function InspectionCreateModal(props: {
       scheduledAt,
       inspectionDate,
       location,
+      assetNumber,
       sector,
       departmentId,
       frequency,
@@ -154,6 +158,7 @@ export function InspectionCreateModal(props: {
       scheduledAt?: string;
       inspectionDate?: string;
       location?: string;
+      assetNumber?: string;
       sector?: string;
       departmentId?: string;
       frequency?: InspectionFrequency;
@@ -183,6 +188,7 @@ export function InspectionCreateModal(props: {
     setScheduledAt(restored.scheduledAt ?? '');
     setInspectionDate(restored.inspectionDate ?? '');
     setLocation(restored.location ?? '');
+    setAssetNumber(restored.assetNumber ?? '');
     setSector(restored.sector ?? '');
     setDepartmentId(restored.departmentId ?? '');
     setFrequency(restored.frequency ?? 'daily');
@@ -280,6 +286,7 @@ export function InspectionCreateModal(props: {
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
         inspectionDate: inspectionDate || undefined,
         location: location.trim() || undefined,
+        assetNumber: assetNumber.trim() || undefined,
         sector: sector.trim() || undefined,
         departmentId: departmentId ? (departmentId as UUID) : undefined,
         frequency,
@@ -322,6 +329,7 @@ export function InspectionCreateModal(props: {
     setScheduledAt('');
     setInspectionDate('');
     setLocation('');
+    setAssetNumber('');
     setSector('');
     setDepartmentId('');
     setFrequency('daily');
@@ -557,6 +565,20 @@ export function InspectionCreateModal(props: {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Asset / equipment link */}
+          <div className="border-b border-surface-200 pb-4">
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Asset / equipment number (optional)</label>
+            <input
+              value={assetNumber}
+              onChange={(e) => setAssetNumber(e.target.value)}
+              placeholder="e.g. 357 MP, Machine-Roller 02, Fire extinguisher 05"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            />
+            <p className="mt-1 text-xs text-charcoal-500">
+              Links this checklist to a specific vehicle, machine, or item so records can be tracked and filtered per asset.
+            </p>
           </div>
 
           {/* Vehicle / machine hours-km tracking */}

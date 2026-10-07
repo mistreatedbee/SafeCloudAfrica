@@ -1016,6 +1016,7 @@ export type Inspection = {
   findings_count: number;
   nonconformances_count: number;
   assignee_user_id: UUID | null;
+  asset_number?: string | null;
   created_by_user_id: UUID;
   created_at: string;
   updated_at: string;

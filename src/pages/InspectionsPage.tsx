@@ -87,15 +87,17 @@ export function InspectionsPage() {
       findings: i.findings_count ?? 0,
       nonConformances: i.nonconformances_count ?? 0,
       location: i.location,
+      assetNumber: i.asset_number ?? null,
       frequency: i.frequency ?? null,
       periodLabel: formatInspectionPeriod(i.frequency, i.inspection_date ?? i.scheduled_at ?? i.created_at),
       overdue: isInspectionOverdue(i.frequency, i.completed_at)
     };
   });
 
-  const filteredInspections = rows.filter((inspection) => 
-    inspection.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    inspection.id.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredInspections = rows.filter((inspection) =>
+    inspection.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    inspection.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (inspection.assetNumber ?? '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   function handleExportCsv() {
@@ -214,7 +216,7 @@ export function InspectionsPage() {
                   <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
                   <input
                     type="search"
-                    placeholder="Search inspections..."
+                    placeholder="Search inspections or asset number..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
@@ -281,6 +283,11 @@ export function InspectionsPage() {
                           {inspection.location && (
                             <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
                               {inspection.location}
+                            </span>
+                          )}
+                          {inspection.assetNumber && (
+                            <span className="px-2 py-0.5 bg-navy/10 text-navy rounded text-xs font-medium">
+                              Asset: {inspection.assetNumber}
                             </span>
                           )}
                           <span className="px-2 py-0.5 bg-surface-100 rounded text-xs font-medium">
