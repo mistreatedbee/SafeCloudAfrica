@@ -660,6 +660,88 @@ export async function createInspectionRunFromTemplate(input: {
   });
 }
 
+/**
+ * Clones a template's current items into an EXISTING run that has none yet --
+ * e.g. the template was empty when the run was first created, and questions
+ * were only added to the template afterward. Does not touch the run's other
+ * fields (inspector/auditor/location/etc) or create a new run.
+ */
+export async function addTemplateItemsToRun(input: {
+  companyId: UUID;
+  runId: UUID;
+  templateId: UUID;
+}): Promise<InspectionRunItem[]> {
+  return withInsforgeSession('inspections:runs:add-template-items', async () => {
+  const [template, templateItems, { data: existingItems, error: existingError }] = await Promise.all([
+    getInspectionChecklistTemplateById(input.companyId, input.templateId),
+    listInspectionChecklistItems(input.companyId, input.templateId),
+    insforge.database
+      .from('inspection_run_items')
+      .select('id')
+      .eq('company_id', input.companyId)
+      .eq('run_id', input.runId)
+  ]);
+  if (existingError) throw new Error(getErrorMessage(existingError));
+  if (!template) throw new Error('Checklist template not found.');
+  if ((existingItems ?? []).length > 0) {
+    throw new Error('This run already has checklist items.');
+  }
+  if (templateItems.length === 0) {
+    throw new Error('This template still has no questions. Add questions to it in the Checklist Library first.');
+  }
+
+  const runItemsPayload = templateItems.map((item) => {
+    const maxScore = Number((item as any).allocated_score ?? 2);
+    return {
+      company_id: input.companyId,
+      run_id: input.runId,
+      template_item_id: item.id,
+      item_order: item.item_order,
+      section: item.section,
+      audit_section_or_category: (item as any).audit_section_or_category ?? item.section,
+      requirement_reference: (item as any).requirement_reference ?? null,
+      question: item.question,
+      expected_evidence: item.expected_evidence,
+      risk_area: item.risk_area,
+      risk_rating: item.default_risk_rating,
+      nc_severity: item.default_nc_severity,
+      inspection_method: (item as any).inspection_method_default ?? template.default_inspection_method ?? 'observation',
+      evidence_required: (item as any).evidence_required_default ?? false,
+      risk_level: (item as any).risk_level_default ?? null,
+      question_fingerprint: (item as any).question_fingerprint ?? null,
+      allocated_score: maxScore,
+      compliance_status: 'C' as InspectionRunComplianceStatus,
+      inspection_rating: 'C',
+      score: maxScore,
+      max_score: maxScore,
+      comments: null,
+      auditor_comments: null,
+      evidence_document_url: null,
+      photo_url: null,
+      nonconformance_flag: false,
+      corrective_action_required: false,
+      status: 'open',
+      auto_ncr_id: null
+    };
+  });
+
+  const { data: itemsData, error: itemsError } = await insforge.database
+    .from('inspection_run_items')
+    .insert(runItemsPayload)
+    .select('*')
+    .order('item_order', { ascending: true });
+  if (itemsError) throw new Error(getErrorMessage(itemsError));
+
+  await insforge.database
+    .from('inspection_runs')
+    .update({ items_total: templateItems.length, updated_at: new Date().toISOString() })
+    .eq('company_id', input.companyId)
+    .eq('id', input.runId);
+
+  return (itemsData ?? []) as unknown as InspectionRunItem[];
+  });
+}
+
 export async function listInspectionRunsForInspection(
   companyId: UUID,
   inspectionId: UUID,

@@ -11,6 +11,7 @@ import type { UUID } from '../api/models/core';
 import {
   completeInspectionRun,
   createCorrectiveActionForInspectionItem,
+  addTemplateItemsToRun,
   createInspectionRunFromTemplate,
   getInspectionById,
   getInspectionRunById,
@@ -154,6 +155,7 @@ export function InspectionDetailPage() {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [startTemplateId, setStartTemplateId] = useState('');
   const [startingRun, setStartingRun] = useState(false);
+  const [reloadingItems, setReloadingItems] = useState(false);
 
   const { restoreDraft, clearDraft } = useDraftManager();
   const draftKey = `inspection-detail:${activeCompanyId ?? 'company'}:${inspectionId ?? 'unknown'}:${user?.id ?? 'anon'}`;
@@ -258,6 +260,24 @@ export function InspectionDetailPage() {
       setRunActionError(toUserFacingError(e, 'Failed to start the checklist. Please try again.'));
     } finally {
       setStartingRun(false);
+    }
+  }
+
+  async function handleReloadItemsFromTemplate() {
+    if (!activeCompanyId || !latestRun?.run?.template_id) return;
+    setReloadingItems(true);
+    setRunActionError(null);
+    try {
+      await addTemplateItemsToRun({
+        companyId: activeCompanyId as UUID,
+        runId: latestRun.run.id as UUID,
+        templateId: latestRun.run.template_id as UUID
+      });
+      await refreshRun();
+    } catch (e) {
+      setRunActionError(toUserFacingError(e, 'Failed to load questions from the template. Please try again.'));
+    } finally {
+      setReloadingItems(false);
     }
   }
 
@@ -498,7 +518,33 @@ export function InspectionDetailPage() {
                       )}
                     </div>
                   )}
-                  {latestRun && (
+                  {latestRun && latestRun.items.length === 0 && (
+                    <div className="bg-warning/5 border border-warning/20 rounded-xl p-4 space-y-2">
+                      <p className="text-sm text-charcoal-700">
+                        This checklist template has no questions yet, so there&apos;s nothing to complete.
+                      </p>
+                      {canScore ? (
+                        <>
+                          <p className="text-xs text-charcoal-500">
+                            Add questions to the template under Inspections → Checklist Library → find this template → <strong>Items</strong>.
+                            Once added, reload them into this run:
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void handleReloadItemsFromTemplate()}
+                            disabled={reloadingItems}
+                            className="min-h-[44px] inline-flex items-center justify-center gap-2 px-4 rounded-lg bg-teal text-white text-xs font-semibold hover:bg-teal-600 disabled:opacity-60"
+                          >
+                            {reloadingItems && <LoadingSpinner size={14} />}
+                            Reload questions from template
+                          </button>
+                        </>
+                      ) : (
+                        <p className="text-xs text-charcoal-500">Ask a manager or consultant to add questions to the checklist template.</p>
+                      )}
+                    </div>
+                  )}
+                  {latestRun && latestRun.items.length > 0 && (
                     <>
                       <div className="hidden md:block overflow-x-auto">
                         <table className="min-w-full text-sm">
