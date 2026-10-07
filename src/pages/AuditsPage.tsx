@@ -63,6 +63,7 @@ export function AuditsPage() {
 
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
+  const [auditsRefreshKey, setAuditsRefreshKey] = useState(0);
   useEffect(() => setCreateOpen(isNew), [isNew]);
 
   const canSchedule = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
@@ -73,7 +74,7 @@ export function AuditsPage() {
       if (!activeCompanyId) return [];
       return await listAudits({ companyId: activeCompanyId, limit: 500 });
     },
-    [activeCompanyId]
+    [activeCompanyId, auditsRefreshKey]
   );
 
   // Load inspections (for separate display if needed)
@@ -144,7 +145,10 @@ export function AuditsPage() {
           }}
           companyId={activeCompanyId}
           createdByUserId={user.id}
-          onCreated={() => navigate('/audits', { replace: true })}
+          onCreated={() => {
+            setAuditsRefreshKey((k) => k + 1);
+            navigate('/audits', { replace: true });
+          }}
         />
       )}
       <motion.div
