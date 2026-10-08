@@ -168,6 +168,7 @@ export function AuditDetailPage() {
   const [preAuditUploadingFor, setPreAuditUploadingFor] = useState<string | null>(null);
   const [preAuditSubmitLoading, setPreAuditSubmitLoading] = useState(false);
   const preAuditFileInputRef = React.useRef<HTMLInputElement>(null);
+  const preAuditPendingLabelRef = React.useRef<string | null>(null);
   const [evidenceUploadQuestionId, setEvidenceUploadQuestionId] = useState<UUID | null>(null);
   const questionEvidenceFileInputRef = React.useRef<HTMLInputElement>(null);
   const [findingSignOffId, setFindingSignOffId] = useState<UUID | null>(null);
@@ -977,7 +978,7 @@ export function AuditDetailPage() {
                             type="button"
                             disabled={!activeCompanyId || !user?.id || preAuditUploadingFor !== null}
                             onClick={() => {
-                              setPreAuditUploadingFor(label);
+                              preAuditPendingLabelRef.current = label;
                               preAuditFileInputRef.current?.click();
                             }}
                             className="px-2 py-1 rounded border border-surface-300 text-xs font-medium hover:bg-surface-50 disabled:opacity-50"
@@ -995,21 +996,26 @@ export function AuditDetailPage() {
                   className="hidden"
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
-                    if (!file || !activeCompanyId || !user?.id || !preAuditUploadingFor || !auditId) return;
-                    setPreAuditUploadingFor(preAuditUploadingFor);
+                    const label = preAuditPendingLabelRef.current;
+                    if (!file || !activeCompanyId || !user?.id || !label || !auditId) {
+                      preAuditPendingLabelRef.current = null;
+                      return;
+                    }
+                    setPreAuditUploadingFor(label);
                     try {
-                      const key = `${activeCompanyId}/audit_pre_submission/${auditId}/${encodeURIComponent(preAuditUploadingFor)}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
+                      const key = `${activeCompanyId}/audit_pre_submission/${auditId}/${encodeURIComponent(label)}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
                       await uploadFile(EVIDENCE_BUCKET, file, { key });
                       await addPreAuditUploadedDoc(
                         auditId as UUID,
                         activeCompanyId,
-                        preAuditUploadingFor,
+                        label,
                         EVIDENCE_BUCKET,
                         key,
                         user.id as UUID
                       );
                       await refreshPreSubmission();
                     } finally {
+                      preAuditPendingLabelRef.current = null;
                       setPreAuditUploadingFor(null);
                       e.target.value = '';
                     }
