@@ -130,9 +130,10 @@ export function AuditsPage() {
     filtered = filtered.filter(a => a.status === statusFilter);
   }
   if (searchQuery) {
-    filtered = filtered.filter(a => 
+    filtered = filtered.filter(a =>
       a.audit_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (a.objectives ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+      (a.objectives ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (a.audited_organization ?? '').toLowerCase().includes(searchQuery.toLowerCase())
     );
   }
 
@@ -236,7 +237,7 @@ export function AuditsPage() {
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
               <input
                 type="search"
-                placeholder="Search audits..."
+                placeholder="Search audits or organization audited..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent" />
@@ -310,6 +311,11 @@ export function AuditsPage() {
                     <div>
                       <p className="font-medium text-charcoal">{audit.objectives}</p>
                       <p className="text-sm text-teal mt-0.5">{audit.audit_number}</p>
+                      {audit.audited_organization && (
+                        <span className="inline-block mt-1 px-2 py-0.5 bg-navy/10 text-navy rounded text-xs font-medium">
+                          {audit.audited_organization}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={audit.status as any} size="sm" />

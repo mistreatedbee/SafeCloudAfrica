@@ -111,6 +111,7 @@ export function AuditScheduleModal(props: {
   const [scopeOfAudit, setScopeOfAudit] = useState('');
   const [proposedDates, setProposedDates] = useState<string[]>(['', '', '']);
   const [location, setLocation] = useState('');
+  const [auditedOrganization, setAuditedOrganization] = useState('');
   const [auditorUserIds, setAuditorUserIds] = useState<UUID[]>([]);
   const [departmentRepUserIds, setDepartmentRepUserIds] = useState<UUID[]>([]);
   const [companyRepUserIds, setCompanyRepUserIds] = useState<UUID[]>([]);
@@ -137,6 +138,7 @@ export function AuditScheduleModal(props: {
         auditCriteria.trim().length > 0 ||
         scopeOfAudit.trim().length > 0 ||
         location.trim().length > 0 ||
+        auditedOrganization.trim().length > 0 ||
         proposedDates.some((d) => d.trim().length > 0) ||
         auditorUserIds.length > 0 ||
         departmentRepUserIds.length > 0 ||
@@ -151,6 +153,7 @@ export function AuditScheduleModal(props: {
     [
       auditCriteria,
       auditType,
+      auditedOrganization,
       auditorUserIds,
       departmentRepUserIds,
       checklistTemplateId,
@@ -184,6 +187,7 @@ export function AuditScheduleModal(props: {
       scopeOfAudit,
       proposedDates,
       location,
+      auditedOrganization,
       auditorUserIds,
       departmentRepUserIds,
       companyRepUserIds,
@@ -215,6 +219,7 @@ export function AuditScheduleModal(props: {
       scopeOfAudit?: string;
       proposedDates?: string[];
       location?: string;
+      auditedOrganization?: string;
       auditorUserIds?: UUID[];
       departmentRepUserIds?: UUID[];
       companyRepUserIds?: UUID[];
@@ -239,6 +244,7 @@ export function AuditScheduleModal(props: {
     setScopeOfAudit(restored.scopeOfAudit ?? '');
     setProposedDates(Array.isArray(restored.proposedDates) ? restored.proposedDates : ['', '', '']);
     setLocation(restored.location ?? '');
+    setAuditedOrganization(restored.auditedOrganization ?? '');
     setAuditorUserIds(Array.isArray(restored.auditorUserIds) ? restored.auditorUserIds : []);
     setDepartmentRepUserIds(Array.isArray(restored.departmentRepUserIds) ? restored.departmentRepUserIds : []);
     setCompanyRepUserIds(Array.isArray(restored.companyRepUserIds) ? restored.companyRepUserIds : []);
@@ -325,6 +331,7 @@ export function AuditScheduleModal(props: {
         auditCriteria: auditCriteria.trim(),
         scopeOfAudit: scopeOfAudit.trim(),
         location: location.trim(),
+        auditedOrganization: auditedOrganization.trim() || undefined,
         auditorUserIds: resolvedAuditorUserIds,
         proposedDates: proposedDatesParsed,
         createdByUserId: props.createdByUserId,
@@ -349,6 +356,7 @@ export function AuditScheduleModal(props: {
       setScopeOfAudit('');
       setProposedDates(['', '', '']);
       setLocation('');
+      setAuditedOrganization('');
       setAuditorUserIds([]);
       setDepartmentRepUserIds([]);
       setCompanyRepUserIds([]);
@@ -535,6 +543,19 @@ export function AuditScheduleModal(props: {
               placeholder="e.g. Site A"
               className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-charcoal mb-1.5">Organization audited (optional)</label>
+            <input
+              value={auditedOrganization}
+              onChange={(e) => setAuditedOrganization(e.target.value)}
+              placeholder="e.g. Gobonzela — Sub-contractor A"
+              className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+            />
+            <p className="mt-1 text-xs text-charcoal-400">
+              If this audit covers a specific sub-contractor or entity separate from your own company, name it here so it can be tracked and filtered on its own.
+            </p>
           </div>
 
           <div>

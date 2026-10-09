@@ -62,7 +62,7 @@ import {
   listAuditReports,
   renderReportAsHtml
 } from '../api/services/auditReportService';
-import { updateAudit } from '../api/services/auditsService';
+import { updateAudit, duplicateAudit } from '../api/services/auditsService';
 import { useUser } from '@insforge/react';
 import { uploadFile } from '../api/services/storageService';
 import { EVIDENCE_BUCKET } from '../components/evidence/EvidenceModal';
@@ -189,6 +189,7 @@ export function AuditDetailPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [importingTemplate, setImportingTemplate] = useState(false);
   const [exportingAuditPdf, setExportingAuditPdf] = useState(false);
+  const [duplicatingAudit, setDuplicatingAudit] = useState(false);
   const [exportingAuditExcel, setExportingAuditExcel] = useState(false);
   const [reorderingQuestions, setReorderingQuestions] = useState(false);
 
@@ -724,6 +725,24 @@ export function AuditDetailPage() {
     }
   }
 
+  async function handleDuplicateAudit() {
+    if (!audit || !activeCompanyId || !user?.id) return;
+    setDuplicatingAudit(true);
+    setActionError(null);
+    try {
+      const created = await duplicateAudit({
+        sourceAuditId: audit.id,
+        companyId: activeCompanyId,
+        createdByUserId: user.id as UUID
+      });
+      navigate(`/audits/${created.id}`);
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Failed to duplicate audit.'));
+    } finally {
+      setDuplicatingAudit(false);
+    }
+  }
+
   const loading = auditLoading || questionsLoading || responsesLoading;
 
   if (!auditId) {
@@ -801,10 +820,14 @@ export function AuditDetailPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-sm">
                 <div>
                   <p className="text-xs text-charcoal-500 mb-0.5">Type</p>
                   <p className="font-medium capitalize">{audit.audit_type}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-charcoal-500 mb-0.5">Organization audited</p>
+                  <p className="font-medium">{audit.audited_organization || '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-charcoal-500 mb-0.5">Scope</p>
@@ -844,6 +867,17 @@ export function AuditDetailPage() {
                   <DownloadIcon className="w-3.5 h-3.5" />
                   {exportingAuditExcel ? 'Generating Excel…' : 'Download Excel'}
                 </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => void handleDuplicateAudit()}
+                    disabled={duplicatingAudit}
+                    title="Create a new audit with the same setup and checklist questions"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-surface-300 text-xs font-semibold text-charcoal hover:bg-surface-50 disabled:opacity-60"
+                  >
+                    {duplicatingAudit ? 'Duplicating…' : 'Duplicate audit'}
+                  </button>
+                )}
                 {canEdit && (
                   <>
                   {audit.status === 'scheduled' && (

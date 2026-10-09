@@ -153,6 +153,8 @@ export async function createAudit(input: {
   auditCriteria: string;
   scopeOfAudit: string;
   location?: string;
+  /** The specific organization/sub-contractor being audited (optional — e.g. a parent company's sub-contractor audited separately). */
+  auditedOrganization?: string | null;
   auditorUserIds: UUID[];
   proposedDates: string[];
   createdByUserId: UUID;
@@ -181,6 +183,7 @@ export async function createAudit(input: {
     audit_criteria: input.auditCriteria,
     scope_of_audit: input.scopeOfAudit,
     location: input.location ?? null,
+    audited_organization: input.auditedOrganization?.trim() || null,
     auditor_user_ids: input.auditorUserIds,
     proposed_dates: input.proposedDates,
     status: 'draft',
@@ -226,6 +229,7 @@ export async function createAudit(input: {
     else if (message.includes('lead_auditor_name')) delete payload.lead_auditor_name;
     else if (message.includes('auditee_hr_employee_id')) delete payload.auditee_hr_employee_id;
     else if (message.includes('auditee_name')) delete payload.auditee_name;
+    else if (message.includes('audited_organization')) delete payload.audited_organization;
     else throw new Error(getErrorMessage(error));
   }
 
@@ -717,6 +721,57 @@ export async function importAuditChecklistFromTemplate(input: {
 
   if (imported === 0) throw new Error('Template has no valid questions to import.');
   return imported;
+}
+
+/** Creates a new draft audit that reuses another audit's setup and question list, so a recurring audit (e.g. the same sub-contractor, next quarter) doesn't need to be rebuilt from scratch. Scores/responses are not carried over. */
+export async function duplicateAudit(input: {
+  sourceAuditId: UUID;
+  companyId: UUID;
+  createdByUserId: UUID;
+}): Promise<Audit> {
+  const source = await getAudit(input.sourceAuditId);
+  if (!source) throw new Error('Source audit not found.');
+  const sourceQuestions = await listAuditQuestions(input.sourceAuditId);
+
+  const created = await createAudit({
+    companyId: input.companyId,
+    module: source.module,
+    title: source.title ? `${source.title} (copy)` : undefined,
+    auditType: source.audit_type,
+    objectives: source.objectives ?? '',
+    auditCriteria: source.audit_criteria ?? '',
+    scopeOfAudit: source.scope_of_audit ?? '',
+    location: source.location ?? undefined,
+    auditedOrganization: source.audited_organization ?? undefined,
+    auditorUserIds: source.auditor_user_ids && source.auditor_user_ids.length > 0 ? source.auditor_user_ids : [input.createdByUserId],
+    proposedDates: [],
+    createdByUserId: input.createdByUserId,
+    requiredDocumentList: source.required_document_list ?? undefined,
+    departmentsAuditeeIds: source.departments_auditee_ids ?? undefined,
+    companyRepresentativeUserIds: source.company_representative_user_ids ?? undefined,
+    leadAuditorUserId: source.lead_auditor_user_id ?? undefined,
+    leadAuditorHrEmployeeId: source.lead_auditor_hr_employee_id ?? undefined,
+    leadAuditorName: source.lead_auditor_name ?? undefined,
+    auditeeHrEmployeeId: source.auditee_hr_employee_id ?? undefined,
+    auditeeName: source.auditee_name ?? undefined
+  });
+
+  let order = 1;
+  for (const q of sourceQuestions) {
+    await createAuditQuestion({
+      companyId: input.companyId,
+      auditId: created.id,
+      question: q.question,
+      section: q.section ?? null,
+      expectedEvidence: q.expected_evidence ?? undefined,
+      questionOrder: order,
+      allocatedScore: q.allocated_score ?? 1,
+      createdByUserId: input.createdByUserId
+    });
+    order += 1;
+  }
+
+  return created;
 }
 
 export async function deleteAuditQuestion(questionId: UUID): Promise<void> {

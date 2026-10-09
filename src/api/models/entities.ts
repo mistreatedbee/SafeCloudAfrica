@@ -2713,6 +2713,8 @@ export type Audit = {
   // Type & objectives
   audit_type: 'internal' | 'external' | 'client' | 'supplier' | 'certification';
   objectives: string | null;
+  /** The specific organization/sub-contractor being audited (optional — distinct from the company running the audit). */
+  audited_organization: string | null;
 
   // Scheduling & approvals
   proposed_dates: string[] | null;
