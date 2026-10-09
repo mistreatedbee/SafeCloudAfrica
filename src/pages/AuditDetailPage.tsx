@@ -171,6 +171,7 @@ export function AuditDetailPage() {
   const preAuditPendingLabelRef = React.useRef<string | null>(null);
   const [evidenceUploadQuestionId, setEvidenceUploadQuestionId] = useState<UUID | null>(null);
   const questionEvidenceFileInputRef = React.useRef<HTMLInputElement>(null);
+  const questionEvidencePendingIdRef = React.useRef<UUID | null>(null);
   const [findingSignOffId, setFindingSignOffId] = useState<UUID | null>(null);
   const [findingVerifyId, setFindingVerifyId] = useState<UUID | null>(null);
   const [reportGenerating, setReportGenerating] = useState(false);
@@ -1488,7 +1489,7 @@ export function AuditDetailPage() {
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setEvidenceUploadQuestionId(q.id);
+                                      questionEvidencePendingIdRef.current = q.id;
                                       questionEvidenceFileInputRef.current?.click();
                                     }}
                                     disabled={savingResponseId === q.id || evidenceUploadQuestionId !== null}
@@ -1665,17 +1666,26 @@ export function AuditDetailPage() {
                 className="hidden"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
-                  if (!file || !activeCompanyId || !user?.id || !evidenceUploadQuestionId || !auditId) return;
-                  const q = questions?.find((x) => x.id === evidenceUploadQuestionId);
-                  if (!q) return;
+                  const pendingId = questionEvidencePendingIdRef.current;
+                  if (!file || !activeCompanyId || !user?.id || !pendingId || !auditId) {
+                    questionEvidencePendingIdRef.current = null;
+                    return;
+                  }
+                  const q = questions?.find((x) => x.id === pendingId);
+                  if (!q) {
+                    questionEvidencePendingIdRef.current = null;
+                    return;
+                  }
                   const existing = responsesByQuestion.get(q.id);
                   const currentFiles = (existing as any)?.evidence_files ?? [];
+                  setEvidenceUploadQuestionId(pendingId);
                   try {
                     const key = `${activeCompanyId}/audit_response/${auditId}/${q.id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
                     await uploadFile(EVIDENCE_BUCKET, file, { key });
                     const newFiles = [...currentFiles, { storageBucket: EVIDENCE_BUCKET, storageKey: key, fileName: file.name }];
                     await handleSubmitResponse(q, { evidence_files: newFiles } as any);
                   } finally {
+                    questionEvidencePendingIdRef.current = null;
                     setEvidenceUploadQuestionId(null);
                     e.target.value = '';
                   }
