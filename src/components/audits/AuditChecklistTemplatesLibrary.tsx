@@ -10,7 +10,7 @@ type Props = {
   canManage: boolean;
 };
 
-type ComplianceOption = 'C' | 'NC' | 'Obs' | 'N/A';
+type ComplianceOption = 'C' | 'PC' | 'NC' | 'Obs' | 'N/A';
 
 type SectionDraft = {
   id: string;
@@ -254,6 +254,7 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
                       >
                         <option value="">—</option>
                         <option value="C">C</option>
+                        <option value="PC">PC</option>
                         <option value="NC">NC</option>
                         <option value="Obs">Obs</option>
                         <option value="N/A">N/A</option>
@@ -443,6 +444,7 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
                               >
                                 <option value="">—</option>
                                 <option value="C">C</option>
+                                <option value="PC">PC</option>
                                 <option value="NC">NC</option>
                                 <option value="Obs">Obs</option>
                                 <option value="N/A">N/A</option>

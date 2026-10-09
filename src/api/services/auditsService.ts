@@ -7,7 +7,7 @@ import { sendTemplatedNotificationEmail } from './emailService';
 import { createActivityLog } from './activityLogService';
 import { createCorrectiveAction } from './correctiveActionsService';
 
-export type AuditComplianceStatus = 'C' | 'NC' | 'Obs' | 'N/A';
+export type AuditComplianceStatus = 'C' | 'PC' | 'NC' | 'Obs' | 'N/A';
 
 export interface AuditSection {
   id: UUID;
@@ -63,6 +63,8 @@ function deriveLegacyComplianceFields(status: AuditComplianceStatus): {
     case 'N/A':
       return { is_compliant: true, deviation_type: null };
     case 'Obs':
+      return { is_compliant: false, deviation_type: 'observation' };
+    case 'PC':
       return { is_compliant: false, deviation_type: 'observation' };
     case 'NC':
       return { is_compliant: false, deviation_type: 'non_conformance' };

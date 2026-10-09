@@ -389,7 +389,7 @@ export function AuditDetailPage() {
       allocated += Number((r as any).allocated_score ?? 0);
     }
     const scorePercent = allocated > 0 ? Math.round((achieved / allocated) * 1000) / 10 : 0;
-    const complianceCounts = { C: 0, NC: 0, Obs: 0, 'N/A': 0 } as Record<string, number>;
+    const complianceCounts = { C: 0, PC: 0, NC: 0, Obs: 0, 'N/A': 0 } as Record<string, number>;
     for (const r of responses ?? []) {
       const status = (r as any).compliance_status as string | undefined;
       if (status && status in complianceCounts) complianceCounts[status] += 1;
@@ -819,7 +819,7 @@ export function AuditDetailPage() {
                     {checklistStats.answered}/{checklistStats.total} answered • {checklistStats.scorePercent}% ({checklistStats.achieved}/{checklistStats.allocated})
                   </p>
                   <p className="text-xs text-charcoal-500 mt-0.5">
-                    C: {checklistStats.complianceCounts.C} · NC: {checklistStats.complianceCounts.NC} · Obs: {checklistStats.complianceCounts.Obs} · N/A: {checklistStats.complianceCounts['N/A']}
+                    C: {checklistStats.complianceCounts.C} · PC: {checklistStats.complianceCounts.PC} · NC: {checklistStats.complianceCounts.NC} · Obs: {checklistStats.complianceCounts.Obs} · N/A: {checklistStats.complianceCounts['N/A']}
                   </p>
                 </div>
               </div>
@@ -1425,6 +1425,7 @@ export function AuditDetailPage() {
                               >
                                 <option value="">—</option>
                                 <option value="C">C — Conforming</option>
+                                <option value="PC">PC — Partial Conformity</option>
                                 <option value="NC">NC — Nonconformity</option>
                                 <option value="Obs">Obs — Observation</option>
                                 <option value="N/A">N/A — Not applicable</option>

@@ -50,7 +50,7 @@ export async function exportAuditDetailPdf(input: {
   const compliancePercent = totalAllocated > 0 ? Math.round((totalAchieved / totalAllocated) * 100) : 0;
   const answered = responses.length;
   const compliant = responses.filter((r) => r.is_compliant).length;
-  const complianceCounts = { C: 0, NC: 0, Obs: 0, 'N/A': 0 } as Record<string, number>;
+  const complianceCounts = { C: 0, PC: 0, NC: 0, Obs: 0, 'N/A': 0 } as Record<string, number>;
   for (const r of responses) {
     const status = (r as any).compliance_status as string | undefined;
     if (status && status in complianceCounts) complianceCounts[status] += 1;
@@ -82,7 +82,7 @@ export async function exportAuditDetailPdf(input: {
     ['Observations', String(audit.observations_count ?? 0)],
     ['Checklist answered', `${answered} / ${questions.length}`],
     ['Compliance score', `${compliancePercent}% (${totalAchieved}/${totalAllocated})`],
-    ['C / NC / Obs / N-A', `${complianceCounts.C} / ${complianceCounts.NC} / ${complianceCounts.Obs} / ${complianceCounts['N/A']}`]
+    ['C / PC / NC / Obs / N-A', `${complianceCounts.C} / ${complianceCounts.PC} / ${complianceCounts.NC} / ${complianceCounts.Obs} / ${complianceCounts['N/A']}`]
   ];
 
   autoTable(doc, {
@@ -237,7 +237,7 @@ export async function exportAuditDetailExcel(input: {
 
   let totalAllocated = 0;
   let totalAchieved = 0;
-  const complianceCounts = { C: 0, NC: 0, Obs: 0, 'N/A': 0 } as Record<string, number>;
+  const complianceCounts = { C: 0, PC: 0, NC: 0, Obs: 0, 'N/A': 0 } as Record<string, number>;
   questions.forEach((q) => {
     const alloc = Number(q.allocated_score ?? 0) || 0;
     const resp = responsesByQuestion.get(q.id);
@@ -263,6 +263,7 @@ export async function exportAuditDetailExcel(input: {
       ['Overall score', `${compliancePercent}%`],
       ['Achieved / Allocated', `${totalAchieved} / ${totalAllocated}`],
       ['Conforming (C)', complianceCounts.C],
+      ['Partial Conformity (PC)', complianceCounts.PC],
       ['Non-conformities (NC)', complianceCounts.NC],
       ['Observations (Obs)', complianceCounts.Obs],
       ['Not applicable (N/A)', complianceCounts['N/A']]
