@@ -1335,15 +1335,18 @@ export function AuditDetailPage() {
                       placeholder="Or free-text section label (optional)"
                       className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
                     />
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.5}
-                      value={newQuestionScore}
-                      onChange={(e) => setNewQuestionScore(e.target.value)}
-                      placeholder="Allocated score"
-                      className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
-                    />
+                    <div>
+                      <label className="block text-xs text-charcoal-500 mb-1">Allocated score</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.5}
+                        value={newQuestionScore}
+                        onChange={(e) => setNewQuestionScore(e.target.value)}
+                        placeholder="Allocated score"
+                        className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm"
+                      />
+                    </div>
                   </div>
                   <textarea
                     value={newQuestion}
