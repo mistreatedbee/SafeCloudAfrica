@@ -3,6 +3,7 @@ import { XIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { toUserFacingError } from '../../utils/userFacingMessage';
 import type { ModuleKey, UUID } from '../../api/models/core';
+import type { Audit } from '../../api/models/entities';
 import { createAudit } from '../../api/services/auditsService';
 import { listAuditChecklistTemplates } from '../../api/services/auditChecklistTemplatesService';
 import { useAsync } from '../../api/hooks/useAsync';
@@ -100,7 +101,7 @@ export function AuditScheduleModal(props: {
   onClose: () => void;
   companyId: UUID;
   createdByUserId: UUID;
-  onCreated?: () => void;
+  onCreated?: (audit: Audit) => void;
 }) {
   const [title, setTitle] = useState('');
   const [module, setModule] = useState<ModuleKey>('safety');
@@ -315,7 +316,7 @@ export function AuditScheduleModal(props: {
           })()
         : undefined;
 
-      await createAudit({
+      const created = await createAudit({
         companyId: props.companyId,
         module,
         auditType,
@@ -340,7 +341,7 @@ export function AuditScheduleModal(props: {
       });
 
       clearDraft(draftKey);
-      props.onCreated?.();
+      props.onCreated?.(created);
       props.onClose();
       setTitle('');
       setObjectives('');

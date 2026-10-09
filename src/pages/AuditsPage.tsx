@@ -17,7 +17,7 @@ import { useUser } from '@insforge/react';
 import { useAsync } from '../api/hooks/useAsync';
 import { listAudits } from '../api/services/auditsService';
 import { listInspections } from '../api/services/inspectionsService';
-import type { Inspection } from '../api/models/entities';
+import type { Audit, Inspection } from '../api/models/entities';
 import { AuditScheduleModal } from '../components/audits/AuditScheduleModal';
 import { AuditChecklistTemplatesLibrary } from '../components/audits/AuditChecklistTemplatesLibrary';
 
@@ -64,18 +64,35 @@ export function AuditsPage() {
   const isNew = location.pathname.endsWith('/new');
   const [createOpen, setCreateOpen] = useState(isNew);
   const [auditsRefreshKey, setAuditsRefreshKey] = useState(0);
+  // Audits just created in this session, shown immediately instead of
+  // waiting on a refetch that can lag behind the write (read replica /
+  // cache lag) -- dropped once the backend list actually includes them.
+  const [optimisticAudits, setOptimisticAudits] = useState<Audit[]>([]);
   useEffect(() => setCreateOpen(isNew), [isNew]);
 
   const canSchedule = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'manager' || activeRole === 'supervisor' || activeRole === 'consultant';
 
   // Load audits from new audits module
-  const { data: audits, loading: auditsLoading, error: auditsError } = useAsync(
+  const { data: rawAudits, loading: auditsLoading, error: auditsError } = useAsync(
     async () => {
       if (!activeCompanyId) return [];
       return await listAudits({ companyId: activeCompanyId, limit: 500 });
     },
     [activeCompanyId, auditsRefreshKey]
   );
+
+  useEffect(() => {
+    if (!rawAudits || optimisticAudits.length === 0) return;
+    const knownIds = new Set(rawAudits.map((a) => a.id));
+    setOptimisticAudits((prev) => prev.filter((a) => !knownIds.has(a.id)));
+  }, [rawAudits, optimisticAudits.length]);
+
+  const audits = useMemo(() => {
+    const base = rawAudits ?? [];
+    const knownIds = new Set(base.map((a) => a.id));
+    const pending = optimisticAudits.filter((a) => !knownIds.has(a.id));
+    return pending.length > 0 ? [...pending, ...base] : base;
+  }, [rawAudits, optimisticAudits]);
 
   // Load inspections (for separate display if needed)
   const { data: inspections, loading: inspectionsLoading } = useAsync<Inspection[]>(
@@ -145,7 +162,8 @@ export function AuditsPage() {
           }}
           companyId={activeCompanyId}
           createdByUserId={user.id}
-          onCreated={() => {
+          onCreated={(audit) => {
+            setOptimisticAudits((prev) => [audit, ...prev]);
             setAuditsRefreshKey((k) => k + 1);
             navigate('/audits', { replace: true });
           }}
@@ -268,7 +286,7 @@ export function AuditsPage() {
               <p className="text-sm text-charcoal-500 mt-1">{(auditsError as any)?.message || 'Unknown error'}</p>
             </div>
           )}
-          {auditsLoading && (
+          {auditsLoading && filtered.length === 0 && (
             <div className="bg-white rounded-xl border border-surface-300 p-4 shadow-card">
               <p className="text-sm text-charcoal-500">Loading audits…</p>
             </div>
