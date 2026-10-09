@@ -80,7 +80,7 @@ export async function exportAuditDetailPdf(input: {
     ['Findings', String(audit.findings_count ?? 0)],
     ['Non-conformances', String(audit.nonconformances_count ?? 0)],
     ['Observations', String(audit.observations_count ?? 0)],
-    ['Checklist answered', `${answered} / ${questions.length}`],
+    ['Questions answered', `${answered} / ${questions.length}`],
     ['Compliance score', `${compliancePercent}% (${totalAchieved}/${totalAllocated})`],
     ['C / PC / NC / Obs / N-A', `${complianceCounts.C} / ${complianceCounts.PC} / ${complianceCounts.NC} / ${complianceCounts.Obs} / ${complianceCounts['N/A']}`]
   ];

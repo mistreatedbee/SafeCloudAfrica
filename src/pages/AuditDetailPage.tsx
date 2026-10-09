@@ -62,7 +62,7 @@ import {
   listAuditReports,
   renderReportAsHtml
 } from '../api/services/auditReportService';
-import { updateAudit, duplicateAudit } from '../api/services/auditsService';
+import { updateAudit, duplicateAudit, calculateAuditFindings } from '../api/services/auditsService';
 import { useUser } from '@insforge/react';
 import { uploadFile } from '../api/services/storageService';
 import { EVIDENCE_BUCKET } from '../components/evidence/EvidenceModal';
@@ -470,10 +470,17 @@ export function AuditDetailPage() {
     try {
       // Generate and attach the audit report PDF as part of completion, so
       // submitAuditReport's report_document_url is populated instead of null.
+      // Status and findings/nonconformances/observations are set to their
+      // about-to-be-final values for the report itself -- otherwise the
+      // attached PDF permanently shows pre-completion values ("scheduled",
+      // stale counts) because it's generated before the completion call and
+      // updateAuditFindingsCounts below actually update the record.
+      const finalCounts = await calculateAuditFindings(audit.id as UUID);
+      const auditForReport = { ...audit, status: 'completed' as const, ...finalCounts };
       let reportDocumentUrl: string | null = null;
       try {
         const blob = await exportAuditDetailPdf({
-          audit,
+          audit: auditForReport,
           questions: questions ?? [],
           responses: responses ?? [],
           correctiveActions: findingCapas ?? [],
