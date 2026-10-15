@@ -296,6 +296,9 @@ export function AuditDetailPage() {
   // Optimistic per-question edits, shown immediately while the save runs in the background.
   const [localOverrides, setLocalOverrides] = useState<Map<UUID, Partial<AuditResponse>>>(() => new Map());
   const scoreSaveTimersRef = React.useRef<Map<UUID, number>>(new Map());
+  const overridesRef = React.useRef<Map<UUID, Partial<AuditResponse>>>(new Map());
+  const saveQueueRef = React.useRef<Map<UUID, Promise<void>>>(new Map());
+  const latestResponsesRef = React.useRef<Map<UUID, AuditResponse>>(new Map());
 
   useEffect(() => {
     const timers = scoreSaveTimersRef.current;
@@ -305,17 +308,20 @@ export function AuditDetailPage() {
   // Drop overrides once the fetched response has caught up with them.
   useEffect(() => {
     if (!responses) return;
-    setLocalOverrides((prev) => {
-      if (prev.size === 0) return prev;
-      const next = new Map(prev);
-      for (const [questionId, override] of prev) {
-        const fetched = responses.find((r) => r.audit_question_id === questionId) as any;
-        if (!fetched) continue;
-        const caughtUp = Object.entries(override).every(([k, v]) => JSON.stringify(fetched[k] ?? null) === JSON.stringify(v ?? null));
-        if (caughtUp) next.delete(questionId);
+    latestResponsesRef.current = new Map(responses.map((r) => [r.audit_question_id, r]));
+    const overrides = overridesRef.current;
+    if (overrides.size === 0) return;
+    let changed = false;
+    for (const [questionId, override] of Array.from(overrides)) {
+      const fetched = responses.find((r) => r.audit_question_id === questionId) as any;
+      if (!fetched) continue;
+      const caughtUp = Object.entries(override).every(([k, v]) => JSON.stringify(fetched[k] ?? null) === JSON.stringify(v ?? null));
+      if (caughtUp) {
+        overrides.delete(questionId);
+        changed = true;
       }
-      return next.size === prev.size ? prev : next;
-    });
+    }
+    if (changed) setLocalOverrides(new Map(overrides));
   }, [responses]);
 
   const responsesByQuestion = useMemo(() => {
@@ -537,11 +543,11 @@ export function AuditDetailPage() {
   }
 
   function scheduleScoreSave(question: AuditQuestion, achievedScore: number | null) {
-    setLocalOverrides((prev) => {
-      const next = new Map(prev);
-      next.set(question.id, { ...(prev.get(question.id) ?? {}), achieved_score: achievedScore } as any);
-      return next;
-    });
+    overridesRef.current.set(question.id, {
+      ...(overridesRef.current.get(question.id) ?? {}),
+      achieved_score: achievedScore
+    } as any);
+    setLocalOverrides(new Map(overridesRef.current));
     const timers = scoreSaveTimersRef.current;
     const pending = timers.get(question.id);
     if (pending) window.clearTimeout(pending);
@@ -554,51 +560,64 @@ export function AuditDetailPage() {
     );
   }
 
-  async function handleSubmitResponse(question: AuditQuestion, partial: Partial<AuditResponse>) {
-    if (!audit || !activeCompanyId || !user?.id) return;
-    const previousOverride = localOverrides.get(question.id);
-    setLocalOverrides((prev) => {
-      const next = new Map(prev);
-      next.set(question.id, { ...(prev.get(question.id) ?? {}), ...partial });
-      return next;
-    });
-    setSavingResponseId(question.id);
-    try {
-      const existing = responsesByQuestion.get(question.id);
-      await submitAuditResponse({
-        companyId: activeCompanyId,
-        auditQuestionId: question.id,
-        isCompliant: partial.is_compliant ?? existing?.is_compliant ?? true,
-        finding: partial.finding ?? existing?.finding ?? '',
-        evidenceDocumentUrl: partial.evidence_document_url ?? existing?.evidence_document_url ?? undefined,
-        riskRating: partial.risk_rating ?? existing?.risk_rating ?? 'low',
-        deviationType: (partial as any).deviation_type ?? existing?.deviation_type ?? null,
-        complianceStatus: (partial as any).compliance_status ?? (existing as any)?.compliance_status ?? null,
-        allocatedScore: (partial as any).allocated_score ?? existing?.allocated_score ?? question.allocated_score ?? null,
-        achievedScore: (partial as any).achieved_score ?? existing?.achieved_score ?? null,
-        evidenceFiles: (partial as any).evidence_files ?? existing?.evidence_files ?? null,
-        answeredByUserId: user.id as any
-      });
-      await refreshResponses();
-      await updateAuditFindingsCounts(audit.id as UUID, activeCompanyId, user.id as any);
-      await refreshAuditScore(audit.id as UUID, activeCompanyId, user.id as any);
-      await refreshAudit();
-      await refreshFindings();
-      await refreshNcrs();
-      await refreshCapas();
-      await refreshLinkedImprovements();
-    } catch (e) {
-      setLocalOverrides((prev) => {
-        const next = new Map(prev);
-        if (previousOverride) next.set(question.id, previousOverride);
-        else next.delete(question.id);
-        return next;
-      });
-      setActionError(toUserFacingError(e, 'Failed to save this answer. Please try again.'));
-    } finally {
-      setSavingResponseId((current) => (current === question.id ? null : current));
-    }
+  function handleSubmitResponse(question: AuditQuestion, partial: Partial<AuditResponse>): Promise<void> {
+    if (!audit || !activeCompanyId || !user?.id) return Promise.resolve();
+    const companyId = activeCompanyId;
+    const userId = user.id as UUID;
+    const auditIdForSave = audit.id as UUID;
+
+    // Apply the edit locally right away (state for rendering, ref so queued saves see it).
+    const previousOverride = overridesRef.current.get(question.id);
+    const nextOverride = { ...(previousOverride ?? {}), ...partial };
+    overridesRef.current.set(question.id, nextOverride);
+    setLocalOverrides(new Map(overridesRef.current));
+
+    // Saves for the same question run one after another, each sending the latest
+    // merged values. Running them in parallel let a slower, older save overwrite a
+    // newer edit (and could insert duplicate responses for an unanswered question).
+    const run = async () => {
+      setSavingResponseId(question.id);
+      try {
+        const fetched = latestResponsesRef.current.get(question.id);
+        const merged: any = { ...(fetched ?? {}), ...(overridesRef.current.get(question.id) ?? {}) };
+        await submitAuditResponse({
+          companyId,
+          auditQuestionId: question.id,
+          isCompliant: merged.is_compliant ?? true,
+          finding: merged.finding ?? '',
+          evidenceDocumentUrl: merged.evidence_document_url ?? undefined,
+          riskRating: merged.risk_rating ?? 'low',
+          deviationType: merged.deviation_type ?? null,
+          complianceStatus: merged.compliance_status ?? null,
+          allocatedScore: merged.allocated_score ?? question.allocated_score ?? null,
+          achievedScore: merged.achieved_score ?? null,
+          evidenceFiles: merged.evidence_files ?? null,
+          answeredByUserId: userId
+        });
+        refreshResponses();
+        await updateAuditFindingsCounts(auditIdForSave, companyId, userId);
+        await refreshAuditScore(auditIdForSave, companyId, userId);
+        refreshAudit();
+        refreshFindings();
+        refreshNcrs();
+        refreshCapas();
+        refreshLinkedImprovements();
+      } catch (e) {
+        if (overridesRef.current.get(question.id) === nextOverride) {
+          if (previousOverride) overridesRef.current.set(question.id, previousOverride);
+          else overridesRef.current.delete(question.id);
+          setLocalOverrides(new Map(overridesRef.current));
+        }
+        setActionError(toUserFacingError(e, 'Failed to save this answer. Please try again.'));
+      } finally {
+        setSavingResponseId((current) => (current === question.id ? null : current));
+      }
+    };
+    const queued = (saveQueueRef.current.get(question.id) ?? Promise.resolve()).then(run);
+    saveQueueRef.current.set(question.id, queued);
+    return queued;
   }
+
 
   function openCapaDraftForQuestion(question: AuditQuestion) {
     setCapaDraftQuestionId(question.id);
@@ -1780,14 +1799,18 @@ export function AuditDetailPage() {
                     questionEvidencePendingIdRef.current = null;
                     return;
                   }
-                  const existing = responsesByQuestion.get(q.id);
-                  const currentFiles = (existing as any)?.evidence_files ?? [];
+                  const currentFiles =
+                    (overridesRef.current.get(q.id) as any)?.evidence_files ??
+                    (latestResponsesRef.current.get(q.id) as any)?.evidence_files ??
+                    [];
                   setEvidenceUploadQuestionId(pendingId);
                   try {
                     const key = `${activeCompanyId}/audit_response/${auditId}/${q.id}/${Date.now()}-${file.name}`.replace(/\s+/g, '_');
                     await uploadFile(EVIDENCE_BUCKET, file, { key });
                     const newFiles = [...currentFiles, { storageBucket: EVIDENCE_BUCKET, storageKey: key, fileName: file.name }];
                     await handleSubmitResponse(q, { evidence_files: newFiles } as any);
+                  } catch (err) {
+                    setActionError(toUserFacingError(err, 'Failed to upload evidence. Please try again.'));
                   } finally {
                     questionEvidencePendingIdRef.current = null;
                     setEvidenceUploadQuestionId(null);
