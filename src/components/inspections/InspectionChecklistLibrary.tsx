@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { PlusIcon, Edit2Icon, ArchiveIcon, RefreshCwIcon, XIcon } from 'lucide-react';
+import { PlusIcon, Edit2Icon, ArchiveIcon, RefreshCwIcon, XIcon, ChevronUpIcon, ChevronDownIcon, Trash2Icon } from 'lucide-react';
 import type { ModuleKey, UUID } from '../../api/models/core';
 import type { InspectionChecklistTemplate } from '../../api/models/entities';
 import {
   listInspectionChecklistTemplates,
   createInspectionChecklistTemplate,
-  updateInspectionChecklistTemplate
+  updateInspectionChecklistTemplate,
+  listInspectionChecklistItems,
+  upsertInspectionChecklistItems,
+  deleteInspectionChecklistItem
 } from '../../api/services/inspectionsService';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
@@ -45,6 +48,20 @@ type TemplateFormState = {
   defaultAreaManagerHrEmployeeId: string;
 };
 
+type QuestionRow = {
+  key: string;
+  id?: UUID;
+  section: string;
+  question: string;
+  score: string;
+};
+
+let questionRowSeq = 0;
+function newQuestionRow(section = ''): QuestionRow {
+  questionRowSeq += 1;
+  return { key: `q-${Date.now()}-${questionRowSeq}`, section, question: '', score: '1' };
+}
+
 export function InspectionChecklistLibrary(props: Props) {
   const { user } = useUser();
   const [moduleFilter, setModuleFilter] = useState<ModuleKey | 'all'>(props.defaultModule ?? 'all');
@@ -57,6 +74,10 @@ export function InspectionChecklistLibrary(props: Props) {
   const [buildingTemplate, setBuildingTemplate] = useState<InspectionChecklistTemplate | null>(null);
   const [saving, setSaving] = useState(false);
   const [employees, setEmployees] = useState<HrEmployee[]>([]);
+  const [questionRows, setQuestionRows] = useState<QuestionRow[]>([]);
+  const [removedItemIds, setRemovedItemIds] = useState<UUID[]>([]);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!props.companyId) return;
@@ -73,21 +94,35 @@ export function InspectionChecklistLibrary(props: Props) {
 
   const hasDirtyDraft = useMemo(() => {
     if (!editing) return false;
-    return editing.name.trim().length > 0 || editing.description.trim().length > 0;
-  }, [editing]);
+    return (
+      editing.name.trim().length > 0 ||
+      editing.description.trim().length > 0 ||
+      questionRows.some((r) => r.question.trim().length > 0)
+    );
+  }, [editing, questionRows]);
 
   useDraftRegistration({
     key: draftKey,
     enabled: props.canManage && editing !== null,
     isDirty: () => hasDirtyDraft,
-    serialize: () => editing
+    serialize: () => ({ editing, questionRows, removedItemIds })
   });
 
   useEffect(() => {
     if (!props.canManage) return;
-    const restored = restoreDraft<TemplateFormState>(draftKey);
+    const restored = restoreDraft<
+      TemplateFormState | { editing: TemplateFormState | null; questionRows?: QuestionRow[]; removedItemIds?: UUID[] }
+    >(draftKey);
     if (!restored) return;
-    setEditing(restored);
+    if ('editing' in restored) {
+      if (!restored.editing) return;
+      setEditing(restored.editing);
+      setQuestionRows(restored.questionRows ?? []);
+      setRemovedItemIds(restored.removedItemIds ?? []);
+    } else {
+      // Drafts saved before questions were part of this form.
+      setEditing(restored);
+    }
   }, [draftKey, props.canManage, restoreDraft]);
 
   async function refresh() {
@@ -130,6 +165,9 @@ export function InspectionChecklistLibrary(props: Props) {
       defaultAuditorHrEmployeeId: '',
       defaultAreaManagerHrEmployeeId: ''
     });
+    setQuestionRows([newQuestionRow()]);
+    setRemovedItemIds([]);
+    setNotice(null);
   }
 
   function startEdit(t: InspectionChecklistTemplate) {
@@ -146,6 +184,58 @@ export function InspectionChecklistLibrary(props: Props) {
       defaultAreaManagerUserId: t.default_area_manager_user_id ?? '',
       defaultAuditorHrEmployeeId: t.default_auditor_user_id ? (employeeIdByUserId.get(t.default_auditor_user_id) ?? '') : '',
       defaultAreaManagerHrEmployeeId: t.default_area_manager_user_id ? (employeeIdByUserId.get(t.default_area_manager_user_id) ?? '') : ''
+    });
+    setQuestionRows([]);
+    setRemovedItemIds([]);
+    setNotice(null);
+    setLoadingQuestions(true);
+    listInspectionChecklistItems(props.companyId, t.id)
+      .then((items) => {
+        setQuestionRows(
+          items.length > 0
+            ? items.map((item) => ({
+                key: `existing-${item.id}`,
+                id: item.id,
+                section: item.audit_section_or_category ?? item.section ?? '',
+                question: item.question,
+                score: String((item as any).allocated_score ?? 1)
+              }))
+            : [newQuestionRow()]
+        );
+      })
+      .catch((err: any) => setError(err.message ?? 'Failed to load this template\'s questions.'))
+      .finally(() => setLoadingQuestions(false));
+  }
+
+  function updateQuestionRow(key: string, patch: Partial<QuestionRow>) {
+    setQuestionRows((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
+  function addQuestionRow(afterKey?: string) {
+    setQuestionRows((rows) => {
+      const index = afterKey ? rows.findIndex((r) => r.key === afterKey) : rows.length - 1;
+      const section = index >= 0 ? rows[index].section : '';
+      const next = [...rows];
+      next.splice(index + 1, 0, newQuestionRow(section));
+      return next;
+    });
+  }
+
+  function removeQuestionRow(key: string) {
+    setQuestionRows((rows) => {
+      const target = rows.find((r) => r.key === key);
+      if (target?.id) setRemovedItemIds((ids) => [...ids, target.id as UUID]);
+      return rows.filter((r) => r.key !== key);
+    });
+  }
+
+  function moveQuestionRow(index: number, direction: -1 | 1) {
+    setQuestionRows((rows) => {
+      const target = index + direction;
+      if (target < 0 || target >= rows.length) return rows;
+      const next = [...rows];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
     });
   }
 
@@ -169,21 +259,55 @@ export function InspectionChecklistLibrary(props: Props) {
         defaultAuditorUserId: (editing.defaultAuditorUserId || null) as UUID | null,
         defaultAreaManagerUserId: (editing.defaultAreaManagerUserId || null) as UUID | null
       };
+      let templateId: UUID;
       if (editing.id) {
         await updateInspectionChecklistTemplate({
           ...payload,
           templateId: editing.id,
           updatedByUserId: (user?.id ?? props.companyId) as UUID
         });
+        templateId = editing.id;
       } else {
-        await createInspectionChecklistTemplate({
+        const created = await createInspectionChecklistTemplate({
           ...payload,
           module: editing.module,
           createdByUserId: (user?.id ?? props.companyId) as UUID
         });
+        templateId = created.id as UUID;
+        // If saving the questions fails below, a retry should update this template, not create another.
+        setEditing((prev) => (prev ? { ...prev, id: templateId } : prev));
       }
+
+      for (const itemId of removedItemIds) {
+        await deleteInspectionChecklistItem(props.companyId, itemId);
+      }
+      setRemovedItemIds([]);
+
+      const rows = questionRows
+        .filter((r) => r.question.trim())
+        .map((r, idx) => {
+          const score = Number(r.score);
+          return {
+            id: r.id,
+            item_order: idx + 1,
+            section: r.section.trim() || null,
+            question: r.question.trim(),
+            allocated_score: Number.isFinite(score) && score >= 0 ? score : 1
+          };
+        });
+      const existingRows = rows.filter((r) => r.id);
+      const newRows = rows.filter((r) => !r.id).map(({ id: _id, ...rest }) => rest);
+      if (existingRows.length > 0) {
+        await upsertInspectionChecklistItems({ companyId: props.companyId, templateId, items: existingRows });
+      }
+      if (newRows.length > 0) {
+        await upsertInspectionChecklistItems({ companyId: props.companyId, templateId, items: newRows });
+      }
+
       clearDraft(draftKey);
       setEditing(null);
+      setQuestionRows([]);
+      setNotice(`Template saved with ${rows.length} question${rows.length === 1 ? '' : 's'}.`);
       await refresh();
     } catch (err: any) {
       setError(err.message ?? 'Failed to save template.');
@@ -247,6 +371,12 @@ export function InspectionChecklistLibrary(props: Props) {
           </button>
         )}
       </div>
+
+      {notice && (
+        <div className="bg-success/5 border border-success/20 rounded-xl p-3 text-sm text-success">
+          {notice}
+        </div>
+      )}
 
       {error && (
         <div className="bg-critical/5 border border-critical/20 rounded-xl p-3 text-sm text-critical">
@@ -321,7 +451,7 @@ export function InspectionChecklistLibrary(props: Props) {
       {editing && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
           <div className="absolute inset-0 bg-black/40" onClick={() => setEditing(null)} />
-          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+          <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
             <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
               <p className="text-sm font-semibold text-charcoal">
                 {editing.id ? 'Edit Checklist Template' : 'New Checklist Template'}
@@ -448,6 +578,109 @@ export function InspectionChecklistLibrary(props: Props) {
                   <p className="mt-1 text-xs text-charcoal-500">
                     This employee has no platform login, so they won&apos;t get an automatic notification — they can still be assigned manually per inspection.
                   </p>
+                )}
+              </div>
+              <div className="pt-2 border-t border-surface-200">
+                <p className="text-sm font-semibold text-charcoal">Checklist Questions</p>
+                <p className="text-xs text-charcoal-500 mb-2">
+                  Add the questions inspectors will answer for this checklist. Press Enter in a question to add the next one.
+                </p>
+                {loadingQuestions ? (
+                  <div className="flex items-center gap-2 text-xs text-charcoal-500">
+                    <LoadingSpinner size={14} />
+                    Loading questions…
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-charcoal-500 border-b border-surface-200">
+                          <th className="py-1.5 pr-2 w-8">#</th>
+                          <th className="py-1.5 pr-2 w-40">Section</th>
+                          <th className="py-1.5 pr-2">Question *</th>
+                          <th className="py-1.5 pr-2 w-16">Score</th>
+                          <th className="py-1.5 w-20" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {questionRows.map((row, idx) => (
+                          <tr key={row.key} className="border-b border-surface-100">
+                            <td className="py-1.5 pr-2 text-charcoal-500">{idx + 1}</td>
+                            <td className="py-1.5 pr-2">
+                              <input
+                                value={row.section}
+                                onChange={(e) => updateQuestionRow(row.key, { section: e.target.value })}
+                                placeholder="e.g. Electrical"
+                                className="w-full px-2 py-1 border border-surface-300 rounded text-xs"
+                              />
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <input
+                                value={row.question}
+                                onChange={(e) => updateQuestionRow(row.key, { question: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addQuestionRow(row.key);
+                                  }
+                                }}
+                                placeholder="Question text"
+                                className="w-full px-2 py-1 border border-surface-300 rounded text-xs"
+                              />
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.5}
+                                value={row.score}
+                                onChange={(e) => updateQuestionRow(row.key, { score: e.target.value })}
+                                className="w-14 px-2 py-1 border border-surface-300 rounded text-xs"
+                              />
+                            </td>
+                            <td className="py-1.5">
+                              <div className="flex items-center gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => moveQuestionRow(idx, -1)}
+                                  disabled={idx === 0}
+                                  className="p-1 rounded hover:bg-surface-100 disabled:opacity-30"
+                                  aria-label="Move question up"
+                                >
+                                  <ChevronUpIcon className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveQuestionRow(idx, 1)}
+                                  disabled={idx === questionRows.length - 1}
+                                  className="p-1 rounded hover:bg-surface-100 disabled:opacity-30"
+                                  aria-label="Move question down"
+                                >
+                                  <ChevronDownIcon className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeQuestionRow(row.key)}
+                                  className="p-1 rounded text-critical hover:bg-critical/5"
+                                  aria-label="Remove question"
+                                >
+                                  <Trash2Icon className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <button
+                      type="button"
+                      onClick={() => addQuestionRow()}
+                      className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-teal/30 text-xs text-teal font-medium hover:bg-teal/5"
+                    >
+                      <PlusIcon className="w-3 h-3" />
+                      Add question
+                    </button>
+                  </div>
                 )}
               </div>
               <div>

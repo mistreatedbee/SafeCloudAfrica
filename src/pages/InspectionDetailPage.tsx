@@ -152,6 +152,7 @@ export function InspectionDetailPage() {
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [evidenceItemId, setEvidenceItemId] = useState<string | null>(null);
   const [runActionError, setRunActionError] = useState<string | null>(null);
+  const [runActionNotice, setRunActionNotice] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [startTemplateId, setStartTemplateId] = useState('');
   const [startingRun, setStartingRun] = useState(false);
@@ -267,13 +268,15 @@ export function InspectionDetailPage() {
     if (!activeCompanyId || !latestRun?.run?.template_id) return;
     setReloadingItems(true);
     setRunActionError(null);
+    setRunActionNotice(null);
     try {
-      await addTemplateItemsToRun({
+      const added = await addTemplateItemsToRun({
         companyId: activeCompanyId as UUID,
         runId: latestRun.run.id as UUID,
         templateId: latestRun.run.template_id as UUID
       });
       await refreshRun();
+      setRunActionNotice(`${added.length} question${added.length === 1 ? '' : 's'} loaded from template.`);
     } catch (e) {
       setRunActionError(toUserFacingError(e, 'Failed to load questions from the template. Please try again.'));
     } finally {
@@ -283,6 +286,29 @@ export function InspectionDetailPage() {
 
   async function handleCompleteRun() {
     if (!activeCompanyId || !latestRun || !user?.id) return;
+    const items = latestRun.items;
+    if (items.length === 0) {
+      setRunActionError('No checklist questions loaded. Reload questions from the template before completing.');
+      return;
+    }
+    const answered = items.filter((i) => i.inspection_rating || i.compliance_status);
+    if (
+      answered.length === 0 &&
+      !window.confirm('No questions have been answered yet. Are you sure you want to complete this run?')
+    ) {
+      return;
+    }
+    const nonConformingWithoutCapa = items.filter(
+      (i) => (i.inspection_rating === 'NC' || i.inspection_rating === 'PC') && !i.corrective_action_id
+    );
+    if (
+      nonConformingWithoutCapa.length > 0 &&
+      !window.confirm(
+        `${nonConformingWithoutCapa.length} non-conformance${nonConformingWithoutCapa.length === 1 ? ' has' : 's have'} no corrective action. Continue anyway?`
+      )
+    ) {
+      return;
+    }
     setCompletingRun(true);
     setRunActionError(null);
     try {
@@ -482,6 +508,7 @@ export function InspectionDetailPage() {
                 <>
                   {runError && <div className="text-xs text-critical">{runError.message}</div>}
                   {runActionError && <div className="text-xs text-critical bg-critical/5 border border-critical/20 rounded-lg p-2">{runActionError}</div>}
+                  {runActionNotice && <div className="text-xs text-success bg-success/5 border border-success/20 rounded-lg p-2">{runActionNotice}</div>}
                   {!latestRun && (
                     <div className="bg-surface-50 border border-surface-200 rounded-xl p-4 space-y-3">
                       <p className="text-sm text-charcoal-500">

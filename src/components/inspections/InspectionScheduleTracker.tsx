@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { AlertTriangleIcon, CheckIcon } from 'lucide-react';
+import { AlertTriangleIcon, CheckIcon, XIcon } from 'lucide-react';
 import type { InspectionRun } from '../../api/models/entities';
 import {
   getInspectionPeriodKey,
@@ -43,6 +43,45 @@ export function InspectionScheduleTracker(props: {
 
   const overdue = isInspectionOverdue(frequency, lastCompletedAt, now);
 
+  // Days before the first run aren't counted as missed.
+  const trackingStart = useMemo(() => {
+    const times = props.runs
+      .map((r) => new Date((r as any).started_at ?? (r as any).created_at ?? '').getTime())
+      .filter((t) => Number.isFinite(t));
+    if (times.length === 0) return null;
+    const d = new Date(Math.min(...times));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [props.runs]);
+
+  const nextDueLabel = useMemo(() => {
+    const fmt = (d: Date) => d.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short' });
+    const doneNow = completedPeriodKeys.has(getInspectionPeriodKey(frequency, now));
+    switch (frequency) {
+      case 'daily': {
+        if (!doneNow) return `Today (${fmt(now)})`;
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return `Tomorrow (${fmt(tomorrow)})`;
+      }
+      case 'weekly': {
+        if (!doneNow) return 'This week';
+        const nextMonday = startOfIsoWeek(now);
+        nextMonday.setDate(nextMonday.getDate() + 7);
+        return `Next week (from ${fmt(nextMonday)})`;
+      }
+      case 'monthly':
+        return doneNow ? `Next month (${new Date(now.getFullYear(), now.getMonth() + 1, 1).toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })})` : 'This month';
+      case 'quarterly':
+        return doneNow ? 'Next quarter' : 'This quarter';
+      case 'annually':
+        return doneNow ? String(now.getFullYear() + 1) : `This year (${now.getFullYear()})`;
+      default:
+        return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completedPeriodKeys, frequency]);
+
   if (frequency === 'audit-linked' || frequency === 'ad_hoc') {
     return null;
   }
@@ -52,7 +91,7 @@ export function InspectionScheduleTracker(props: {
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-semibold text-charcoal">Schedule</p>
         {overdue && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-critical/10 text-critical text-xs font-semibold">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-critical text-white text-xs font-semibold">
             <AlertTriangleIcon className="w-3 h-3" /> Overdue
           </span>
         )}
@@ -66,20 +105,36 @@ export function InspectionScheduleTracker(props: {
             const key = getInspectionPeriodKey('daily', dayDate);
             const done = completedPeriodKeys.has(key);
             const isToday = dayDate.toDateString() === now.toDateString();
+            const todayStart = new Date(now);
+            todayStart.setHours(0, 0, 0, 0);
+            const missed =
+              !done && !isToday && dayDate < todayStart && trackingStart !== null && dayDate >= trackingStart;
             return (
               <div key={label} className="flex flex-col items-center gap-1">
                 <span className={`text-[10px] font-medium ${isToday ? 'text-teal' : 'text-charcoal-500'}`}>{label}</span>
                 <div
                   className={`w-7 h-7 rounded-full flex items-center justify-center border text-xs ${
                     done
-                      ? 'bg-teal text-white border-teal'
-                      : isToday
-                        ? 'border-teal text-teal'
-                        : 'border-surface-300 text-charcoal-400'
+                      ? 'bg-success text-white border-success'
+                      : missed
+                        ? 'bg-critical/10 text-critical border-critical/40'
+                        : isToday
+                          ? 'border-critical text-critical font-semibold'
+                          : 'border-surface-300 text-charcoal-400'
                   }`}
+                  title={done ? 'Completed' : missed ? 'Missed' : undefined}
                 >
-                  {done ? <CheckIcon className="w-3.5 h-3.5" /> : dayDate.getDate()}
+                  {done ? (
+                    <CheckIcon className="w-3.5 h-3.5" />
+                  ) : missed ? (
+                    <XIcon className="w-3.5 h-3.5" />
+                  ) : (
+                    dayDate.getDate()
+                  )}
                 </div>
+                {isToday && !done && (
+                  <span className="text-[10px] font-semibold text-critical whitespace-nowrap">Due today</span>
+                )}
               </div>
             );
           })}
@@ -125,6 +180,12 @@ export function InspectionScheduleTracker(props: {
       {frequency === 'annually' && (
         <p className="text-sm text-charcoal">
           {completedPeriodKeys.has(String(now.getFullYear())) ? `Completed for ${now.getFullYear()}` : `Not yet completed for ${now.getFullYear()}`}
+        </p>
+      )}
+
+      {nextDueLabel && (
+        <p className="mt-3 text-xs text-charcoal-500">
+          <span className="font-semibold text-charcoal">Next due:</span> {nextDueLabel}
         </p>
       )}
     </div>
