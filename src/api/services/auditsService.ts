@@ -864,7 +864,15 @@ export async function submitAuditResponse(input: {
         });
 
     let { data, error } = await query.select('*').single();
-    if (error && String(error.message ?? '').toLowerCase().includes('compliance_status')) {
+    // Only fall back when the column itself is missing (older schema). A check-constraint
+    // violation must surface as an error, not silently drop the chosen status.
+    const errorText = String(error?.message ?? '').toLowerCase();
+    if (
+      error &&
+      errorText.includes('compliance_status') &&
+      !errorText.includes('check constraint') &&
+      !errorText.includes('violates')
+    ) {
       delete payload.compliance_status;
       query = existing
         ? insforge.database.from('audit_responses').update(payload).eq('id', (existing as AuditResponse).id)
