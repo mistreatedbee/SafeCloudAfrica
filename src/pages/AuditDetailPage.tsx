@@ -293,13 +293,39 @@ export function AuditDetailPage() {
     [activeCompanyId, auditId]
   );
 
+  // Optimistic per-question edits, shown immediately while the save runs in the background.
+  const [localOverrides, setLocalOverrides] = useState<Map<UUID, Partial<AuditResponse>>>(() => new Map());
+  const scoreSaveTimersRef = React.useRef<Map<UUID, number>>(new Map());
+
+  useEffect(() => {
+    const timers = scoreSaveTimersRef.current;
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, []);
+
+  // Drop overrides once the fetched response has caught up with them.
+  useEffect(() => {
+    if (!responses) return;
+    setLocalOverrides((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Map(prev);
+      for (const [questionId, override] of prev) {
+        const fetched = responses.find((r) => r.audit_question_id === questionId) as any;
+        if (!fetched) continue;
+        const caughtUp = Object.entries(override).every(([k, v]) => JSON.stringify(fetched[k] ?? null) === JSON.stringify(v ?? null));
+        if (caughtUp) next.delete(questionId);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [responses]);
+
   const responsesByQuestion = useMemo(() => {
     const map = new Map<UUID, AuditResponse>();
     (responses ?? []).forEach((r) => {
-      map.set(r.audit_question_id, r);
+      const override = localOverrides.get(r.audit_question_id);
+      map.set(r.audit_question_id, override ? ({ ...r, ...override } as AuditResponse) : r);
     });
     return map;
-  }, [responses]);
+  }, [responses, localOverrides]);
 
   const isAuditee = useMemo(() => {
     if (!audit || !user?.id) return false;
@@ -381,23 +407,24 @@ export function AuditDetailPage() {
 
   const checklistStats = useMemo(() => {
     const total = questions?.length ?? 0;
-    const answered = (responses ?? []).length;
-    const compliant = (responses ?? []).filter((r) => r.is_compliant).length;
+    const merged = Array.from(responsesByQuestion.values());
+    const answered = merged.length;
+    const compliant = merged.filter((r) => r.is_compliant).length;
     const percentCompliant = answered > 0 ? Math.round((compliant / answered) * 100) : 0;
     let achieved = 0;
     let allocated = 0;
-    for (const r of responses ?? []) {
+    for (const r of merged) {
       achieved += Number((r as any).achieved_score ?? 0);
       allocated += Number((r as any).allocated_score ?? 0);
     }
     const scorePercent = allocated > 0 ? Math.round((achieved / allocated) * 1000) / 10 : 0;
     const complianceCounts = { C: 0, PC: 0, NC: 0, Obs: 0, 'N/A': 0 } as Record<string, number>;
-    for (const r of responses ?? []) {
+    for (const r of merged) {
       const status = (r as any).compliance_status as string | undefined;
       if (status && status in complianceCounts) complianceCounts[status] += 1;
     }
     return { total, answered, compliant, percentCompliant, achieved, allocated, scorePercent, complianceCounts };
-  }, [questions, responses]);
+  }, [questions, responsesByQuestion]);
 
   async function handleShareQuestionsWithAuditee() {
     if (!audit || !activeCompanyId || !user?.id) return;
@@ -509,8 +536,32 @@ export function AuditDetailPage() {
     }
   }
 
+  function scheduleScoreSave(question: AuditQuestion, achievedScore: number | null) {
+    setLocalOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(question.id, { ...(prev.get(question.id) ?? {}), achieved_score: achievedScore } as any);
+      return next;
+    });
+    const timers = scoreSaveTimersRef.current;
+    const pending = timers.get(question.id);
+    if (pending) window.clearTimeout(pending);
+    timers.set(
+      question.id,
+      window.setTimeout(() => {
+        timers.delete(question.id);
+        void handleSubmitResponse(question, { achieved_score: achievedScore } as any);
+      }, 400)
+    );
+  }
+
   async function handleSubmitResponse(question: AuditQuestion, partial: Partial<AuditResponse>) {
     if (!audit || !activeCompanyId || !user?.id) return;
+    const previousOverride = localOverrides.get(question.id);
+    setLocalOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(question.id, { ...(prev.get(question.id) ?? {}), ...partial });
+      return next;
+    });
     setSavingResponseId(question.id);
     try {
       const existing = responsesByQuestion.get(question.id);
@@ -536,8 +587,16 @@ export function AuditDetailPage() {
       await refreshNcrs();
       await refreshCapas();
       await refreshLinkedImprovements();
+    } catch (e) {
+      setLocalOverrides((prev) => {
+        const next = new Map(prev);
+        if (previousOverride) next.set(question.id, previousOverride);
+        else next.delete(question.id);
+        return next;
+      });
+      setActionError(toUserFacingError(e, 'Failed to save this answer. Please try again.'));
     } finally {
-      setSavingResponseId(null);
+      setSavingResponseId((current) => (current === question.id ? null : current));
     }
   }
 
@@ -750,7 +809,10 @@ export function AuditDetailPage() {
     }
   }
 
-  const loading = auditLoading || questionsLoading || responsesLoading;
+  // Only block the page on the first load. Background refreshes after a save keep the
+  // current view mounted instead of swapping it for a spinner (which looked like a reload).
+  const loading =
+    (auditLoading && !audit) || (questionsLoading && !questions) || (responsesLoading && !responses);
 
   if (!auditId) {
     return (
@@ -1488,9 +1550,7 @@ export function AuditDetailPage() {
                                 value={(resp as any)?.achieved_score ?? ''}
                                 onChange={(e) => {
                                   const v = e.target.value;
-                                  handleSubmitResponse(q, {
-                                    achieved_score: v === '' ? null : Number(v)
-                                  } as any);
+                                  scheduleScoreSave(q, v === '' ? null : Number(v));
                                 }}
                                 className="w-14 px-2 py-1 bg-white border border-surface-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal focus:border-transparent"
                               />
