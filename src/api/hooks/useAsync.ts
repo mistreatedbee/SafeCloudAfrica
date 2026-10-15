@@ -5,7 +5,15 @@ import { subscribeToAuthRecovered, subscribeToLiveDataMutations } from '../liveD
 export type AsyncState<T> = {
   data: T | null;
   error: Error | null;
+  /**
+   * True only while there is nothing to show yet: the first load, or a load after
+   * the deps changed (e.g. a different record id). Background refreshes of data
+   * that is already on screen do NOT set this, so pages stay mounted instead of
+   * flashing back to their loading state after every save or window focus.
+   */
   loading: boolean;
+  /** True while any fetch is in flight, including background refreshes. */
+  refreshing: boolean;
   retry: () => void;
   refetch: () => void;
   /** Alias for `refetch` / `retry` (invalidate and reload). */
@@ -67,6 +75,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
     data: null,
     error: null,
     loading: true,
+    refreshing: true,
     retry: noop,
     refetch: noop,
     refresh: noop,
@@ -85,11 +94,19 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
   const refreshIntervalMs = options.refreshIntervalMs ?? 0;
   const refreshOnMutation = options.refreshOnMutation ?? true;
 
+  const prevDepsRef = useRef<any[] | null>(null);
+
   useEffect(() => {
     let cancelled = false;
+    const prevDeps = prevDepsRef.current;
+    const depsChanged =
+      prevDeps === null || prevDeps.length !== deps.length || deps.some((d, i) => !Object.is(d, prevDeps[i]));
+    prevDepsRef.current = deps;
     setState((s) => ({
       ...s,
-      loading: true,
+      // Same inputs + data already loaded => quiet background refresh.
+      loading: depsChanged || s.data === null,
+      refreshing: true,
       error: null,
       retry,
       refetch: retry,
@@ -103,7 +120,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
         backendUnavailableUntilRef.current = 0;
         authFailureRef.current = false;
         authFailureEmittedRef.current = false;
-        setState({ data, error: null, loading: false, retry, refetch: retry, refresh: retry, isBackendUnavailable: false, isAuthFailure: false });
+        setState({ data, error: null, loading: false, refreshing: false, retry, refetch: retry, refresh: retry, isBackendUnavailable: false, isAuthFailure: false });
       })
       .catch((error) => {
         if (cancelled) return;
@@ -123,6 +140,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: any[], options: UseAsync
           data: prev.data,
           error: normalizedError,
           loading: false,
+          refreshing: false,
           retry,
           refetch: retry,
           refresh: retry,

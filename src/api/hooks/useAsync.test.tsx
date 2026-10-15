@@ -58,3 +58,80 @@ describe('useAsync', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 });
+
+function LoadingHarness(props: { fn: () => Promise<string>; id: string }) {
+  const state = useAsync(props.fn, [props.id]);
+  return (
+    <div>
+      <span data-testid="loading">{String(state.loading)}</span>
+      <span data-testid="refreshing">{String(state.refreshing)}</span>
+      <span data-testid="data">{state.data ?? ''}</span>
+      <button data-testid="refresh" onClick={() => state.refresh()} />
+    </div>
+  );
+}
+
+describe('useAsync loading vs background refresh', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  const text = (id: string) => container.querySelector(`[data-testid="${id}"]`)?.textContent;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      root.unmount();
+      await flushAsyncWork();
+    });
+    container.remove();
+  });
+
+  it('keeps loading false during a refresh of data already on screen', async () => {
+    let resolveNext: (v: string) => void = () => undefined;
+    const fn = vi.fn().mockResolvedValueOnce('first').mockImplementation(
+      () => new Promise<string>((resolve) => { resolveNext = resolve; })
+    );
+
+    await act(async () => {
+      root.render(<LoadingHarness fn={fn} id="a" />);
+      await flushAsyncWork();
+    });
+    expect(text('data')).toBe('first');
+    expect(text('loading')).toBe('false');
+
+    await act(async () => {
+      (container.querySelector('[data-testid="refresh"]') as HTMLButtonElement).click();
+      await flushAsyncWork();
+    });
+    expect(text('loading')).toBe('false');
+    expect(text('refreshing')).toBe('true');
+    expect(text('data')).toBe('first');
+
+    await act(async () => {
+      resolveNext('second');
+      await flushAsyncWork();
+    });
+    expect(text('data')).toBe('second');
+    expect(text('refreshing')).toBe('false');
+  });
+
+  it('reports loading when the deps change', async () => {
+    const fn = vi.fn().mockResolvedValueOnce('first').mockImplementation(() => new Promise<string>(() => undefined));
+
+    await act(async () => {
+      root.render(<LoadingHarness fn={fn} id="a" />);
+      await flushAsyncWork();
+    });
+    expect(text('loading')).toBe('false');
+
+    await act(async () => {
+      root.render(<LoadingHarness fn={fn} id="b" />);
+      await flushAsyncWork();
+    });
+    expect(text('loading')).toBe('true');
+  });
+});

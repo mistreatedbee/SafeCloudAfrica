@@ -68,6 +68,7 @@ export function ToolboxTalksPage() {
   const {
     data: talks,
     loading: talksLoading,
+    refreshing: talksRefreshing,
     error: talksError,
     refetch
   } = useAsync(async () => {
@@ -557,7 +558,7 @@ export function ToolboxTalksPage() {
           <div className="bg-white border border-surface-300 rounded-xl overflow-auto">
             <div className="px-4 py-3 border-b border-surface-200 flex items-center justify-between gap-2">
               <h3 className="font-semibold">Toolbox talks ({(talks ?? []).length})</h3>
-              {talksLoading && talks != null && (
+              {talksRefreshing && talks != null && (
                 <span className="text-xs text-charcoal-500 inline-flex items-center gap-1">
                   <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
                   Refreshing…
