@@ -4,7 +4,6 @@ import { Building2Icon, RefreshCwIcon, SearchIcon, ShieldCheckIcon } from 'lucid
 import { useUser } from '@insforge/react';
 import { useAsync } from '../../../api/hooks/useAsync';
 import { getErrorMessage } from '../../../api/insforge/errors';
-import { getErrorMessage } from '../../../api/insforge/errors';
 import { insforge } from '../../../api/insforge/client';
 import { suspendOrgSubscription } from '../../../api/services/licensesService';
 import {

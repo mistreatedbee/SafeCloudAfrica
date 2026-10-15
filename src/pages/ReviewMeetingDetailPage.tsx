@@ -501,7 +501,7 @@ export function ReviewMeetingDetailPage() {
     } catch (err: unknown) {
       // Log detailed error for development while showing a user-friendly message.
       // eslint-disable-next-line no-console
-      console.error('[ReviewMeetingDetailPage] failed to save review meeting', { err, payload, meetingId });
+      console.error('[ReviewMeetingDetailPage] failed to save review meeting', { err, meetingId });
       setError(toUserFacingError(err, 'Failed to save review meeting.'));
     } finally {
       setSaving(false);

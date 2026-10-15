@@ -69,8 +69,7 @@ export function SuperAdminSupportTicketsPage() {
       ]);
       setTickets(ticketRows);
       setStats(statRows);
-      if (companyResult.error) throw companyResult.error;
-      setCompanies((companyResult.data ?? []) as Company[]);
+      setCompanies(companyResult);
       if (selected) {
         setSelected(await getSupportTicketWithThread(selected.ticket.id));
       }

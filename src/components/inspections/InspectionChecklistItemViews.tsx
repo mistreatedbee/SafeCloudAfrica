@@ -25,6 +25,7 @@ function CapaInlineForm(props: {
   const [actionDescription, setActionDescription] = useState('');
   const [assigneeUserId, setAssigneeUserId] = useState<UUID | ''>('');
   const [assigneeName, setAssigneeName] = useState('');
+  const [assigneeEmployeeId, setAssigneeEmployeeId] = useState<UUID | ''>('');
   const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -40,11 +41,14 @@ function CapaInlineForm(props: {
       />
       <HrEmployeeSelect
         companyId={props.companyId}
-        value={assigneeUserId}
+        value={assigneeEmployeeId}
+        valueField="id"
+        includeUnlinked
         label="Responsible person"
         placeholder="Select responsible person"
         onChange={(selected, meta) => {
-          setAssigneeUserId(selected);
+          setAssigneeEmployeeId(selected);
+          setAssigneeUserId((meta.userId ?? '') as UUID | '');
           setAssigneeName(meta.nameSnapshot);
         }}
       />

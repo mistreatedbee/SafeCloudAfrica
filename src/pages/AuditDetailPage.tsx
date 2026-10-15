@@ -161,6 +161,7 @@ export function AuditDetailPage() {
   const [capaDraftDueDate, setCapaDraftDueDate] = useState('');
   const [capaDraftAssigneeUserId, setCapaDraftAssigneeUserId] = useState<UUID | ''>('');
   const [capaDraftAssigneeName, setCapaDraftAssigneeName] = useState('');
+  const [capaDraftAssigneeEmployeeId, setCapaDraftAssigneeEmployeeId] = useState<UUID | ''>('');
   const [creatingTaskForFindingId, setCreatingTaskForFindingId] = useState<UUID | null>(null);
   const [dateApprovalLoading, setDateApprovalLoading] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
@@ -624,6 +625,7 @@ export function AuditDetailPage() {
     setCapaDraftDueDate('');
     setCapaDraftAssigneeUserId('');
     setCapaDraftAssigneeName('');
+    setCapaDraftAssigneeEmployeeId('');
   }
 
   function cancelCapaDraft() {
@@ -631,6 +633,7 @@ export function AuditDetailPage() {
     setCapaDraftDueDate('');
     setCapaDraftAssigneeUserId('');
     setCapaDraftAssigneeName('');
+    setCapaDraftAssigneeEmployeeId('');
   }
 
   async function handleCreateCapaForQuestion(question: AuditQuestion) {
@@ -1731,11 +1734,14 @@ export function AuditDetailPage() {
                                   <div className="flex-1 max-w-xs">
                                     <HrEmployeeSelect
                                       companyId={activeCompanyId}
-                                      value={capaDraftAssigneeUserId}
+                                      value={capaDraftAssigneeEmployeeId}
+                                      valueField="id"
+                                      includeUnlinked
                                       label="Responsible person"
                                       placeholder="Select responsible person"
                                       onChange={(selected, meta) => {
-                                        setCapaDraftAssigneeUserId(selected);
+                                        setCapaDraftAssigneeEmployeeId(selected);
+                                        setCapaDraftAssigneeUserId((meta.userId ?? '') as UUID | '');
                                         setCapaDraftAssigneeName(meta.nameSnapshot);
                                       }}
                                     />
@@ -1768,7 +1774,11 @@ export function AuditDetailPage() {
                                   </div>
                                 </div>
                                 {capaDraftAssigneeName && (
-                                  <p className="mt-2 text-xs text-charcoal-500">Assigning to {capaDraftAssigneeName}.</p>
+                                  <p className="mt-2 text-xs text-charcoal-500">
+                                    {capaDraftAssigneeUserId
+                                      ? `Assigning to ${capaDraftAssigneeName}.`
+                                      : `${capaDraftAssigneeName} has no platform login, so the corrective action will be created unassigned.`}
+                                  </p>
                                 )}
                               </td>
                             </tr>

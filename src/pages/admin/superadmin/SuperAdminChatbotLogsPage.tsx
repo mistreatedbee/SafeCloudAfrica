@@ -71,8 +71,7 @@ export function SuperAdminChatbotLogsPage() {
       setConversations(rows);
       setStats(buildDashboardStats(rows));
       setActivity(buildActivityStats(rows));
-      if (companyResult.error) throw companyResult.error;
-      setCompanies((companyResult.data ?? []) as Company[]);
+      setCompanies(companyResult);
     } catch (err) {
       if (isChatbotLogsSchemaMissingError(err)) {
         setSchemaMissing(true);
