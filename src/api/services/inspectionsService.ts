@@ -469,7 +469,7 @@ export async function upsertInspectionChecklistItems(input: {
 }): Promise<InspectionChecklistItem[]> {
   return withInsforgeSession('inspections:template-items:upsert', async () => {
   const rows = input.items.map((item) => ({
-    id: item.id ?? undefined,
+    ...(item.id ? { id: item.id } : {}),
     company_id: input.companyId,
     template_id: input.templateId,
     item_order: item.item_order,
