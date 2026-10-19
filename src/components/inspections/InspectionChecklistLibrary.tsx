@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { PlusIcon, Edit2Icon, ArchiveIcon, RefreshCwIcon, XIcon, ChevronUpIcon, ChevronDownIcon, Trash2Icon } from 'lucide-react';
+import { PlusIcon, Edit2Icon, ArchiveIcon, RefreshCwIcon, XIcon, ChevronUpIcon, ChevronDownIcon, Trash2Icon, CopyIcon } from 'lucide-react';
 import type { ModuleKey, UUID } from '../../api/models/core';
 import type { InspectionChecklistTemplate } from '../../api/models/entities';
 import {
@@ -52,14 +52,16 @@ type QuestionRow = {
   key: string;
   id?: UUID;
   section: string;
+  idNumber: string;
   question: string;
   score: string;
+  riskLevel: 'low' | 'medium' | 'high';
 };
 
 let questionRowSeq = 0;
 function newQuestionRow(section = ''): QuestionRow {
   questionRowSeq += 1;
-  return { key: `q-${Date.now()}-${questionRowSeq}`, section, question: '', score: '1' };
+  return { key: `q-${Date.now()}-${questionRowSeq}`, section, idNumber: '', question: '', score: '1', riskLevel: 'medium' };
 }
 
 export function InspectionChecklistLibrary(props: Props) {
@@ -73,6 +75,7 @@ export function InspectionChecklistLibrary(props: Props) {
   const [editing, setEditing] = useState<TemplateFormState | null>(null);
   const [buildingTemplate, setBuildingTemplate] = useState<InspectionChecklistTemplate | null>(null);
   const [saving, setSaving] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<UUID | null>(null);
   const [employees, setEmployees] = useState<HrEmployee[]>([]);
   const [questionRows, setQuestionRows] = useState<QuestionRow[]>([]);
   const [removedItemIds, setRemovedItemIds] = useState<UUID[]>([]);
@@ -197,8 +200,10 @@ export function InspectionChecklistLibrary(props: Props) {
                 key: `existing-${item.id}`,
                 id: item.id,
                 section: item.audit_section_or_category ?? item.section ?? '',
+                idNumber: item.requirement_reference ?? '',
                 question: item.question,
-                score: String((item as any).allocated_score ?? 1)
+                score: String((item as any).allocated_score ?? 1),
+                riskLevel: (item.risk_level_default ?? 'medium') as 'low' | 'medium' | 'high'
               }))
             : [newQuestionRow()]
         );
@@ -291,8 +296,10 @@ export function InspectionChecklistLibrary(props: Props) {
             id: r.id,
             item_order: idx + 1,
             section: r.section.trim() || null,
+            requirement_reference: r.idNumber.trim() || null,
             question: r.question.trim(),
-            allocated_score: Number.isFinite(score) && score >= 0 ? score : 1
+            allocated_score: Number.isFinite(score) && score >= 0 ? score : 1,
+            risk_level_default: r.riskLevel
           };
         });
       const existingRows = rows.filter((r) => r.id);
@@ -329,6 +336,52 @@ export function InspectionChecklistLibrary(props: Props) {
       await refresh();
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function duplicateTemplate(t: InspectionChecklistTemplate) {
+    if (!props.canManage) return;
+    setDuplicatingId(t.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const items = await listInspectionChecklistItems(props.companyId, t.id);
+      const created = await createInspectionChecklistTemplate({
+        companyId: props.companyId,
+        module: t.module,
+        name: `${t.name} (copy)`,
+        subtitle: t.subtitle ?? undefined,
+        description: t.description ?? undefined,
+        scope: t.scope,
+        siteId: t.site_id ?? null,
+        departmentId: t.department_id ?? null,
+        defaultArea: t.default_area ?? undefined,
+        frequency: (t.frequency ?? 'monthly') as InspectionFrequency,
+        defaultAuditorUserId: t.default_auditor_user_id ?? undefined,
+        defaultAreaManagerUserId: t.default_area_manager_user_id ?? undefined,
+        createdByUserId: (user?.id ?? props.companyId) as UUID
+      });
+      if (items.length > 0) {
+        await upsertInspectionChecklistItems({
+          companyId: props.companyId,
+          templateId: created.id,
+          items: items.map((item, idx) => ({
+            item_order: idx + 1,
+            section: item.audit_section_or_category ?? item.section ?? null,
+            requirement_reference: item.requirement_reference ?? null,
+            question: item.question,
+            expected_evidence: item.expected_evidence ?? null,
+            allocated_score: item.allocated_score ?? 1,
+            risk_level_default: item.risk_level_default ?? null
+          }))
+        });
+      }
+      setNotice(`"${t.name}" duplicated as "${created.name}" with ${items.length} question${items.length === 1 ? '' : 's'}.`);
+      await refresh();
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to duplicate template.');
+    } finally {
+      setDuplicatingId(null);
     }
   }
 
@@ -424,6 +477,15 @@ export function InspectionChecklistLibrary(props: Props) {
                       className="p-1.5 rounded-lg border border-surface-200 text-xs text-charcoal-500 hover:bg-surface-50"
                     >
                       <Edit2Icon className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void duplicateTemplate(t)}
+                      disabled={duplicatingId === t.id}
+                      title="Duplicate this checklist (e.g. for next year)"
+                      className="p-1.5 rounded-lg border border-surface-200 text-xs text-charcoal-500 hover:bg-surface-50 disabled:opacity-50"
+                    >
+                      {duplicatingId === t.id ? <LoadingSpinner size={12} /> : <CopyIcon className="w-3 h-3" />}
                     </button>
                     <button
                       type="button"
@@ -596,9 +658,11 @@ export function InspectionChecklistLibrary(props: Props) {
                       <thead>
                         <tr className="text-left text-charcoal-500 border-b border-surface-200">
                           <th className="py-1.5 pr-2 w-8">#</th>
-                          <th className="py-1.5 pr-2 w-40">Section</th>
+                          <th className="py-1.5 pr-2 w-28">ID/Number</th>
+                          <th className="py-1.5 pr-2 w-32">Section</th>
                           <th className="py-1.5 pr-2">Question *</th>
-                          <th className="py-1.5 pr-2 w-16">Score</th>
+                          <th className="py-1.5 pr-2 w-14">Points</th>
+                          <th className="py-1.5 pr-2 w-24">Risk (L/M/H)</th>
                           <th className="py-1.5 w-20" />
                         </tr>
                       </thead>
@@ -606,6 +670,14 @@ export function InspectionChecklistLibrary(props: Props) {
                         {questionRows.map((row, idx) => (
                           <tr key={row.key} className="border-b border-surface-100">
                             <td className="py-1.5 pr-2 text-charcoal-500">{idx + 1}</td>
+                            <td className="py-1.5 pr-2">
+                              <input
+                                value={row.idNumber}
+                                onChange={(e) => updateQuestionRow(row.key, { idNumber: e.target.value })}
+                                placeholder="e.g. House 2"
+                                className="w-full px-2 py-1 border border-surface-300 rounded text-xs"
+                              />
+                            </td>
                             <td className="py-1.5 pr-2">
                               <input
                                 value={row.section}
@@ -637,6 +709,17 @@ export function InspectionChecklistLibrary(props: Props) {
                                 onChange={(e) => updateQuestionRow(row.key, { score: e.target.value })}
                                 className="w-14 px-2 py-1 border border-surface-300 rounded text-xs"
                               />
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <select
+                                value={row.riskLevel}
+                                onChange={(e) => updateQuestionRow(row.key, { riskLevel: e.target.value as QuestionRow['riskLevel'] })}
+                                className="w-full px-2 py-1 border border-surface-300 rounded text-xs"
+                              >
+                                <option value="low">L — Low</option>
+                                <option value="medium">M — Medium</option>
+                                <option value="high">H — High</option>
+                              </select>
                             </td>
                             <td className="py-1.5">
                               <div className="flex items-center gap-0.5">
@@ -685,7 +768,7 @@ export function InspectionChecklistLibrary(props: Props) {
               </div>
               <div>
                 <label className="block text-xs font-medium text-charcoal mb-1.5">
-                  Description
+                  Comments
                 </label>
                 <textarea
                   value={editing.description}

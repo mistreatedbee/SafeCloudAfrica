@@ -978,12 +978,17 @@ export async function updateInspectionRunItem(
     }).catch(() => undefined);
   }
 
-  // Escalate medium/high risk ratings to responsible person and area manager.
-  if (typeof patch.risk_level !== 'undefined' && (patch.risk_level === 'medium' || patch.risk_level === 'high')) {
+  // Escalate to the responsible person and area manager when a high-risk item is marked
+  // non-compliant -- fires whichever field (risk level or rating) completes the combination.
+  if (
+    (typeof patch.risk_level !== 'undefined' || typeof patch.inspection_rating !== 'undefined') &&
+    updatedItem.risk_level === 'high' &&
+    updatedItem.inspection_rating === 'NC'
+  ) {
     await notifyInspectionRiskEscalation({
       companyId,
       item: updatedItem,
-      riskLevel: patch.risk_level
+      riskLevel: 'high'
     }).catch(() => undefined);
   }
 
