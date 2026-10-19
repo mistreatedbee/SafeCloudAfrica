@@ -81,6 +81,42 @@ async function fetchMemberships(userId: UUID): Promise<MembershipWithCompany[]> 
   }));
 }
 
+function isTransientFetchError(error: unknown): boolean {
+  const msg = String((error as Error)?.message ?? error ?? '').toLowerCase();
+  return (
+    msg.includes('502') ||
+    msg.includes('503') ||
+    msg.includes('504') ||
+    msg.includes('timeout') ||
+    msg.includes('bad gateway') ||
+    msg.includes('service unavailable') ||
+    msg.includes('pgrst001') ||
+    msg.includes('pgrst002') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('network')
+  );
+}
+
+/**
+ * A membership fetch that fails transiently (a brief backend restart, a dropped
+ * connection) must never be mistaken for "this user has no organization" -- that
+ * sends a real member down the account-creation flow. Retry transient failures a
+ * few times with a short backoff before giving up.
+ */
+async function fetchMembershipsWithRetry(userId: UUID, attempts = 3): Promise<MembershipWithCompany[]> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fetchMemberships(userId);
+    } catch (error) {
+      lastError = error;
+      if (!isTransientFetchError(error) || attempt === attempts) throw error;
+      await new Promise((resolve) => window.setTimeout(resolve, 600 * attempt));
+    }
+  }
+  throw lastError;
+}
+
 export function TenantProvider({ children }: { children: React.ReactNode }) {
   const { user, isLoaded } = useUser();
   const [memberships, setMemberships] = useState<MembershipWithCompany[]>([]);
@@ -133,7 +169,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
           throw ensureSaResult.error;
         }
       }
-      const rows = await fetchMemberships(user.id as UUID);
+      const rows = await fetchMembershipsWithRetry(user.id as UUID);
       setMemberships(rows);
 
       const stored = getStoredActiveCompanyId();
