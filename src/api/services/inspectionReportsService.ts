@@ -15,6 +15,7 @@ export type InspectionRunReport = {
   repeatFindingsCount: number;
   repeatFindingsIndicator: 'none' | 'low' | 'high';
   auditScoreHistory: Array<{ runId: UUID; completedAt: string | null; compliancePercent: number }>;
+  allItems: any[];
   findings: any[];
   nonConformances: any[];
   highRiskFindings: any[];
@@ -143,6 +144,7 @@ export async function getInspectionRunReport(companyId: UUID, runId: UUID): Prom
     repeatFindingsCount,
     repeatFindingsIndicator,
     auditScoreHistory,
+    allItems: items,
     findings,
     nonConformances,
     highRiskFindings,
@@ -194,7 +196,7 @@ export async function exportInspectionRunPdf(
     y += 14;
   });
 
-  const itemRows = report.findings.map((item: any, idx: number) => {
+  const itemRows = report.allItems.map((item: any, idx: number) => {
     const evidenceCount = (report.evidenceByItemId[String(item.id)] ?? []).length;
     return [
       String(idx + 1),
@@ -210,7 +212,7 @@ export async function exportInspectionRunPdf(
   autoTable(doc, {
     startY: y + 10,
     head: [['#', 'Category', 'Question', 'Rating', 'Risk', 'Comments', 'Evidence']],
-    body: itemRows.length > 0 ? itemRows : [['—', '—', 'No findings recorded', '—', '—', '—', '—']],
+    body: itemRows.length > 0 ? itemRows : [['—', '—', 'No questions recorded', '—', '—', '—', '—']],
     styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak' },
     headStyles: { fillColor: [15, 118, 110], textColor: 255 },
     columnStyles: { 2: { cellWidth: 140 }, 5: { cellWidth: 110 } }
@@ -231,9 +233,11 @@ export async function exportInspectionRunPdf(
     });
   }
 
-  // Evidence appendix: thumbnail any image evidence attached to findings.
+  // Evidence appendix: thumbnail any image evidence attached to any question.
+  // questionIndex matches the "#" column in the main table above, so indexing
+  // over allItems (not just findings) keeps the two consistent.
   const evidenceEntries: Array<{ questionIndex: number; evidence: InspectionItemEvidence }> = [];
-  report.findings.forEach((item: any, idx: number) => {
+  report.allItems.forEach((item: any, idx: number) => {
     const files = report.evidenceByItemId[String(item.id)] ?? [];
     for (const file of files) {
       if (isImageEvidence(file)) evidenceEntries.push({ questionIndex: idx, evidence: file });

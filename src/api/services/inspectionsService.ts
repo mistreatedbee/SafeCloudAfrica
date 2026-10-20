@@ -924,7 +924,10 @@ export async function updateInspectionRunItem(
     updatePatch.inspection_rating = patch.inspection_rating;
     const rating = patch.inspection_rating;
     const score =
-      rating === 'C' ? existingMaxScore : rating === 'PC' ? Math.round(existingMaxScore / 2) : 0;
+      // Floor (not round) so a 1-point question's PC rating actually differs from
+      // C -- rounding up made every 1-point partial-compliance indistinguishable
+      // from full compliance (Math.round(1/2) === 1, same as a full C).
+      rating === 'C' ? existingMaxScore : rating === 'PC' ? Math.floor(existingMaxScore / 2) : 0;
     updatePatch.score = score;
     updatePatch.max_score = existingMaxScore;
     updatePatch.nonconformance_flag = rating === 'NC';
