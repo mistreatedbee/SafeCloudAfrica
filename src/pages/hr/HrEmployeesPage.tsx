@@ -5,7 +5,7 @@ import { Layout } from '../../components/layout/Layout';
 import { HrSectionNav } from './HrSectionNav';
 import { useTenant } from '../../tenant/TenantContext';
 import { useAsync } from '../../api/hooks/useAsync';
-import { archiveHrEmployee, listHrEmployees, upsertHrEmployee } from '../../api/services/hrService';
+import { archiveHrEmployee, linkHrEmployeeToUser, listHrEmployees, upsertHrEmployee } from '../../api/services/hrService';
 import type { HrEmployee } from '../../api/services/hrService';
 import { HrExportMenu } from '../../components/hr/HrExportMenu';
 import { listDepartments } from '../../api/services/departmentsService';
@@ -46,6 +46,7 @@ export function HrEmployeesPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
 
   const { data: employees, refetch } = useAsync(async () => {
     if (!activeCompanyId) return [];
@@ -161,6 +162,22 @@ export function HrEmployeesPage() {
       employee_no: row.profile?.employee_number ?? '',
     }));
     setParams({ tab: 'add' });
+  };
+
+  const onLink = async (row: MergedRow) => {
+    if (!activeCompanyId || !row.hrEmployee || !row.membership) return;
+    setError(null);
+    setSuccess(null);
+    setLinkingId(row.hrEmployee.id);
+    try {
+      await linkHrEmployeeToUser(activeCompanyId, row.hrEmployee.id, row.membership.user_id);
+      await refetch();
+      setSuccess(`Linked ${getDisplayName(row)} to their platform login.`);
+    } catch (err) {
+      setError(toUserFacingError(err, 'Unable to link this employee to their login right now. Please try again.'));
+    } finally {
+      setLinkingId(null);
+    }
   };
 
   const onCreate = async () => {
@@ -330,6 +347,16 @@ export function HrEmployeesPage() {
                         {row.hrEmployee ? (
                           <>
                             <button className="text-teal" onClick={() => navigate(`/dashboard/hr/employees/${row.hrEmployee!.id}`)}>Open</button>
+                            {row.membership && !row.hrEmployee.user_id && (
+                              <button
+                                className="text-teal disabled:opacity-50"
+                                disabled={linkingId === row.hrEmployee.id}
+                                title="Link this HR record to their platform login so assignments notify them automatically"
+                                onClick={() => void onLink(row)}
+                              >
+                                {linkingId === row.hrEmployee.id ? 'Linking…' : 'Link to login'}
+                              </button>
+                            )}
                             <button className="text-critical" onClick={async () => {
                               if (!activeCompanyId || !user?.id) return;
                               await archiveHrEmployee(activeCompanyId, row.hrEmployee!.id, user.id);

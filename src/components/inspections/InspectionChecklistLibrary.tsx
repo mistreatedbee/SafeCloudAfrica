@@ -467,6 +467,7 @@ export function InspectionChecklistLibrary(props: Props) {
                     <button
                       type="button"
                       onClick={() => setBuildingTemplate(t)}
+                      title="View or edit this checklist's questions in detail"
                       className="px-2 py-1 rounded-lg border border-teal/30 text-[11px] text-teal font-medium hover:bg-teal/5"
                     >
                       Items
@@ -474,6 +475,7 @@ export function InspectionChecklistLibrary(props: Props) {
                     <button
                       type="button"
                       onClick={() => startEdit(t)}
+                      title="Edit this checklist"
                       className="p-1.5 rounded-lg border border-surface-200 text-xs text-charcoal-500 hover:bg-surface-50"
                     >
                       <Edit2Icon className="w-3 h-3" />
@@ -490,6 +492,7 @@ export function InspectionChecklistLibrary(props: Props) {
                     <button
                       type="button"
                       onClick={() => void archiveTemplate(t)}
+                      title={t.is_active ? 'Archive this checklist' : 'Restore this checklist'}
                       className="p-1.5 rounded-lg border border-surface-200 text-xs text-charcoal-500 hover:bg-surface-50"
                     >
                       <ArchiveIcon className="w-3 h-3" />
