@@ -34,6 +34,7 @@ export function InspectionsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
+  const [assetFilter, setAssetFilter] = useState('all');
   const [activeTab, setActiveTab] = useState<'list' | 'library'>('list');
   const { user } = useUser();
   const { activeCompanyId, activeRole } = useTenant();
@@ -94,11 +95,18 @@ export function InspectionsPage() {
     };
   });
 
-  const filteredInspections = rows.filter((inspection) =>
-    inspection.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    inspection.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (inspection.assetNumber ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+  const assetOptions = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.assetNumber).filter((v): v is string => Boolean(v)))).sort(),
+    [rows]
   );
+
+  const filteredInspections = rows
+    .filter((inspection) => assetFilter === 'all' || inspection.assetNumber === assetFilter)
+    .filter((inspection) =>
+      inspection.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      inspection.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (inspection.assetNumber ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
   function handleExportCsv() {
     if (!activeCompanyId || filteredInspections.length === 0) return;
@@ -222,6 +230,20 @@ export function InspectionsPage() {
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
                   />
                 </div>
+                {assetOptions.length > 0 && (
+                  <select
+                    value={assetFilter}
+                    onChange={(e) => setAssetFilter(e.target.value)}
+                    className="px-3 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  >
+                    <option value="all">All assets</option>
+                    {assetOptions.map((asset) => (
+                      <option key={asset} value={asset}>
+                        {asset}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <motion.div variants={itemVariants} className="space-y-3">
