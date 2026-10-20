@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toUserFacingError } from '../utils/userFacingMessage';
-import { CalendarIcon, ClipboardCheckIcon, ArrowLeftIcon, AlertCircleIcon, FileTextIcon, DownloadIcon, ChevronUpIcon, ChevronDownIcon } from 'lucide-react';
+import { CalendarIcon, ClipboardCheckIcon, ArrowLeftIcon, AlertCircleIcon, FileTextIcon, DownloadIcon, ChevronUpIcon, ChevronDownIcon, Edit2Icon, XIcon } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { useTenant } from '../tenant/TenantContext';
 import { useAsync } from '../api/hooks/useAsync';
@@ -191,6 +191,16 @@ export function AuditDetailPage() {
   const [importingTemplate, setImportingTemplate] = useState(false);
   const [exportingAuditPdf, setExportingAuditPdf] = useState(false);
   const [duplicatingAudit, setDuplicatingAudit] = useState(false);
+  const [editingHeader, setEditingHeader] = useState(false);
+  const [headerForm, setHeaderForm] = useState({
+    title: '',
+    auditType: 'internal' as 'internal' | 'external' | 'client' | 'supplier' | 'certification',
+    auditedOrganization: '',
+    scopeOfAudit: '',
+    location: ''
+  });
+  const [savingHeader, setSavingHeader] = useState(false);
+  const [headerError, setHeaderError] = useState<string | null>(null);
   const [exportingAuditExcel, setExportingAuditExcel] = useState(false);
   const [reorderingQuestions, setReorderingQuestions] = useState(false);
 
@@ -834,6 +844,49 @@ export function AuditDetailPage() {
     }
   }
 
+  function openEditHeader() {
+    if (!audit) return;
+    setHeaderForm({
+      title: audit.title ?? '',
+      auditType: audit.audit_type,
+      auditedOrganization: audit.audited_organization ?? '',
+      scopeOfAudit: audit.scope_of_audit ?? '',
+      location: audit.location ?? ''
+    });
+    setHeaderError(null);
+    setEditingHeader(true);
+  }
+
+  async function saveHeader() {
+    if (!audit || !activeCompanyId || !user?.id) return;
+    if (!headerForm.title.trim()) {
+      setHeaderError('Title is required.');
+      return;
+    }
+    setSavingHeader(true);
+    setHeaderError(null);
+    try {
+      await updateAudit(
+        audit.id as UUID,
+        activeCompanyId,
+        {
+          title: headerForm.title.trim(),
+          audit_type: headerForm.auditType,
+          audited_organization: headerForm.auditedOrganization.trim() || null,
+          scope_of_audit: headerForm.scopeOfAudit.trim() || null,
+          location: headerForm.location.trim() || null
+        },
+        user.id as UUID
+      );
+      await refreshAudit();
+      setEditingHeader(false);
+    } catch (err) {
+      setHeaderError(toUserFacingError(err, 'Failed to save changes.'));
+    } finally {
+      setSavingHeader(false);
+    }
+  }
+
   // Only block the page on the first load. Background refreshes after a save keep the
   // current view mounted instead of swapping it for a spinner (which looked like a reload).
   const loading =
@@ -904,7 +957,19 @@ export function AuditDetailPage() {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <StatusBadge status={audit.status as any} size="sm" />
+                  <div className="flex items-center gap-2">
+                    {canManageAudit && (
+                      <button
+                        type="button"
+                        onClick={openEditHeader}
+                        title="Edit title, type, organization audited, scope and location"
+                        className="p-1.5 rounded-lg border border-surface-200 text-charcoal-500 hover:bg-surface-50"
+                      >
+                        <Edit2Icon className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <StatusBadge status={audit.status as any} size="sm" />
+                  </div>
                   {audit.selected_date && (
                     <span className="inline-flex items-center gap-1.5 text-xs text-charcoal-500">
                       <CalendarIcon className="w-4 h-4" />
@@ -2141,6 +2206,96 @@ export function AuditDetailPage() {
           entityId={audit.id as UUID}
           title="Audit evidence"
         />
+      )}
+      {editingHeader && audit && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto p-4 sm:p-6">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setEditingHeader(false)} />
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
+            <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
+              <p className="text-sm font-semibold text-charcoal">Edit audit details</p>
+              <button
+                type="button"
+                onClick={() => setEditingHeader(false)}
+                className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-500"
+                aria-label="Close"
+              >
+                <XIcon className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              {headerError && (
+                <div className="bg-critical/5 border border-critical/20 rounded-lg p-3 text-sm text-critical">
+                  {headerError}
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Title *</label>
+                <input
+                  value={headerForm.title}
+                  onChange={(e) => setHeaderForm({ ...headerForm, title: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Type</label>
+                <select
+                  value={headerForm.auditType}
+                  onChange={(e) => setHeaderForm({ ...headerForm, auditType: e.target.value as typeof headerForm.auditType })}
+                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                >
+                  <option value="internal">Internal</option>
+                  <option value="external">External</option>
+                  <option value="client">Client</option>
+                  <option value="supplier">Supplier</option>
+                  <option value="certification">Certification</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Organization audited</label>
+                <input
+                  value={headerForm.auditedOrganization}
+                  onChange={(e) => setHeaderForm({ ...headerForm, auditedOrganization: e.target.value })}
+                  placeholder="e.g. Gobonzela — Sub-contractor A"
+                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Scope</label>
+                <input
+                  value={headerForm.scopeOfAudit}
+                  onChange={(e) => setHeaderForm({ ...headerForm, scopeOfAudit: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-charcoal mb-1.5">Location</label>
+                <input
+                  value={headerForm.location}
+                  onChange={(e) => setHeaderForm({ ...headerForm, location: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-surface-200 px-5 pb-5">
+              <button
+                type="button"
+                onClick={() => setEditingHeader(false)}
+                className="px-4 py-2 rounded-lg border border-surface-300 text-xs font-medium text-charcoal hover:bg-surface-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveHeader()}
+                disabled={savingHeader}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal text-white text-xs font-semibold hover:bg-teal-600 disabled:opacity-60"
+              >
+                {savingHeader && <LoadingSpinner size={14} />}
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </Layout>
   );
