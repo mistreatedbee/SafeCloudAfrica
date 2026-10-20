@@ -354,11 +354,12 @@ export function AuditDetailPage() {
     const ids = (audit as any).departments_auditee_ids as UUID[] | null | undefined;
     return (Array.isArray(ids) && ids.includes(user.id as UUID)) || isAssignedAuditee;
   }, [audit, user?.id, isAssignedAuditee]);
-  const canViewSharedQuestions =
-    isAssignedAuditee &&
-    !canEdit &&
-    audit?.share_questions_with_auditee &&
-    (audit?.status === 'scheduled' || audit?.status === 'in-progress');
+  // Being specifically assigned as THIS audit's auditee takes precedence over a broad
+  // company role (owner/admin/etc) -- someone who is both, e.g. a Company Admin who is
+  // also the designated auditee on this one audit, gets the restricted auditee
+  // experience for it, not full editing rights just because of their general role.
+  const canManageAudit = canEdit && !isAssignedAuditee;
+  const canViewSharedQuestions = isAssignedAuditee && Boolean(audit?.share_questions_with_auditee);
 
   const proposedDates = (audit as any)?.proposed_dates as string[] | null | undefined;
   const dateApprovalStatus = (audit as any)?.date_approval_status as string | null | undefined;
@@ -409,7 +410,7 @@ export function AuditDetailPage() {
   }, [preSubmission]);
   const documentDeadline = (audit as any)?.document_submission_deadline;
   const isPastDeadline = documentDeadline ? new Date(documentDeadline) < new Date() : false;
-  const canApprovePreAudit = preSubmission?.status === 'submitted' && canEdit;
+  const canApprovePreAudit = preSubmission?.status === 'submitted' && canManageAudit;
   const showPreAuditSection =
     (audit?.status === 'scheduled' || audit?.status === 'awaiting-documents' || audit?.status === 'ready-for-audit') &&
     requiredDocLabels.length > 0;
@@ -960,7 +961,7 @@ export function AuditDetailPage() {
                   <DownloadIcon className="w-3.5 h-3.5" />
                   {exportingAuditExcel ? 'Generating Excel…' : 'Download Excel'}
                 </button>
-                {canEdit && (
+                {canManageAudit && (
                   <button
                     type="button"
                     onClick={() => void handleDuplicateAudit()}
@@ -971,9 +972,9 @@ export function AuditDetailPage() {
                     {duplicatingAudit ? 'Duplicating…' : 'Duplicate audit'}
                   </button>
                 )}
-                {canEdit && (
+                {canManageAudit && (
                   <>
-                  {audit.status === 'scheduled' && (
+                  {(audit.status === 'scheduled' || audit.status === 'awaiting-documents' || audit.status === 'ready-for-audit') && (
                     <button
                       type="button"
                       onClick={handleStartAudit}
@@ -1204,7 +1205,7 @@ export function AuditDetailPage() {
                   <p className="text-xs text-charcoal-500">
                     Use this list to capture compliance, findings, and risk ratings during execution.
                   </p>
-                  {canEdit && audit.auditee_hr_employee_id && (
+                  {canManageAudit && audit.auditee_hr_employee_id && (
                     <div className="mt-2 flex items-center gap-2">
                       <button
                         type="button"
@@ -1276,7 +1277,7 @@ export function AuditDetailPage() {
                 </div>
               )}
 
-              {!canViewSharedQuestions && (
+              {canManageAudit && (
               <>
               {questionsError && (
                 <div className="mb-3 bg-critical/5 border border-critical/20 rounded-xl p-3">
@@ -1295,7 +1296,7 @@ export function AuditDetailPage() {
                 </div>
               )}
 
-              {canEdit && audit.status !== 'completed' && audit.status !== 'archived' && (
+              {canManageAudit && audit.status !== 'completed' && audit.status !== 'archived' && (
                 <div className="mb-4 border border-surface-200 rounded-xl p-4 space-y-3 bg-white">
                   <p className="text-xs font-semibold text-charcoal">Import from checklist template</p>
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -1356,7 +1357,7 @@ export function AuditDetailPage() {
                 </div>
               )}
 
-              {canEdit && audit.status !== 'completed' && audit.status !== 'archived' && (
+              {canManageAudit && audit.status !== 'completed' && audit.status !== 'archived' && (
                 <div className="mb-4 border border-surface-200 rounded-xl p-4 space-y-3 bg-surface-50">
                   <p className="text-xs font-semibold text-charcoal">Sections (ISO clause + title)</p>
                   {(sections ?? []).length > 0 && (
@@ -1399,7 +1400,7 @@ export function AuditDetailPage() {
                 </div>
               )}
 
-              {canEdit && audit.status !== 'completed' && audit.status !== 'archived' && (
+              {canManageAudit && audit.status !== 'completed' && audit.status !== 'archived' && (
                 <div className="mb-4 border border-surface-200 rounded-xl p-4 space-y-3 bg-surface-50">
                   <p className="text-xs font-semibold text-charcoal">Add checklist question</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1486,7 +1487,7 @@ export function AuditDetailPage() {
                         let lastSectionKey = '__none__';
                         return questions.map((q, idx) => {
                         const resp = responsesByQuestion.get(q.id);
-                        const disabled = !canEdit || audit.status === 'completed' || audit.status === 'archived';
+                        const disabled = !canManageAudit || audit.status === 'completed' || audit.status === 'archived';
                         const sectionRef = (q as any).section_ref_id
                           ? (sections ?? []).find((s) => s.id === (q as any).section_ref_id)
                           : null;
@@ -1511,7 +1512,7 @@ export function AuditDetailPage() {
                             <td className="py-2 pr-3 text-xs text-charcoal-500">
                               <div className="flex items-center gap-1">
                                 <span>{idx + 1}</span>
-                                {canEdit && audit.status !== 'completed' && audit.status !== 'archived' && (
+                                {canManageAudit && audit.status !== 'completed' && audit.status !== 'archived' && (
                                   <span className="inline-flex flex-col">
                                     <button
                                       type="button"
@@ -1615,7 +1616,7 @@ export function AuditDetailPage() {
                                 {((resp as any)?.evidence_files ?? []).map((ef: any, i: number) => (
                                   <span key={i} className="text-xs text-charcoal-500 truncate max-w-[120px]" title={ef.fileName}>{ef.fileName}</span>
                                 ))}
-                                {canEdit && !disabled && (
+                                {canManageAudit && !disabled && (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -1635,7 +1636,7 @@ export function AuditDetailPage() {
                                 <button
                                   type="button"
                                   disabled={
-                                    !canEdit ||
+                                    !canManageAudit ||
                                     !activeCompanyId ||
                                     !user?.id ||
                                     !audit ||
@@ -1654,7 +1655,7 @@ export function AuditDetailPage() {
                                 <button
                                   type="button"
                                   disabled={
-                                    !canEdit ||
+                                    !canManageAudit ||
                                     !activeCompanyId ||
                                     !user?.id ||
                                     !audit ||
@@ -1695,7 +1696,7 @@ export function AuditDetailPage() {
                                   <button
                                     type="button"
                                     disabled={
-                                      !canEdit ||
+                                      !canManageAudit ||
                                       !activeCompanyId ||
                                       !user?.id ||
                                       !audit ||
@@ -1715,7 +1716,7 @@ export function AuditDetailPage() {
                                         : 'Create corrective action'}
                                   </button>
                                 )}
-                                {canEdit && (
+                                {canManageAudit && (
                                   <button
                                     type="button"
                                     disabled={disabled || deletingQuestionId === q.id}
@@ -1915,7 +1916,7 @@ export function AuditDetailPage() {
                                 {findingSignOffId === f.id ? 'Signing…' : 'Sign off'}
                               </button>
                             )}
-                            {canEdit && f.manager_signoff_user_id && f.status !== 'closed' && activeCompanyId && user?.id && (
+                            {canManageAudit && f.manager_signoff_user_id && f.status !== 'closed' && activeCompanyId && user?.id && (
                               <button
                                 type="button"
                                 disabled={findingVerifyId !== null}
@@ -1934,7 +1935,7 @@ export function AuditDetailPage() {
                                 {findingVerifyId === f.id ? 'Closing…' : 'Verify & close'}
                               </button>
                             )}
-                            {canEdit && activeCompanyId && user?.id && (
+                            {canManageAudit && activeCompanyId && user?.id && (
                               <button
                                 type="button"
                                 disabled={creatingTaskForFindingId === f.id}
@@ -2005,7 +2006,7 @@ export function AuditDetailPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {canEdit && activeCompanyId && user?.id && (
+                  {canManageAudit && activeCompanyId && user?.id && (
                     <button
                       type="button"
                       disabled={reportGenerating}
@@ -2066,7 +2067,7 @@ export function AuditDetailPage() {
                       {exportingAuditPdf ? 'Generating…' : 'Download PDF'}
                     </button>
                   )}
-                  {canEdit && activeCompanyId && user?.id && (
+                  {canManageAudit && activeCompanyId && user?.id && (
                     <button
                       type="button"
                       onClick={() => setEvidenceOpen(true)}
@@ -2078,7 +2079,7 @@ export function AuditDetailPage() {
                   )}
                 </div>
               </div>
-              {audit.status === 'completed' && canEdit && activeCompanyId && user?.id && (
+              {audit.status === 'completed' && canManageAudit && activeCompanyId && user?.id && (
                 <button
                   type="button"
                   disabled={archiving}
