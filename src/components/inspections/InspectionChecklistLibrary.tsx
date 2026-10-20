@@ -52,7 +52,6 @@ type QuestionRow = {
   key: string;
   id?: UUID;
   section: string;
-  idNumber: string;
   question: string;
   score: string;
   riskLevel: 'low' | 'medium' | 'high';
@@ -61,7 +60,7 @@ type QuestionRow = {
 let questionRowSeq = 0;
 function newQuestionRow(section = ''): QuestionRow {
   questionRowSeq += 1;
-  return { key: `q-${Date.now()}-${questionRowSeq}`, section, idNumber: '', question: '', score: '1', riskLevel: 'medium' };
+  return { key: `q-${Date.now()}-${questionRowSeq}`, section, question: '', score: '1', riskLevel: 'medium' };
 }
 
 export function InspectionChecklistLibrary(props: Props) {
@@ -200,7 +199,6 @@ export function InspectionChecklistLibrary(props: Props) {
                 key: `existing-${item.id}`,
                 id: item.id,
                 section: item.audit_section_or_category ?? item.section ?? '',
-                idNumber: item.requirement_reference ?? '',
                 question: item.question,
                 score: String((item as any).allocated_score ?? 1),
                 riskLevel: (item.risk_level_default ?? 'medium') as 'low' | 'medium' | 'high'
@@ -296,7 +294,6 @@ export function InspectionChecklistLibrary(props: Props) {
             id: r.id,
             item_order: idx + 1,
             section: r.section.trim() || null,
-            requirement_reference: r.idNumber.trim() || null,
             question: r.question.trim(),
             allocated_score: Number.isFinite(score) && score >= 0 ? score : 1,
             risk_level_default: r.riskLevel
@@ -661,7 +658,6 @@ export function InspectionChecklistLibrary(props: Props) {
                       <thead>
                         <tr className="text-left text-charcoal-500 border-b border-surface-200">
                           <th className="py-1.5 pr-2 w-8">#</th>
-                          <th className="py-1.5 pr-2 w-28">ID/Number</th>
                           <th className="py-1.5 pr-2 w-32">Section</th>
                           <th className="py-1.5 pr-2">Question *</th>
                           <th className="py-1.5 pr-2 w-14">Points</th>
@@ -673,14 +669,6 @@ export function InspectionChecklistLibrary(props: Props) {
                         {questionRows.map((row, idx) => (
                           <tr key={row.key} className="border-b border-surface-100">
                             <td className="py-1.5 pr-2 text-charcoal-500">{idx + 1}</td>
-                            <td className="py-1.5 pr-2">
-                              <input
-                                value={row.idNumber}
-                                onChange={(e) => updateQuestionRow(row.key, { idNumber: e.target.value })}
-                                placeholder="e.g. House 2"
-                                className="w-full px-2 py-1 border border-surface-300 rounded text-xs"
-                              />
-                            </td>
                             <td className="py-1.5 pr-2">
                               <input
                                 value={row.section}
