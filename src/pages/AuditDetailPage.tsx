@@ -334,14 +334,11 @@ export function AuditDetailPage() {
     return map;
   }, [responses, localOverrides]);
 
-  const isAuditee = useMemo(() => {
-    if (!audit || !user?.id) return false;
-    const ids = (audit as any).departments_auditee_ids as UUID[] | null | undefined;
-    return Array.isArray(ids) && ids.includes(user.id as UUID);
-  }, [audit, user?.id]);
-
-  // The auditee for the questionnaire itself (auditee_hr_employee_id) is a distinct
-  // concept from the departments_auditee_ids used above for proposed-date approval.
+  // The auditee for the questionnaire itself (auditee_hr_employee_id) used to be treated as a
+  // distinct concept from departments_auditee_ids (proposed-date approval) -- but someone
+  // assigned as the Auditee when scheduling naturally expects to be able to approve the date
+  // too, even if nobody was separately added under "Department reps". Matched via HR employee
+  // id so it still works when that person has no linked platform login.
   const { data: myHrEmployee } = useAsync(
     async () => {
       if (!activeCompanyId || !user?.id) return null;
@@ -352,6 +349,11 @@ export function AuditDetailPage() {
   const isAssignedAuditee = Boolean(
     myHrEmployee && audit?.auditee_hr_employee_id && myHrEmployee.id === audit.auditee_hr_employee_id
   );
+  const isAuditee = useMemo(() => {
+    if (!audit || !user?.id) return false;
+    const ids = (audit as any).departments_auditee_ids as UUID[] | null | undefined;
+    return (Array.isArray(ids) && ids.includes(user.id as UUID)) || isAssignedAuditee;
+  }, [audit, user?.id, isAssignedAuditee]);
   const canViewSharedQuestions =
     isAssignedAuditee &&
     !canEdit &&
