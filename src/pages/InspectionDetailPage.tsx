@@ -406,7 +406,7 @@ export function InspectionDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-sm">
                 <div><p className="text-xs text-charcoal-500">Checklist items</p><p className="font-medium">{checklistStats.total}</p></div>
                 <div><p className="text-xs text-charcoal-500">NC items</p><p className="font-medium text-critical">{checklistStats.nc}</p></div>
-                <div><p className="text-xs text-charcoal-500">Score</p><p className="font-medium">{checklistStats.score} / {checklistStats.maxScore}</p></div>
+                <div><p className="text-xs text-charcoal-500">Score (achieved / allocated)</p><p className="font-medium">{checklistStats.score} / {checklistStats.maxScore}</p></div>
                 <div><p className="text-xs text-charcoal-500">Compliance</p><p className="font-medium">{checklistStats.compliancePercent.toFixed(1)}%</p></div>
                 <div><p className="text-xs text-charcoal-500">Findings / NC</p><p className="font-medium">{inspection.findings_count ?? 0} / {inspection.nonconformances_count ?? 0}</p></div>
               </div>

@@ -193,7 +193,7 @@ export function InspectionChecklistItemBuilder({ open, onClose, companyId, templ
             <div className="space-y-3">
               {sectionScores.length > 0 && (
                 <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-                  <p className="text-xs font-semibold text-charcoal mb-2">Score per section (max points)</p>
+                  <p className="text-xs font-semibold text-charcoal mb-2">Score per section (allocated points)</p>
                   <div className="flex flex-wrap gap-2">
                     {sectionScores.map((s) => (
                       <span
@@ -279,7 +279,7 @@ export function InspectionChecklistItemBuilder({ open, onClose, companyId, templ
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     <div>
-                      <label className="block text-xs text-charcoal-500 mb-1">Max points</label>
+                      <label className="block text-xs text-charcoal-500 mb-1">Allocated points</label>
                       <input
                         type="number"
                         min={1}
