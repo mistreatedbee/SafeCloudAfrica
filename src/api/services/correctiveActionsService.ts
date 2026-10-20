@@ -54,6 +54,7 @@ function generateActionNumber(): string {
 
 export type CreateCorrectiveActionInput = {
   companyId: UUID;
+  module?: ModuleKey;
   title: string;
   description?: string;
   actionType: 'corrective' | 'preventive';
@@ -75,6 +76,7 @@ export async function createCorrectiveAction(input: CreateCorrectiveActionInput)
     .from('corrective_actions')
     .insert({
       company_id: input.companyId,
+      module: input.module ?? 'safety',
       action_number: actionNumber,
       title: input.title,
       description: input.description ?? null,

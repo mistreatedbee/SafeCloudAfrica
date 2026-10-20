@@ -805,7 +805,7 @@ export async function createCorrectiveActionForInspectionItem(input: {
   return withInsforgeSession('inspections:runs:items:create_capa', async () => {
     const { data: runData } = await insforge.database
       .from('inspection_runs')
-      .select('location')
+      .select('location, module')
       .eq('company_id', input.companyId)
       .eq('id', input.runId)
       .maybeSingle();
@@ -833,6 +833,13 @@ export async function createCorrectiveActionForInspectionItem(input: {
         createdByUserId: input.createdByUserId
       });
       autoNcrId = ncr.id as UUID;
+      // Persist immediately so a retry (if the corrective action step below fails)
+      // reuses this NCR instead of creating another orphaned one.
+      await insforge.database
+        .from('inspection_run_items')
+        .update({ auto_ncr_id: autoNcrId, updated_at: new Date().toISOString() })
+        .eq('company_id', input.companyId)
+        .eq('id', input.itemId);
     }
 
     const priority: 'low' | 'medium' | 'high' | 'urgent' =
@@ -840,6 +847,7 @@ export async function createCorrectiveActionForInspectionItem(input: {
 
     const capa = await createCorrectiveAction({
       companyId: input.companyId,
+      module: (runData as { module?: ModuleKey } | null)?.module,
       title: item.question,
       description: input.actionDescription,
       actionType: 'corrective',
