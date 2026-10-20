@@ -8,7 +8,8 @@ import {
   updateInspectionChecklistTemplate,
   listInspectionChecklistItems,
   upsertInspectionChecklistItems,
-  deleteInspectionChecklistItem
+  deleteInspectionChecklistItem,
+  deleteInspectionChecklistTemplate
 } from '../../api/services/inspectionsService';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
 import { listHrEmployees, type HrEmployee } from '../../api/services/hrService';
@@ -75,6 +76,7 @@ export function InspectionChecklistLibrary(props: Props) {
   const [buildingTemplate, setBuildingTemplate] = useState<InspectionChecklistTemplate | null>(null);
   const [saving, setSaving] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<UUID | null>(null);
+  const [deletingId, setDeletingId] = useState<UUID | null>(null);
   const [employees, setEmployees] = useState<HrEmployee[]>([]);
   const [questionRows, setQuestionRows] = useState<QuestionRow[]>([]);
   const [removedItemIds, setRemovedItemIds] = useState<UUID[]>([]);
@@ -336,6 +338,26 @@ export function InspectionChecklistLibrary(props: Props) {
     }
   }
 
+  async function handleDeleteTemplate(t: InspectionChecklistTemplate) {
+    if (!props.canManage) return;
+    const confirmed = window.confirm(
+      `Delete "${t.name}"? This cannot be undone. Templates that already have inspection runs can't be deleted -- archive those instead.`
+    );
+    if (!confirmed) return;
+    setDeletingId(t.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteInspectionChecklistTemplate(props.companyId, t.id);
+      await refresh();
+      setNotice(`"${t.name}" deleted.`);
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to delete template.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   async function duplicateTemplate(t: InspectionChecklistTemplate) {
     if (!props.canManage) return;
     setDuplicatingId(t.id);
@@ -494,6 +516,17 @@ export function InspectionChecklistLibrary(props: Props) {
                     >
                       <ArchiveIcon className="w-3 h-3" />
                     </button>
+                    {!t.is_active && (
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteTemplate(t)}
+                        disabled={deletingId === t.id}
+                        title="Permanently delete this checklist"
+                        className="p-1.5 rounded-lg border border-surface-200 text-charcoal-500 hover:bg-critical/5 hover:text-critical disabled:opacity-50"
+                      >
+                        {deletingId === t.id ? <LoadingSpinner size={12} /> : <Trash2Icon className="w-3 h-3" />}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

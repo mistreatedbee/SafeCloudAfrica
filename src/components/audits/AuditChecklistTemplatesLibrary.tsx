@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PlusIcon, XIcon, Trash2Icon } from 'lucide-react';
 import type { AuditChecklistTemplate, UUID } from '../../api/models/entities';
-import { createAuditChecklistTemplate, listAuditChecklistTemplates } from '../../api/services/auditChecklistTemplatesService';
+import { createAuditChecklistTemplate, deleteAuditChecklistTemplate, listAuditChecklistTemplates } from '../../api/services/auditChecklistTemplatesService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useUser } from '@insforge/react';
 
@@ -61,6 +61,26 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
   const [sections, setSections] = useState<SectionDraft[]>([]);
   const [questions, setQuestions] = useState<QuestionDraft[]>([]);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<UUID | null>(null);
+
+  async function handleDeleteTemplate(t: AuditChecklistTemplate) {
+    if (!canManage) return;
+    const count = Array.isArray(t.questions) ? t.questions.length : 0;
+    const confirmed = window.confirm(
+      `Delete "${t.name}"${count > 0 ? ` and its ${count} question${count === 1 ? '' : 's'}` : ''}? This cannot be undone. Past audits that used it are not affected.`
+    );
+    if (!confirmed) return;
+    setDeletingId(t.id);
+    setError(null);
+    try {
+      await deleteAuditChecklistTemplate(companyId, t.id);
+      await refresh();
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to delete template.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function refresh() {
     setLoading(true);
@@ -336,9 +356,22 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
           {templates.map((t) => {
             const count = Array.isArray(t.questions) ? t.questions.length : 0;
             return (
-              <div key={t.id} className="border border-surface-200 rounded-xl p-4 bg-white shadow-card">
-                <p className="text-sm font-semibold text-charcoal">{t.name}</p>
-                <p className="text-xs text-charcoal-500 mt-1">{count} question{count === 1 ? '' : 's'}</p>
+              <div key={t.id} className="border border-surface-200 rounded-xl p-4 bg-white shadow-card flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-charcoal">{t.name}</p>
+                  <p className="text-xs text-charcoal-500 mt-1">{count} question{count === 1 ? '' : 's'}</p>
+                </div>
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteTemplate(t)}
+                    disabled={deletingId === t.id}
+                    title="Delete this template"
+                    className="p-1.5 rounded-lg border border-surface-200 text-charcoal-500 hover:bg-critical/5 hover:text-critical disabled:opacity-50 shrink-0"
+                  >
+                    {deletingId === t.id ? <LoadingSpinner size={12} /> : <Trash2Icon className="w-3.5 h-3.5" />}
+                  </button>
+                )}
               </div>
             );
           })}

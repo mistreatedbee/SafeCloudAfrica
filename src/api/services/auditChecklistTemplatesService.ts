@@ -51,3 +51,12 @@ export async function createAuditChecklistTemplate(input: {
   if (!data) throw new Error('Failed to create audit checklist template.');
   return data as AuditChecklistTemplate;
 }
+
+export async function deleteAuditChecklistTemplate(companyId: UUID, id: UUID): Promise<void> {
+  const { error } = await insforge.database
+    .from('audit_checklist_templates')
+    .delete()
+    .eq('company_id', companyId)
+    .eq('id', id);
+  if (error) throw new Error(getErrorMessage(error));
+}

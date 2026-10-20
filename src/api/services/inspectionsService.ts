@@ -430,6 +430,36 @@ export async function archiveInspectionChecklistTemplate(
   });
 }
 
+/**
+ * Permanently deletes a checklist template and its questions. Deleting a
+ * template cascades to any inspection run ever started from it (that's how
+ * the DB is wired), which would silently destroy real inspection history --
+ * so this refuses to delete a template that has been used at least once.
+ * Archive is the right move for those; only truly unused templates can be
+ * deleted outright.
+ */
+export async function deleteInspectionChecklistTemplate(companyId: UUID, templateId: UUID): Promise<void> {
+  return withInsforgeSession('inspections:templates:delete', async () => {
+    const { count, error: countError } = await insforge.database
+      .from('inspection_runs')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId)
+      .eq('template_id', templateId);
+    if (countError) throw new Error(getErrorMessage(countError));
+    if ((count ?? 0) > 0) {
+      throw new Error(
+        `This template has ${count} inspection run${count === 1 ? '' : 's'} on record and can't be deleted -- archive it instead to keep that history intact.`
+      );
+    }
+    const { error } = await insforge.database
+      .from('inspection_checklist_templates')
+      .delete()
+      .eq('company_id', companyId)
+      .eq('id', templateId);
+    if (error) throw new Error(getErrorMessage(error));
+  });
+}
+
 export async function listInspectionChecklistItems(
   companyId: UUID,
   templateId: UUID
