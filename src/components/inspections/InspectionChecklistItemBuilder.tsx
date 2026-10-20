@@ -217,6 +217,7 @@ export function InspectionChecklistItemBuilder({ open, onClose, companyId, templ
                         disabled={index === 0}
                         className="p-1 rounded hover:bg-surface-100 disabled:opacity-40"
                         aria-label="Move up"
+                        title="Move this item up"
                       >
                         <ChevronUpIcon className="w-4 h-4" />
                       </button>
@@ -226,6 +227,7 @@ export function InspectionChecklistItemBuilder({ open, onClose, companyId, templ
                         disabled={index === items.length - 1}
                         className="p-1 rounded hover:bg-surface-100 disabled:opacity-40"
                         aria-label="Move down"
+                        title="Move this item down"
                       >
                         <ChevronDownIcon className="w-4 h-4" />
                       </button>

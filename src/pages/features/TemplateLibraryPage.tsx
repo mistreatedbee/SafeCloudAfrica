@@ -153,6 +153,7 @@ export function TemplateLibraryPage() {
                     downloadBlob(blob, filename);
                   }}
                   className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-teal transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Download this template"
                 >
                   <DownloadIcon className="w-5 h-5" />
                 </button>

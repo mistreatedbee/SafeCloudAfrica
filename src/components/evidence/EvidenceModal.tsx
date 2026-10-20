@@ -255,6 +255,7 @@ function EvidenceRow({ item, onRemove, removing }: { item: EvidenceAttachment; o
           }}
           className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors"
           aria-label="Open"
+          title="Open this evidence file"
         >
           <EyeIcon className="w-4 h-4" />
         </button>
@@ -266,6 +267,7 @@ function EvidenceRow({ item, onRemove, removing }: { item: EvidenceAttachment; o
           }}
           className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors"
           aria-label="Download"
+          title="Download this evidence file"
         >
           <DownloadIcon className="w-4 h-4" />
         </button>
@@ -275,6 +277,7 @@ function EvidenceRow({ item, onRemove, removing }: { item: EvidenceAttachment; o
           onClick={() => onRemove(item)}
           className="p-2 rounded-lg hover:bg-critical/10 text-charcoal-400 hover:text-critical transition-colors disabled:opacity-60"
           aria-label="Remove"
+          title="Remove this evidence file"
         >
           {removing ? <LoadingSpinner size={16} /> : <Trash2Icon className="w-4 h-4" />}
         </button>

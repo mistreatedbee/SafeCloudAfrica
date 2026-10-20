@@ -797,6 +797,7 @@ function EvidenceRow({ item }: { item: NcrEvidenceReference }) {
           }}
           className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors"
           aria-label="Open"
+          title="Open this evidence file"
         >
           <EyeIcon className="w-4 h-4" />
         </button>
@@ -809,6 +810,7 @@ function EvidenceRow({ item }: { item: NcrEvidenceReference }) {
           }}
           className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors"
           aria-label="Download"
+          title="Download this evidence file"
         >
           <DownloadIcon className="w-4 h-4" />
         </button>

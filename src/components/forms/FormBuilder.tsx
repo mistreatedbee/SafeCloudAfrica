@@ -201,6 +201,7 @@ export function FormBuilder({ fields, onChange }: FormBuilderProps) {
                 <button
                   onClick={() => removeField(field.id)}
                   className="p-2 text-critical hover:bg-critical-50 rounded"
+                  title="Remove this field"
                 >
                   <TrashIcon className="w-4 h-4" />
                 </button>

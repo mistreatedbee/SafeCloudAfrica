@@ -837,6 +837,7 @@ export function TaskDetailPage() {
                     }}
                     className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors"
                     aria-label="Open attachment"
+                    title="Open this attachment in a new tab"
                   >
                     <EyeIcon className="w-4 h-4" />
                   </button>
@@ -854,6 +855,7 @@ export function TaskDetailPage() {
                     }}
                     className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-charcoal transition-colors"
                     aria-label="Download attachment"
+                    title="Download this attachment"
                   >
                     <DownloadIcon className="w-4 h-4" />
                   </button>

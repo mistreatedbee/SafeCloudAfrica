@@ -145,6 +145,7 @@ export function ContractorsVisitorsPage() {
                   onClick={() => setContractorOpen(true)}
                   className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-teal transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Add contractor"
+                  title="Add a new contractor"
                 >
                   <PlusIcon className="w-4 h-4" />
                 </button>
@@ -189,6 +190,7 @@ export function ContractorsVisitorsPage() {
                   onClick={() => setVisitorOpen(true)}
                   className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-teal transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Add visitor"
+                  title="Add a new visitor"
                 >
                   <PlusIcon className="w-4 h-4" />
                 </button>

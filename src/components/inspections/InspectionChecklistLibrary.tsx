@@ -732,6 +732,7 @@ export function InspectionChecklistLibrary(props: Props) {
                                   disabled={idx === 0}
                                   className="p-1 rounded hover:bg-surface-100 disabled:opacity-30"
                                   aria-label="Move question up"
+                                  title="Move this question up"
                                 >
                                   <ChevronUpIcon className="w-3 h-3" />
                                 </button>
@@ -741,6 +742,7 @@ export function InspectionChecklistLibrary(props: Props) {
                                   disabled={idx === questionRows.length - 1}
                                   className="p-1 rounded hover:bg-surface-100 disabled:opacity-30"
                                   aria-label="Move question down"
+                                  title="Move this question down"
                                 >
                                   <ChevronDownIcon className="w-3 h-3" />
                                 </button>
@@ -749,6 +751,7 @@ export function InspectionChecklistLibrary(props: Props) {
                                   onClick={() => removeQuestionRow(row.key)}
                                   className="p-1 rounded text-critical hover:bg-critical/5"
                                   aria-label="Remove question"
+                                  title="Remove this question"
                                 >
                                   <Trash2Icon className="w-3 h-3" />
                                 </button>

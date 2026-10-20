@@ -154,6 +154,7 @@ export function OrgStructureManager(props: {
                   disabled={!props.canManage || busy}
                   className="p-2 rounded-lg hover:bg-surface-100 text-critical disabled:opacity-60"
                   aria-label="Delete site"
+                  title="Delete this site"
                 >
                   <TrashIcon className="w-4 h-4" />
                 </button>
@@ -216,6 +217,7 @@ export function OrgStructureManager(props: {
                   disabled={!props.canManage || busy}
                   className="p-2 rounded-lg hover:bg-surface-100 text-critical disabled:opacity-60"
                   aria-label="Delete department"
+                  title="Delete this department"
                 >
                   <TrashIcon className="w-4 h-4" />
                 </button>

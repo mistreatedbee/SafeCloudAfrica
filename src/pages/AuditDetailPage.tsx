@@ -1519,6 +1519,7 @@ export function AuditDetailPage() {
                                       disabled={idx === 0 || reorderingQuestions}
                                       className="p-0.5 rounded hover:bg-surface-100 disabled:opacity-40"
                                       aria-label="Move question up"
+                                      title="Move this question up"
                                     >
                                       <ChevronUpIcon className="w-3 h-3" />
                                     </button>
@@ -1528,6 +1529,7 @@ export function AuditDetailPage() {
                                       disabled={idx === questions.length - 1 || reorderingQuestions}
                                       className="p-0.5 rounded hover:bg-surface-100 disabled:opacity-40"
                                       aria-label="Move question down"
+                                      title="Move this question down"
                                     >
                                       <ChevronDownIcon className="w-3 h-3" />
                                     </button>

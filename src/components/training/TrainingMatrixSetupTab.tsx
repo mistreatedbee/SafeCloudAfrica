@@ -222,6 +222,7 @@ export function TrainingMatrixSetupTab(props: {
                     onClick={() => setEditingJob(j)}
                     className="p-1.5 rounded-lg hover:bg-surface-100 text-charcoal-500"
                     aria-label="Edit"
+                    title="Edit this job description"
                   >
                     <PencilIcon className="w-4 h-4" />
                   </button>
@@ -296,6 +297,7 @@ export function TrainingMatrixSetupTab(props: {
                             onClick={() => setCourseEditId(String(c.id))}
                             className="p-1.5 rounded-lg hover:bg-surface-100 text-charcoal-500"
                             aria-label="Edit course"
+                            title="Edit this course"
                           >
                             <PencilIcon className="w-4 h-4" />
                           </button>
@@ -304,6 +306,7 @@ export function TrainingMatrixSetupTab(props: {
                             onClick={() => void handleDeleteCourse(c.id)}
                             className="p-1.5 rounded-lg hover:bg-critical/5 text-charcoal-500 hover:text-critical"
                             aria-label="Delete course"
+                            title="Delete this course"
                           >
                             <Trash2Icon className="w-4 h-4" />
                           </button>
@@ -384,6 +387,7 @@ export function TrainingMatrixSetupTab(props: {
                       onClick={() => setEditingProvider(p)}
                       className="p-1.5 rounded-lg hover:bg-surface-100 text-charcoal-500"
                       aria-label="Edit"
+                      title="Edit this training provider"
                     >
                       <PencilIcon className="w-4 h-4" />
                     </button>
@@ -392,6 +396,7 @@ export function TrainingMatrixSetupTab(props: {
                       onClick={() => void handleDeleteProvider(p.id)}
                       className="p-1.5 rounded-lg hover:bg-critical/5 text-charcoal-500 hover:text-critical"
                       aria-label="Delete provider"
+                      title="Delete this training provider"
                     >
                       <Trash2Icon className="w-4 h-4" />
                     </button>

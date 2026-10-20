@@ -589,7 +589,7 @@ export function ReportsPage() {
                       </div>
                     </div>
                   </div>
-                  <button type="button" className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-teal transition-colors">
+                  <button type="button" title="Download this report" className="p-2 rounded-lg hover:bg-surface-100 text-charcoal-400 hover:text-teal transition-colors">
                     <DownloadIcon className="w-5 h-5" />
                   </button>
                 </div>

@@ -265,6 +265,7 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
                         type="button"
                         onClick={() => removeQuestion(q.id)}
                         aria-label="Delete question"
+                        title="Delete this question"
                         className="p-1 rounded hover:bg-critical/10 text-charcoal-400 hover:text-critical"
                       >
                         <XIcon className="w-3.5 h-3.5" />
@@ -455,6 +456,7 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
                                 type="button"
                                 onClick={() => removeQuestion(q.id)}
                                 aria-label="Delete question"
+                                title="Delete this question"
                                 className="p-1 rounded hover:bg-critical/10 text-charcoal-400 hover:text-critical"
                               >
                                 <XIcon className="w-3.5 h-3.5" />

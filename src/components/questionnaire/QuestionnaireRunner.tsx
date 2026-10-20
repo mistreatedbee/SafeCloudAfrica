@@ -113,6 +113,7 @@ export function QuestionnaireRunner({ questions, answers, onChange, onEvidenceCl
                     type="button"
                     onClick={() => onEvidenceClick(question, answer)}
                     className="inline-flex items-center gap-2 rounded-lg border border-surface-300 px-3 py-2 text-sm"
+                    title="Upload or view evidence for this question"
                   >
                     <UploadIcon className="h-4 w-4" />
                     {answer.evidenceCount ?? answer.evidenceFileIds?.length ?? 0}

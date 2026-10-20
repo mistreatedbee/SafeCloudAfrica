@@ -178,6 +178,7 @@ export function PjoQuestionManager(props: { companyId: UUID; actorUserId: UUID; 
                   disabled={idx === 0}
                   className="p-0.5 rounded hover:bg-surface-100 disabled:opacity-30"
                   aria-label="Move up"
+                  title="Move this question up"
                 >
                   <ChevronUpIcon className="w-3.5 h-3.5" />
                 </button>
@@ -187,6 +188,7 @@ export function PjoQuestionManager(props: { companyId: UUID; actorUserId: UUID; 
                   disabled={idx === (items?.length ?? 0) - 1}
                   className="p-0.5 rounded hover:bg-surface-100 disabled:opacity-30"
                   aria-label="Move down"
+                  title="Move this question down"
                 >
                   <ChevronDownIcon className="w-3.5 h-3.5" />
                 </button>
