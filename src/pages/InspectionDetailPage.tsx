@@ -34,8 +34,6 @@ import {
   InspectionChecklistItemTableRow,
   type CreateCorrectiveActionInput
 } from '../components/inspections/InspectionChecklistItemViews';
-import { useDraftManager } from '../session/DraftManagerProvider';
-import { useDraftRegistration } from '../session/useDraftRegistration';
 import { exportInspectionRunPdf, getInspectionRunReport } from '../api/services/inspectionReportsService';
 import { downloadFile } from '../api/services/exportService';
 import { useIdentity } from '../hooks/useIdentity';
@@ -158,9 +156,6 @@ export function InspectionDetailPage() {
   const [startingRun, setStartingRun] = useState(false);
   const [reloadingItems, setReloadingItems] = useState(false);
 
-  const { restoreDraft, clearDraft } = useDraftManager();
-  const draftKey = `inspection-detail:${activeCompanyId ?? 'company'}:${inspectionId ?? 'unknown'}:${user?.id ?? 'anon'}`;
-
   const checklistStats = useMemo(() => {
     if (!latestRun) return { total: 0, nc: 0, score: 0, maxScore: 0, compliancePercent: 0 };
     const total = latestRun.items.length;
@@ -175,31 +170,6 @@ export function InspectionDetailPage() {
     () => (latestRun ? computeInspectionSectionScores(latestRun.items) : []),
     [latestRun]
   );
-
-  const hasDirtyDraft = useMemo(() => {
-    if (!user?.id || !activeCompanyId || !inspectionId) return false;
-    return activeTab !== 'checklist' || evidenceOpen || evidenceItemId !== null;
-  }, [activeCompanyId, activeTab, evidenceItemId, evidenceOpen, inspectionId, user?.id]);
-
-  useDraftRegistration({
-    key: draftKey,
-    enabled: Boolean(user?.id) && Boolean(activeCompanyId) && Boolean(inspectionId),
-    isDirty: () => hasDirtyDraft,
-    serialize: () => ({
-      activeTab,
-      evidenceOpen,
-      evidenceItemId
-    })
-  });
-
-  useEffect(() => {
-    if (!user?.id || !activeCompanyId || !inspectionId) return;
-    const restored = restoreDraft<{ activeTab?: 'checklist' | 'ncrs' | 'capa'; evidenceOpen?: boolean; evidenceItemId?: string | null }>(draftKey);
-    if (!restored) return;
-    setActiveTab(restored.activeTab ?? 'checklist');
-    setEvidenceOpen(Boolean(restored.evidenceOpen));
-    setEvidenceItemId(restored.evidenceItemId ?? null);
-  }, [activeCompanyId, draftKey, inspectionId, restoreDraft, user?.id]);
 
   useEffect(() => {
     if (!startTemplateId && startTemplates && startTemplates.length > 0) {
@@ -314,7 +284,6 @@ export function InspectionDetailPage() {
     try {
       await completeInspectionRun({ companyId: activeCompanyId as UUID, runId: latestRun.run.id as UUID, actorUserId: user.id as UUID });
       await refreshRun();
-      clearDraft(draftKey);
     } catch (e) {
       setRunActionError(toUserFacingError(e, 'Failed to complete run. Please try again.'));
     } finally {
@@ -328,7 +297,6 @@ export function InspectionDetailPage() {
     try {
       await submitAuditeeSelfAssessment({ companyId: activeCompanyId as UUID, runId: latestRun.run.id as UUID, actorUserId: user.id as UUID });
       await refreshRun();
-      clearDraft(draftKey);
     } catch (e) {
       setRunActionError(toUserFacingError(e, 'Failed to submit self-assessment. Please try again.'));
     }
@@ -677,7 +645,6 @@ export function InspectionDetailPage() {
                 onClose={() => {
                   setEvidenceOpen(false);
                   setEvidenceItemId(null);
-                  clearDraft(draftKey);
                 }}
                 companyId={activeCompanyId as UUID}
                 actorUserId={user.id as UUID}
