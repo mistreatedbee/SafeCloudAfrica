@@ -368,7 +368,7 @@ export function InspectionChecklistLibrary(props: Props) {
       const created = await createInspectionChecklistTemplate({
         companyId: props.companyId,
         module: t.module,
-        name: `${t.name} (copy)`,
+        name: `${t.name.replace(/(\s*\(copy\))+\s*$/i, '').trim() || t.name} (copy)`,
         subtitle: t.subtitle ?? undefined,
         description: t.description ?? undefined,
         scope: t.scope,

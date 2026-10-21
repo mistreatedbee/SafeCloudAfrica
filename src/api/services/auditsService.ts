@@ -589,6 +589,67 @@ export async function listAuditInvitationTokens(auditId: UUID): Promise<AuditInv
 // Sections (ISO clause + title, optional sub-sections)
 // ---------------------------
 
+/** Display label for a section: "8.1 — Risk Management", sub-sections as "Parent / Sub-section"
+    (the same format the checklist template builder stores on each question). */
+export function auditSectionLabel(section: AuditSection, all: AuditSection[]): string {
+  const own = section.iso_clause ? `${section.iso_clause} — ${section.section_title}` : section.section_title;
+  if (!section.parent_section_id) return own;
+  const parent = all.find((s) => s.id === section.parent_section_id);
+  return parent && parent.id !== section.id ? `${auditSectionLabel(parent, all)} / ${section.section_title}` : own;
+}
+
+/** Links questions that only carry a free-text section label to a real section with that label. */
+export async function linkAuditQuestionsToSection(input: {
+  auditId: UUID;
+  sectionId: UUID;
+  sectionLabel: string;
+}): Promise<void> {
+  return withInsforgeSession('audit_questions:link-section', async () => {
+    const { error } = await insforge.database
+      .from('audit_questions')
+      .update({ section_ref_id: input.sectionId })
+      .eq('audit_id', input.auditId)
+      .eq('section', input.sectionLabel)
+      .is('section_ref_id', null);
+    if (error) throw new Error(getErrorMessage(error));
+  });
+}
+
+/**
+ * Creates audit sections from a list (parents before children), returning old id -> new section.
+ * Used to carry sections over when duplicating an audit or importing a template.
+ */
+async function copySectionsIntoAudit(input: {
+  companyId: UUID;
+  auditId: UUID;
+  createdByUserId: UUID;
+  startingOrder: number;
+  sections: Array<{ id: string; isoClause: string | null; title: string; parentId: string | null }>;
+}): Promise<Map<string, AuditSection>> {
+  const created = new Map<string, AuditSection>();
+  let pending = input.sections.filter((s) => s.title.trim());
+  let order = input.startingOrder;
+  while (pending.length > 0) {
+    const ready = pending.filter((s) => !s.parentId || created.has(s.parentId) || !pending.some((p) => p.id === s.parentId));
+    if (ready.length === 0) break; // circular parents: stop rather than loop forever
+    for (const s of ready) {
+      const section = await createAuditSection({
+        companyId: input.companyId,
+        auditId: input.auditId,
+        sectionTitle: s.title.trim(),
+        isoClause: s.isoClause?.trim() || null,
+        parentSectionId: s.parentId ? (created.get(s.parentId)?.id ?? null) : null,
+        sectionOrder: order,
+        createdByUserId: input.createdByUserId
+      });
+      order += 1;
+      created.set(s.id, section);
+    }
+    pending = pending.filter((s) => !ready.includes(s));
+  }
+  return created;
+}
+
 export async function listAuditSections(auditId: UUID): Promise<AuditSection[]> {
   return withInsforgeSession('audit_sections:list', async () => {
     const { data, error } = await insforge.database
@@ -702,15 +763,62 @@ export async function importAuditChecklistFromTemplate(input: {
   const startOrder = input.startingOrder ?? 1;
   let imported = 0;
 
+  // Create real audit sections (with sub-sections) for the template, reusing any section
+  // the audit already has with the same label, so questions can be grouped and added to later.
+  const existingSections = await listAuditSections(input.auditId);
+  const sectionIdByLabel = new Map(existingSections.map((s) => [auditSectionLabel(s, existingSections), s.id as UUID]));
+  const templateSections = (Array.isArray(template.sections) ? (template.sections as any[]) : [])
+    .filter((s) => s && String(s.title ?? '').trim())
+    .map((s) => ({
+      id: String(s.id ?? crypto.randomUUID()),
+      isoClause: s.iso_clause ? String(s.iso_clause) : null,
+      title: String(s.title),
+      parentId: s.parent_section_id ? String(s.parent_section_id) : null
+    }));
+  const templateLabel = (sec: (typeof templateSections)[number]): string => {
+    const own = sec.isoClause ? `${sec.isoClause} — ${sec.title}` : sec.title;
+    const parent = sec.parentId ? templateSections.find((p) => p.id === sec.parentId) : undefined;
+    return parent && parent !== sec ? `${templateLabel(parent)} / ${sec.title}` : own;
+  };
+  const toCreate = templateSections.filter((sec) => !sectionIdByLabel.has(templateLabel(sec)));
+  const createdSections = await copySectionsIntoAudit({
+    companyId: input.companyId,
+    auditId: input.auditId,
+    createdByUserId: input.createdByUserId,
+    startingOrder: existingSections.length + 1,
+    sections: toCreate
+  });
+  for (const sec of templateSections) {
+    const made = createdSections.get(sec.id);
+    if (made) sectionIdByLabel.set(templateLabel(sec), made.id as UUID);
+  }
+  let nextSectionOrder = existingSections.length + createdSections.size + 1;
+
   for (let i = 0; i < questionRows.length; i++) {
     const row = questionRows[i] as Record<string, unknown>;
     const text = String(row.question ?? row.text ?? '').trim();
     if (!text) continue;
+    const label = row.section ? String(row.section).trim() : '';
+    let sectionRefId: UUID | null = label ? (sectionIdByLabel.get(label) ?? null) : null;
+    if (label && !sectionRefId) {
+      // Older templates only stored a label per question: give that label a real section.
+      const made = await createAuditSection({
+        companyId: input.companyId,
+        auditId: input.auditId,
+        sectionTitle: label,
+        sectionOrder: nextSectionOrder,
+        createdByUserId: input.createdByUserId
+      });
+      nextSectionOrder += 1;
+      sectionRefId = made.id as UUID;
+      sectionIdByLabel.set(label, sectionRefId);
+    }
     await createAuditQuestion({
       companyId: input.companyId,
       auditId: input.auditId,
       question: text,
-      section: row.section ? String(row.section) : null,
+      section: label || null,
+      sectionRefId,
       expectedEvidence: row.expected_evidence ? String(row.expected_evidence) : undefined,
       questionOrder: startOrder + imported,
       allocatedScore: Number(row.allocated_score ?? row.score ?? 1) || 1,
@@ -723,6 +831,11 @@ export async function importAuditChecklistFromTemplate(input: {
   return imported;
 }
 
+/** Removes trailing "(copy)" markers left by earlier duplications, e.g. "EMS (copy) (copy)" -> "EMS". */
+export function stripCopySuffix(title: string): string {
+  return title.replace(/(\s*\(copy\))+\s*$/i, '').trim() || title.trim();
+}
+
 /** Creates a new draft audit that reuses another audit's setup and question list, so a recurring audit (e.g. the same sub-contractor, next quarter) doesn't need to be rebuilt from scratch. Scores/responses are not carried over. */
 export async function duplicateAudit(input: {
   sourceAuditId: UUID;
@@ -732,11 +845,14 @@ export async function duplicateAudit(input: {
   const source = await getAudit(input.sourceAuditId);
   if (!source) throw new Error('Source audit not found.');
   const sourceQuestions = await listAuditQuestions(input.sourceAuditId);
+  const sourceSections = await listAuditSections(input.sourceAuditId);
 
   const created = await createAudit({
     companyId: input.companyId,
     module: source.module,
-    title: source.title ? `${source.title} (copy)` : undefined,
+    // Same title as the original (minus any old "(copy)" markers); the new audit number
+    // tells them apart, and the auditor can rename it on the audit page.
+    title: source.title ? stripCopySuffix(source.title) : undefined,
     auditType: source.audit_type,
     objectives: source.objectives ?? '',
     auditCriteria: source.audit_criteria ?? '',
@@ -756,13 +872,29 @@ export async function duplicateAudit(input: {
     auditeeName: source.auditee_name ?? undefined
   });
 
+  // Carry the section structure over so the copy keeps its sections and sub-sections.
+  const sectionMap = await copySectionsIntoAudit({
+    companyId: input.companyId,
+    auditId: created.id as UUID,
+    createdByUserId: input.createdByUserId,
+    startingOrder: 1,
+    sections: sourceSections.map((s) => ({
+      id: s.id,
+      isoClause: s.iso_clause,
+      title: s.section_title,
+      parentId: s.parent_section_id
+    }))
+  });
+
   let order = 1;
   for (const q of sourceQuestions) {
+    const sourceRef = (q as any).section_ref_id as string | null | undefined;
     await createAuditQuestion({
       companyId: input.companyId,
       auditId: created.id,
       question: q.question,
       section: q.section ?? null,
+      sectionRefId: sourceRef ? ((sectionMap.get(sourceRef)?.id as UUID | undefined) ?? null) : null,
       expectedEvidence: q.expected_evidence ?? undefined,
       questionOrder: order,
       allocatedScore: q.allocated_score ?? 1,

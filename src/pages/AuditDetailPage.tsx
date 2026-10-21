@@ -9,6 +9,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useDraftRegistration } from '../session/useDraftRegistration';
 import { NcrCreateModal, type NcrPrefill } from '../components/ncrs/NcrCreateModal';
+import { RepeatableHrEmployeeUserPicker } from '../components/audits/AuditScheduleModal';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
 import { HrEmployeeSelect } from '../components/ui/HrEmployeeSelect';
 import type { UUID, Audit, QualityNcr } from '../api/models/entities';
@@ -35,6 +36,8 @@ import {
   listAuditSections,
   createAuditSection,
   deleteAuditSection,
+  auditSectionLabel,
+  linkAuditQuestionsToSection,
   type AuditQuestion,
   type AuditResponse,
   type AuditSection
@@ -43,7 +46,6 @@ import { listQualityNcrs } from '../api/services/qualityNcrsService';
 import { listCorrectiveActions, createCorrectiveAction, type CorrectiveAction } from '../api/services/correctiveActionsService';
 import {
   listProgramAuditFindings,
-  createProgramAuditFinding,
   updateProgramAuditFinding,
   managerSignOffProgramAuditFinding,
   auditorVerifyAndCloseProgramAuditFinding
@@ -62,7 +64,7 @@ import {
   listAuditReports,
   renderReportAsHtml
 } from '../api/services/auditReportService';
-import { updateAudit, duplicateAudit, calculateAuditFindings } from '../api/services/auditsService';
+import { updateAudit, duplicateAudit, calculateAuditFindings, stripCopySuffix } from '../api/services/auditsService';
 import { useUser } from '@insforge/react';
 import { uploadFile } from '../api/services/storageService';
 import { EVIDENCE_BUCKET } from '../components/evidence/EvidenceModal';
@@ -155,7 +157,6 @@ export function AuditDetailPage() {
   const [isNcrModalOpen, setIsNcrModalOpen] = useState(false);
   const [ncrLinkedQuestionId, setNcrLinkedQuestionId] = useState<UUID | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const [raisingFindingForQuestionId, setRaisingFindingForQuestionId] = useState<UUID | null>(null);
   const [creatingCapaForQuestionId, setCreatingCapaForQuestionId] = useState<UUID | null>(null);
   const [capaDraftQuestionId, setCapaDraftQuestionId] = useState<UUID | null>(null);
   const [capaDraftDueDate, setCapaDraftDueDate] = useState('');
@@ -185,6 +186,12 @@ export function AuditDetailPage() {
   const [newQuestionScore, setNewQuestionScore] = useState('1');
   const [newSectionTitle, setNewSectionTitle] = useState('');
   const [newSectionIsoClause, setNewSectionIsoClause] = useState('');
+  /** Parent for the next section: '' (top level), a section id, or `label:<text>` for a
+      section that so far only exists as a free-text label on questions. */
+  const [newSectionParent, setNewSectionParent] = useState('');
+  const sectionTitleInputRef = React.useRef<HTMLInputElement>(null);
+  const addQuestionFormRef = React.useRef<HTMLDivElement>(null);
+  const newQuestionInputRef = React.useRef<HTMLTextAreaElement>(null);
   const [addingSection, setAddingSection] = useState(false);
   const [addingQuestion, setAddingQuestion] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
@@ -197,7 +204,13 @@ export function AuditDetailPage() {
     auditType: 'internal' as 'internal' | 'external' | 'client' | 'supplier' | 'certification',
     auditedOrganization: '',
     scopeOfAudit: '',
-    location: ''
+    location: '',
+    leadAuditorHrEmployeeId: '' as UUID | '',
+    leadAuditorUserId: '' as UUID | '',
+    leadAuditorName: '',
+    auditorUserIds: [] as UUID[],
+    auditeeHrEmployeeId: '' as UUID | '',
+    auditeeName: ''
   });
   const [savingHeader, setSavingHeader] = useState(false);
   const [headerError, setHeaderError] = useState<string | null>(null);
@@ -700,21 +713,93 @@ export function AuditDetailPage() {
     }
   }
 
+  // Sections in display order (parents followed by their sub-sections), with depth for indenting.
+  const sectionTree = useMemo(() => {
+    const all = sections ?? [];
+    const out: Array<{ section: AuditSection; depth: number }> = [];
+    const visit = (parentId: string | null, depth: number) => {
+      all
+        .filter((s) => (s.parent_section_id ?? null) === parentId || (parentId === null && s.parent_section_id && !all.some((p) => p.id === s.parent_section_id)))
+        .sort((a, b) => (a.section_order ?? 0) - (b.section_order ?? 0))
+        .forEach((s) => {
+          if (out.some((o) => o.section.id === s.id)) return;
+          out.push({ section: s, depth });
+          visit(s.id, depth + 1);
+        });
+    };
+    visit(null, 0);
+    return out;
+  }, [sections]);
+
+  // Section labels used by questions (e.g. from an older template) that have no real section yet.
+  const labelOnlySections = useMemo(() => {
+    const realLabels = new Set((sections ?? []).map((s) => auditSectionLabel(s, sections ?? [])));
+    const seen = new Set<string>();
+    for (const q of questions ?? []) {
+      const label = (q.section ?? '').trim();
+      if (!label || (q as any).section_ref_id || realLabels.has(label)) continue;
+      seen.add(label);
+    }
+    return Array.from(seen);
+  }, [questions, sections]);
+
+  /** Returns a real section id for a target, creating one for a label-only section (and linking its questions). */
+  async function ensureRealSection(target: string): Promise<UUID | null> {
+    if (!target) return null;
+    if (!target.startsWith('label:')) return target as UUID;
+    if (!auditId || !activeCompanyId || !user?.id) return null;
+    const label = target.slice('label:'.length);
+    const created = await createAuditSection({
+      companyId: activeCompanyId,
+      auditId: auditId as UUID,
+      sectionTitle: label,
+      sectionOrder: (sections?.length ?? 0) + 1,
+      createdByUserId: user.id as UUID
+    });
+    await linkAuditQuestionsToSection({ auditId: auditId as UUID, sectionId: created.id as UUID, sectionLabel: label });
+    refreshSections();
+    refreshQuestions();
+    return created.id as UUID;
+  }
+
+  function startAddSubsection(target: string) {
+    setNewSectionParent(target);
+    setNewSectionTitle('');
+    setNewSectionIsoClause('');
+    window.setTimeout(() => sectionTitleInputRef.current?.focus(), 0);
+  }
+
+  async function startAddQuestionUnder(target: string) {
+    setActionError(null);
+    try {
+      const id = await ensureRealSection(target);
+      setNewQuestionSectionRefId(id ?? '');
+      setNewQuestionSection('');
+      addQuestionFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.setTimeout(() => newQuestionInputRef.current?.focus(), 300);
+    } catch (err) {
+      setActionError(toUserFacingError(err, 'Unable to prepare this section.'));
+    }
+  }
+
   async function handleAddSection() {
     if (!auditId || !activeCompanyId || !user?.id || !newSectionTitle.trim()) return;
     setAddingSection(true);
     setActionError(null);
     try {
+      const parentSectionId = await ensureRealSection(newSectionParent);
       await createAuditSection({
         companyId: activeCompanyId,
         auditId: auditId as UUID,
         sectionTitle: newSectionTitle.trim(),
         isoClause: newSectionIsoClause.trim() || null,
+        parentSectionId,
         sectionOrder: (sections?.length ?? 0) + 1,
         createdByUserId: user.id as UUID
       });
       setNewSectionTitle('');
       setNewSectionIsoClause('');
+      setNewSectionParent('');
       await refreshSections();
     } catch (err) {
       setActionError(toUserFacingError(err, 'Unable to add audit section.'));
@@ -739,7 +824,7 @@ export function AuditDetailPage() {
     setActionError(null);
     try {
       const sectionRef = sections?.find((s) => s.id === newQuestionSectionRefId);
-      await createAuditQuestion({
+      const createdQuestion = await createAuditQuestion({
         companyId: activeCompanyId,
         auditId: auditId as UUID,
         question: newQuestion.trim(),
@@ -750,6 +835,35 @@ export function AuditDetailPage() {
         allocatedScore: Number(newQuestionScore) || 1,
         createdByUserId: user.id as UUID
       });
+      // Place the new question after the last question of its section (including sub-sections)
+      // instead of at the very end of the checklist.
+      if (newQuestionSectionRefId) {
+        const [freshSections, freshQuestions] = await Promise.all([
+          listAuditSections(auditId as UUID),
+          listAuditQuestions(auditId as UUID)
+        ]);
+        const inSection = new Set<string>([newQuestionSectionRefId]);
+        let grew = true;
+        while (grew) {
+          grew = false;
+          for (const sec of freshSections) {
+            if (sec.parent_section_id && inSection.has(sec.parent_section_id) && !inSection.has(sec.id)) {
+              inSection.add(sec.id);
+              grew = true;
+            }
+          }
+        }
+        const others = freshQuestions.filter((x) => x.id !== createdQuestion.id);
+        let lastIndex = -1;
+        others.forEach((x, idx) => {
+          if ((x as any).section_ref_id && inSection.has((x as any).section_ref_id)) lastIndex = idx;
+        });
+        if (lastIndex >= 0 && lastIndex < others.length - 1) {
+          const orderedIds = others.map((x) => x.id as UUID);
+          orderedIds.splice(lastIndex + 1, 0, createdQuestion.id as UUID);
+          await reorderAuditQuestions(auditId as UUID, orderedIds);
+        }
+      }
       setNewQuestion('');
       setNewQuestionSection('');
       setNewQuestionSectionRefId('');
@@ -851,7 +965,13 @@ export function AuditDetailPage() {
       auditType: audit.audit_type,
       auditedOrganization: audit.audited_organization ?? '',
       scopeOfAudit: audit.scope_of_audit ?? '',
-      location: audit.location ?? ''
+      location: audit.location ?? '',
+      leadAuditorHrEmployeeId: (audit.lead_auditor_hr_employee_id ?? '') as UUID | '',
+      leadAuditorUserId: (audit.lead_auditor_user_id ?? '') as UUID | '',
+      leadAuditorName: audit.lead_auditor_name ?? '',
+      auditorUserIds: (audit.auditor_user_ids ?? []) as UUID[],
+      auditeeHrEmployeeId: (audit.auditee_hr_employee_id ?? '') as UUID | '',
+      auditeeName: audit.auditee_name ?? ''
     });
     setHeaderError(null);
     setEditingHeader(true);
@@ -870,11 +990,18 @@ export function AuditDetailPage() {
         audit.id as UUID,
         activeCompanyId,
         {
-          title: headerForm.title.trim(),
+          title: stripCopySuffix(headerForm.title),
           audit_type: headerForm.auditType,
           audited_organization: headerForm.auditedOrganization.trim() || null,
           scope_of_audit: headerForm.scopeOfAudit.trim() || null,
-          location: headerForm.location.trim() || null
+          location: headerForm.location.trim() || null,
+          lead_auditor_hr_employee_id: headerForm.leadAuditorHrEmployeeId || null,
+          lead_auditor_user_id: headerForm.leadAuditorUserId || null,
+          lead_auditor_name: headerForm.leadAuditorName.trim() || null,
+          auditor_user_ids:
+            headerForm.auditorUserIds.length > 0 ? headerForm.auditorUserIds : ((audit.auditor_user_ids ?? []) as UUID[]),
+          auditee_hr_employee_id: headerForm.auditeeHrEmployeeId || null,
+          auditee_name: headerForm.auditeeName.trim() || null
         },
         user.id as UUID
       );
@@ -887,8 +1014,6 @@ export function AuditDetailPage() {
     }
   }
 
-  // Only block the page on the first load. Background refreshes after a save keep the
-  // current view mounted instead of swapping it for a spinner (which looked like a reload).
   // Carry the audit question's details into "Raise NCR" so they don't have to be retyped.
   const ncrPrefill = useMemo<NcrPrefill | undefined>(() => {
     if (!ncrLinkedQuestionId || !audit) return undefined;
@@ -899,9 +1024,7 @@ export function AuditDetailPage() {
       ? (sections ?? []).find((s) => s.id === (q as any).section_ref_id)
       : null;
     const sectionLabel = sectionRef
-      ? sectionRef.iso_clause
-        ? `${sectionRef.iso_clause} — ${sectionRef.section_title}`
-        : sectionRef.section_title
+      ? auditSectionLabel(sectionRef, sections ?? [])
       : q.section || '';
     const complianceLabels: Record<string, string> = {
       C: 'C — Conforming',
@@ -942,6 +1065,8 @@ export function AuditDetailPage() {
     };
   }, [ncrLinkedQuestionId, audit, questions, sections, responsesByQuestion]);
 
+  // Only block the page on the first load. Background refreshes after a save keep the
+  // current view mounted instead of swapping it for a spinner (which looked like a reload).
   const loading =
     (auditLoading && !audit) || (questionsLoading && !questions) || (responsesLoading && !responses);
 
@@ -1015,7 +1140,7 @@ export function AuditDetailPage() {
                       <button
                         type="button"
                         onClick={openEditHeader}
-                        title="Edit title, type, organization audited, scope and location"
+                        title="Edit title, type, organization audited, scope, location and audit team"
                         className="p-1.5 rounded-lg border border-surface-200 text-charcoal-500 hover:bg-surface-50"
                       >
                         <Edit2Icon className="w-3.5 h-3.5" />
@@ -1375,9 +1500,7 @@ export function AuditDetailPage() {
                               ? (sections ?? []).find((s) => s.id === (q as any).section_ref_id)
                               : null;
                             const sectionLabel = sectionRef
-                              ? sectionRef.iso_clause
-                                ? `${sectionRef.iso_clause} — ${sectionRef.section_title}`
-                                : sectionRef.section_title
+                              ? auditSectionLabel(sectionRef, sections ?? [])
                               : q.section ?? '—';
                             return (
                               <tr key={q.id} className="border-b border-surface-100">
@@ -1478,32 +1601,80 @@ export function AuditDetailPage() {
               {canManageAudit && audit.status !== 'completed' && audit.status !== 'archived' && (
                 <div className="mb-4 border border-surface-200 rounded-xl p-4 space-y-3 bg-surface-50">
                   <p className="text-xs font-semibold text-charcoal">Sections (ISO clause + title)</p>
-                  {(sections ?? []).length > 0 && (
+                  {(sectionTree.length > 0 || labelOnlySections.length > 0) && (
                     <ul className="space-y-1">
-                      {(sections ?? []).map((s) => (
-                        <li key={s.id} className="flex items-center justify-between text-xs bg-white border border-surface-200 rounded-lg px-2 py-1">
+                      {sectionTree.map(({ section: s, depth }) => (
+                        <li
+                          key={s.id}
+                          className="flex flex-wrap items-center justify-between gap-2 text-xs bg-white border border-surface-200 rounded-lg px-2 py-1"
+                          style={{ marginLeft: depth * 16 }}
+                        >
                           <span>
+                            {depth > 0 && <span className="text-charcoal-400 mr-1">↳</span>}
                             {s.iso_clause && <span className="font-mono text-charcoal-500 mr-1">{s.iso_clause}</span>}
                             {s.section_title}
                           </span>
-                          <button type="button" onClick={() => void handleDeleteSection(s)} className="text-critical hover:underline">
-                            Remove
-                          </button>
+                          <span className="flex items-center gap-3">
+                            <button type="button" onClick={() => startAddSubsection(s.id)} className="text-teal hover:underline">
+                              + Sub-section
+                            </button>
+                            <button type="button" onClick={() => void startAddQuestionUnder(s.id)} className="text-teal hover:underline">
+                              + Question
+                            </button>
+                            <button type="button" onClick={() => void handleDeleteSection(s)} className="text-critical hover:underline">
+                              Remove
+                            </button>
+                          </span>
+                        </li>
+                      ))}
+                      {labelOnlySections.map((label) => (
+                        <li
+                          key={`label:${label}`}
+                          className="flex flex-wrap items-center justify-between gap-2 text-xs bg-white border border-dashed border-surface-300 rounded-lg px-2 py-1"
+                        >
+                          <span>{label}</span>
+                          <span className="flex items-center gap-3">
+                            <button type="button" onClick={() => startAddSubsection(`label:${label}`)} className="text-teal hover:underline">
+                              + Sub-section
+                            </button>
+                            <button type="button" onClick={() => void startAddQuestionUnder(`label:${label}`)} className="text-teal hover:underline">
+                              + Question
+                            </button>
+                          </span>
                         </li>
                       ))}
                     </ul>
+                  )}
+                  {newSectionParent && (
+                    <div className="flex items-center justify-between gap-2 text-xs bg-teal/5 border border-teal/30 rounded-lg px-2 py-1.5">
+                      <span>
+                        Adding a sub-section under{' '}
+                        <span className="font-semibold">
+                          {newSectionParent.startsWith('label:')
+                            ? newSectionParent.slice('label:'.length)
+                            : (() => {
+                                const parent = (sections ?? []).find((x) => x.id === newSectionParent);
+                                return parent ? auditSectionLabel(parent, sections ?? []) : 'section';
+                              })()}
+                        </span>
+                      </span>
+                      <button type="button" onClick={() => setNewSectionParent('')} className="text-charcoal-500 hover:underline">
+                        Cancel
+                      </button>
+                    </div>
                   )}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input
                       value={newSectionIsoClause}
                       onChange={(e) => setNewSectionIsoClause(e.target.value)}
-                      placeholder="ISO clause (e.g. 8.1)"
+                      placeholder={newSectionParent ? 'Clause (optional, e.g. 8.1.2)' : 'ISO clause (e.g. 8.1)'}
                       className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
                     />
                     <input
+                      ref={sectionTitleInputRef}
                       value={newSectionTitle}
                       onChange={(e) => setNewSectionTitle(e.target.value)}
-                      placeholder="Section title (e.g. Risk Management)"
+                      placeholder={newSectionParent ? 'Sub-section title' : 'Section title (e.g. Risk Management)'}
                       className="px-3 py-2 border border-surface-300 rounded-lg text-sm md:col-span-1"
                     />
                     <button
@@ -1512,14 +1683,14 @@ export function AuditDetailPage() {
                       onClick={() => void handleAddSection()}
                       className="px-4 py-2 rounded-lg bg-navy text-white text-xs font-semibold hover:bg-navy-600 disabled:opacity-60"
                     >
-                      {addingSection ? 'Adding…' : 'Add section'}
+                      {addingSection ? 'Adding…' : newSectionParent ? 'Add sub-section' : 'Add section'}
                     </button>
                   </div>
                 </div>
               )}
 
               {canManageAudit && audit.status !== 'completed' && audit.status !== 'archived' && (
-                <div className="mb-4 border border-surface-200 rounded-xl p-4 space-y-3 bg-surface-50">
+                <div ref={addQuestionFormRef} className="mb-4 border border-surface-200 rounded-xl p-4 space-y-3 bg-surface-50">
                   <p className="text-xs font-semibold text-charcoal">Add checklist question</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <select
@@ -1528,9 +1699,9 @@ export function AuditDetailPage() {
                       className="px-3 py-2 border border-surface-300 rounded-lg text-sm"
                     >
                       <option value="">No section</option>
-                      {(sections ?? []).map((s) => (
+                      {sectionTree.map(({ section: s }) => (
                         <option key={s.id} value={s.id}>
-                          {s.iso_clause ? `${s.iso_clause} — ${s.section_title}` : s.section_title}
+                          {auditSectionLabel(s, sections ?? [])}
                         </option>
                       ))}
                     </select>
@@ -1554,6 +1725,7 @@ export function AuditDetailPage() {
                     </div>
                   </div>
                   <textarea
+                    ref={newQuestionInputRef}
                     value={newQuestion}
                     onChange={(e) => setNewQuestion(e.target.value)}
                     rows={2}
@@ -1610,9 +1782,7 @@ export function AuditDetailPage() {
                           ? (sections ?? []).find((s) => s.id === (q as any).section_ref_id)
                           : null;
                         const sectionLabel = sectionRef
-                          ? sectionRef.iso_clause
-                            ? `${sectionRef.iso_clause} — ${sectionRef.section_title}`
-                            : sectionRef.section_title
+                          ? auditSectionLabel(sectionRef, sections ?? [])
                           : q.section || null;
                         const sectionKey = sectionLabel ?? '__none__';
                         const showSectionHeader = sectionKey !== lastSectionKey;
@@ -1758,7 +1928,15 @@ export function AuditDetailPage() {
                                     !activeCompanyId ||
                                     !user?.id ||
                                     !audit ||
-                                    audit.status === 'draft'
+                                    // A draft audit can still raise NCRs for answers already rated NC/PC.
+                                    (audit.status === 'draft' &&
+                                      !['NC', 'PC'].includes(String((resp as any)?.compliance_status ?? '')))
+                                  }
+                                  title={
+                                    audit.status === 'draft' &&
+                                    !['NC', 'PC'].includes(String((resp as any)?.compliance_status ?? ''))
+                                      ? 'Rate this question NC or PC to raise an NCR while the audit is in draft'
+                                      : undefined
                                   }
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1770,47 +1948,7 @@ export function AuditDetailPage() {
                                   <AlertCircleIcon className="w-3 h-3" />
                                   Raise NCR
                                 </button>
-                                <button
-                                  type="button"
-                                  disabled={
-                                    !canManageAudit ||
-                                    !activeCompanyId ||
-                                    !user?.id ||
-                                    !audit ||
-                                    !resp ||
-                                    !resp.finding ||
-                                    resp.finding.trim().length === 0
-                                  }
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    if (!activeCompanyId || !user?.id || !audit || !resp) return;
-                                    setRaisingFindingForQuestionId(q.id);
-                                    try {
-                                      const deviationType =
-                                        (resp as any).deviation_type ??
-                                        (!resp.is_compliant || resp.risk_rating === 'high'
-                                          ? 'non_conformance'
-                                          : 'finding');
-                                      await createProgramAuditFinding({
-                                        companyId: activeCompanyId,
-                                        auditId: audit.id as UUID,
-                                        auditQuestionId: q.id,
-                                        title: resp.finding || q.question,
-                                        deviationType: deviationType as any,
-                                        riskLevel: resp.risk_rating as any,
-                                        requiredAction: '',
-                                        createdByUserId: user.id as any
-                                      });
-                                      await refreshFindings();
-                                    } finally {
-                                      setRaisingFindingForQuestionId(null);
-                                    }
-                                  }}
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-surface-300 text-xs font-semibold text-charcoal hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  {raisingFindingForQuestionId === q.id ? 'Saving…' : 'Raise finding'}
-                                </button>
-                                {(resp as any)?.compliance_status === 'NC' && (
+                                {['NC', 'PC'].includes(String((resp as any)?.compliance_status ?? '')) && (
                                   <button
                                     type="button"
                                     disabled={
@@ -1995,7 +2133,7 @@ export function AuditDetailPage() {
                 <div>
                   <p className="text-xs font-semibold text-charcoal mb-2">Program audit findings</p>
                   {(!findings || findings.length === 0) && (
-                    <p className="text-xs text-charcoal-500">No findings captured yet.</p>
+                    <p className="text-xs text-charcoal-500">None. Non-conformities are now raised as NCRs.</p>
                   )}
                   {findings && findings.length > 0 && (
                     <ul className="space-y-1">
@@ -2329,6 +2467,43 @@ export function AuditDetailPage() {
                   className="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm"
                 />
               </div>
+              {activeCompanyId && (
+                <div className="pt-3 border-t border-surface-200 space-y-3">
+                  <p className="text-xs font-semibold text-charcoal">Audit team</p>
+                  <HrEmployeeSelect
+                    companyId={activeCompanyId}
+                    value={headerForm.leadAuditorHrEmployeeId}
+                    valueField="id"
+                    includeUnlinked
+                    label="Lead auditor"
+                    onChange={(selected, meta) =>
+                      setHeaderForm((f) => ({
+                        ...f,
+                        leadAuditorHrEmployeeId: selected,
+                        leadAuditorUserId: (meta.userId ?? '') as UUID | '',
+                        leadAuditorName: meta.nameSnapshot
+                      }))
+                    }
+                  />
+                  <RepeatableHrEmployeeUserPicker
+                    companyId={activeCompanyId}
+                    values={headerForm.auditorUserIds}
+                    onChange={(values) => setHeaderForm((f) => ({ ...f, auditorUserIds: values }))}
+                    label="Auditors"
+                    addLabel="Add auditor"
+                  />
+                  <HrEmployeeSelect
+                    companyId={activeCompanyId}
+                    value={headerForm.auditeeHrEmployeeId}
+                    valueField="id"
+                    includeUnlinked
+                    label="Auditee"
+                    onChange={(selected, meta) =>
+                      setHeaderForm((f) => ({ ...f, auditeeHrEmployeeId: selected, auditeeName: meta.nameSnapshot }))
+                    }
+                  />
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-surface-200 px-5 pb-5">
               <button

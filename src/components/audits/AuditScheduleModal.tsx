@@ -10,6 +10,7 @@ import { useAsync } from '../../api/hooks/useAsync';
 import { useDraftManager } from '../../session/DraftManagerProvider';
 import { useDraftRegistration } from '../../session/useDraftRegistration';
 import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
+import { listHrEmployees } from '../../api/services/hrService';
 
 /**
  * Repeated HrEmployeeSelect rows (add/remove) for a plain array of linked
@@ -21,7 +22,7 @@ import { HrEmployeeSelect } from '../ui/HrEmployeeSelect';
  * employee with no login can be selected and shown, but shows a note that
  * they can't actually be added to this specific list.
  */
-function RepeatableHrEmployeeUserPicker(props: {
+export function RepeatableHrEmployeeUserPicker(props: {
   companyId: UUID;
   values: UUID[];
   onChange: (values: UUID[]) => void;
@@ -42,6 +43,30 @@ function RepeatableHrEmployeeUserPicker(props: {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [values.join(',')]);
+
+  // Rows restored from saved user ids (e.g. editing an existing audit) don't know their HR
+  // employee yet, so look it up to show the person's name in the dropdown.
+  useEffect(() => {
+    if (!rows.some((r) => r.userId && !r.employeeId)) return;
+    let cancelled = false;
+    listHrEmployees(props.companyId)
+      .then((employees) => {
+        if (cancelled) return;
+        const byUserId = new Map(employees.filter((e) => e.user_id).map((e) => [e.user_id as string, e]));
+        setRows((prev) =>
+          prev.map((r) => {
+            if (!r.userId || r.employeeId) return r;
+            const emp = byUserId.get(r.userId);
+            return emp ? { ...r, employeeId: emp.id as UUID, name: `${emp.first_name ?? ''} ${emp.last_name ?? ''}`.trim() } : r;
+          })
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.companyId, rows.map((r) => `${r.userId}:${r.employeeId}`).join(',')]);
 
   function commit(next: Row[]) {
     setRows(next);
