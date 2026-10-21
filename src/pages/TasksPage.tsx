@@ -61,6 +61,7 @@ import { canApproveOrRejectTask, canCloseTask, canManageTasks, canSubmitTaskForR
 import { toUserFacingError } from '../utils/userFacingMessage';
 import { exportCapaListPdf } from '../api/services/capaReportExportService';
 import { getCompanyLogoUrl } from '../utils/companyLogo';
+import { formatRecordNumber } from '../utils/recordNumber';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -196,7 +197,7 @@ export function TasksPage() {
 
   const allTasks = tasksData ?? [];
   const filteredTasks = allTasks.filter((task) => {
-    const matchesSearch = !searchQuery.trim() || task.title.toLowerCase().includes(searchQuery.toLowerCase()) || (task.description ?? '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = !searchQuery.trim() || task.title.toLowerCase().includes(searchQuery.toLowerCase()) || formatRecordNumber(task.task_number, 'TSK', task.id).toLowerCase().includes(searchQuery.toLowerCase()) || (task.description ?? '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
     const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter;
     const matchesRisk = riskFilter === 'all' || task.risk_level === riskFilter;
@@ -1036,7 +1037,7 @@ export function TasksPage() {
                           {task.title}
                         </button>
                         <p className="text-sm text-charcoal-400 mt-0.5">
-                          TSK-{shortId(task.id)} • {task.category ? TASK_CATEGORY_LABELS[task.category as keyof typeof TASK_CATEGORY_LABELS] : task.module}
+                          {formatRecordNumber(task.task_number, 'TSK', task.id)} • {task.category ? TASK_CATEGORY_LABELS[task.category as keyof typeof TASK_CATEGORY_LABELS] : task.module}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">

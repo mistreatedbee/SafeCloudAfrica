@@ -69,6 +69,7 @@ import { useDraftManager } from '../session/DraftManagerProvider';
 import { OrgStructureManager } from '../components/org/OrgStructureManager';
 import { toUserFacingError } from '../utils/userFacingMessage';
 import { subscribeToLiveDataMutations } from '../api/liveData';
+import { formatRecordNumber } from '../utils/recordNumber';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -459,7 +460,7 @@ export function PPEPage() {
     const dept = i.department_id ? departmentById.get(i.department_id) : null;
     return {
       raw: i,
-      id: `PPE-${String(i.id).slice(0, 8)}`,
+      id: formatRecordNumber(i.issue_number, 'PPE', i.id),
       issueDate: i.issue_date ?? (i.issued_at ? i.issued_at.slice(0, 10) : '?'),
       item: i.ppe_item_name ?? item?.name ?? `Item ${String(i.ppe_item_id).slice(0, 8)}`,
       size: i.size ?? '?',
@@ -511,7 +512,7 @@ export function PPEPage() {
   const filteredIssueRows = useMemo(() => {
     if (!registerFilters.personName.trim()) return issueRows;
     const q = registerFilters.personName.toLowerCase();
-    return issueRows.filter((r) => r.issuedTo.toLowerCase().includes(q));
+    return issueRows.filter((r) => r.issuedTo.toLowerCase().includes(q) || r.id.toLowerCase().includes(q));
   }, [issueRows, registerFilters.personName]);
 
   const stockRows = (stocks ?? []).map((s) => {

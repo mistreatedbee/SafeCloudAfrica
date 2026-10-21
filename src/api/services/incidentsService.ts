@@ -33,6 +33,12 @@ export type IncidentsPage = {
   total: number;
 };
 
+function incidentSearchFilter(term: string): string {
+  const base = `title.ilike.%${term}%,category.ilike.%${term}%,subcategory.ilike.%${term}%`;
+  // Number search (INC-202610-0001) only when the term looks like one.
+  return /^inc-/i.test(term) ? `${base},incident_number.ilike.%${term}%` : base;
+}
+
 function applyIncidentFilters(q: any, input: ListIncidentsPageInput): any {
   let next = q;
   if (input.status) next = next.eq('status', input.status);
@@ -43,7 +49,7 @@ function applyIncidentFilters(q: any, input: ListIncidentsPageInput): any {
   if (input.to) next = next.lte('occurred_at', input.to);
   if (input.search?.trim()) {
     const term = input.search.trim();
-    next = next.or(`title.ilike.%${term}%,category.ilike.%${term}%,subcategory.ilike.%${term}%`);
+    next = next.or(incidentSearchFilter(term));
   }
   return next;
 }
@@ -125,7 +131,7 @@ export async function listIncidents(input: ListIncidentsInput): Promise<Incident
 
   // Simple search across title/category/subcategory.
   const finalQ = trimmed
-    ? q.or(`title.ilike.%${trimmed}%,category.ilike.%${trimmed}%,subcategory.ilike.%${trimmed}%`).limit(limit)
+    ? q.or(incidentSearchFilter(trimmed)).limit(limit)
     : q.limit(limit);
 
   const { data, error } = await finalQ;

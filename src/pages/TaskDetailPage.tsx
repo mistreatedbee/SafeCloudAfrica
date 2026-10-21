@@ -65,6 +65,7 @@ import {
   canSubmitTaskForReview,
   isSeniorRole
 } from '../api/permissions/taskPermissions';
+import { formatRecordNumber } from '../utils/recordNumber';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -541,7 +542,7 @@ export function TaskDetailPage() {
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-semibold text-charcoal truncate">{task.title}</h1>
             <p className="text-sm text-charcoal-500 mt-0.5">
-              TSK-{shortId(task.id)} • {task.category ? TASK_CATEGORY_LABELS[task.category as keyof typeof TASK_CATEGORY_LABELS] : task.module}
+              {formatRecordNumber(task.task_number, 'TSK', task.id)} • {task.category ? TASK_CATEGORY_LABELS[task.category as keyof typeof TASK_CATEGORY_LABELS] : task.module}
             </p>
           </div>
           <StatusBadge status={task.status as any} size="sm" />

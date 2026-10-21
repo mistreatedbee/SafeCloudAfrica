@@ -18,6 +18,7 @@ import type { IncidentsPage as IncidentsPageResult, IncidentListStats } from '..
 import type { Incident } from '../api/models/entities';
 import { useUser } from '@insforge/react';
 import { toUserFacingError } from '../utils/userFacingMessage';
+import { formatRecordNumber } from '../utils/recordNumber';
 
 const IncidentCreateModal = lazy(() => import('../components/incidents/IncidentCreateModal').then(m => ({ default: m.IncidentCreateModal })));
 const IncidentDetailModal = lazy(() => import('../components/incidents/IncidentDetailModal').then(m => ({ default: m.IncidentDetailModal })));
@@ -379,7 +380,7 @@ export function IncidentsPage() {
                       <p className="font-medium text-charcoal">
                         {incident.title}
                       </p>
-                      <p className="text-sm text-teal mt-0.5">INC-{shortId(incident.id)}</p>
+                      <p className="text-sm text-teal mt-0.5">{formatRecordNumber(incident.incident_number, 'INC', incident.id)}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={incident.status as any} size="sm" />

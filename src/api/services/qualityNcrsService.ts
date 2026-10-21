@@ -27,9 +27,10 @@ function generateNCRNumber(): string {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
-  const seed = String(Date.now()).slice(-6);
-  const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
-  return `NCR-${year}${month}-${seed}${random}`;
+  // Placeholder in the NCR-YYYYMM-0001 format; the database trigger replaces it with
+  // the next sequential number for the company (see record_numbers_core_modules migration).
+  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  return `NCR-${year}${month}-${random}`;
 }
 
 export async function listQualityNcrs(input: {
@@ -225,7 +226,7 @@ export async function createQualityNcr(input: {
     action: 'quality_ncrs.create',
     entityType: 'quality_ncr',
     entityId: ncr.id,
-    metadata: { nc_number, sourceType, sourceEntityId: input.source_entity_id ?? null }
+    metadata: { nc_number: ncr.nc_number ?? nc_number, sourceType, sourceEntityId: input.source_entity_id ?? null }
   });
 
   try {
@@ -260,7 +261,7 @@ export async function createQualityNcr(input: {
         to: recipients,
         templateKey: 'quality_ncr',
         variables: {
-          reference: nc_number,
+          reference: ncr.nc_number ?? nc_number,
           title: input.title,
           severity: input.severity,
           status: 'Open',

@@ -11,6 +11,7 @@ import { BbsObservationCreateModal } from '../../components/features/BbsObservat
 import { isSellableFeatureAccessError } from '../../api/services/sellableFeaturesService';
 import { SellableFeatureLockedPage } from './SellableFeatureLockedPage';
 import { ListEmptyState } from '../../components/ui/ListEmptyState';
+import { formatRecordNumber } from '../../utils/recordNumber';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -42,7 +43,7 @@ export function BBSPage() {
 
   const rows = useMemo(() => {
     const list = (data ?? []).map((o) => ({
-      id: `OBS-${String(o.id).slice(0, 6)}`,
+      id: formatRecordNumber(o.observation_number, 'OBS', o.id),
       type: o.type === 'unsafe_act' ? 'Unsafe act' : o.type === 'near_miss' ? 'Near miss' : 'Positive',
       title: o.title,
       area: o.area ?? '—',

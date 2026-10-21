@@ -208,6 +208,8 @@ export type ActivityLog = {
 export type Incident = {
   id: UUID;
   company_id: UUID;
+  /** Short searchable number, e.g. INC-202610-0001 (set by a DB trigger). */
+  incident_number?: string | null;
   module: ModuleKey;
   site_id?: UUID | null;
   department_id?: UUID | null;
@@ -453,6 +455,8 @@ export type TaskProgressUpdate = {
 export type Task = {
   id: UUID;
   company_id: UUID;
+  /** Short searchable number, e.g. TSK-202610-0001 (set by a DB trigger). */
+  task_number?: string | null;
   module: ModuleKey;
   title: string;
   description: string | null;
@@ -1246,6 +1250,8 @@ export type PPEItem = {
 export type PPEIssue = {
   id: UUID;
   company_id: UUID;
+  /** Short searchable number, e.g. PPE-202610-0001 (set by a DB trigger). */
+  issue_number?: string | null;
   ppe_item_id: UUID;
   issued_to_user_id: UUID | null;
   issued_to_employee_id?: UUID | null;
@@ -2100,6 +2106,8 @@ export type BbsObservationStatus = 'logged' | 'action_required' | 'closed';
 export type BbsObservation = {
   id: UUID;
   company_id: UUID;
+  /** Short searchable number, e.g. OBS-202610-0001 (set by a DB trigger). */
+  observation_number?: string | null;
   type: BbsObservationType;
   title: string;
   area: string | null;

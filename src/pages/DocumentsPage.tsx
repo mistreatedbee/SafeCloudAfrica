@@ -15,6 +15,7 @@ import { DocumentUploadModal } from '../components/documents/DocumentUploadModal
 import { DocumentEditModal } from '../components/documents/DocumentEditModal';
 import { listUserProfiles } from '../api/services/profilesService';
 import { ListEmptyState } from '../components/ui/ListEmptyState';
+import { formatRecordNumber } from '../utils/recordNumber';
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -863,7 +864,7 @@ export function DocumentsPage() {
                             ) : null}
                           </div>
                           <p className="text-xs text-charcoal-500 mt-1">
-                            {doc.document_number || `DOC-${shortId(String(doc.id))}`} • {doc.module} • {doc.category}
+                            {formatRecordNumber(doc.document_number, 'DOC', String(doc.id))} • {doc.module} • {doc.category}
                           </p>
                           <p className="text-xs text-charcoal-500 mt-1">
                             Folder: {folderPath(folder, folderMaps.byId)} • Compiler: {doc.document_owner_name || '—'}
@@ -904,7 +905,7 @@ export function DocumentsPage() {
                       </span>
                     ) : null}
                   </div>
-                  <p className="text-xs text-charcoal-500 mt-1">{selectedDoc.document_number || `DOC-${shortId(String(selectedDoc.id))}`}</p>
+                  <p className="text-xs text-charcoal-500 mt-1">{formatRecordNumber(selectedDoc.document_number, 'DOC', String(selectedDoc.id))}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
                   {publishedVersion?.id && (
