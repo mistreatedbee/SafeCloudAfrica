@@ -14,6 +14,24 @@ type NcrSource = 'audit' | 'audit_finding' | 'incident' | 'complaint' | 'risk' |
 type LinkedRequirementType = 'STANDARD' | 'POLICY' | 'PROCEDURE';
 type RiskClassification = 'Low' | 'Medium' | 'High' | 'Critical';
 
+/** Values carried over from the record the NCR is raised from (e.g. an audit question). */
+export type NcrPrefill = {
+  /** Distinguishes drafts when several NCRs can be raised from one source record. */
+  key: string;
+  title?: string;
+  location?: string;
+  department?: string;
+  activity?: string;
+  responsibleRole?: string;
+  linkedRequirementType?: LinkedRequirementType;
+  linkedRequirement?: string;
+  severity?: Severity;
+  riskClassification?: RiskClassification;
+  responsiblePerson?: string;
+  /** Read-only context shown on the form and added to the NCR description (e.g. the audit finding). */
+  context?: { heading: string; lines: Array<{ label: string; value: string }> };
+};
+
 const EVIDENCE_BUCKET = 'sca-evidence';
 
 export function NcrCreateModal(props: {
@@ -23,11 +41,12 @@ export function NcrCreateModal(props: {
   createdByUserId: UUID;
   defaultModule?: string;
   linkedSource?: { type: NcrSource; id?: string };
+  prefill?: NcrPrefill;
   onCreated?: () => void;
 }) {
   const { restoreDraft, clearDraft } = useDraftManager();
   const { showSuccess, showError } = useToast();
-  const draftKey = `ncr-create:${props.companyId}:${props.createdByUserId}:${props.linkedSource?.id ?? 'new'}`;
+  const draftKey = `ncr-create:${props.companyId}:${props.createdByUserId}:${props.linkedSource?.id ?? 'new'}${props.prefill ? `:${props.prefill.key}` : ''}`;
   const [ncrNumber, setNcrNumber] = useState('');
   const [ncrDate, setNcrDate] = useState(new Date().toISOString().slice(0, 10));
   const [ncrTime, setNcrTime] = useState(new Date().toTimeString().slice(0, 5));
@@ -52,11 +71,6 @@ export function NcrCreateModal(props: {
   const [evidenceAfterDraftNames, setEvidenceAfterDraftNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const finalNcrNumber = useMemo(() => {
-    if (ncrNumber.trim()) return ncrNumber.trim();
-    return `NCR-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-  }, [ncrNumber]);
 
   const missingFields = useMemo(() => {
     const missing: string[] = [];
@@ -196,6 +210,20 @@ export function NcrCreateModal(props: {
 
   React.useEffect(() => {
     if (!props.open) return;
+    const prefill = props.prefill;
+    if (prefill) {
+      if (prefill.title) setTitle(prefill.title);
+      if (prefill.location) setLocation(prefill.location);
+      if (prefill.department) setDepartment(prefill.department);
+      if (prefill.activity) setActivity(prefill.activity);
+      if (prefill.responsibleRole) setResponsibleRole(prefill.responsibleRole);
+      if (prefill.linkedRequirementType) setLinkedRequirementType(prefill.linkedRequirementType);
+      if (prefill.linkedRequirement) setLinkedRequirement(prefill.linkedRequirement);
+      if (prefill.severity) setSeverity(prefill.severity);
+      if (prefill.riskClassification) setRiskClassification(prefill.riskClassification);
+      if (prefill.responsiblePerson) setResponsiblePerson(prefill.responsiblePerson);
+    }
+    // A saved draft (the user's own edits) takes precedence over the prefill.
     const restored = restoreDraft<{
       ncrNumber?: string;
       ncrDate?: string;
@@ -271,7 +299,11 @@ export function NcrCreateModal(props: {
       setLoading(true);
 
       const descriptionParts: string[] = [];
-      descriptionParts.push(`NCR Number: ${finalNcrNumber}`);
+      if (props.prefill?.context) {
+        descriptionParts.push(
+          [props.prefill.context.heading, ...props.prefill.context.lines.map((l) => `${l.label}: ${l.value}`)].join('\n')
+        );
+      }
       descriptionParts.push(`Date & Time: ${ncrDate} ${ncrTime}`);
       descriptionParts.push(`Location: ${location}`);
       descriptionParts.push(`Department / Process: ${department} / ${process}`);
@@ -327,7 +359,7 @@ export function NcrCreateModal(props: {
       }
       await syncNcrEvidenceFromAttachments(props.companyId, created.id);
 
-      showSuccess(`NCR ${finalNcrNumber} created successfully.`);
+      showSuccess(created.nc_number ? `NCR ${created.nc_number} created successfully.` : 'NCR created successfully.');
       props.onCreated?.();
       clearDraft(draftKey);
       props.onClose();
@@ -395,18 +427,36 @@ export function NcrCreateModal(props: {
             </div>
           )}
 
+          {props.prefill?.context && (
+            <div className="rounded-lg border border-teal/30 bg-teal/5 p-3">
+              <p className="text-xs font-semibold text-teal mb-1.5">{props.prefill.context.heading}</p>
+              <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
+                {props.prefill.context.lines.map((line) => (
+                  <React.Fragment key={line.label}>
+                    <dt className="text-charcoal-500">{line.label}</dt>
+                    <dd className="text-charcoal whitespace-pre-wrap">{line.value}</dd>
+                  </React.Fragment>
+                ))}
+              </dl>
+              <p className="text-[11px] text-charcoal-500 mt-2">
+                The fields below were filled in from this record. Review them, then complete root cause and corrective actions.
+              </p>
+            </div>
+          )}
+
           <div className="border-b border-surface-200 pb-4">
             <h3 className="text-sm font-semibold text-charcoal mb-4">Basic Information</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Unique NC Number</label>
                 <input
-                  value={ncrNumber}
-                  onChange={(e) => setNcrNumber(e.target.value)}
-                  placeholder={`Auto: ${finalNcrNumber}`}
-                  className="w-full px-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"
+                  value=""
+                  readOnly
+                  disabled
+                  placeholder="Assigned automatically on save"
+                  className="w-full px-4 py-2.5 bg-surface-50 border border-surface-300 rounded-lg text-sm text-charcoal-500"
                 />
-                <p className="text-xs text-charcoal-500 mt-1">Leave empty to auto-generate: {finalNcrNumber}</p>
+                <p className="text-xs text-charcoal-500 mt-1">The next number for this month, e.g. NCR-{new Date().getFullYear()}{String(new Date().getMonth() + 1).padStart(2, '0')}-0001.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">Title *</label>

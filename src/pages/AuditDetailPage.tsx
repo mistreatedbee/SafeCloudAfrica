@@ -8,7 +8,7 @@ import { useAsync } from '../api/hooks/useAsync';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useDraftRegistration } from '../session/useDraftRegistration';
-import { NcrCreateModal } from '../components/ncrs/NcrCreateModal';
+import { NcrCreateModal, type NcrPrefill } from '../components/ncrs/NcrCreateModal';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
 import { HrEmployeeSelect } from '../components/ui/HrEmployeeSelect';
 import type { UUID, Audit, QualityNcr } from '../api/models/entities';
@@ -889,6 +889,59 @@ export function AuditDetailPage() {
 
   // Only block the page on the first load. Background refreshes after a save keep the
   // current view mounted instead of swapping it for a spinner (which looked like a reload).
+  // Carry the audit question's details into "Raise NCR" so they don't have to be retyped.
+  const ncrPrefill = useMemo<NcrPrefill | undefined>(() => {
+    if (!ncrLinkedQuestionId || !audit) return undefined;
+    const q = questions?.find((x) => x.id === ncrLinkedQuestionId);
+    if (!q) return undefined;
+    const resp = responsesByQuestion.get(q.id) as any;
+    const sectionRef = (q as any).section_ref_id
+      ? (sections ?? []).find((s) => s.id === (q as any).section_ref_id)
+      : null;
+    const sectionLabel = sectionRef
+      ? sectionRef.iso_clause
+        ? `${sectionRef.iso_clause} — ${sectionRef.section_title}`
+        : sectionRef.section_title
+      : q.section || '';
+    const complianceLabels: Record<string, string> = {
+      C: 'C — Conforming',
+      PC: 'PC — Partial Conformity',
+      NC: 'NC — Nonconformity',
+      Obs: 'Obs — Observation',
+      'N/A': 'N/A — Not applicable'
+    };
+    const compliance = resp?.compliance_status ? complianceLabels[resp.compliance_status] ?? resp.compliance_status : '';
+    const risk = (resp?.risk_rating ?? 'medium') as 'low' | 'medium' | 'high';
+    const finding = String(resp?.finding ?? '').trim();
+    const requirement = [sectionLabel, q.expected_evidence ? `Evidence expected: ${q.expected_evidence}` : '']
+      .filter(Boolean)
+      .join(' — ');
+    const lines = [
+      { label: 'Audit', value: `${audit.audit_number ?? ''}${audit.title ? ` — ${audit.title}` : ''}`.trim() },
+      ...(audit.audited_organization ? [{ label: 'Organization audited', value: audit.audited_organization }] : []),
+      ...(sectionLabel ? [{ label: 'Section', value: sectionLabel }] : []),
+      { label: 'Question', value: q.question },
+      ...(compliance ? [{ label: 'Rating', value: compliance }] : []),
+      ...(resp?.achieved_score != null || q.allocated_score != null
+        ? [{ label: 'Score', value: `${resp?.achieved_score ?? '—'} / ${q.allocated_score ?? '—'}` }]
+        : []),
+      ...(finding ? [{ label: 'Audit finding', value: finding }] : [])
+    ].filter((l) => l.value);
+    return {
+      key: q.id,
+      title: finding ? `${q.question}: ${finding}`.slice(0, 200) : q.question,
+      location: audit.location ?? undefined,
+      department: audit.audited_organization || audit.scope_of_audit || undefined,
+      activity: q.question,
+      linkedRequirementType: 'STANDARD',
+      linkedRequirement: requirement || undefined,
+      severity: risk,
+      riskClassification: risk === 'high' ? 'High' : risk === 'low' ? 'Low' : 'Medium',
+      responsiblePerson: audit.auditee_name ?? undefined,
+      context: { heading: 'Raised from audit finding', lines }
+    };
+  }, [ncrLinkedQuestionId, audit, questions, sections, responsesByQuestion]);
+
   const loading =
     (auditLoading && !audit) || (questionsLoading && !questions) || (responsesLoading && !responses);
 
@@ -2189,6 +2242,7 @@ export function AuditDetailPage() {
             type: 'audit',
             id: audit.id as string
           }}
+          prefill={ncrPrefill}
           onCreated={async () => {
             setIsNcrModalOpen(false);
             setNcrLinkedQuestionId(null);
