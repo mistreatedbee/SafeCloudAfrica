@@ -52,6 +52,30 @@ export async function createAuditChecklistTemplate(input: {
   return data as AuditChecklistTemplate;
 }
 
+export async function updateAuditChecklistTemplate(input: {
+  companyId: UUID;
+  id: UUID;
+  name: string;
+  sections?: unknown;
+  questions?: unknown;
+}): Promise<AuditChecklistTemplate> {
+  const { data, error } = await insforge.database
+    .from('audit_checklist_templates')
+    .update({
+      name: input.name,
+      sections: input.sections ?? null,
+      questions: input.questions ?? null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('company_id', input.companyId)
+    .eq('id', input.id)
+    .select('*')
+    .single();
+  if (error) throw new Error(getErrorMessage(error));
+  if (!data) throw new Error('Failed to update audit checklist template.');
+  return data as AuditChecklistTemplate;
+}
+
 export async function deleteAuditChecklistTemplate(companyId: UUID, id: UUID): Promise<void> {
   const { error } = await insforge.database
     .from('audit_checklist_templates')

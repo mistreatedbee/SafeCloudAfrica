@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PlusIcon, XIcon, Trash2Icon } from 'lucide-react';
+import { PlusIcon, XIcon, Trash2Icon, Edit2Icon } from 'lucide-react';
 import type { AuditChecklistTemplate, UUID } from '../../api/models/entities';
-import { createAuditChecklistTemplate, deleteAuditChecklistTemplate, listAuditChecklistTemplates } from '../../api/services/auditChecklistTemplatesService';
+import {
+  createAuditChecklistTemplate,
+  deleteAuditChecklistTemplate,
+  listAuditChecklistTemplates,
+  updateAuditChecklistTemplate
+} from '../../api/services/auditChecklistTemplatesService';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useUser } from '@insforge/react';
+import { useDraftManager } from '../../session/DraftManagerProvider';
+import { useDraftRegistration } from '../../session/useDraftRegistration';
 
 type Props = {
   companyId: UUID;
@@ -47,6 +54,49 @@ function newSection(parentId: string | null = null): SectionDraft {
   return { id: crypto.randomUUID(), isoClause: '', title: '', parentId };
 }
 
+/** Rebuild the editable sections/questions from a saved template. Older templates only
+    stored a `section` text label per question, so their sections are recreated from those labels. */
+function templateToDrafts(t: AuditChecklistTemplate): { sections: SectionDraft[]; questions: QuestionDraft[] } {
+  const savedSections: SectionDraft[] = Array.isArray(t.sections)
+    ? (t.sections as any[])
+        .filter((s) => s && (s.title || s.iso_clause))
+        .map((s) => ({
+          id: String(s.id ?? crypto.randomUUID()),
+          isoClause: String(s.iso_clause ?? ''),
+          title: String(s.title ?? ''),
+          parentId: s.parent_section_id ? String(s.parent_section_id) : null
+        }))
+    : [];
+  const sections = [...savedSections];
+  const byId = new Map(sections.map((s) => [s.id, s]));
+  const idByLabel = new Map(sections.map((s) => [sectionLabel(s, byId), s.id]));
+  const options = new Set<string>(['C', 'PC', 'NC', 'Obs', 'N/A']);
+  const questions: QuestionDraft[] = (Array.isArray(t.questions) ? (t.questions as any[]) : []).map((q) => {
+    const label = String(q?.section ?? '').trim();
+    let sectionId: string | null = null;
+    if (label) {
+      sectionId = idByLabel.get(label) ?? null;
+      if (!sectionId) {
+        const created: SectionDraft = { id: crypto.randomUUID(), isoClause: '', title: label, parentId: null };
+        sections.push(created);
+        byId.set(created.id, created);
+        idByLabel.set(label, created.id);
+        sectionId = created.id;
+      }
+    }
+    const status = String(q?.compliance_status ?? '');
+    return {
+      id: crypto.randomUUID(),
+      sectionId,
+      question: String(q?.question ?? ''),
+      expectedEvidence: String(q?.expected_evidence ?? ''),
+      allocatedScore: String(q?.allocated_score ?? 1),
+      complianceStatus: (options.has(status) ? status : '') as ComplianceOption | ''
+    };
+  });
+  return { sections, questions };
+}
+
 function newQuestion(sectionId: string | null): QuestionDraft {
   return { id: crypto.randomUUID(), sectionId, question: '', expectedEvidence: '', allocatedScore: '1', complianceStatus: '' };
 }
@@ -57,11 +107,44 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  /** Set when editing an existing template; null when creating a new one. */
+  const [editingId, setEditingId] = useState<UUID | null>(null);
   const [name, setName] = useState('');
   const [sections, setSections] = useState<SectionDraft[]>([]);
   const [questions, setQuestions] = useState<QuestionDraft[]>([]);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<UUID | null>(null);
+
+  const { restoreDraft, clearDraft } = useDraftManager();
+  const draftKey = `audit-checklist-template:${companyId}:${user?.id ?? 'anon'}`;
+
+  useDraftRegistration({
+    key: draftKey,
+    label: 'Audit checklist template',
+    enabled: canManage && editing,
+    isDirty: () =>
+      name.trim().length > 0 ||
+      sections.some((sec) => sec.title.trim() || sec.isoClause.trim()) ||
+      questions.some((q) => q.question.trim()),
+    serialize: () => ({ editingId, name, sections, questions })
+  });
+
+  // Reopen an unfinished template from its saved draft.
+  useEffect(() => {
+    if (!canManage) return;
+    const restored = restoreDraft<{
+      editingId?: UUID | null;
+      name?: string;
+      sections?: SectionDraft[];
+      questions?: QuestionDraft[];
+    }>(draftKey);
+    if (!restored) return;
+    setEditingId(restored.editingId ?? null);
+    setName(restored.name ?? '');
+    setSections(Array.isArray(restored.sections) ? restored.sections : []);
+    setQuestions(Array.isArray(restored.questions) ? restored.questions : []);
+    setEditing(true);
+  }, [canManage, draftKey, restoreDraft]);
 
   async function handleDeleteTemplate(t: AuditChecklistTemplate) {
     if (!canManage) return;
@@ -104,7 +187,18 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
     [questions]
   );
 
+  function openEdit(t: AuditChecklistTemplate) {
+    const drafts = templateToDrafts(t);
+    setEditingId(t.id);
+    setName(t.name);
+    setSections(drafts.sections);
+    setQuestions(drafts.questions);
+    setError(null);
+    setEditing(true);
+  }
+
   function openNew() {
+    setEditingId(null);
     setName('');
     setSections([]);
     setQuestions([]);
@@ -168,18 +262,31 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
     setSaving(true);
     setError(null);
     try {
-      await createAuditChecklistTemplate({
-        companyId,
-        name: name.trim(),
-        sections: sections.map((s) => ({
-          id: s.id,
-          iso_clause: s.isoClause.trim() || null,
-          title: s.title.trim(),
-          parent_section_id: s.parentId
-        })),
-        questions: parsed,
-        createdByUserId: user.id as UUID
-      });
+      const sectionsPayload = sections.map((s) => ({
+        id: s.id,
+        iso_clause: s.isoClause.trim() || null,
+        title: s.title.trim(),
+        parent_section_id: s.parentId
+      }));
+      if (editingId) {
+        await updateAuditChecklistTemplate({
+          companyId,
+          id: editingId,
+          name: name.trim(),
+          sections: sectionsPayload,
+          questions: parsed
+        });
+      } else {
+        await createAuditChecklistTemplate({
+          companyId,
+          name: name.trim(),
+          sections: sectionsPayload,
+          questions: parsed,
+          createdByUserId: user.id as UUID
+        });
+      }
+      clearDraft(draftKey);
+      setEditingId(null);
       setEditing(false);
       setName('');
       setSections([]);
@@ -362,6 +469,15 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
                   <p className="text-xs text-charcoal-500 mt-1">{count} question{count === 1 ? '' : 's'}</p>
                 </div>
                 {canManage && (
+                  <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => openEdit(t)}
+                    title="Edit this template"
+                    className="p-1.5 rounded-lg border border-surface-200 text-charcoal-500 hover:bg-surface-50"
+                  >
+                    <Edit2Icon className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => void handleDeleteTemplate(t)}
@@ -371,6 +487,7 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
                   >
                     {deletingId === t.id ? <LoadingSpinner size={12} /> : <Trash2Icon className="w-3.5 h-3.5" />}
                   </button>
+                  </div>
                 )}
               </div>
             );
@@ -384,7 +501,9 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
           <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-surface-200 max-h-[90dvh] overflow-y-auto">
             <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-5 py-4 border-b border-surface-200">
               <div>
-                <p className="text-sm font-semibold text-charcoal">New audit checklist template</p>
+                <p className="text-sm font-semibold text-charcoal">
+                  {editingId ? 'Edit audit checklist template' : 'New audit checklist template'}
+                </p>
                 <p className="text-xs text-charcoal-500 mt-0.5">Total score: {totalScore}</p>
               </div>
               <button type="button" onClick={() => setEditing(false)} className="p-2 rounded-lg hover:bg-surface-100">
@@ -506,7 +625,14 @@ export function AuditChecklistTemplatesLibrary({ companyId, canManage }: Props) 
             <div className="sticky bottom-0 bg-white flex items-center justify-between gap-2 px-5 py-4 border-t border-surface-200">
               <p className="text-xs text-charcoal-500">Total score: {totalScore}</p>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setEditing(false)} className="px-4 py-2 rounded-lg border border-surface-300 text-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearDraft(draftKey);
+                    setEditing(false);
+                  }}
+                  className="px-4 py-2 rounded-lg border border-surface-300 text-sm"
+                >
                   Cancel
                 </button>
                 <button
