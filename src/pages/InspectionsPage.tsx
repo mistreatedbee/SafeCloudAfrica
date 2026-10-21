@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { formatInspectionNumber } from '../utils/inspectionNumber';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { SearchIcon, PlusIcon, CalendarIcon, ClipboardCheckIcon, AlertCircleIcon, XCircleIcon } from 'lucide-react';
@@ -79,7 +80,7 @@ export function InspectionsPage() {
   const rows = (inspections ?? []).map((i) => {
     const checklistName = i.checklist_name || i.title.replace('[INSPECTION]', '').trim();
     return {
-      id: `INS-${String(i.id).slice(0, 8)}`,
+      id: formatInspectionNumber(i),
       rawId: i.id,
       title: checklistName,
       module: i.module,
@@ -105,6 +106,7 @@ export function InspectionsPage() {
     .filter((inspection) =>
       inspection.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       inspection.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      String(inspection.rawId).toLowerCase().includes(searchQuery.toLowerCase()) ||
       (inspection.assetNumber ?? '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
@@ -224,7 +226,7 @@ export function InspectionsPage() {
                   <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal-400" />
                   <input
                     type="search"
-                    placeholder="Search inspections or asset number..."
+                    placeholder="Search by name, INS number or asset..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent"

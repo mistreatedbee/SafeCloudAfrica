@@ -29,6 +29,7 @@ import { listUserProfiles } from '../api/services/profilesService';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { EvidenceModal } from '../components/evidence/EvidenceModal';
+import { formatInspectionNumber } from '../utils/inspectionNumber';
 import {
   InspectionChecklistItemCard,
   InspectionChecklistItemTableRow,
@@ -349,7 +350,9 @@ export function InspectionDetailPage() {
                 <div className="flex items-start gap-3">
                   <div className="p-2 bg-surface-100 rounded-lg"><ClipboardCheckIcon className="w-5 h-5 text-charcoal-500" /></div>
                   <div>
-                    <p className="text-xs font-medium text-charcoal-400">{inspection.module} - {inspection.id}</p>
+                    <p className="text-xs font-medium text-charcoal-400">
+                      <span className="font-semibold text-teal">{formatInspectionNumber(inspection)}</span> · {inspection.module}
+                    </p>
                     <p className="mt-1 text-base font-semibold text-charcoal">{inspection.title || 'Inspection'}</p>
                     <p className="mt-1 text-sm text-charcoal-500">{inspection.location || 'No location specified.'}</p>
                     {(inspection.frequency || latestRun?.run.frequency) && (
