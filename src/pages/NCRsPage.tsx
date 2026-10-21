@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, AlertTriangle, CheckCircle, Clock, Filter, Download, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTenant } from '../tenant/TenantContext';
 import { useUser } from '@insforge/react';
-import { listQualityNcrs, createQualityNcr, closeQualityNcr, deleteQualityNcr } from '../api/services/qualityNcrsService';
+import { listQualityNcrs, createQualityNcr, closeQualityNcr, deleteQualityNcr, getQualityNcr } from '../api/services/qualityNcrsService';
 import { canCloseQualityNcr, isNcrAssignedUser } from '../api/permissions/ncrPermissions';
 import { toUserFacingError } from '../utils/userFacingMessage';
 import type { QualityNcr, UUID } from '../api/models/entities';
@@ -146,6 +146,35 @@ export default function NCRsPage() {
       setLoading(false);
     }
   }
+
+  // Open a specific NCR when linked here as /ncrs?ncr=<id> (e.g. from an inspection).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedNcrId = searchParams.get('ncr');
+  useEffect(() => {
+    if (!linkedNcrId || !activeCompanyId) return;
+    let cancelled = false;
+    const fromList = ncrs.find((row) => row.id === linkedNcrId);
+    const open = (ncr: QualityNcr) => {
+      setSelectedNCR(ncr);
+      setIsDetailModalOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('ncr');
+      setSearchParams(next, { replace: true });
+    };
+    if (fromList) {
+      open(fromList);
+    } else {
+      getQualityNcr(linkedNcrId as UUID, activeCompanyId)
+        .then((ncr) => {
+          if (!cancelled && ncr) open(ncr);
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedNcrId, activeCompanyId]);
 
   async function handleCloseNCR(ncrId: UUID) {
     if (!user?.id || !activeCompanyId) return;

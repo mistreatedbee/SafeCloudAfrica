@@ -621,10 +621,16 @@ export function InspectionDetailPage() {
                 <div className="space-y-2">
                   {(!ncrs || ncrs.length === 0) && <p className="text-sm text-charcoal-500">No NCRs raised yet.</p>}
                   {ncrs?.map((ncr) => (
-                    <div key={ncr.id} className="flex items-center justify-between border border-surface-200 rounded-lg px-3 py-2 text-xs">
+                    <button
+                      type="button"
+                      key={ncr.id}
+                      onClick={() => navigate(`/dashboard/management/ncrs?ncr=${ncr.id}`)}
+                      className="w-full text-left flex items-center justify-between border border-surface-200 rounded-lg px-3 py-2 text-xs hover:border-teal hover:bg-teal/5 transition-colors"
+                      title="Open NCR"
+                    >
                       <div className="flex flex-col"><span className="font-semibold">{(ncr as any).nc_number ?? 'NCR'} - {ncr.severity}</span><span className="text-charcoal-600">{ncr.title}</span></div>
                       <span className="px-2 py-0.5 rounded-full bg-surface-100">{ncr.status}</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -633,10 +639,18 @@ export function InspectionDetailPage() {
                 <div className="space-y-2">
                   {(!capas || capas.length === 0) && <p className="text-sm text-charcoal-500">No CAPAs linked yet.</p>}
                   {capas?.map((ca) => (
-                    <div key={ca.id} className="flex items-center justify-between border border-surface-200 rounded-lg px-3 py-2 text-xs">
+                    <button
+                      type="button"
+                      key={ca.id}
+                      onClick={() =>
+                        navigate(`/capa/${ca.id}?returnTo=${encodeURIComponent(`/inspections/${inspectionId}`)}`)
+                      }
+                      className="w-full text-left flex items-center justify-between border border-surface-200 rounded-lg px-3 py-2 text-xs hover:border-teal hover:bg-teal/5 transition-colors"
+                      title="Open CAPA"
+                    >
                       <div className="flex flex-col"><span className="font-semibold">{ca.title}</span><span className="text-charcoal-600">{ca.description ?? ''}</span></div>
                       <span className="px-2 py-0.5 rounded-full bg-surface-100">{ca.status}</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}

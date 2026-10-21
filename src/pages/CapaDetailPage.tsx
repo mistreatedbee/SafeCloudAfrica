@@ -69,6 +69,11 @@ export function CapaDetailPage() {
   const { capaId } = useParams();
   const isCreate = !capaId || capaId === 'new';
   const [searchParams] = useSearchParams();
+  // Internal path to go back to (e.g. the inspection the CAPA was opened from).
+  const returnTo = (() => {
+    const raw = searchParams.get('returnTo');
+    return raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : null;
+  })();
   const navigate = useNavigate();
   const { user } = useUser();
   const { activeCompanyId, activeRole, activeCompany } = useTenant();
@@ -292,7 +297,9 @@ export function CapaDetailPage() {
       <div className="space-y-4">
         <div className="bg-white rounded-xl border border-surface-300 p-4 flex flex-wrap justify-between gap-3">
           <div>
-            <Link to="/dashboard/management/tasks?view=capa" className="text-sm text-teal hover:underline">Back to CAPA</Link>
+            <Link to={returnTo ?? '/dashboard/management/tasks?view=capa'} className="text-sm text-teal hover:underline">
+              {returnTo ? 'Back' : 'Back to CAPA'}
+            </Link>
             <p className="text-lg font-semibold mt-1">{isCreate ? 'New CAPA' : `CAPA ${record?.action_number ?? capaId?.slice(0, 8)}`}</p>
           </div>
           <div className="flex items-center gap-2">

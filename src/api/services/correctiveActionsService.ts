@@ -222,6 +222,7 @@ export type UpdateCorrectiveActionInput = {
   completedDate?: string | null;
   verifiedDate?: string | null;
   verifiedByUserId?: UUID | null;
+  dueDate?: string;
   updatedByUserId: UUID;
 };
 
@@ -243,6 +244,7 @@ export async function updateCorrectiveAction(input: UpdateCorrectiveActionInput)
   if (input.completedDate !== undefined) updateData.completed_date = input.completedDate;
   if (input.verifiedDate !== undefined) updateData.verified_date = input.verifiedDate;
   if (input.verifiedByUserId !== undefined) updateData.verified_by_user_id = input.verifiedByUserId;
+  if (input.dueDate !== undefined) updateData.due_date = input.dueDate;
   
   const { data, error } = await insforge.database
     .from('corrective_actions')

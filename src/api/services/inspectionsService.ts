@@ -15,7 +15,7 @@ import { createActivityLog } from './activityLogService';
 import { getMyProfile } from './profilesService';
 import { createQualityNcrFromInspectionItem } from './qualityNcrsService';
 import { createPpeIssueTracker } from './ppeIssueTrackerService';
-import { createCorrectiveAction } from './correctiveActionsService';
+import { createCorrectiveAction, listCorrectiveActions, updateCorrectiveAction } from './correctiveActionsService';
 import { createNotification } from './notificationsService';
 import { sendTemplatedNotificationEmail } from './emailService';
 import {
@@ -875,7 +875,30 @@ export async function createCorrectiveActionForInspectionItem(input: {
     const priority: 'low' | 'medium' | 'high' | 'urgent' =
       item.risk_level === 'high' ? 'high' : item.risk_level === 'low' ? 'low' : 'medium';
 
-    const capa = await createCorrectiveAction({
+    // Raising the NCR above already creates its linked CAPA ("CAPA: Checklist NC: ..."),
+    // so fill that one in rather than creating a second CAPA for the same item.
+    const [linkedCapa] = await listCorrectiveActions({
+      companyId: input.companyId,
+      sourceType: 'ncr',
+      sourceId: autoNcrId as UUID,
+      limit: 1
+    });
+    const capa = linkedCapa
+      ? await updateCorrectiveAction({
+          actionId: linkedCapa.id as UUID,
+          companyId: input.companyId,
+          description: input.actionDescription,
+          priority,
+          dueDate: input.dueDate,
+          ...(input.assignedToUserId
+            ? {
+                assignedToUserId: input.assignedToUserId,
+                ...(linkedCapa.status === 'open' ? { status: 'assigned' as const } : {})
+              }
+            : {}),
+          updatedByUserId: input.createdByUserId
+        })
+      : await createCorrectiveAction({
       companyId: input.companyId,
       module: (runData as { module?: ModuleKey } | null)?.module,
       title: item.question,
