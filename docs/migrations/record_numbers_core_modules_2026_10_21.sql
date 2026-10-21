@@ -28,13 +28,17 @@ declare
   col text := tg_argv[0];
   code text := tg_argv[1];
   overwrite boolean := coalesce(tg_argv[2], 'false')::boolean;
-  current_value text := to_jsonb(new) ->> col;
+  row_json jsonb := to_jsonb(new);
+  current_value text := row_json ->> col;
+  record_date timestamptz;
   prefix text;
 begin
   if not overwrite and coalesce(current_value, '') <> '' then
     return new;
   end if;
-  prefix := code || '-' || to_char(coalesce(new.created_at, now()), 'YYYYMM') || '-';
+  -- Not every table has created_at (ppe_issues records issued_at instead).
+  record_date := coalesce((row_json ->> 'created_at')::timestamptz, (row_json ->> 'issued_at')::timestamptz, now());
+  prefix := code || '-' || to_char(record_date, 'YYYYMM') || '-';
   new := jsonb_populate_record(
     new,
     jsonb_build_object(col, public.next_record_number(tg_relid::regclass, col, new.company_id, prefix))
@@ -96,8 +100,8 @@ with n as (
 update public.incidents t set incident_number = n.num from n where t.id = n.id;
 
 with n as (
-  select id, 'PPE-' || to_char(created_at, 'YYYYMM') || '-' ||
-    lpad(row_number() over (partition by company_id, to_char(created_at, 'YYYYMM') order by created_at, id)::text, 4, '0') as num
+  select id, 'PPE-' || to_char(coalesce(issued_at, now()), 'YYYYMM') || '-' ||
+    lpad(row_number() over (partition by company_id, to_char(coalesce(issued_at, now()), 'YYYYMM') order by issued_at, id)::text, 4, '0') as num
   from public.ppe_issues
 )
 update public.ppe_issues t set issue_number = n.num from n where t.id = n.id;
