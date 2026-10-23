@@ -616,6 +616,68 @@ export async function createPpeStock(input: {
   size?: string | null;
 }): Promise<PpeStock> {
   return withInsforgeSession('ppe_stock:create', async () => {
+  // One stock pool per item + size, company-wide -- "Add Stock" for an item/size that
+  // already has an active record tops that record up instead of fragmenting inventory
+  // into near-duplicate rows (site/department differences don't split the pool).
+  const normalizedSize = input.size?.trim() || null;
+  let existingQuery = insforge.database
+    .from('ppe_stock')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('ppe_item_id', input.ppeItemId)
+    .eq('is_active', true);
+  existingQuery = normalizedSize ? existingQuery.eq('size', normalizedSize) : existingQuery.is('size', null);
+  const { data: existingRows, error: existingLookupError } = await existingQuery.limit(1);
+  if (existingLookupError) throw new Error(getErrorMessage(existingLookupError));
+  const existing = (existingRows ?? [])[0] as PpeStock | undefined;
+
+  if (existing) {
+    const addQty = typeof input.onHandQty === 'number' ? input.onHandQty : 0;
+    const nowIso = new Date().toISOString();
+    const patch: Record<string, unknown> = {
+      on_hand_qty: (existing.on_hand_qty ?? 0) + addQty,
+      updated_at: nowIso,
+      updated_by_user_id: input.createdByUserId
+    };
+    if (input.dateOrdered) patch.date_ordered = input.dateOrdered;
+    if (input.dateStockReceived) patch.date_stock_received = input.dateStockReceived;
+    if (typeof input.qtyOrdered === 'number') patch.qty_ordered = (existing.qty_ordered ?? 0) + input.qtyOrdered;
+    if (typeof input.qtyReceived === 'number') patch.qty_received = (existing.qty_received ?? 0) + input.qtyReceived;
+    if (input.expiryDate) patch.expiry_date = input.expiryDate;
+
+    const { data: updated, error: updateError } = await insforge.database
+      .from('ppe_stock')
+      .update(patch)
+      .eq('company_id', input.companyId)
+      .eq('id', existing.id)
+      .select('*')
+      .single();
+    if (updateError) throw new Error(getErrorMessage(updateError));
+    if (!updated) throw new Error('Failed to update PPE stock record.');
+
+    if (addQty > 0) {
+      await createPpeStockMovement({
+        companyId: input.companyId,
+        stockId: existing.id as UUID,
+        movementType: 'in',
+        quantity: addQty,
+        reason: 'Restock',
+        actorUserId: input.createdByUserId,
+        transactionDate: input.dateStockReceived ?? null
+      });
+    }
+
+    await createActivityLog({
+      companyId: input.companyId,
+      actorUserId: input.createdByUserId,
+      action: 'ppe_stock.restock',
+      entityType: 'ppe_stock',
+      entityId: existing.id as UUID
+    });
+
+    return updated as PpeStock;
+  }
+
   const capturedByUserId = input.capturedByUserId ?? input.createdByUserId;
   let capturedByName = input.capturedByName ?? null;
   if (!capturedByName && capturedByUserId) {
