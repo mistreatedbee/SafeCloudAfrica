@@ -442,7 +442,12 @@ export async function createPpeIssue(input: CreatePpeIssueInput): Promise<PPEIss
     issued_by_name: issuedByName,
     issued_by_role: issuedByRole,
     unit_cost_at_issue: unitCost,
-    total_cost_at_issue: totalCostAtIssue
+    total_cost_at_issue: totalCostAtIssue,
+    // ppe_issue_and_decrement_stock builds the row via jsonb_populate_record, which
+    // leaves any column absent from this payload as NULL rather than falling back to
+    // its table default -- is_non_conformant defaults to false at the column level,
+    // but that default is never applied unless it's explicitly set here.
+    is_non_conformant: false
   };
 
   // Inserts the ppe_issues row and (when a stock record is resolved) decrements
