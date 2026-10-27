@@ -39,6 +39,7 @@ import {
   startTask,
   markAwaitingEvidence,
   submitForReview,
+  requestTaskReviewApprovals,
   approveTask,
   closeTask,
   reopenTask
@@ -309,6 +310,10 @@ export function TasksPage() {
         actorUserId: user.id,
         actorRole: activeRole
       });
+      // Starts the assignee-approval / sign-off chain (see tasksService.ts) so a
+      // task submitted from this list view gets the same approval request a
+      // submission from the Task Detail page does.
+      await requestTaskReviewApprovals({ companyId: activeCompanyId, taskId: task.id, requestedByUserId: user.id });
       setRefreshKey((k) => k + 1);
     } catch (err) {
       alert(toUserFacingError(err, 'Unable to submit this task for review right now.'));

@@ -41,7 +41,10 @@ const ALLOWED_TRANSITIONS: Partial<Record<TaskStatus, TaskStatus[]>> = {
   'in-progress': ['awaiting-evidence', 'overdue'],
   'awaiting-evidence': ['under-review', 'overdue'],
   'under-review': ['approved', 'overdue', 'reopened'],
-  approved: ['closed'],
+  // 'reopened' here specifically covers a sign-off rejection landing after the
+  // assignee's own approval has already moved status to 'approved' -- see
+  // onApprovalDecided's reject branch in TaskDetailPage.tsx.
+  approved: ['closed', 'reopened'],
   closed: ['reopened'],
   reopened: ['in-progress', 'assigned', 'overdue'],
   overdue: ['accepted', 'in-progress', 'awaiting-evidence', 'under-review', 'approved']
@@ -1221,6 +1224,51 @@ export async function requestTaskAuditorVerification(input: {
     requestedByUserId: input.requestedByUserId,
     approverUserId: input.approverUserId
   });
+}
+
+export async function requestTaskAssigneeApproval(input: {
+  companyId: UUID;
+  taskId: UUID;
+  requestedByUserId: UUID;
+  approverUserId: UUID;
+}): Promise<void> {
+  const { createApproval } = await import('./approvalsService');
+  await createApproval({
+    companyId: input.companyId,
+    entityType: 'task_assignee_approval',
+    entityId: input.taskId,
+    requestedByUserId: input.requestedByUserId,
+    approverUserId: input.approverUserId
+  });
+}
+
+/**
+ * Starts the two-stage review chain when a task is submitted for review:
+ * if the task has an assignee, they approve first (confirming their own
+ * work is done) -- TaskDetailPage's onApprovalDecided, on seeing that
+ * approval decided, moves status to 'approved' and then calls
+ * requestTaskSignOff to create the existing supervisor/manager sign-off
+ * request for the task's allocator, whose approval auto-closes the task.
+ * A task with no assignee skips straight to that sign-off request, same
+ * as the single-stage behaviour before this chain existed.
+ */
+export async function requestTaskReviewApprovals(input: {
+  companyId: UUID;
+  taskId: UUID;
+  requestedByUserId: UUID;
+}): Promise<{ requested: boolean; stage: 'assignee' | 'sign-off' | null; approverUserId: UUID | null }> {
+  const task = await getTaskById(input.companyId, input.taskId);
+  if (task?.assignee_user_id) {
+    await requestTaskAssigneeApproval({
+      companyId: input.companyId,
+      taskId: input.taskId,
+      requestedByUserId: input.requestedByUserId,
+      approverUserId: task.assignee_user_id
+    });
+    return { requested: true, stage: 'assignee', approverUserId: task.assignee_user_id };
+  }
+  const signOff = await requestTaskSignOff(input);
+  return { requested: signOff.requested, stage: signOff.requested ? 'sign-off' : null, approverUserId: signOff.approverUserId };
 }
 
 export async function setTaskEffectivenessCheck(input: {

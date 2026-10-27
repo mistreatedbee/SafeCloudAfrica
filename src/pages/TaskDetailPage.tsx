@@ -39,6 +39,7 @@ import {
   stopTimeEntry,
   logTaskTimeIncrement,
   requestTaskSignOff,
+  requestTaskReviewApprovals,
   setTaskEffectivenessCheck,
   updateTask
 } from '../api/services/tasksService';
@@ -95,9 +96,15 @@ const priorityColors: Record<string, string> = {
   low: 'text-charcoal-400'
 };
 
-const TASK_APPROVAL_TYPES = ['task_supervisor_review', 'task_manager_approval', 'task_auditor_verification'] as const;
+const TASK_APPROVAL_TYPES = [
+  'task_assignee_approval',
+  'task_supervisor_review',
+  'task_manager_approval',
+  'task_auditor_verification'
+] as const;
 const APPROVAL_LABELS: Record<string, string> = {
-  task_supervisor_review: 'Supervisor review',
+  task_assignee_approval: 'Assignee approval',
+  task_supervisor_review: 'Sign-off',
   task_manager_approval: 'Manager approval',
   task_auditor_verification: 'Auditor verification'
 };
@@ -308,8 +315,10 @@ export function TaskDetailPage() {
         actorUserId: user.id,
         actorRole: activeRole
       });
-      const signOff = await requestTaskSignOff({ companyId: activeCompanyId, taskId: taskId as UUID, requestedByUserId: user.id });
-      if (signOff.requested) {
+      const chain = await requestTaskReviewApprovals({ companyId: activeCompanyId, taskId: taskId as UUID, requestedByUserId: user.id });
+      if (chain.stage === 'assignee') {
+        setPageSuccess('Submitted for review — the assignee has been notified to confirm the work is done.');
+      } else if (chain.stage === 'sign-off') {
         setPageSuccess('Submitted for review — the approver has been notified.');
       } else {
         setPageSuccess('Submitted for review, but no task owner/allocator is set, so no approver could be notified. Set one on this task to enable sign-off.');
@@ -467,17 +476,43 @@ export function TaskDetailPage() {
     }
   }
 
-  async function onApprovalDecided(decision: 'approved' | 'rejected') {
+  // Drives the two-stage review chain once a panel approval is decided:
+  // the assignee's approval (stage 1) moves the task to 'approved' and
+  // opens the sign-off request for the allocator (stage 2); the sign-off
+  // approval closes the task. A rejection at either stage reopens it.
+  async function onApprovalDecided(approval: Approval, decision: 'approved' | 'rejected') {
     if (!activeCompanyId || !taskId || !user?.id) return;
     setPageError(null);
-    if (decision === 'rejected' && task?.status === 'under-review') {
+
+    if (decision === 'rejected') {
       try {
-        await reopenTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id, reason: 'Sign-off rejected' });
+        await reopenTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id, reason: `${APPROVAL_LABELS[approval.entity_type] ?? approval.entity_type} rejected` });
       } catch (err) {
         setPageError(toUserFacingError(err, 'Approval was rejected, but the task could not be reopened automatically.'));
       }
+      setPageSuccess('Rejected — the responsible person has been notified with your comments.');
+      refresh();
+      return;
     }
-    setPageSuccess(decision === 'approved' ? 'Approved.' : 'Rejected — the responsible person has been notified with your comments.');
+
+    try {
+      if (approval.entity_type === 'task_assignee_approval') {
+        await approveTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id });
+        const signOff = await requestTaskSignOff({ companyId: activeCompanyId, taskId: taskId as UUID, requestedByUserId: user.id });
+        setPageSuccess(
+          signOff.requested
+            ? 'Approved — the sign-off approver has been notified.'
+            : 'Approved, but no task owner/allocator is set, so no sign-off approver could be notified. Set one on this task to enable sign-off.'
+        );
+      } else if (approval.entity_type === 'task_supervisor_review' || approval.entity_type === 'task_manager_approval') {
+        await closeTask({ companyId: activeCompanyId, taskId: taskId as UUID, actorUserId: user.id, actorRole: activeRole });
+        setPageSuccess('Signed off — the task is now closed.');
+      } else {
+        setPageSuccess('Approved.');
+      }
+    } catch (err) {
+      setPageError(toUserFacingError(err, 'Approved, but the task could not move forward automatically.'));
+    }
     refresh();
   }
 
@@ -1073,7 +1108,7 @@ export function TaskDetailPage() {
             actorUserId={user.id}
             approval={approvalModal?.approval ?? null}
             decision={approvalModal?.decision ?? 'approved'}
-            onDecided={() => void onApprovalDecided(approvalModal!.decision)}
+            onDecided={() => void onApprovalDecided(approvalModal!.approval, approvalModal!.decision)}
           />
         )}
 
