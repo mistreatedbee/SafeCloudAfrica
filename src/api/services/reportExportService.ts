@@ -1,3 +1,14 @@
+// SECURITY NOTE (2026-10-27 audit): `xlsx` is pinned to 0.18.5 and `npm audit` flags it
+// (prototype pollution / ReDoS advisories). SheetJS stopped publishing patched 0.19+/0.20+
+// builds to the npm registry -- they're only available as a direct tarball from
+// cdn.sheetjs.com, which would add a third-party install-time trust boundary outside npm.
+// We've deliberately left this unpatched rather than add that: every advisory here is a
+// *parsing*-time bug, and this module only ever calls XLSX.utils.book_new/json_to_sheet/
+// writeFile to build a workbook from this app's own already-trusted report data below --
+// it never parses an uploaded or otherwise untrusted .xlsx file. If that usage ever
+// changes (e.g. a future "import from Excel" feature), re-evaluate this before reusing
+// `xlsx` for it, or migrate this file to `exceljs` (already a dependency, used for styled
+// exports in excelExportService.ts).
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
