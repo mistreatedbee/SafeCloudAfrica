@@ -551,101 +551,101 @@ export function RiskAssessmentDetailPage() {
           )}
         </div>
 
-	        <div className="bg-white border border-surface-300 rounded-xl shadow-card overflow-hidden">
-	          <div className="px-4 py-3 border-b border-surface-200 font-semibold text-charcoal">Assessment Table</div>
-	          {rows.length === 0 ? (
-	            <div className="p-4 text-sm text-charcoal-500">No rows captured.</div>
-	          ) : (
-	            <div className="overflow-x-auto">
-	              <table className="min-w-full w-max table-auto divide-y divide-surface-200">
-	                <thead className="bg-surface-50">
-	                  <tr>
-	                    <th className={`${tableHeaderCell} min-w-[64px]`}>#</th>
-	                    {tableLayout.map((item, idx) => {
-	                      if (item.kind === 'data') {
-	                        return (
-	                          <th key={item.col.key} className={tableHeaderCell}>
-	                            {item.col.label}
-	                          </th>
-	                        );
-	                      }
-	                      if (item.kind === 'raw_scoring') {
-	                        if (rawVariant === 'compact') {
-	                          return (
-	                            <React.Fragment key={`raw-${idx}`}>
-	                              <th className={tableHeaderCell}>SL</th>
-	                              <th className={tableHeaderCell}>RR</th>
-	                              <th className={tableHeaderCell}>Index</th>
-	                            </React.Fragment>
-	                          );
-	                        }
-	                        return (
-	                          <React.Fragment key={`raw-${idx}`}>
-	                            <th className={tableHeaderCell}>S</th>
-	                            <th className={tableHeaderCell}>L</th>
-	                            <th className={tableHeaderCell}>S*L</th>
-	                            <th className={tableHeaderCell}>Index</th>
-	                          </React.Fragment>
-	                        );
-	                      }
-	                      if (item.kind === 'residual' && showResidualCol) {
-	                        return (
-	                          <th key={`residual-${idx}`} className={tableHeaderCell}>
-	                            Residual
-	                          </th>
-	                        );
-	                      }
-	                      return null;
-	                    })}
-	                  </tr>
-	                </thead>
-	                <tbody className="divide-y divide-surface-200">
-	                  {rows.map((row, idx) => (
-	                    <tr key={row.id}>
-	                      <td className={`${tableDataCell} text-sm font-medium text-charcoal`}>{idx + 1}</td>
-	                      {tableLayout.map((item, itemIdx) => {
-	                        if (item.kind === 'data') {
-	                          return (
-	                            <td key={`${row.id}-${item.col.key}`} className={`${tableDataCell} text-sm text-charcoal min-w-[160px]`}>
-	                              {String(row.json_data?.[item.col.key] ?? '-')}
-	                            </td>
-	                          );
-	                        }
-	                        if (item.kind === 'raw_scoring') {
-	                          if (rawVariant === 'compact') {
-	                            return (
-	                              <React.Fragment key={`${row.id}-raw-${itemIdx}`}>
-	                                <td className={`${tableDataCell} text-sm min-w-[120px]`}>{row.severity ?? '-'} / {row.likelihood ?? '-'}</td>
-	                                <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_rr ?? '-'}</td>
-	                                <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_index ?? '-'}</td>
-	                              </React.Fragment>
-	                            );
-	                          }
-	                          return (
-	                            <React.Fragment key={`${row.id}-raw-${itemIdx}`}>
-	                              <td className={`${tableDataCell} text-sm min-w-[88px]`}>{row.severity ?? '-'}</td>
-	                              <td className={`${tableDataCell} text-sm min-w-[88px]`}>{row.likelihood ?? '-'}</td>
-	                              <td className={`${tableDataCell} text-sm min-w-[88px]`}>{row.raw_rr ?? '-'}</td>
-	                              <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_index ?? '-'}</td>
-	                            </React.Fragment>
-	                          );
-	                        }
-	                        if (item.kind === 'residual' && showResidualCol) {
-	                          return (
-	                            <td key={`${row.id}-residual-${itemIdx}`} className={`${tableDataCell} text-sm min-w-[120px]`}>
-	                              {row.residual_rr ?? '-'} / {row.residual_index ?? '-'}
-	                            </td>
-	                          );
-	                        }
-	                        return null;
-	                      })}
-	                    </tr>
-	                  ))}
-	                </tbody>
-	              </table>
-	            </div>
-	          )}
-	        </div>
+          <div className="bg-white border border-surface-300 rounded-xl shadow-card overflow-hidden">
+            <div className="px-4 py-3 border-b border-surface-200 font-semibold text-charcoal">Assessment Table</div>
+            {rows.length === 0 ? (
+              <div className="p-4 text-sm text-charcoal-500">No rows captured.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full w-max table-auto divide-y divide-surface-200">
+                  <thead className="bg-surface-50">
+                    <tr>
+                      <th className={`${tableHeaderCell} min-w-[64px]`}>#</th>
+                      {tableLayout.map((item, idx) => {
+                        if (item.kind === 'data') {
+                          return (
+                            <th key={item.col.key} className={tableHeaderCell}>
+                              {item.col.label}
+                            </th>
+                          );
+                        }
+                        if (item.kind === 'raw_scoring') {
+                          if (rawVariant === 'compact') {
+                            return (
+                              <React.Fragment key={`raw-${idx}`}>
+                                <th className={tableHeaderCell}>SL</th>
+                                <th className={tableHeaderCell}>RR</th>
+                                <th className={tableHeaderCell}>Index</th>
+                              </React.Fragment>
+                            );
+                          }
+                          return (
+                            <React.Fragment key={`raw-${idx}`}>
+                              <th className={tableHeaderCell}>S</th>
+                              <th className={tableHeaderCell}>L</th>
+                              <th className={tableHeaderCell}>S*L</th>
+                              <th className={tableHeaderCell}>Index</th>
+                            </React.Fragment>
+                          );
+                        }
+                        if (item.kind === 'residual' && showResidualCol) {
+                          return (
+                            <th key={`residual-${idx}`} className={tableHeaderCell}>
+                              Residual
+                            </th>
+                          );
+                        }
+                        return null;
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-surface-200">
+                    {rows.map((row, idx) => (
+                      <tr key={row.id}>
+                        <td className={`${tableDataCell} text-sm font-medium text-charcoal`}>{idx + 1}</td>
+                        {tableLayout.map((item, itemIdx) => {
+                          if (item.kind === 'data') {
+                            return (
+                              <td key={`${row.id}-${item.col.key}`} className={`${tableDataCell} text-sm text-charcoal min-w-[160px]`}>
+                                {String(row.json_data?.[item.col.key] ?? '-')}
+                              </td>
+                            );
+                          }
+                          if (item.kind === 'raw_scoring') {
+                            if (rawVariant === 'compact') {
+                              return (
+                                <React.Fragment key={`${row.id}-raw-${itemIdx}`}>
+                                  <td className={`${tableDataCell} text-sm min-w-[120px]`}>{row.severity ?? '-'} / {row.likelihood ?? '-'}</td>
+                                  <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_rr ?? '-'}</td>
+                                  <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_index ?? '-'}</td>
+                                </React.Fragment>
+                              );
+                            }
+                            return (
+                              <React.Fragment key={`${row.id}-raw-${itemIdx}`}>
+                                <td className={`${tableDataCell} text-sm min-w-[88px]`}>{row.severity ?? '-'}</td>
+                                <td className={`${tableDataCell} text-sm min-w-[88px]`}>{row.likelihood ?? '-'}</td>
+                                <td className={`${tableDataCell} text-sm min-w-[88px]`}>{row.raw_rr ?? '-'}</td>
+                                <td className={`${tableDataCell} text-sm min-w-[96px]`}>{row.raw_index ?? '-'}</td>
+                              </React.Fragment>
+                            );
+                          }
+                          if (item.kind === 'residual' && showResidualCol) {
+                            return (
+                              <td key={`${row.id}-residual-${itemIdx}`} className={`${tableDataCell} text-sm min-w-[120px]`}>
+                                {row.residual_rr ?? '-'} / {row.residual_index ?? '-'}
+                              </td>
+                            );
+                          }
+                          return null;
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white border border-surface-300 rounded-xl p-4 shadow-card space-y-3">

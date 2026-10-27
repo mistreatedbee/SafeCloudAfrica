@@ -254,7 +254,7 @@ export function HrPerformancePage() {
     if (!activeCompanyId || !user?.id) return;
     const targets = (reviews ?? []).filter((row) => {
       const r = row as Record<string, unknown>;
-      return String(r['status'] ?? '') === 'CLOSED' && !Boolean(r['archived']);
+      return String(r['status'] ?? '') === 'CLOSED' && !r['archived'];
     });
     if (targets.length === 0) return;
     if (!window.confirm(`Archive ${targets.length} closed review${targets.length === 1 ? '' : 's'}?`)) return;

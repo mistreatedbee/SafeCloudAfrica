@@ -112,7 +112,9 @@ export function DocumentEditorPage() {
         // Dispose previous editor instance if the user navigates between versions.
         try {
           editorRef.current?.destroyEditor?.();
-        } catch {}
+        } catch {
+          // best-effort cleanup only
+        }
 
         const config = { ...(payload.config || {}), token: payload.token };
         editorRef.current = new w.DocsAPI.DocEditor(containerId, config);
@@ -133,7 +135,9 @@ export function DocumentEditorPage() {
       cancelled = true;
       try {
         editorRef.current?.destroyEditor?.();
-      } catch {}
+      } catch {
+        // best-effort cleanup only
+      }
       editorRef.current = null;
     };
   }, [versionId, mode, containerId]);

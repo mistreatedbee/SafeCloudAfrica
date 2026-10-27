@@ -7,7 +7,7 @@ const ALLOWED_DOCUMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx'
 function sanitizeFileName(name: string): string {
   const trimmed = name.trim() || 'document';
   return trimmed
-    .replace(/[^\w.\-]+/g, '_')
+    .replace(/[^\w.-]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
 }

@@ -155,7 +155,7 @@ export async function createInspection(input: CreateInspectionInput): Promise<In
     created_by_user_id: input.createdByUserId
   };
 
-  let payload: Record<string, unknown> = { ...fullPayload };
+  const payload: Record<string, unknown> = { ...fullPayload };
   let data: Inspection | null = null;
   let error: { message?: string } | null = null;
 
@@ -622,7 +622,7 @@ export async function createInspectionRunFromTemplate(input: {
     ncrs_created_count: 0
   };
 
-  let runPayload: Record<string, unknown> = { ...runInsertBase };
+  const runPayload: Record<string, unknown> = { ...runInsertBase };
   let runData: unknown = null;
   let runError: { message?: string } | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {

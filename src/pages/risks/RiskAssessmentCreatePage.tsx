@@ -175,12 +175,12 @@ export function RiskAssessmentCreatePage() {
       try {
         if (manualSavingRef.current) return;
         if (!serverDraftAssessmentIdRef.current) {
-	          const created = await createRiskAssessment({
-	            companyId,
-	            actorUserId,
-	            actorRole: activeRole ?? null,
-	            type,
-	            title: header.title.trim(),
+            const created = await createRiskAssessment({
+              companyId,
+              actorUserId,
+              actorRole: activeRole ?? null,
+              type,
+              title: header.title.trim(),
             heading: header.heading?.trim() || null,
             area: header.area?.trim() || null,
             activity: header.activity?.trim() || null,
@@ -196,13 +196,13 @@ export function RiskAssessmentCreatePage() {
             supervisorNameSnapshot: supervisorNameSnapshot || null
           });
 
-	          await replaceRiskAssessmentRows({
-	            companyId,
-	            assessmentId: created.id,
-	            actorUserId,
-	            actorRole: activeRole ?? null,
-	            scope,
-	            rows: rows.map((r, idx) => ({
+            await replaceRiskAssessmentRows({
+              companyId,
+              assessmentId: created.id,
+              actorUserId,
+              actorRole: activeRole ?? null,
+              scope,
+              rows: rows.map((r, idx) => ({
               row_index: idx,
               json_data: r.json_data,
               severity: r.severity,
@@ -222,14 +222,14 @@ export function RiskAssessmentCreatePage() {
             // ignore
           }
         } else {
-	          const assessmentId = serverDraftAssessmentIdRef.current;
-	          await updateRiskAssessment({
-	            companyId,
-	            assessmentId,
-	            actorUserId,
-	            actorRole: activeRole ?? null,
-	            scope,
-	            patch: {
+            const assessmentId = serverDraftAssessmentIdRef.current;
+            await updateRiskAssessment({
+              companyId,
+              assessmentId,
+              actorUserId,
+              actorRole: activeRole ?? null,
+              scope,
+              patch: {
               type,
               title: header.title.trim(),
               heading: header.heading?.trim() || null,
@@ -248,13 +248,13 @@ export function RiskAssessmentCreatePage() {
             }
           });
 
-	          await replaceRiskAssessmentRows({
-	            companyId,
-	            assessmentId,
-	            actorUserId,
-	            actorRole: activeRole ?? null,
-	            scope,
-	            rows: rows.map((r, idx) => ({
+            await replaceRiskAssessmentRows({
+              companyId,
+              assessmentId,
+              actorUserId,
+              actorRole: activeRole ?? null,
+              scope,
+              rows: rows.map((r, idx) => ({
               row_index: idx,
               json_data: r.json_data,
               severity: r.severity,

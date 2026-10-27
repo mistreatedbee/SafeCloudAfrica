@@ -92,7 +92,7 @@ export function HrDashboardPage() {
     if (!selfEmployee?.id) return [];
     return (myReviews ?? []).filter((row) => {
       const r = row as Record<string, unknown>;
-      return String(r['corrective_responsible_user_id'] ?? '') === String(selfEmployee.id) && String(r['status'] ?? '') !== 'CLOSED' && !Boolean(r['archived']);
+      return String(r['corrective_responsible_user_id'] ?? '') === String(selfEmployee.id) && String(r['status'] ?? '') !== 'CLOSED' && !r['archived'];
     });
   }, [myReviews, selfEmployee?.id]);
 

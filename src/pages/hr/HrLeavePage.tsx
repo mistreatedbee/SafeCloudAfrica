@@ -452,7 +452,7 @@ export function HrLeavePage() {
 
   async function onArchiveAllApproved() {
     if (!activeCompanyId || !user?.id) return;
-    const targets = (requests ?? []).filter((row) => row.status === 'APPROVED' && !Boolean((row as any).archived));
+    const targets = (requests ?? []).filter((row) => row.status === 'APPROVED' && !(row as any).archived);
     if (targets.length === 0) return;
     if (!window.confirm(`Archive ${targets.length} approved leave request${targets.length === 1 ? '' : 's'}?`)) return;
     setError(null);

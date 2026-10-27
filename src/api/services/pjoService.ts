@@ -388,7 +388,7 @@ export async function createPjo(input: {
     created_by_user_id: input.createdByUserId
   };
 
-  let payload: Record<string, unknown> = { ...fullPayload };
+  const payload: Record<string, unknown> = { ...fullPayload };
   let data: PjoObservation | null = null;
   let error: { message?: string } | null = null;
   for (let attempt = 0; attempt < 8; attempt += 1) {

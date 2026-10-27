@@ -183,7 +183,7 @@ export function ReportsPage() {
     const downloadReport = async (reportId: ReportTemplate['id'], rows: ReportRow[]) => {
       const filenameBase = `${safeOrg}-${reportId}-${dateStamp}`;
       const title = `${template.name} - ${organisationName}`;
-      let filename = `${filenameBase}.${exportFormat}`;
+      const filename = `${filenameBase}.${exportFormat}`;
       if (exportFormat === 'xlsx') {
         downloadWorkbook(filename, [{ name: template.name, rows }]);
       } else if (exportFormat === 'pdf') {

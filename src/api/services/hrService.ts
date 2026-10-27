@@ -469,7 +469,7 @@ export async function upsertHrEmployeeSensitiveDetails(input: {
     action: 'hr.employee_sensitive.upsert',
     entityType: 'hr_employee_sensitive_details',
     entityId: input.employeeId
-  }).catch(() => {});
+  }).catch(() => { /* best-effort only */ });
   return row;
 }
 
@@ -511,7 +511,7 @@ export async function replaceHrEmployeeDependents(input: {
     entityType: 'hr_employee',
     entityId: input.employeeId,
     metadata: { dependents: payload.length }
-  }).catch(() => {});
+  }).catch(() => { /* best-effort only */ });
   return Number(data ?? 0);
   });
 }
@@ -716,7 +716,7 @@ export async function upsertHrTimesheet(input: Omit<HrTimesheet, 'id' | 'created
     entityType: 'hr_timesheet',
     entityId: row.id
   }).catch(() => undefined);
-  await recalculateHrMonthlyHours(input.company_id, input.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.created_by_user_id).catch(() => {});
+  await recalculateHrMonthlyHours(input.company_id, input.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.created_by_user_id).catch(() => { /* best-effort only */ });
   return row;
 }
 
@@ -753,7 +753,7 @@ export async function approveHrTimesheet(input: {
     entityId: input.timesheetId,
     metadata: { decision: input.decision }
   }).catch(() => undefined);
-  await recalculateHrMonthlyHours(row.company_id, row.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.actorUserId).catch(() => {});
+  await recalculateHrMonthlyHours(row.company_id, row.employee_id, d.getUTCFullYear(), d.getUTCMonth() + 1, input.actorUserId).catch(() => { /* best-effort only */ });
 
   const employee = await getHrEmployeeById(input.companyId, row.employee_id).catch(() => null);
   if (employee?.user_id && employee.user_id !== input.actorUserId) {
@@ -856,7 +856,7 @@ export async function createHrRecord(
       action: `hr.${table}.create`,
       entityType: table,
       entityId: row.id
-    }).catch(() => {});
+    }).catch(() => { /* best-effort only */ });
   }
   return row;
 }
@@ -903,7 +903,7 @@ export async function updateHrRecord(
     action: `hr.${table}.update`,
     entityType: table,
     entityId: input.rowId
-  }).catch(() => {});
+  }).catch(() => { /* best-effort only */ });
   return data as HrSimpleRecord;
   });
 }
@@ -946,7 +946,7 @@ export async function deleteHrRecord(
     action: `hr.${table}.delete`,
     entityType: table,
     entityId: input.rowId
-  }).catch(() => {});
+  }).catch(() => { /* best-effort only */ });
   });
 }
 
@@ -1750,7 +1750,7 @@ export async function deleteHrPersonalDocument(input: {
     action: 'hr.personal_document.delete',
     entityType: 'hr_employee_document',
     entityId: input.documentId
-  }).catch(() => {});
+  }).catch(() => { /* best-effort only */ });
   });
 }
 
@@ -1812,7 +1812,7 @@ export async function createHrAcknowledgementDocument(input: {
     // Single-employee assignment overrides role/department targeting — exactly one receipt.
     eligible = eligible.filter((e) => e.id === input.assignedEmployeeId);
   } else if (!input.assignedAll && (assignedDeptSet.size > 0 || assignedRoleSet.size > 0)) {
-    let membershipMap = new Map<string, string>();
+    const membershipMap = new Map<string, string>();
     if (assignedRoleSet.size > 0) {
       const userIds = eligible.map((e) => e.user_id).filter(Boolean);
       if (userIds.length > 0) {
@@ -1897,7 +1897,7 @@ export async function updateHrAcknowledgementDocument(input: {
     action: input.patch.status === 'ARCHIVED' ? 'hr.ack_document.archive' : 'hr.ack_document.update',
     entityType: 'hr_ack_document',
     entityId: input.documentId
-  }).catch(() => {});
+  }).catch(() => { /* best-effort only */ });
   return data as HrAckDocumentRow;
   });
 }
@@ -2052,7 +2052,7 @@ export async function deleteHrAcknowledgementDocument(input: {
     action: 'hr.ack_document.delete',
     entityType: 'hr_ack_document',
     entityId: input.documentId
-  }).catch(() => {});
+  }).catch(() => { /* best-effort only */ });
   });
 }
 
@@ -2093,7 +2093,7 @@ export async function sendHrDocumentExpiryAlerts(companyId: UUID, actorUserId: U
         title,
         message,
         { module: 'hr', route: '/dashboard/hr/documents', employeeId: doc.employee_id, documentId: doc.id, expiryStatus: status }
-      ).catch(() => {});
+      ).catch(() => { /* best-effort only */ });
       count += 1;
     }
   }
@@ -2105,7 +2105,7 @@ export async function sendHrDocumentExpiryAlerts(companyId: UUID, actorUserId: U
     entityType: 'hr_employee_document',
     entityId: toNotify[0]?.id ?? actorUserId,
     metadata: { documents: toNotify.length, notifications: count }
-  }).catch(() => {});
+  }).catch(() => { /* best-effort only */ });
 
   return count;
 }

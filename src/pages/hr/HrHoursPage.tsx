@@ -146,7 +146,7 @@ export function HrHoursPage() {
 
   async function onArchiveAllApproved() {
     if (!activeCompanyId || !user?.id) return;
-    const targets = (rows ?? []).filter((row) => row.status === 'APPROVED' && !Boolean((row as any).archived));
+    const targets = (rows ?? []).filter((row) => row.status === 'APPROVED' && !(row as any).archived);
     if (targets.length === 0) return;
     if (!window.confirm(`Archive ${targets.length} approved timesheet${targets.length === 1 ? '' : 's'}?`)) return;
     setError(null);

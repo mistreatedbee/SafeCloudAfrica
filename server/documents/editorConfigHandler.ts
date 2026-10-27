@@ -96,7 +96,9 @@ export default async function editorConfigHandler(req: any, res: any) {
     const { token, userId, email } = await requireViewer(req);
     try {
       console.info('[editorConfigHandler] viewer resolved', { userId, email });
-    } catch {}
+    } catch {
+      // best-effort log only
+    }
     const versionId = String(req?.query?.versionId || '').trim();
     const mode = String(req?.query?.mode || 'view').trim().toLowerCase() === 'edit' ? 'edit' : 'view';
     if (!versionId) return applyJson(res, 400, { ok: false, error: 'Missing versionId' });
@@ -271,7 +273,9 @@ export default async function editorConfigHandler(req: any, res: any) {
   } catch (e: any) {
     try {
       console.error('[editorConfigHandler] unexpected error', e && e.stack ? e.stack : String(e));
-    } catch {}
+    } catch {
+      // best-effort log only
+    }
     return applyJson(res, 500, { ok: false, error: String(e?.message || e) });
   }
 }

@@ -45,7 +45,7 @@ export async function createSignoffRequest(input: {
       action: 'hr_action_signoff_requests.create',
       entityType: input.entityType,
       entityId: input.entityId
-    }).catch(() => {});
+    }).catch(() => { /* best-effort only */ });
 
     if (input.requestedForUserId) {
       const { notifyRelevantUsers } = await import('./notificationEventsService');
@@ -143,7 +143,7 @@ export async function signOffWellnessAction(input: {
       action: 'hr_action_signoff_requests.sign_off',
       entityType: 'hr_employee_wellness_action',
       entityId: input.actionId
-    }).catch(() => {});
+    }).catch(() => { /* best-effort only */ });
 
     const requestedByUserId = (data as any)?.requested_by_user_id as UUID | undefined;
     if (requestedByUserId && requestedByUserId !== input.actorUserId) {
