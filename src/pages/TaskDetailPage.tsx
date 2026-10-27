@@ -149,7 +149,14 @@ export function TaskDetailPage() {
     return '/dashboard/management/tasks';
   }, [location.pathname]);
 
-  const { data: task, loading: taskLoading } = useAsync<Task | null>(
+  const {
+    data: task,
+    loading: taskLoading,
+    error: taskError,
+    isAuthFailure: taskAuthFailure,
+    isBackendUnavailable: taskBackendUnavailable,
+    retry: retryTask
+  } = useAsync<Task | null>(
     async () => (activeCompanyId && taskId ? getTaskById(activeCompanyId, taskId as UUID) : null),
     [activeCompanyId, taskId, refreshKey]
   );
@@ -547,13 +554,33 @@ export function TaskDetailPage() {
   }
 
   if (!task) {
+    // getTaskById returns null both when the row genuinely doesn't exist/isn't
+    // visible to this user and (less obviously) when the fetch itself failed --
+    // useAsync's error/isAuthFailure/isBackendUnavailable were previously
+    // ignored here entirely, so every one of those cases showed the same flat
+    // "Task not found." with no way to tell a real backend problem apart from
+    // an actually-missing record, or to retry without reloading the page.
+    const notFoundMessage = taskAuthFailure
+      ? 'Your session has expired — please refresh the page and try again.'
+      : taskBackendUnavailable
+        ? 'Could not load this task right now — the server is temporarily unavailable.'
+        : taskError
+          ? toUserFacingError(taskError, 'Could not load this task right now.')
+          : 'Task not found.';
     return (
       <Layout>
         <div className="p-6">
-          <p className="text-charcoal-500">Task not found.</p>
-          <button type="button" onClick={() => navigate(backTo)} className="mt-2 text-teal hover:underline">
-            Back to tasks
-          </button>
+          <p className="text-charcoal-500">{notFoundMessage}</p>
+          <div className="mt-2 flex items-center gap-3">
+            {(taskError || taskBackendUnavailable) && !taskAuthFailure && (
+              <button type="button" onClick={() => retryTask()} className="text-teal hover:underline">
+                Retry
+              </button>
+            )}
+            <button type="button" onClick={() => navigate(backTo)} className="text-teal hover:underline">
+              Back to tasks
+            </button>
+          </div>
         </div>
       </Layout>
     );
