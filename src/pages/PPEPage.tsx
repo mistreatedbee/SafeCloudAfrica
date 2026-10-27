@@ -200,6 +200,7 @@ export function PPEPage() {
     'all' | 'expired' | 'expiring_7' | 'expiring_30' | 'valid' | 'no_expiry'
   >('all');
   const [inventoryItemSearch, setInventoryItemSearch] = useState('');
+  const [itemsSearch, setItemsSearch] = useState('');
 
   const { data: myProfile } = useAsync(
     async () => {
@@ -583,6 +584,11 @@ export function PPEPage() {
     if (inventoryExpiryFilter !== 'all' && row.expiryStatus !== inventoryExpiryFilter) return false;
     if (inventoryItemSearch.trim() && !row.itemName.toLowerCase().includes(inventoryItemSearch.trim().toLowerCase())) return false;
     return true;
+  });
+
+  const filteredItems = (items ?? []).filter((item) => {
+    if (!itemsSearch.trim()) return true;
+    return item.name.toLowerCase().includes(itemsSearch.trim().toLowerCase());
   });
 
   const openReorderCount = (reorderRequests ?? []).filter(
@@ -1534,9 +1540,18 @@ export function PPEPage() {
           >
             <div className="px-5 py-4 border-b border-surface-200 flex flex-wrap items-center justify-between gap-3">
               <h3 className="font-semibold text-charcoal">PPE Items</h3>
-              <span className="text-sm text-charcoal-400">
-                {(items ?? []).length} item {(items ?? []).length === 1 ? 'record' : 'records'}
-              </span>
+              <div className="flex items-center gap-3 text-xs">
+                <input
+                  type="search"
+                  value={itemsSearch}
+                  onChange={(e) => setItemsSearch(e.target.value)}
+                  placeholder="Search item name..."
+                  className="px-2 py-1.5 border border-surface-300 rounded-lg bg-white w-40"
+                />
+                <span className="text-sm text-charcoal-400">
+                  {filteredItems.length} item {filteredItems.length === 1 ? 'record' : 'records'}
+                </span>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -1552,14 +1567,16 @@ export function PPEPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-100">
-                  {!items?.length && (
+                  {!filteredItems.length && (
                     <tr>
                       <td colSpan={7} className="px-5 py-4 text-sm text-charcoal-500">
-                        No PPE items set up yet. Use "Add PPE item" to create one.
+                        {items?.length
+                          ? 'No PPE items match this search.'
+                          : 'No PPE items set up yet. Use "Add PPE item" to create one.'}
                       </td>
                     </tr>
                   )}
-                  {(items ?? []).map((item) => {
+                  {filteredItems.map((item) => {
                     const sizeLabel =
                       item.sizes_with_prices?.map((row) => row.size).filter(Boolean).join(', ') ||
                       item.sizes_available?.join(', ') ||
