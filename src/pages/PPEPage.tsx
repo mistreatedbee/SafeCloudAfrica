@@ -199,6 +199,7 @@ export function PPEPage() {
   const [inventoryExpiryFilter, setInventoryExpiryFilter] = useState<
     'all' | 'expired' | 'expiring_7' | 'expiring_30' | 'valid' | 'no_expiry'
   >('all');
+  const [inventoryItemSearch, setInventoryItemSearch] = useState('');
 
   const { data: myProfile } = useAsync(
     async () => {
@@ -579,8 +580,9 @@ export function PPEPage() {
   });
 
   const filteredStockRows = stockRows.filter((row) => {
-    if (inventoryExpiryFilter === 'all') return true;
-    return row.expiryStatus === inventoryExpiryFilter;
+    if (inventoryExpiryFilter !== 'all' && row.expiryStatus !== inventoryExpiryFilter) return false;
+    if (inventoryItemSearch.trim() && !row.itemName.toLowerCase().includes(inventoryItemSearch.trim().toLowerCase())) return false;
+    return true;
   });
 
   const openReorderCount = (reorderRequests ?? []).filter(
@@ -1623,6 +1625,13 @@ export function PPEPage() {
             <div className="px-5 py-4 border-b border-surface-200 flex flex-wrap items-center justify-between gap-3">
               <h3 className="font-semibold text-charcoal">PPE Inventory</h3>
               <div className="flex items-center gap-3 text-xs">
+                <input
+                  type="search"
+                  value={inventoryItemSearch}
+                  onChange={(e) => setInventoryItemSearch(e.target.value)}
+                  placeholder="Search item name..."
+                  className="px-2 py-1.5 border border-surface-300 rounded-lg bg-white w-40"
+                />
                 <label className="flex items-center gap-2">
                   <span className="text-charcoal-500">Expiry filter</span>
                   <select
