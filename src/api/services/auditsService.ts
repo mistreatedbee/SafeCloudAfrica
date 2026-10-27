@@ -79,13 +79,16 @@ function generateAuditNumber(): string {
   return `AUDIT-${year}${month}-${random}`;
 }
 
-function hashToken(token: string): string {
-  let hash = 0;
-  for (let i = 0; i < token.length; i += 1) {
-    hash = (hash << 5) - hash + token.charCodeAt(i);
-    hash |= 0;
-  }
-  return `audit-${Math.abs(hash)}`;
+// SHA-256 hex digest, matching api/audits/_shared.ts's hashAuditInvitationToken()
+// exactly -- the server endpoint that resolves these tokens (api/audits/respond-invitation.ts)
+// hashes with Node's crypto the same way, so a token hashed here at invite-creation
+// time resolves there at response time.
+async function hashToken(token: string): Promise<string> {
+  const data = new TextEncoder().encode(token.trim());
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export async function listAudits(input: {
@@ -206,7 +209,7 @@ export async function createAudit(input: {
     created_by_user_id: input.createdByUserId
   };
 
-  let payload: Record<string, unknown> = { ...fullPayload };
+  const payload: Record<string, unknown> = { ...fullPayload };
   let data: Audit | null = null;
   let error: { message?: string } | null = null;
 
@@ -456,7 +459,7 @@ export async function createAuditInvitationTokens(input: {
   const created: Array<AuditInvitationToken & { plainToken: string }> = [];
   for (const email of input.inviteeEmails) {
     const plainToken = crypto.randomUUID();
-    const tokenHash = hashToken(plainToken);
+    const tokenHash = await hashToken(plainToken);
     const { data, error } = await insforge.database
       .from('audit_invitation_tokens')
       .insert({
@@ -489,76 +492,40 @@ export async function createAuditInvitationTokens(input: {
   return created;
 }
 
+/**
+ * Called by an external auditee responding to an audit-date invitation from
+ * their invite link -- they aren't expected to have an account or be a
+ * member of the inviting company, so this can't go through the normal
+ * authenticated database client (audit_invitation_tokens' RLS policies
+ * correctly restrict that to company staff). It goes through a dedicated,
+ * unauthenticated server endpoint instead (api/audits/respond-invitation.ts),
+ * which validates the token itself using the service role, mirroring how
+ * server/invites/acceptHandler.ts resolves invite tokens for signed-out users.
+ */
 export async function respondToAuditInvitation(input: {
   token: string;
   responseStatus: 'accepted' | 'declined';
   selectedDate?: string | null;
   declineReason?: string | null;
-  respondedByUserId?: UUID | null;
 }): Promise<{ audit: Audit; invitation: AuditInvitationToken }> {
-  const tokenHash = hashToken(input.token);
-  const { data, error } = await insforge.database
-    .from('audit_invitation_tokens')
-    .select('*')
-    .eq('token_hash', tokenHash)
-    .maybeSingle();
-
-  if (error) throw new Error(getErrorMessage(error));
-  if (!data) throw new Error('Audit invitation token not found.');
-
-  const invitation = data as AuditInvitationToken;
-  if (new Date(invitation.expires_at).getTime() < Date.now()) {
-    await insforge.database
-      .from('audit_invitation_tokens')
-      .update({ response_status: 'expired', updated_at: new Date().toISOString() })
-      .eq('id', invitation.id);
-    throw new Error('This audit invitation token has expired.');
-  }
-
-  const { data: invitationData, error: updateError } = await insforge.database
-    .from('audit_invitation_tokens')
-    .update({
-      invitee_user_id: input.respondedByUserId ?? invitation.invitee_user_id ?? null,
-      response_status: input.responseStatus,
-      selected_date: input.responseStatus === 'accepted' ? input.selectedDate ?? null : null,
-      decline_reason: input.responseStatus === 'declined' ? input.declineReason ?? null : null,
-      responded_date: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+  const response = await fetch('/api/audits/respond-invitation', {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      token: input.token,
+      responseStatus: input.responseStatus,
+      selectedDate: input.selectedDate ?? null,
+      declineReason: input.declineReason ?? null
     })
-    .eq('id', invitation.id)
-    .select('*')
-    .single();
+  });
 
-  if (updateError) throw new Error(getErrorMessage(updateError));
-  if (!invitationData) throw new Error('Failed to store audit invitation response.');
-
-  let audit = await getAudit(invitation.audit_id);
-  if (!audit) throw new Error('Linked audit not found.');
-
-  if (input.responseStatus === 'accepted' && input.selectedDate) {
-    audit = await scheduleAudit(
-      invitation.audit_id,
-      invitation.company_id,
-      input.selectedDate,
-      input.respondedByUserId ?? audit.approved_by_user_id ?? audit.created_by_user_id,
-      input.respondedByUserId ?? audit.created_by_user_id
-    );
-  } else if (input.responseStatus === 'declined') {
-    audit = await updateAudit(
-      invitation.audit_id,
-      invitation.company_id,
-      {
-        date_approval_status: 'declined',
-        date_decline_reason: input.declineReason ?? null
-      },
-      input.respondedByUserId ?? audit.created_by_user_id
-    );
+  const data = await response.json().catch(() => null as any);
+  if (!response.ok || !data || data.ok === false) {
+    throw new Error(data?.error || 'Failed to respond to audit invitation.');
   }
 
-  return {
-    audit,
-    invitation: invitationData as AuditInvitationToken
-  };
+  return { audit: data.audit as Audit, invitation: data.invitation as AuditInvitationToken };
 }
 
 export async function expireAuditInvitationTokens(nowIso = new Date().toISOString()): Promise<number> {

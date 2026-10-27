@@ -84,6 +84,10 @@
       "destination": "/api/email/send"
     },
     {
+      "source": "/api/audits/respond-invitation",
+      "destination": "/api/audits/respond-invitation"
+    },
+    {
       "source": "/api/invites/(.*)",
       "destination": "/api/invites-router?action=$1"
     },
