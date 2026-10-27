@@ -9,7 +9,7 @@ vi.mock('../_insforge.js', () => ({
   resolveRequestActor: mocks.resolveRequestActor
 }));
 
-vi.mock('./_shared.js', () => ({
+vi.mock('../email/_shared.js', () => ({
   sendTransactionalEmail: mocks.sendTransactionalEmail
 }));
 
@@ -42,7 +42,7 @@ describe('api/email/send handler', () => {
   it('rejects unauthenticated requests without sending email', async () => {
     mocks.resolveRequestActor.mockResolvedValue({ userId: null, organizationId: null });
 
-    const { default: handler } = await import('./send.js');
+    const { default: handler } = await import('../email/send.js');
     const req = { method: 'POST', body: { to: 'victim@example.com', subject: 'hi' } };
     const res = createRes();
 
@@ -57,7 +57,7 @@ describe('api/email/send handler', () => {
     mocks.resolveRequestActor.mockResolvedValue({ userId: 'user-1', organizationId: 'org-1' });
     mocks.sendTransactionalEmail.mockResolvedValue({ ok: true });
 
-    const { default: handler } = await import('./send.js');
+    const { default: handler } = await import('../email/send.js');
     const req = { method: 'POST', body: { to: 'teammate@example.com', subject: 'hi' } };
     const res = createRes();
 
@@ -73,7 +73,7 @@ describe('api/email/send handler', () => {
   it('rejects non-POST methods', async () => {
     mocks.resolveRequestActor.mockResolvedValue({ userId: 'user-1', organizationId: 'org-1' });
 
-    const { default: handler } = await import('./send.js');
+    const { default: handler } = await import('../email/send.js');
     const req = { method: 'GET', body: {} };
     const res = createRes();
 

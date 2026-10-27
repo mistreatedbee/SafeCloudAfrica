@@ -6,12 +6,12 @@ const insforgeMocks = vi.hoisted(() => ({
   nowIso: vi.fn(() => '2026-10-27T00:00:00.000Z')
 }));
 
-vi.mock('../_insforge.js', () => insforgeMocks);
-vi.mock('../_observability.js', () => ({
+vi.mock('../../api/_insforge.js', () => insforgeMocks);
+vi.mock('../../api/_observability.js', () => ({
   logStructuredLine: vi.fn(),
   sendAlertWebhook: vi.fn()
 }));
-vi.mock('../_response.js', () => ({
+vi.mock('../../api/_response.js', () => ({
   applyNoStoreHeaders: vi.fn()
 }));
 
@@ -68,13 +68,13 @@ function createServiceClient(options: {
   return { database: db };
 }
 
-describe('api/audits/respond-invitation handler', () => {
+describe('server/audits/respondInvitationHandler', () => {
   beforeEach(() => {
     insforgeMocks.getServiceInsforge.mockReset();
   });
 
   it('rejects a missing token', async () => {
-    const { default: handler } = await import('./respond-invitation.js');
+    const { default: handler } = await import('./respondInvitationHandler.js');
     const req = { method: 'POST', body: { responseStatus: 'accepted' } };
     const res = createRes();
     await handler(req, res);
@@ -82,7 +82,7 @@ describe('api/audits/respond-invitation handler', () => {
   });
 
   it('rejects an invalid responseStatus', async () => {
-    const { default: handler } = await import('./respond-invitation.js');
+    const { default: handler } = await import('./respondInvitationHandler.js');
     const req = { method: 'POST', body: { token: 'tok', responseStatus: 'maybe' } };
     const res = createRes();
     await handler(req, res);
@@ -93,7 +93,7 @@ describe('api/audits/respond-invitation handler', () => {
     insforgeMocks.getServiceInsforge.mockReturnValue(
       createServiceClient({ invitation: null, audit: null })
     );
-    const { default: handler } = await import('./respond-invitation.js');
+    const { default: handler } = await import('./respondInvitationHandler.js');
     const req = { method: 'POST', body: { token: 'unknown-token', responseStatus: 'accepted' } };
     const res = createRes();
     await handler(req, res);
@@ -119,7 +119,7 @@ describe('api/audits/respond-invitation handler', () => {
     };
     insforgeMocks.getServiceInsforge.mockReturnValue(createServiceClient({ invitation, audit }));
 
-    const { default: handler } = await import('./respond-invitation.js');
+    const { default: handler } = await import('./respondInvitationHandler.js');
     const req = {
       method: 'POST',
       body: { token: plainToken, responseStatus: 'accepted', selectedDate: '2026-11-01' }
@@ -147,7 +147,7 @@ describe('api/audits/respond-invitation handler', () => {
       createServiceClient({ invitation, audit: { id: 'audit-2', company_id: 'company-1' } })
     );
 
-    const { default: handler } = await import('./respond-invitation.js');
+    const { default: handler } = await import('./respondInvitationHandler.js');
     const req = { method: 'POST', body: { token: plainToken, responseStatus: 'declined' } };
     const res = createRes();
     await handler(req, res);
@@ -157,7 +157,7 @@ describe('api/audits/respond-invitation handler', () => {
   });
 
   it('rejects a method other than POST', async () => {
-    const { default: handler } = await import('./respond-invitation.js');
+    const { default: handler } = await import('./respondInvitationHandler.js');
     const req = { method: 'GET', body: {} };
     const res = createRes();
     await handler(req, res);
