@@ -42,7 +42,8 @@ import { getCompanyLogoUrl } from '../utils/companyLogo';
 import { computeInspectionSectionScores } from '../utils/inspectionSectionScores';
 import {
   formatInspectionFrequencyLabel,
-  formatInspectionPeriod
+  formatInspectionPeriod,
+  getInspectionPeriodKey
 } from '../utils/inspectionFrequency';
 
 type RunWithItems = { run: InspectionRun; items: InspectionRunItem[] };
@@ -101,14 +102,34 @@ export function InspectionDetailPage() {
     [activeCompanyId, inspectionId]
   );
 
+  // Whether this inspection's current tracking period (today for daily, this
+  // week for weekly, etc.) already has a completed run. latestRun only ever
+  // holds the single most recent run regardless of age, so a recurring
+  // inspection whose last run was completed a while ago previously had no
+  // way to start the next one from this page at all -- the "start a
+  // checklist" UI below only showed when there was no run whatsoever.
+  const currentPeriodRunCompleted = (() => {
+    if (!inspection) return false;
+    const freq = inspection.frequency ?? latestRun?.run.frequency ?? 'daily';
+    const nowKey = getInspectionPeriodKey(freq, new Date());
+    return (allRuns ?? []).some((r) => {
+      if (r.status !== 'completed') return false;
+      const key = (r as any).tracking_period_key || getInspectionPeriodKey(freq, r.completed_at ?? r.started_at);
+      return key === nowKey;
+    });
+  })();
+  const canStartNewPeriodRun = !latestRun || (latestRun.run.status === 'completed' && !currentPeriodRunCompleted);
+
   // Recovery path for inspections that ended up with no run at all (e.g. created
-  // before any checklist template existed, or a template was deleted afterward).
+  // before any checklist template existed, or a template was deleted afterward),
+  // and now also the normal path for starting the next period's run once the
+  // latest one is already completed.
   const { data: startTemplates } = useAsync<InspectionChecklistTemplate[]>(
     async () => {
-      if (!activeCompanyId || !inspection || latestRun) return [];
+      if (!activeCompanyId || !inspection || !canStartNewPeriodRun) return [];
       return await listInspectionChecklistTemplates({ companyId: activeCompanyId as UUID, module: inspection.module });
     },
-    [activeCompanyId, inspection, latestRun]
+    [activeCompanyId, inspection, canStartNewPeriodRun]
   );
 
   const { data: userProfiles } = useAsync<UserProfile[]>(
@@ -480,10 +501,12 @@ export function InspectionDetailPage() {
                   {runError && <div className="text-xs text-critical">{runError.message}</div>}
                   {runActionError && <div className="text-xs text-critical bg-critical/5 border border-critical/20 rounded-lg p-2">{runActionError}</div>}
                   {runActionNotice && <div className="text-xs text-success bg-success/5 border border-success/20 rounded-lg p-2">{runActionNotice}</div>}
-                  {!latestRun && (
+                  {canStartNewPeriodRun && (
                     <div className="bg-surface-50 border border-surface-200 rounded-xl p-4 space-y-3">
                       <p className="text-sm text-charcoal-500">
-                        No checklist run found for this inspection yet.
+                        {latestRun
+                          ? "The current period's checklist hasn't been started yet."
+                          : 'No checklist run found for this inspection yet.'}
                         {canScore ? ' Start one from a checklist template:' : ' Ask a manager or consultant to start the checklist.'}
                       </p>
                       {canScore && (
