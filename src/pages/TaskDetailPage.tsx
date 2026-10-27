@@ -485,7 +485,12 @@ export function TaskDetailPage() {
     if (!task?.source_entity_type || !task?.source_entity_id) return null;
     const type = String(task.source_entity_type);
     const id = task.source_entity_id;
-    if (type === 'ncr') return { label: 'NCR', path: `/dashboard/management/ncrs?highlight=${id}` };
+    // NCRsPage auto-opens the detail modal (including its Close NCR action and
+    // the evidence/sign-off/verification prerequisites) for ?ncr=<id> -- the
+    // same deep-link convention InspectionDetailPage already uses. `highlight`
+    // below is not handled by any of those target pages; this one link is
+    // fixed to go straight into the NCR closure flow instead of the bare list.
+    if (type === 'ncr') return { label: 'NCR', path: `/dashboard/management/ncrs?ncr=${id}` };
     if (type === 'incident') return { label: 'Incident', path: `/incidents?highlight=${id}` };
     if (type === 'audit_finding' || type === 'audit') return { label: 'Audit finding', path: `/audits?highlight=${id}` };
     if (type === 'inspection_run_item') return { label: 'Inspection', path: `/inspections?highlight=${id}` };
