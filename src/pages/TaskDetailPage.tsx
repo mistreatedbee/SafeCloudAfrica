@@ -592,6 +592,21 @@ export function TaskDetailPage() {
     !!user?.id && canSubmitTaskForReview({ task, actorUserId: user.id, actorRole: activeRole });
   const canClose =
     !!user?.id && canCloseTask({ task, actorUserId: user.id, actorRole: activeRole });
+  // Mirrors tasksService.ts's validateTaskReadyForClosure so the Approvals &
+  // sign-offs panel can show -- and act on -- closure readiness in the same
+  // place the sign-off itself lives, instead of leaving the user to find a
+  // separate Close button after approvals already show "approved" here.
+  const closureBlockers: string[] = [];
+  const signOffApproved = taskApprovals.some(
+    (a) => (a.entity_type === 'task_supervisor_review' || a.entity_type === 'task_manager_approval') && a.status === 'approved'
+  );
+  if (!signOffApproved) closureBlockers.push('At least one sign-off (supervisor or manager approval)');
+  if (task.effectiveness_checked !== true) closureBlockers.push('Effectiveness check');
+  const auditSourceTypes = ['audit_finding', 'audit', 'program_audit_finding'];
+  if (task.source_entity_type && auditSourceTypes.includes(String(task.source_entity_type))) {
+    const auditorApproved = taskApprovals.some((a) => a.entity_type === 'task_auditor_verification' && a.status === 'approved');
+    if (!auditorApproved) closureBlockers.push('Auditor verification');
+  }
   const comments = (task.comments as { timestamp: string; user_id: string; text: string }[] | null) ?? [];
   const progressUpdates = (task.progress_updates as { timestamp: string; user_id: string; note: string; percent_complete?: number }[] | null) ?? [];
 
@@ -1125,6 +1140,23 @@ export function TaskDetailPage() {
             ))}
             {taskApprovals.length === 0 && <p className="text-charcoal-500 text-sm">No approval requests yet.</p>}
           </ul>
+          {['under-review', 'approved'].includes(task.status) && canClose && (
+            <div className="mt-3 pt-3 border-t border-surface-100">
+              {closureBlockers.length === 0 && task.status === 'approved' ? (
+                <button
+                  type="button"
+                  onClick={() => void handleClose()}
+                  className="px-3 py-1.5 rounded-lg bg-success text-white text-sm font-medium hover:bg-success-600"
+                >
+                  Close task
+                </button>
+              ) : (
+                <p className="text-xs text-charcoal-500">
+                  Still needed to close: {closureBlockers.length > 0 ? closureBlockers.join(', ') : 'task approval'}.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {activeCompanyId && user?.id && (
