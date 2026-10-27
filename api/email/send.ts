@@ -13,6 +13,10 @@ export default async function handler(req: any, res: any) {
   const body = (req.body ?? {}) as EmailRequest;
   const actor = await resolveRequestActor(req, body as Record<string, unknown>);
 
+  if (!actor.userId) {
+    return res.status(401).json({ ok: false, error: 'Authentication required', module: MODULE });
+  }
+
   const result = await sendTransactionalEmail({
     actor: { userId: actor.userId, organizationId: actor.organizationId },
     body
