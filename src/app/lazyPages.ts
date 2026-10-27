@@ -63,6 +63,16 @@ export const HelpSupportPage = lazy(() =>
 export const SupportTicketDetailPage = lazy(() =>
   import('../pages/SupportTicketDetailPage').then((m) => ({ default: m.SupportTicketDetailPage }))
 );
+export const SuperAdminLicenseRequestsPage = lazy(() =>
+  import('../pages/admin/superadmin/SuperAdminCategoryRequestsPage').then((m) => ({
+    default: m.SuperAdminLicenseRequestsPage,
+  }))
+);
+export const SuperAdminModuleRequestsPage = lazy(() =>
+  import('../pages/admin/superadmin/SuperAdminCategoryRequestsPage').then((m) => ({
+    default: m.SuperAdminModuleRequestsPage,
+  }))
+);
 export const NCRsPage = lazy(() => import('../pages/NCRsPage'));
 export const QualityCustomerComplaintsPage = lazy(() => import('../pages/QualityCustomerComplaintsPage'));
 export const QualityInternalExternalIssuesPage = lazy(() =>
@@ -332,4 +342,54 @@ export const HoursWorkedPage = lazy(() =>
 );
 export const OperationalInputsPage = lazy(() =>
   import('../pages/management/OperationalInputsPage').then((m) => ({ default: m.OperationalInputsPage }))
+);
+export const AiBriefingPage = lazy(() =>
+  import('../pages/ai/AiBriefingPage').then((m) => ({ default: m.AiBriefingPage }))
+);
+export const AiPredictionsPage = lazy(() =>
+  import('../pages/ai/AiPredictionsPage').then((m) => ({ default: m.AiPredictionsPage }))
+);
+export const AiSafetyAssistantPage = lazy(() =>
+  import('../pages/ai/AiSafetyAssistantPage').then((m) => ({ default: m.AiSafetyAssistantPage }))
+);
+export const AuditDetailPage = lazy(() =>
+  import('../pages/AuditDetailPage').then((m) => ({ default: m.AuditDetailPage }))
+);
+export const DocumentEditorPage = lazy(() =>
+  import('../pages/DocumentEditorPage').then((m) => ({ default: m.DocumentEditorPage }))
+);
+export const FormsPage = lazy(() => import('../pages/FormsPage').then((m) => ({ default: m.FormsPage })));
+export const HrDepartmentsPage = lazy(() =>
+  import('../pages/hr/HrDepartmentsPage').then((m) => ({ default: m.HrDepartmentsPage }))
+);
+export const HrSitesPage = lazy(() =>
+  import('../pages/hr/HrSitesPage').then((m) => ({ default: m.HrSitesPage }))
+);
+export const LotoPage = lazy(() => import('../pages/sheq/LotoPage').then((m) => ({ default: m.LotoPage })));
+export const NextWavePage = lazy(() =>
+  import('../pages/marketing/NextWavePage').then((m) => ({ default: m.NextWavePage }))
+);
+export const PermitToWorkPage = lazy(() =>
+  import('../pages/sheq/PermitToWorkPage').then((m) => ({ default: m.PermitToWorkPage }))
+);
+export const SuperAdminAiGovernancePage = lazy(() =>
+  import('../pages/admin/superadmin/SuperAdminAiGovernancePage').then((m) => ({
+    default: m.SuperAdminAiGovernancePage,
+  }))
+);
+export const SuperAdminChatbotConversationDetailPage = lazy(() =>
+  import('../pages/admin/superadmin/SuperAdminChatbotConversationDetailPage').then((m) => ({
+    default: m.SuperAdminChatbotConversationDetailPage,
+  }))
+);
+export const SuperAdminChatbotLogsPage = lazy(() =>
+  import('../pages/admin/superadmin/SuperAdminChatbotLogsPage').then((m) => ({
+    default: m.SuperAdminChatbotLogsPage,
+  }))
+);
+export const TaskDetailPage = lazy(() =>
+  import('../pages/TaskDetailPage').then((m) => ({ default: m.TaskDetailPage }))
+);
+export const ToolboxTalksPage = lazy(() =>
+  import('../pages/sheq/ToolboxTalksPage').then((m) => ({ default: m.ToolboxTalksPage }))
 );
