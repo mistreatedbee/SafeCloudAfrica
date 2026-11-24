@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { CloudIcon, MailIcon, ShieldCheckIcon } from 'lucide-react';
+import { CloudIcon, GlobeIcon, MailIcon, PhoneIcon, ShieldCheckIcon } from 'lucide-react';
 
 export function MarketingFooter() {
   return (
@@ -67,13 +67,27 @@ export function MarketingFooter() {
           <div>
             <p className="text-sm font-semibold text-charcoal">Contact</p>
             <div className="mt-3 text-sm text-charcoal-500 space-y-2">
-              <div className="inline-flex items-center gap-2">
+              <a
+                href="mailto:info@safecloudafrica.co.za"
+                className="flex items-center gap-2 hover:text-teal transition-colors"
+              >
                 <MailIcon className="w-4 h-4" />
-                <span>support@safecloud.africa</span>
-              </div>
-              <p className="text-xs text-charcoal-400">
-                Replace this email with your preferred support inbox.
-              </p>
+                <span>info@safecloudafrica.co.za</span>
+              </a>
+              <a
+                href="tel:+27836247640"
+                className="flex items-center gap-2 hover:text-teal transition-colors"
+              >
+                <PhoneIcon className="w-4 h-4" />
+                <span>+27 83 624 7640</span>
+              </a>
+              <a
+                href="https://www.safecloudafrica.co.za"
+                className="flex items-center gap-2 hover:text-teal transition-colors"
+              >
+                <GlobeIcon className="w-4 h-4" />
+                <span>www.safecloudafrica.co.za</span>
+              </a>
             </div>
           </div>
         </div>

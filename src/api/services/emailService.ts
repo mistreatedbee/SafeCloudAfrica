@@ -225,7 +225,7 @@ export async function sendOrganizationInviteEmail(input: {
   const expiryDate = new Date(input.expiresAtIso);
   const expiresText = Number.isNaN(expiryDate.getTime()) ? input.expiresAtIso : expiryDate.toLocaleDateString();
   const daysUntilExpiry = Math.max(1, Math.ceil((expiryDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
-  const support = input.supportEmail ?? 'support@safecloudafrica.com';
+  const support = input.supportEmail ?? 'info@safecloudafrica.co.za';
   const subject = `You've been invited to join ${input.orgName} on SafeCloud Africa`;
 
   const html = `

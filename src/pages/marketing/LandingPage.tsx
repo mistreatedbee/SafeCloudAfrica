@@ -763,7 +763,7 @@ export function LandingPage() {
               <p className="mt-3 font-semibold text-charcoal">{cs.org}</p>
               <p className="mt-2 text-sm text-charcoal-500 flex-1">{cs.outcome}</p>
               <a
-                href={`mailto:support@safecloud.africa?subject=${encodeURIComponent(`Case study: ${cs.org}`)}`}
+                href={`mailto:info@safecloudafrica.co.za?subject=${encodeURIComponent(`Case study: ${cs.org}`)}`}
                 className="mt-4 inline-flex text-sm font-medium text-teal hover:underline underline-offset-2 w-fit"
               >
                 Read story
@@ -985,7 +985,7 @@ export function LandingPage() {
                 <li className="flex items-start gap-2"><CheckCircleIcon className="w-4 h-4 text-success mt-0.5" />Dedicated support</li>
               </ul>
               <a
-                href="mailto:support@safecloud.africa?subject=Custom%20quote%20request"
+                href="mailto:info@safecloudafrica.co.za?subject=Custom%20quote%20request"
                 className="mt-4 inline-flex text-sm font-medium text-teal hover:underline underline-offset-2"
               >
                 Request a quote
@@ -1007,7 +1007,7 @@ export function LandingPage() {
               <div className="flex flex-wrap items-center gap-4">
                 <span className="text-2xl font-bold text-navy">R350<span className="text-sm font-normal text-charcoal-500">/hr</span></span>
                 <a
-                  href="mailto:support@safecloud.africa?subject=SHEQ%20Support%20inquiry"
+                  href="mailto:info@safecloudafrica.co.za?subject=SHEQ%20Support%20inquiry"
                   className="text-sm font-medium text-teal hover:underline underline-offset-2"
                 >
                   Request SHEQ Support

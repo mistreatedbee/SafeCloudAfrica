@@ -52,7 +52,7 @@ export function SellableFeatureLockedPage({ featureKey }: { featureKey: Sellable
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <a
-              href="mailto:support@safecloud.africa?subject=Feature%20unlock%20request"
+              href="mailto:info@safecloudafrica.co.za?subject=Feature%20unlock%20request"
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-navy text-white text-sm font-medium hover:bg-navy-700 transition-colors"
             >
               <MailIcon className="w-4 h-4" />
